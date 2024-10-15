@@ -477,7 +477,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster proxy db prov,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:global cluster proxy db prov,dba:cluster proxy db,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIBind, "api-bind", "0.0.0.0", "Rest API bind ip")
 	flags.BoolVar(&conf.APIHttpsBind, "api-https-bind", false, "Bind API call to https Web UI will error with http")
@@ -960,7 +960,6 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	if conf.ConfDirBackup == "" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
-
 	}
 
 	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
@@ -968,6 +967,7 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
 		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
 	}
+
 	if conf.WithEmbed == "ON" {
 		if _, err := os.Stat(conf.BaseDir); os.IsNotExist(err) {
 			os.MkdirAll(conf.BaseDir, os.ModePerm)

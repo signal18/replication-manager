@@ -97,9 +97,17 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
 	))
+	router.Handle("/api/clusters/settings/actions/switch/{settingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
+	))
+	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
 	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1065,23 +1073,78 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
+	cName := vars["clusterName"]
+	setting := vars["settingName"]
+
+	// Should be handled with global settings
+	serverScope := config.IsScope(setting, "server")
+	if serverScope {
+		r.URL.Path = strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/", 1)
+		repman.handlerMuxSwitchGlobalSettings(w, r)
+		return
+	}
+
+	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+		valid, _ := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
+			//Set server scope
+			err := repman.switchClusterSettings(mycluster, setting)
+			if err != nil {
+				http.Error(w, "Setting Not Found", 501)
+				return
+			}
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
 			return
 		}
-		setting := vars["settingName"]
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
-		repman.switchSettings(mycluster, setting)
+
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
+
 }
 
-func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, setting string) {
+func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	setting := vars["settingName"]
+	serverScope := config.IsScope(setting, "server")
+	if !serverScope {
+		http.Error(w, "setting is not in global scope", 501)
+		return
+	}
+
+	var mycluster *cluster.Cluster
+	if cName, ok := vars["clusterName"]; ok {
+		mycluster = repman.getClusterByName(cName)
+	} else {
+		for _, v := range repman.Clusters {
+			if v != nil {
+				mycluster = v
+				break
+			}
+		}
+	}
+
+	if mycluster != nil {
+		valid, user := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
+			repman.switchServerSetting(user, r.URL.Path, setting)
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Cluster, setting string) error {
 	switch setting {
 	case "verbose":
 		mycluster.SwitchVerbosity()
@@ -1227,9 +1290,9 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
 	case "cloud18":
-		mycluster.SwitchCloud18()
+		mycluster.Conf.SwitchCloud18()
 	case "cloud18-shared":
-		mycluster.SwitchCloud18Shared()
+		mycluster.Conf.SwitchCloud18Shared()
 	case "force-slave-readonly":
 		mycluster.SwitchForceSlaveReadOnly()
 	case "force-binlog-row":
@@ -1310,32 +1373,77 @@ func (repman *ReplicationManager) switchSettings(mycluster *cluster.Cluster, set
 		mycluster.SwitchBackupKeepUntilValid()
 	case "mail-smtp-tls-skip-verify":
 		mycluster.SwitchMailSmtpTlsSkipVerify()
+	default:
+		return errors.New("Setting not found")
 	}
+	return nil
 }
 
 func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
+	cName := vars["clusterName"]
+	setting := vars["settingName"]
+
+	// Should be handled with global settings
+	serverScope := config.IsScope(setting, "server")
+	if serverScope {
+		r.URL.Path = strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/", 1)
+		repman.handlerMuxSetGlobalSettings(w, r)
+		return
+	}
+
+	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
-		setting := vars["settingName"]
-		if valid, user := repman.IsValidClusterACL(r, mycluster); valid {
-			//Set server scope
-			if config.IsScope(setting, "server") {
-				URL := strings.Replace(r.URL.Path, "/api/clusters/"+vars["clusterName"], "/api/clusters/%s", 1)
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
-				repman.setServerSetting(user, URL, setting, vars["settingValue"])
-			} else {
-				err := repman.setSetting(mycluster, setting, vars["settingValue"])
-				if err != nil {
-					http.Error(w, "Setting Not Found", 501)
-					return
-				}
+		valid, _ := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			err := repman.setClusterSetting(mycluster, setting, vars["settingValue"])
+			if err != nil {
+				http.Error(w, "Setting Not Found", 501)
+				return
 			}
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
+			return
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	setting := vars["settingName"]
+	serverScope := config.IsScope(setting, "server")
+	if !serverScope {
+		http.Error(w, "Setting Not Found", 501)
+		return
+	}
+
+	var mycluster *cluster.Cluster
+	if cName, ok := vars["clusterName"]; ok {
+		mycluster = repman.getClusterByName(cName)
+	} else {
+		for _, v := range repman.Clusters {
+			if v != nil {
+				mycluster = v
+				break
+			}
+		}
+	}
+
+	if mycluster != nil {
+		valid, user := repman.IsValidClusterACL(r, mycluster)
+		if valid {
+			//Set server scope
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
+			repman.setServerSetting(user, r.URL.Path, setting, vars["settingValue"])
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -1356,7 +1464,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 		if err != nil {
 			http.Error(w, "Bad cron pattern", http.StatusBadRequest)
 		}
-		repman.setSetting(mycluster, setting, cronValue)
+		repman.setClusterSetting(mycluster, setting, cronValue)
 		return
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -1364,9 +1472,9 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 	}
 }
 
-func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name string, value string) error {
+func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
 	//not immutable
-	if !mycluster.IsVariableImmutable(name) {
+	if !mycluster.Conf.IsVariableImmutable(name) {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
 	} else {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
@@ -1583,7 +1691,7 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 		mycluster.SetMonitorCaptureTrigger(value)
 	case "api-token-timeout":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetApiTokenTimeout(val)
+		mycluster.Conf.SetApiTokenTimeout(val)
 	case "sst-send-buffer":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSSTBufferSize(val)
@@ -1616,6 +1724,69 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 	case "scheduler-alert-disable-time":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSchedulerAlertDisableTime(val)
+	case "cloud18-domain":
+		mycluster.Conf.Cloud18Domain = value
+	case "cloud18-sub-domain":
+		mycluster.Conf.Cloud18SubDomain = value
+	case "cloud18-sub-domain-zone":
+		mycluster.Conf.Cloud18SubDomainZone = value
+	case "cloud18-gitlab-user":
+		mycluster.Conf.Cloud18GitUser = value
+	case "cloud18-gitlab-password":
+		mycluster.Conf.Cloud18GitPassword = value
+	case "cloud18-platform-description":
+		mycluster.Conf.Cloud18PlatformDescription = value
+	default:
+		return errors.New("Setting not found")
+	}
+	return nil
+}
+
+func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
+	//not immutable
+	if !repman.Conf.IsVariableImmutable(name) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	}
+
+	switch name {
+	case "api-token-timeout":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.SetApiTokenTimeout(val)
+	case "cloud18-domain":
+		repman.Conf.Cloud18Domain = value
+	case "cloud18-sub-domain":
+		repman.Conf.Cloud18SubDomain = value
+	case "cloud18-sub-domain-zone":
+		repman.Conf.Cloud18SubDomainZone = value
+	case "cloud18-gitlab-user":
+		repman.Conf.Cloud18GitUser = value
+	case "cloud18-gitlab-password":
+		repman.Conf.Cloud18GitPassword = value
+	case "cloud18-platform-description":
+		repman.Conf.Cloud18PlatformDescription = value
+	default:
+		return errors.New("Setting not found")
+	}
+	return nil
+}
+
+func (repman *ReplicationManager) switchRepmanSetting(name string) error {
+	//not immutable
+	if !repman.Conf.IsVariableImmutable(name) {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+	}
+
+	switch name {
+	case "cloud18":
+		repman.Conf.SwitchCloud18()
+	case "cloud18-shared":
+		repman.Conf.SwitchCloud18Shared()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -1623,10 +1794,23 @@ func (repman *ReplicationManager) setSetting(mycluster *cluster.Cluster, name st
 }
 
 func (repman *ReplicationManager) setServerSetting(user string, URL string, name string, value string) {
+	repman.setRepmanSetting(name, value)
+
+	for _, cl := range repman.Clusters {
+		//Don't print error with no valid ACL
+		if cl.IsURLPassACL(user, URL, false) {
+			repman.setClusterSetting(cl, name, value)
+		}
+	}
+}
+
+func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string) {
+	repman.switchRepmanSetting(name)
+
 	for cname, cl := range repman.Clusters {
 		//Don't print error with no valid ACL
 		if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
-			repman.setSetting(cl, name, value)
+			repman.switchClusterSettings(cl, name)
 		}
 	}
 }

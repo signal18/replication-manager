@@ -662,14 +662,14 @@ type Config struct {
 	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
-	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Domain                             string                 `mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
-	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
-	Cloud18SubDomainZone                      string                 `mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
-	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
-	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
-	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
-	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
+	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
+	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
+	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
+	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
+	Cloud18Shared                             bool                   `scope:"server" mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
+	Cloud18GitUser                            string                 `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
+	Cloud18GitPassword                        string                 `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18PlatformDescription                string                 `scope:"server" mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
@@ -943,6 +943,9 @@ const (
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
+
+	GrantGlobalSettings string = "global-settings" // Can update global settings
+	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
 )
 
 const (
@@ -1880,6 +1883,8 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantGlobalGrant:               GrantGlobalGrant,
+		GrantGlobalSettings:            GrantGlobalSettings,
 	}
 }
 
@@ -2447,4 +2452,28 @@ func IsValidLogLevel(lvl string) bool {
 type LogEntry struct {
 	Server string `json:"server"`
 	Log    string `json:"log"`
+}
+
+func (conf *Config) IsVariableImmutable(v string) bool {
+	_, ok := conf.ImmuableFlagMap[v]
+	return ok
+}
+
+func (conf *Config) IsVariableServerLevel(v string) bool {
+	_, ok := conf.ImmuableFlagMap[v]
+	return ok
+}
+
+func (conf *Config) SetApiTokenTimeout(value int) {
+	conf.TokenTimeout = value
+}
+
+func (conf *Config) SwitchCloud18Shared() {
+	if conf.Cloud18 {
+		conf.Cloud18Shared = !conf.Cloud18Shared
+	}
+}
+
+func (conf *Config) SwitchCloud18() {
+	conf.Cloud18 = !conf.Cloud18
 }

@@ -79,6 +79,12 @@ app.controller('DashboardController', function (
     });
   }
 
+  $scope.sendVaultToken = function () {
+    alert('Button clicked!');
+    $http.get(AppService.getApiDomain() + '/clusters/' + $scope.selectedClusterName + '/send-vault-token')
+    // Add your custom logic here
+};
+
 
   $scope.defaultRestoreForm = function () {
     $scope.restoreForm = {

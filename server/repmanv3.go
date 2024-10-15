@@ -495,7 +495,7 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrFieldNotSet, "setting.value", "").Err()
 		}
 
-		s.setSetting(mycluster, in.Setting.Name.Legacy(), in.Setting.Value)
+		s.setClusterSetting(mycluster, in.Setting.Name.Legacy(), in.Setting.Value)
 
 	case v3.ClusterSetting_SWITCH:
 		if err = user.Granted(config.GrantClusterSettings); err != nil {
@@ -506,7 +506,7 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "switch", "").Err()
 		}
 
-		s.switchSettings(mycluster, in.Switch.Name.Legacy())
+		s.switchClusterSettings(mycluster, in.Switch.Name.Legacy())
 
 	case v3.ClusterSetting_APPLY_DYNAMIC_CONFIG:
 		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
