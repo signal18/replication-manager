@@ -960,7 +960,6 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	if conf.ConfDirBackup == "" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
-
 	}
 
 	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
@@ -968,6 +967,7 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
 		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
 	}
+
 	if conf.WithEmbed == "ON" {
 		if _, err := os.Stat(conf.BaseDir); os.IsNotExist(err) {
 			os.MkdirAll(conf.BaseDir, os.ModePerm)
