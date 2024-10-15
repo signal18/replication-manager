@@ -943,6 +943,9 @@ const (
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
+
+	GrantGlobalSettings string = "global-settings" // Can update global settings
+	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
 )
 
 const (

@@ -97,6 +97,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
 	))
+	router.Handle("/api/clusters/settings/actions/switch/{settingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
@@ -1106,6 +1110,40 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		return
 	}
 	return
+}
+
+func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	setting := vars["settingName"]
+	serverScope := config.IsScope(setting, "server")
+	if !serverScope {
+		http.Error(w, "setting is not in global scope", 501)
+		return
+	}
+
+	var mycluster *cluster.Cluster
+	for _, v := range repman.Clusters {
+		if v != nil {
+			mycluster = v
+			break
+		}
+	}
+
+	if mycluster != nil {
+		valid, user := repman.IsValidClusterACL(r, mycluster)
+		URL := strings.Replace(r.URL.Path, "/api/clusters", "/api/clusters/%s", 1)
+		if valid {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
+			repman.switchServerSetting(user, URL, setting)
+		} else {
+			http.Error(w, fmt.Sprintf("User doesn't have required ACL for global setting: %s", setting), 403)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }
 
 func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Cluster, setting string) error {
