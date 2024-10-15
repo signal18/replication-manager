@@ -4,7 +4,8 @@ export const globalClustersService = {
   getClusters,
   getClusterPeers,
   getMonitoredData,
-  switchGlobalSetting
+  switchGlobalSetting,
+  setGlobalSetting
 }
 
 function getClusterPeers() {
@@ -20,4 +21,8 @@ function getMonitoredData() {
 
 function switchGlobalSetting(setting) {
   return getRequest(`clusters/settings/actions/switch/${setting}`)
+}
+
+function setGlobalSetting(setting, value) {
+  return getRequest(`clusters/settings/actions/set/${setting}/${value}`)
 }

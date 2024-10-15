@@ -43,6 +43,22 @@ export const switchGlobalSetting = createAsyncThunk(
     }
   }
 )
+
+export const setGlobalSetting = createAsyncThunk(
+  'globalClusters/setGlobalSetting',
+  async ({ setting, value }, thunkAPI) => {
+    try {
+      const { data, status } = await globalClustersService.setGlobalSetting(setting, value)
+      showSuccessBanner('Cloud18 change setting is successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      console.log('error::', error)
+      showErrorBanner('Cloud18 change setting is failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
