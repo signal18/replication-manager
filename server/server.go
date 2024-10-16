@@ -1146,53 +1146,54 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	dynRead := viper.GetViper()
 	dynRead.SetConfigType("toml")
 
-	//load files from the backup dir
-	files, err := os.ReadDir(conf.ConfDirBackup)
-	if err != nil {
-		repman.Logrus.Infof("No backup directory %s ", conf.ConfDirBackup)
-	} else {
-		if _, err := os.Stat(conf.ConfDirBackup + "/default.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring extra saved config found %s", conf.ConfDirBackup+"/default.toml")
+	/*
+		//load files from the backup dir
+		files, err := os.ReadDir(conf.ConfDirBackup)
+		if err != nil {
+			repman.Logrus.Infof("No backup directory %s ", conf.ConfDirBackup)
 		} else {
-			fistRead.SetConfigFile(conf.ConfDirBackup + "/default.toml")
-			err := fistRead.MergeInConfig()
-			if err != nil {
-				repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/default.toml" + err.Error())
+			if _, err := os.Stat(conf.ConfDirBackup + "/default.toml"); os.IsNotExist(err) {
+				repman.Logrus.Infof("No monitoring extra saved config found %s", conf.ConfDirBackup+"/default.toml")
+			} else {
+				fistRead.SetConfigFile(conf.ConfDirBackup + "/default.toml")
+				err := fistRead.MergeInConfig()
+				if err != nil {
+					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/default.toml" + err.Error())
+				}
 			}
-		}
-
-		// load files from the backup dir
-		if _, err := os.Stat(conf.ConfDirBackup + "/overwrite-default.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring overwrite config found %s", conf.ConfDirBackup+"/overwrite-default.toml")
-		} else {
-			dynRead.SetConfigFile(conf.ConfDirBackup + "/overwrite-default.toml")
-			err = dynRead.MergeInConfig()
-			if err != nil {
-				repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/overwrite-default.toml" + err.Error())
+			// unneeded already in datadir
+			// load files from the backup dir
+			if _, err := os.Stat(conf.ConfDirBackup + "/overwrite-default.toml"); os.IsNotExist(err) {
+				repman.Logrus.Infof("No monitoring overwrite config found %s", conf.ConfDirBackup+"/overwrite-default.toml")
+			} else {
+				dynRead.SetConfigFile(conf.ConfDirBackup + "/overwrite-default.toml")
+				err = dynRead.MergeInConfig()
+				if err != nil {
+					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/overwrite-default.toml" + err.Error())
+				}
 			}
-		}
 
-		// read and set config from all files in the working dir
-		for _, f := range files {
-			if f.IsDir() && f.Name() != "graphite" {
-				fistRead.SetConfigName(f.Name())
-				dynRead.SetConfigName("overwrite-" + f.Name())
-				if _, err := os.Stat(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
-					if f.Name() != "overwrite" {
-						repman.Logrus.Warning("No monitoring saved config found " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
-					}
-				} else {
-					repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.ConfDirBackup+"/"+f.Name()+"/"+f.Name()+".toml")
-					fistRead.SetConfigFile(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
-					err := fistRead.MergeInConfig()
-					if err != nil {
-						repman.Logrus.Fatal("Config error in " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+			// read and set config from all files in the backup dir
+			for _, f := range files {
+				if f.IsDir() && f.Name() != "graphite" {
+					fistRead.SetConfigName(f.Name())
+					dynRead.SetConfigName("overwrite-" + f.Name())
+					if _, err := os.Stat(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
+						if f.Name() != "overwrite" {
+							repman.Logrus.Warning("No monitoring saved config found " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
+						}
+					} else {
+						repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.ConfDirBackup+"/"+f.Name()+"/"+f.Name()+".toml")
+						fistRead.SetConfigFile(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
+						err := fistRead.MergeInConfig()
+						if err != nil {
+							repman.Logrus.Fatal("Config error in " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+						}
 					}
 				}
 			}
 		}
-	}
-
+	*/
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
 		//read working dir from config
@@ -1202,14 +1203,22 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 		dynRead := viper.GetViper()
 		dynRead.SetConfigType("toml")
-
-		//load files from the working dir
+		//read and set config from all files in the working dir
 		files, err := os.ReadDir(conf.WorkingDir)
+		//load files from the working dir
 		if err != nil {
 			repman.Logrus.Infof("No working directory %s ", conf.WorkingDir)
 		}
+		if _, err := os.Stat(conf.WorkingDir + "/overwrite-default.toml"); os.IsNotExist(err) {
+			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite-default.toml")
+		} else {
+			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite-default.toml")
+			err = dynRead.MergeInConfig()
+			if err != nil {
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite-default.toml" + err.Error())
+			}
+		}
 
-		//read and set config from all files in the working dir
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
 				fistRead.SetConfigName(f.Name())
@@ -1233,7 +1242,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 		//to read and set cloud18.toml config file if exist
 		if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring saved config found %s", conf.WorkingDir+"/cloud18.toml")
+			repman.Logrus.Infof("No cloud18 config found %s", conf.WorkingDir+"/cloud18.toml")
 		} else {
 			tmp_read.SetConfigFile(conf.WorkingDir + "/cloud18.toml")
 			err := tmp_read.MergeInConfig()
