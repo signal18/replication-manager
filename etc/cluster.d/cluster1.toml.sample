@@ -238,6 +238,7 @@ replication-credential = "root:mariadb"
 # backup-restic-binary-path = "/usr/local/bin/restic"
 
 # monitoring-scheduler = true
+# scheduler-jobs-ssh = true
 # scheduler-db-servers-logical-backup  = false
 # scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
 # scheduler-db-servers-logs   =  true
