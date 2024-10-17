@@ -1770,6 +1770,11 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	default:
 		return errors.New("Setting not found")
 	}
+
+	if !repman.HasSavingConfigQueue {
+		repman.HasSavingConfigQueue = true
+		go repman.WaitAndSave()
+	}
 	return nil
 }
 

@@ -122,6 +122,8 @@ type ReplicationManager struct {
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`
+	IsSavingConfig                                   bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue                             bool                           `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                           `json:"isGitPull"`
 	CanConnectVault                                  bool                           `json:"canConnectVault"`
 	errorConnectVault                                error                          `json:"-"`
@@ -2366,9 +2368,7 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		s := t
 		keys := t.Keys()
 		for _, key := range keys {
-
 			v, ok := repman.Conf.ImmuableFlagMap[key]
-
 			// Won't handle secrets currently. Will be handled later when scope already clear
 			_, ok2 := repman.Conf.Secrets[key]
 			if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
@@ -2378,7 +2378,10 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		}
 
 		file.WriteString("[overwrite-default]\n")
-		s.WriteTo(file)
+		_, err = s.WriteTo(file)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
+		}
 
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
@@ -2400,11 +2403,111 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 	return nil
 }
 
+// Prevent unsaved config while also prevent too many queue
+func (repman *ReplicationManager) WaitAndSave() {
+	defer func() {
+		repman.HasSavingConfigQueue = false
+		repman.Save()
+	}()
+
+	for repman.IsSavingConfig {
+		time.Sleep(time.Second)
+	}
+}
+
+func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
+	new_h := md5.New()
+
+	file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
+		}
+		return new_h, err
+	}
+	defer file.Close()
+
+	file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
+	readconf, _ := toml.Marshal(repman.Conf)
+	t, _ := toml.LoadBytes(readconf)
+	s := t
+	keys := t.Keys()
+	for _, key := range keys {
+		_, ok := repman.Conf.ImmuableFlagMap[key]
+		if ok {
+			s.Delete(key)
+		} else {
+			v, ok := repman.DefaultFlagMap[key]
+			if !ok {
+				s.Delete(key)
+			} else {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+					s.Delete(key)
+				} else if _, ok = repman.Conf.Secrets[key]; ok {
+					s.Delete(key)
+				}
+			}
+		}
+	}
+
+	_, err = s.WriteTo(file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
+	}
+	//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
+	//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+	_, err = io.Copy(new_h, file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting hash: %s", err)
+	}
+
+	return new_h, err
+}
+
+func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
+	new_h := md5.New()
+
+	file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
+		}
+		return new_h, err
+	}
+	defer file2.Close()
+	for key, val := range repman.Conf.ImmuableFlagMap {
+		_, ok := repman.Conf.Secrets[key]
+		if !ok {
+			if fmt.Sprintf("%T", val) == "string" {
+				file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+			} else {
+				file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+			}
+		}
+	}
+
+	if _, err := io.Copy(new_h, file2); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+	}
+
+	return new_h, err
+
+}
+
 func (repman *ReplicationManager) Save() error {
-	//Needed to preserve diretory before Pull
-	if !repman.IsGitPull && repman.Conf.Cloud18 {
+	// //Needed to preserve diretory before Pull
+	// if !repman.IsGitPull && repman.Conf.Cloud18 {
+	// 	return nil
+	// }
+
+	if repman.IsSavingConfig {
 		return nil
 	}
+	repman.IsSavingConfig = true
+	defer func() {
+		repman.IsSavingConfig = false
+	}()
+
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
@@ -2414,84 +2517,33 @@ func (repman *ReplicationManager) Save() error {
 
 	if repman.Conf.ConfRewrite {
 
-		var myconf = make(map[string]config.Config)
-
-		myconf["saved-default"] = repman.Conf
-
-		file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		// Dynamic
+		new_h, err := repman.SaveDynamic()
 		if err != nil {
-			if os.IsPermission(err) {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
-			}
 			return err
 		}
-		defer file.Close()
-		file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
-		readconf, _ := toml.Marshal(repman.Conf)
-		t, _ := toml.LoadBytes(readconf)
-		s := t
-		keys := t.Keys()
-		for _, key := range keys {
-			_, ok := repman.Conf.ImmuableFlagMap[key]
-			if ok {
-				s.Delete(key)
-			} else {
-				v, ok := repman.Conf.DefaultFlagMap[key]
-				_, ok2 := repman.Conf.Secrets[key]
-
-				// Won't handle secrets currently. Will be handled later when scope already clear
-				if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
-					s.Delete(key)
-				}
-			}
-		}
-
-		s.WriteTo(file)
-		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
-		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
-		new_h := md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-		}
-
 		h, ok := repman.CheckSumConfig["saved"]
 		if !ok {
 			has_changed = true
 		}
+
 		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
 			has_changed = true
 		}
 
 		repman.CheckSumConfig["saved"] = new_h
 
-		file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		// Immutable
+		new_h, err = repman.SaveImmutable()
 		if err != nil {
-			if os.IsPermission(err) {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
-			}
 			return err
-		}
-		defer file2.Close()
-		for key, val := range repman.Conf.ImmuableFlagMap {
-			_, ok := repman.Conf.Secrets[key]
-			if !ok {
-				if fmt.Sprintf("%T", val) == "string" {
-					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
-				} else {
-					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
-				}
-			}
-		}
-
-		new_h = md5.New()
-		if _, err := io.Copy(new_h, file2); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok = repman.CheckSumConfig["immutable"]
 		if !ok {
 			has_changed = true
 		}
+
 		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
 			has_changed = true
 		}
