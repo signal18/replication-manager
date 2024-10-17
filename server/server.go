@@ -104,6 +104,7 @@ type ReplicationManager struct {
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
 	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
 	GraphiteTemplateList                             map[string]bool             `json:"graphiteTemplateList"`
+	ServerScopeList                                  map[string]bool             `json:"-"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      sync.Map                    `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -925,7 +926,7 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 		if strings.Contains(k, ".") {
 			mycluster := strings.Split(k, ".")[0]
 			//	repman.Logrus.Infof("Evaluate key %s %s", mycluster, k)
-			if strings.ToLower(mycluster) != "default" {
+			if strings.ToLower(mycluster) != "default" && strings.ToLower(mycluster) != "saved-default" {
 				if strings.HasPrefix(mycluster, "saved-") {
 					mycluster = strings.TrimPrefix(mycluster, "saved-")
 				}
@@ -1000,7 +1001,8 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
-	RepMan.Logrus = log.New()
+	repman.Logrus = log.New()
+	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
@@ -1011,6 +1013,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
+	repman.ServerScopeList = config.GetParamsByScope("server")
 
 	repman.initFS(conf)
 
@@ -1211,13 +1214,25 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if err != nil {
 			repman.Logrus.Infof("No working directory %s ", conf.WorkingDir)
 		}
-		if _, err := os.Stat(conf.WorkingDir + "/overwrite-default.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite-default.toml")
+		// Preserve dynamic config after restart
+		if _, err := os.Stat(conf.WorkingDir + "/default.toml"); os.IsNotExist(err) {
+			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
 		} else {
-			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite-default.toml")
+			dynRead.SetConfigFile(conf.WorkingDir + "/default.toml")
 			err = dynRead.MergeInConfig()
 			if err != nil {
-				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite-default.toml" + err.Error())
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/default.toml" + err.Error())
+			}
+		}
+
+		// Preserve overwrite immutable config after restart
+		if _, err := os.Stat(conf.WorkingDir + "/overwrite.toml"); os.IsNotExist(err) {
+			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite.toml")
+		} else {
+			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
+			err = dynRead.MergeInConfig()
+			if err != nil {
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite.toml" + err.Error())
 			}
 		}
 
@@ -1231,7 +1246,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					}
 
 				} else {
-
 					repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
 					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := fistRead.MergeInConfig()
@@ -2436,20 +2450,24 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		s := t
 		keys := t.Keys()
 		for _, key := range keys {
-			v, ok := repman.Conf.ImmuableFlagMap[key]
-			if !ok {
-				s.Delete(key)
-			} else {
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+			if _, ok := repman.ServerScopeList[key]; ok {
+				v, ok := repman.Conf.ImmuableFlagMap[key]
+				if !ok {
 					s.Delete(key)
-				} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
-					v := repman.GetEncryptedValueFromMemory(key)
-					if v != "" {
-						s.Set(key, v)
-					} else {
+				} else {
+					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
 						s.Delete(key)
+					} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
+						v := repman.GetEncryptedValueFromMemory(key)
+						if v != "" {
+							s.Set(key, v)
+						} else {
+							s.Delete(key)
+						}
 					}
 				}
+			} else {
+				s.Delete(key)
 			}
 		}
 
@@ -2503,31 +2521,35 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 	}
 	defer file.Close()
 
-	file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
+	file.WriteString("[saved-default]\n")
 	readconf, _ := toml.Marshal(repman.Conf)
 	t, _ := toml.LoadBytes(readconf)
 	s := t
 	keys := t.Keys()
 	for _, key := range keys {
-		_, ok := repman.Conf.ImmuableFlagMap[key]
-		if ok {
-			s.Delete(key)
-		} else {
-			v, ok := repman.DefaultFlagMap[key]
-			if !ok {
+		if _, ok := repman.ServerScopeList[key]; ok {
+			_, ok := repman.Conf.ImmuableFlagMap[key]
+			if ok {
 				s.Delete(key)
 			} else {
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+				v, ok := repman.DefaultFlagMap[key]
+				if !ok {
 					s.Delete(key)
-				} else if _, ok = repman.Conf.Secrets[key]; ok {
-					v := repman.GetEncryptedValueFromMemory(key)
-					if v != "" {
-						s.Set(key, v)
-					} else {
+				} else {
+					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 						s.Delete(key)
+					} else if _, ok = repman.Conf.Secrets[key]; ok {
+						v := repman.GetEncryptedValueFromMemory(key)
+						if v != "" {
+							s.Set(key, v)
+						} else {
+							s.Delete(key)
+						}
 					}
 				}
 			}
+		} else {
+			s.Delete(key)
 		}
 	}
 
@@ -2562,18 +2584,22 @@ func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
 	s := t
 	keys := t.Keys()
 	for _, key := range keys {
-		val, ok := repman.Conf.ImmuableFlagMap[key]
-		if ok {
-			_, ok := repman.Conf.Secrets[key]
+		if _, ok := repman.ServerScopeList[key]; ok {
+			val, ok := repman.Conf.ImmuableFlagMap[key]
 			if ok {
-				v := repman.GetEncryptedValueFromMemory(key)
-				if v != "" {
-					s.Set(key, v)
+				_, ok := repman.Conf.Secrets[key]
+				if ok {
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
 				} else {
-					s.Delete(key)
+					s.Set(key, val)
 				}
 			} else {
-				s.Set(key, val)
+				s.Delete(key)
 			}
 		} else {
 			s.Delete(key)
