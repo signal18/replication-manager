@@ -158,6 +158,7 @@ type ServerMonitor struct {
 	EventStatus                 []dbhelper.Event           `json:"eventStatus"`
 	FullProcessList             []dbhelper.Processlist     `json:"-"`
 	Variables                   *config.StringsMap         `json:"-"`
+	SensitiveVariables          *config.StringsMap         `json:"-"`
 	EngineInnoDB                *config.StringsMap         `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog             `json:"errorLog"`
 	SlowLog                     s18log.SlowLog             `json:"-"`
@@ -309,6 +310,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	// Initiate sync.Map pointers
 	server.Variables = config.NewStringsMap()
+	server.SensitiveVariables = config.NewStringsMap()
 	server.EngineInnoDB = config.NewStringsMap()
 	server.Status = config.NewStringsMap()
 	server.PrevStatus = config.NewStringsMap()
@@ -743,8 +745,14 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
-		if !server.DBVersion.IsPostgreSQL() {
 
+		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
+		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
+		if err != nil {
+			return nil
+		}
+
+		if !server.DBVersion.IsPostgreSQL() {
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
 			server.HaveEventScheduler = server.HasEventScheduler()
 			server.ReadOnly = server.Variables.Get("READ_ONLY")

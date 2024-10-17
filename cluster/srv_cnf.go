@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -99,14 +98,10 @@ func (server *ServerMonitor) GetDatabaseDatadir() string {
 		return server.SlapOSDatadir + "/var/lib/mysql"
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
 		if server.DBDataDir == "" {
-			if server.Conn != nil {
-				//Not using Variables[] due to uppercase values
-				if value, _, err := dbhelper.GetVariableByName(server.Conn, "DATADIR", server.DBVersion); err == nil {
-					value, _ := strings.CutSuffix(value, "/")
-
-					server.DBDataDir = value
-					return server.DBDataDir
-				}
+			if value, ok := server.SensitiveVariables.CheckAndGet("DATADIR"); ok && value != "" {
+				value, _ := strings.CutSuffix(value, "/")
+				server.DBDataDir = value
+				return server.DBDataDir
 			}
 		} else {
 			return server.DBDataDir
@@ -150,12 +145,8 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 
 func (server *ServerMonitor) GetDbErrorLog() string {
 
-	if server.Conn != nil {
-		//Not using Variables[] due to uppercase values
-		v, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_ERROR", server.DBVersion)
-		if err == nil && v != "" {
-			return v
-		}
+	if v, ok := server.SensitiveVariables.CheckAndGet("LOG_ERROR"); ok && v != "" {
+		return v
 	}
 
 	// If has nosplitpath
@@ -168,12 +159,8 @@ func (server *ServerMonitor) GetDbErrorLog() string {
 
 func (server *ServerMonitor) GetDbSlowLog() string {
 
-	//Not using Variables[] due to uppercase values
-	if server.Conn != nil {
-		v, _, err := dbhelper.GetVariableByName(server.Conn, "SLOW_QUERY_LOG_FILE", server.DBVersion)
-		if err == nil && v != "" {
-			return v
-		}
+	if v, ok := server.SensitiveVariables.CheckAndGet("SLOW_QUERY_LOG_FILE"); ok && v != "" {
+		return v
 	}
 
 	// If has nosplitpath
