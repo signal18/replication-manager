@@ -104,6 +104,7 @@ type ReplicationManager struct {
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
 	BinlogParseList                                  map[string]bool             `json:"binlogParseList"`
 	GraphiteTemplateList                             map[string]bool             `json:"graphiteTemplateList"`
+	ServerScopeList                                  map[string]bool             `json:"-"`
 	currentCluster                                   *cluster.Cluster            `json:"-"`
 	UserAuthTry                                      sync.Map                    `json:"-"`
 	OAuthAccessToken                                 *oauth2.Token               `json:"-"`
@@ -122,6 +123,8 @@ type ReplicationManager struct {
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`
+	IsSavingConfig                                   bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue                             bool                           `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                           `json:"isGitPull"`
 	CanConnectVault                                  bool                           `json:"canConnectVault"`
 	errorConnectVault                                error                          `json:"-"`
@@ -923,7 +926,7 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 		if strings.Contains(k, ".") {
 			mycluster := strings.Split(k, ".")[0]
 			//	repman.Logrus.Infof("Evaluate key %s %s", mycluster, k)
-			if strings.ToLower(mycluster) != "default" {
+			if strings.ToLower(mycluster) != "default" && strings.ToLower(mycluster) != "saved-default" {
 				if strings.HasPrefix(mycluster, "saved-") {
 					mycluster = strings.TrimPrefix(mycluster, "saved-")
 				}
@@ -998,7 +1001,8 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config) {
-	RepMan.Logrus = log.New()
+	repman.Logrus = log.New()
+	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
@@ -1009,6 +1013,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
+	repman.ServerScopeList = config.GetParamsByScope("server")
 
 	repman.initFS(conf)
 
@@ -1143,6 +1148,57 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		tmp_read.Unmarshal(&conf)
 	}
 
+	dynRead := viper.GetViper()
+	dynRead.SetConfigType("toml")
+
+	/*
+		//load files from the backup dir
+		files, err := os.ReadDir(conf.ConfDirBackup)
+		if err != nil {
+			repman.Logrus.Infof("No backup directory %s ", conf.ConfDirBackup)
+		} else {
+			if _, err := os.Stat(conf.ConfDirBackup + "/default.toml"); os.IsNotExist(err) {
+				repman.Logrus.Infof("No monitoring extra saved config found %s", conf.ConfDirBackup+"/default.toml")
+			} else {
+				fistRead.SetConfigFile(conf.ConfDirBackup + "/default.toml")
+				err := fistRead.MergeInConfig()
+				if err != nil {
+					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/default.toml" + err.Error())
+				}
+			}
+			// unneeded already in datadir
+			// load files from the backup dir
+			if _, err := os.Stat(conf.ConfDirBackup + "/overwrite-default.toml"); os.IsNotExist(err) {
+				repman.Logrus.Infof("No monitoring overwrite config found %s", conf.ConfDirBackup+"/overwrite-default.toml")
+			} else {
+				dynRead.SetConfigFile(conf.ConfDirBackup + "/overwrite-default.toml")
+				err = dynRead.MergeInConfig()
+				if err != nil {
+					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/overwrite-default.toml" + err.Error())
+				}
+			}
+
+			// read and set config from all files in the backup dir
+			for _, f := range files {
+				if f.IsDir() && f.Name() != "graphite" {
+					fistRead.SetConfigName(f.Name())
+					dynRead.SetConfigName("overwrite-" + f.Name())
+					if _, err := os.Stat(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
+						if f.Name() != "overwrite" {
+							repman.Logrus.Warning("No monitoring saved config found " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
+						}
+					} else {
+						repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.ConfDirBackup+"/"+f.Name()+"/"+f.Name()+".toml")
+						fistRead.SetConfigFile(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
+						err := fistRead.MergeInConfig()
+						if err != nil {
+							repman.Logrus.Fatal("Config error in " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+						}
+					}
+				}
+			}
+		}
+	*/
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
 		//read working dir from config
@@ -1152,14 +1208,34 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 		dynRead := viper.GetViper()
 		dynRead.SetConfigType("toml")
-
-		//load files from the working dir
+		//read and set config from all files in the working dir
 		files, err := os.ReadDir(conf.WorkingDir)
+		//load files from the working dir
 		if err != nil {
 			repman.Logrus.Infof("No working directory %s ", conf.WorkingDir)
 		}
+		// Preserve dynamic config after restart
+		if _, err := os.Stat(conf.WorkingDir + "/default.toml"); os.IsNotExist(err) {
+			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
+		} else {
+			dynRead.SetConfigFile(conf.WorkingDir + "/default.toml")
+			err = dynRead.MergeInConfig()
+			if err != nil {
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/default.toml" + err.Error())
+			}
+		}
 
-		//read and set config from all files in the working dir
+		// Preserve overwrite immutable config after restart
+		if _, err := os.Stat(conf.WorkingDir + "/overwrite.toml"); os.IsNotExist(err) {
+			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite.toml")
+		} else {
+			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
+			err = dynRead.MergeInConfig()
+			if err != nil {
+				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite.toml" + err.Error())
+			}
+		}
+
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
 				fistRead.SetConfigName(f.Name())
@@ -1170,7 +1246,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 					}
 
 				} else {
-
 					repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml")
 					fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := fistRead.MergeInConfig()
@@ -1183,7 +1258,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 
 		//to read and set cloud18.toml config file if exist
 		if _, err := os.Stat(conf.WorkingDir + "/cloud18.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring saved config found %s", conf.WorkingDir+"/cloud18.toml")
+			repman.Logrus.Infof("No cloud18 config found %s", conf.WorkingDir+"/cloud18.toml")
 		} else {
 			tmp_read.SetConfigFile(conf.WorkingDir + "/cloud18.toml")
 			err := tmp_read.MergeInConfig()
@@ -2286,13 +2361,81 @@ func (repman *ReplicationManager) PushConfigToGit(tok string, user string, dir s
 	}
 }
 
+func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {
+	switch key {
+	case "api-credentials":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials"].Value, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			for _, cluster := range repman.Clusters {
+				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					break
+				}
+			}
+		}
+		return strings.Join(tab_ApiUser, ",")
+	case "api-credentials-external":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials-external"].Value, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			for _, cluster := range repman.Clusters {
+				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					break
+				}
+			}
+		}
+		return strings.Join(tab_ApiUser, ",")
+	case "backup-restic-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-password"))
+	case "haproxy-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("haproxy-password"))
+	case "maxscale-pass":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("maxscale-pass"))
+	case "myproxy-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+	case "proxysql-password":
+		if repman.Conf.IsPath(repman.Conf.ProxysqlPassword) && repman.Conf.IsVaultUsed() {
+			return ""
+		}
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+	case "proxyjanitor-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxyjanitor-password"))
+	case "vault-secret-id":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-secret-id"))
+	case "opensvc-p12-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
+	case "backup-restic-aws-access-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+	case "backup-streaming-aws-access-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+	case "arbitration-external-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
+	case "alert-pushover-user-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
+	case "alert-pushover-app-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "mail-smtp-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("mail-smtp-password"))
+	case "api-oauth-client-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
+	case "cloud18-gitlab-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+	case "git-acces-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("git-acces-token"))
+	case "vault-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-token"))
+	default:
+		return ""
+	}
+}
+
 func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 
 	if repman.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-default"] = repman.Conf
-
 		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -2307,19 +2450,32 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		s := t
 		keys := t.Keys()
 		for _, key := range keys {
-
-			v, ok := repman.Conf.ImmuableFlagMap[key]
-
-			// Won't handle secrets currently. Will be handled later when scope already clear
-			_, ok2 := repman.Conf.Secrets[key]
-			if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+			if _, ok := repman.ServerScopeList[key]; ok {
+				v, ok := repman.Conf.ImmuableFlagMap[key]
+				if !ok {
+					s.Delete(key)
+				} else {
+					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+						s.Delete(key)
+					} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
+						v := repman.GetEncryptedValueFromMemory(key)
+						if v != "" {
+							s.Set(key, v)
+						} else {
+							s.Delete(key)
+						}
+					}
+				}
+			} else {
 				s.Delete(key)
 			}
-
 		}
 
 		file.WriteString("[overwrite-default]\n")
-		s.WriteTo(file)
+		_, err = s.WriteTo(file)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
+		}
 
 		new_h := md5.New()
 		if _, err := io.Copy(new_h, file); err != nil {
@@ -2341,11 +2497,142 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 	return nil
 }
 
+// Prevent unsaved config while also prevent too many queue
+func (repman *ReplicationManager) WaitAndSave() {
+	defer func() {
+		repman.HasSavingConfigQueue = false
+		repman.Save()
+	}()
+
+	for repman.IsSavingConfig {
+		time.Sleep(time.Second)
+	}
+}
+
+func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
+	new_h := md5.New()
+
+	file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
+		}
+		return new_h, err
+	}
+	defer file.Close()
+
+	file.WriteString("[saved-default]\n")
+	readconf, _ := toml.Marshal(repman.Conf)
+	t, _ := toml.LoadBytes(readconf)
+	s := t
+	keys := t.Keys()
+	for _, key := range keys {
+		if _, ok := repman.ServerScopeList[key]; ok {
+			_, ok := repman.Conf.ImmuableFlagMap[key]
+			if ok {
+				s.Delete(key)
+			} else {
+				v, ok := repman.DefaultFlagMap[key]
+				if !ok {
+					s.Delete(key)
+				} else {
+					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+						s.Delete(key)
+					} else if _, ok = repman.Conf.Secrets[key]; ok {
+						v := repman.GetEncryptedValueFromMemory(key)
+						if v != "" {
+							s.Set(key, v)
+						} else {
+							s.Delete(key)
+						}
+					}
+				}
+			}
+		} else {
+			s.Delete(key)
+		}
+	}
+
+	_, err = s.WriteTo(file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
+	}
+	//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
+	//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
+	_, err = io.Copy(new_h, file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting hash: %s", err)
+	}
+
+	return new_h, err
+}
+
+func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
+	new_h := md5.New()
+
+	file, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	if err != nil {
+		if os.IsPermission(err) {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
+		}
+		return new_h, err
+	}
+	defer file.Close()
+
+	readconf, _ := toml.Marshal(repman.Conf)
+	t, _ := toml.LoadBytes(readconf)
+	s := t
+	keys := t.Keys()
+	for _, key := range keys {
+		if _, ok := repman.ServerScopeList[key]; ok {
+			val, ok := repman.Conf.ImmuableFlagMap[key]
+			if ok {
+				_, ok := repman.Conf.Secrets[key]
+				if ok {
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
+				} else {
+					s.Set(key, val)
+				}
+			} else {
+				s.Delete(key)
+			}
+		} else {
+			s.Delete(key)
+		}
+	}
+
+	_, err = s.WriteTo(file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default immutable.toml file: %s", err)
+	}
+
+	if _, err := io.Copy(new_h, file); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting default immutable hash: %s", err)
+	}
+
+	return new_h, err
+
+}
+
 func (repman *ReplicationManager) Save() error {
-	//Needed to preserve diretory before Pull
-	if !repman.IsGitPull && repman.Conf.Cloud18 {
+	// //Needed to preserve diretory before Pull
+	// if !repman.IsGitPull && repman.Conf.Cloud18 {
+	// 	return nil
+	// }
+
+	if repman.IsSavingConfig {
 		return nil
 	}
+	repman.IsSavingConfig = true
+	defer func() {
+		repman.IsSavingConfig = false
+	}()
+
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
@@ -2355,84 +2642,33 @@ func (repman *ReplicationManager) Save() error {
 
 	if repman.Conf.ConfRewrite {
 
-		var myconf = make(map[string]config.Config)
-
-		myconf["saved-default"] = repman.Conf
-
-		file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		// Dynamic
+		new_h, err := repman.SaveDynamic()
 		if err != nil {
-			if os.IsPermission(err) {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/default.toml")
-			}
 			return err
 		}
-		defer file.Close()
-		file.WriteString("[saved-default]\ntitle = \"replication-manager\" \n")
-		readconf, _ := toml.Marshal(repman.Conf)
-		t, _ := toml.LoadBytes(readconf)
-		s := t
-		keys := t.Keys()
-		for _, key := range keys {
-			_, ok := repman.Conf.ImmuableFlagMap[key]
-			if ok {
-				s.Delete(key)
-			} else {
-				v, ok := repman.Conf.DefaultFlagMap[key]
-				_, ok2 := repman.Conf.Secrets[key]
-
-				// Won't handle secrets currently. Will be handled later when scope already clear
-				if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
-					s.Delete(key)
-				}
-			}
-		}
-
-		s.WriteTo(file)
-		//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
-		//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
-		new_h := md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
-		}
-
 		h, ok := repman.CheckSumConfig["saved"]
 		if !ok {
 			has_changed = true
 		}
+
 		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
 			has_changed = true
 		}
 
 		repman.CheckSumConfig["saved"] = new_h
 
-		file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		// Immutable
+		new_h, err = repman.SaveImmutable()
 		if err != nil {
-			if os.IsPermission(err) {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
-			}
 			return err
-		}
-		defer file2.Close()
-		for key, val := range repman.Conf.ImmuableFlagMap {
-			_, ok := repman.Conf.Secrets[key]
-			if !ok {
-				if fmt.Sprintf("%T", val) == "string" {
-					file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
-				} else {
-					file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
-				}
-			}
-		}
-
-		new_h = md5.New()
-		if _, err := io.Copy(new_h, file2); err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
 
 		h, ok = repman.CheckSumConfig["immutable"]
 		if !ok {
 			has_changed = true
 		}
+
 		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
 			has_changed = true
 		}
