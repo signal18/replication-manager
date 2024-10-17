@@ -2347,13 +2347,81 @@ func (repman *ReplicationManager) PushConfigToGit(tok string, user string, dir s
 	}
 }
 
+func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string {
+	switch key {
+	case "api-credentials":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials"].Value, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			for _, cluster := range repman.Clusters {
+				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					break
+				}
+			}
+		}
+		return strings.Join(tab_ApiUser, ",")
+	case "api-credentials-external":
+		var tab_ApiUser []string
+		lst_Users := strings.Split(repman.Conf.Secrets["api-credentials-external"].Value, ",")
+		for ind := range lst_Users {
+			user_pass := strings.Split(lst_Users[ind], ":")
+			for _, cluster := range repman.Clusters {
+				if u, ok := cluster.APIUsers[user_pass[0]]; ok {
+					tab_ApiUser = append(tab_ApiUser, u.User+":"+repman.Conf.GetEncryptedString(u.Password))
+					break
+				}
+			}
+		}
+		return strings.Join(tab_ApiUser, ",")
+	case "backup-restic-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-password"))
+	case "haproxy-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("haproxy-password"))
+	case "maxscale-pass":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("maxscale-pass"))
+	case "myproxy-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+	case "proxysql-password":
+		if repman.Conf.IsPath(repman.Conf.ProxysqlPassword) && repman.Conf.IsVaultUsed() {
+			return ""
+		}
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxysql-password"))
+	case "proxyjanitor-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("proxyjanitor-password"))
+	case "vault-secret-id":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-secret-id"))
+	case "opensvc-p12-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("opensvc-p12-secret"))
+	case "backup-restic-aws-access-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
+	case "backup-streaming-aws-access-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("backup-streaming-aws-access-secret"))
+	case "arbitration-external-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("arbitration-external-secret"))
+	case "alert-pushover-user-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-user-token"))
+	case "alert-pushover-app-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("alert-pushover-app-token"))
+	case "mail-smtp-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("mail-smtp-password"))
+	case "api-oauth-client-secret":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("api-oauth-client-secret"))
+	case "cloud18-gitlab-password":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("cloud18-gitlab-password"))
+	case "git-acces-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("git-acces-token"))
+	case "vault-token":
+		return repman.Conf.GetEncryptedString(repman.Conf.GetDecryptedValue("vault-token"))
+	default:
+		return ""
+	}
+}
+
 func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 
 	if repman.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-default"] = repman.Conf
-
 		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -2369,12 +2437,20 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		keys := t.Keys()
 		for _, key := range keys {
 			v, ok := repman.Conf.ImmuableFlagMap[key]
-			// Won't handle secrets currently. Will be handled later when scope already clear
-			_, ok2 := repman.Conf.Secrets[key]
-			if !ok || fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) || ok2 {
+			if !ok {
 				s.Delete(key)
+			} else {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+					s.Delete(key)
+				} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
+				}
 			}
-
 		}
 
 		file.WriteString("[overwrite-default]\n")
@@ -2444,7 +2520,12 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 					s.Delete(key)
 				} else if _, ok = repman.Conf.Secrets[key]; ok {
-					s.Delete(key)
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
+						s.Delete(key)
+					}
 				}
 			}
 		}
@@ -2467,27 +2548,45 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
 	new_h := md5.New()
 
-	file2, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+	file, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		if os.IsPermission(err) {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
 		}
 		return new_h, err
 	}
-	defer file2.Close()
-	for key, val := range repman.Conf.ImmuableFlagMap {
-		_, ok := repman.Conf.Secrets[key]
-		if !ok {
-			if fmt.Sprintf("%T", val) == "string" {
-				file2.WriteString(key + " = \"" + fmt.Sprintf("%v", val) + "\"\n")
+	defer file.Close()
+
+	readconf, _ := toml.Marshal(repman.Conf)
+	t, _ := toml.LoadBytes(readconf)
+	s := t
+	keys := t.Keys()
+	for _, key := range keys {
+		val, ok := repman.Conf.ImmuableFlagMap[key]
+		if ok {
+			_, ok := repman.Conf.Secrets[key]
+			if ok {
+				v := repman.GetEncryptedValueFromMemory(key)
+				if v != "" {
+					s.Set(key, v)
+				} else {
+					s.Delete(key)
+				}
 			} else {
-				file2.WriteString(key + " = " + fmt.Sprintf("%v", val) + "\n")
+				s.Set(key, val)
 			}
+		} else {
+			s.Delete(key)
 		}
 	}
 
-	if _, err := io.Copy(new_h, file2); err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+	_, err = s.WriteTo(file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default immutable.toml file: %s", err)
+	}
+
+	if _, err := io.Copy(new_h, file); err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting default immutable hash: %s", err)
 	}
 
 	return new_h, err
