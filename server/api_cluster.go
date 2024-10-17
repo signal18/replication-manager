@@ -1743,6 +1743,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
+	var v int
 	//not immutable
 	if !repman.Conf.IsVariableImmutable(name) {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
@@ -1767,6 +1768,86 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.Cloud18GitPassword = value
 	case "cloud18-platform-description":
 		repman.Conf.Cloud18PlatformDescription = value
+	case "api-bind":
+		repman.Conf.APIBind = value
+	case "api-port ":
+		repman.Conf.APIPort = value
+	case "api-public-url":
+		repman.Conf.APIPublicURL = value
+	case "arbitration-external-hosts":
+		repman.Conf.ArbitrationSasHosts = value
+	case "arbitration-external-secret":
+		repman.Conf.ArbitrationSasSecret = value
+	case "arbitration-external-unique-id":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.ArbitrationSasUniqueId = v
+	case "arbitration-failed-master-script":
+		repman.Conf.ArbitrationFailedMasterScript = value
+	case "arbitration-peer-hosts":
+		repman.Conf.ArbitrationPeerHosts = value
+	case "arbitration-read-timeout":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.ArbitrationReadTimout = v
+	case "git-acces-token":
+		repman.Conf.GitAccesToken = value
+	case "git-monitoring-ticker":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GitMonitoringTicker = v
+	case "git-url":
+		repman.Conf.GitUrl = value
+	case "git-username":
+		repman.Conf.GitUsername = value
+	case "graphite-carbon-api-port":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonApiPort = v
+	case "graphite-carbon-link-port":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonLinkPort = v
+	case "graphite-carbon-host":
+		repman.Conf.GraphiteCarbonHost = value
+	case "graphite-carbon-pickle-port":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonPicklePort = v
+	case "graphite-carbon-port":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonPort = v
+	case "graphite-carbon-pprof-port ":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonPprofPort = v
+	case "graphite-carbon-server-port":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.GraphiteCarbonServerPort = v
+	case "http-bind-address ":
+		repman.Conf.BindAddr = value
+	case "http-port":
+		repman.Conf.HttpPort = value
+	case "http-session-lifetime":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.SessionLifeTime = v
+	case "monitoring-address":
+		repman.Conf.MonitorAddress = value
+	case "prov-service-plan-registry":
+		repman.Conf.ProvServicePlanRegistry = value
+	case "prov-service-plan":
+		repman.Conf.ProvServicePlan = value
+	case "sysbench-binary-path":
+		repman.Conf.SysbenchBinaryPath = value
+	case "backup-mydumper-path":
+		repman.Conf.BackupMyDumperPath = value
+	case "backup-myloader-path ":
+		repman.Conf.BackupMyLoaderPath = value
+	case "backup-mysqlbinlog-path":
+		repman.Conf.BackupMysqlbinlogPath = value
+	case "backup-mysqlclient-path":
+		repman.Conf.BackupMysqlclientPath = value
+	case "backup-mysqldump-path":
+		repman.Conf.BackupMysqldumpPath = value
+	case "backup-restic-binary-path":
+		repman.Conf.BackupResticBinaryPath = value
+	case "haproxy-binary-path":
+		repman.Conf.HaproxyBinaryPath = value
+	case "maxscale-binary-pat":
+		repman.Conf.MxsBinaryPath = value
 	default:
 		return errors.New("Setting not found")
 	}
@@ -1792,6 +1873,28 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.SwitchCloud18()
 	case "cloud18-shared":
 		repman.Conf.SwitchCloud18Shared()
+	case "api-https-bind":
+		repman.Conf.APIHttpsBind = !repman.Conf.APIHttpsBind
+	case "api-server":
+		repman.Conf.ApiServ = !repman.Conf.ApiServ
+	case "arbitration-external ":
+		repman.Conf.Arbitration = !repman.Conf.Arbitration
+	case "graphite-embedded":
+		repman.Conf.GraphiteEmbedded = !repman.Conf.GraphiteEmbedded
+	case "graphite-blacklist  ":
+		repman.Conf.GraphiteBlacklist = !repman.Conf.GraphiteBlacklist
+	case "graphite-metrics ":
+		repman.Conf.GraphiteMetrics = !repman.Conf.GraphiteMetrics
+	case "http-server":
+		repman.Conf.HttpServ = !repman.Conf.HttpServ
+	case "http-use-react ":
+		repman.Conf.HttpUseReact = !repman.Conf.HttpUseReact
+	case "monitoring-save-config  ":
+		repman.Conf.ConfRewrite = !repman.Conf.ConfRewrite
+	case "sysbench-v1":
+		repman.Conf.SysbenchV1 = !repman.Conf.SysbenchV1
+	case "scheduler-db-servers-receiver-use-ssl":
+		repman.Conf.SchedulerReceiverUseSSL = !repman.Conf.SchedulerReceiverUseSSL
 	default:
 		return errors.New("Setting not found")
 	}
