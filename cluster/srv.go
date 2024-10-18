@@ -80,6 +80,7 @@ type ServerMonitor struct {
 	Process                     *os.Process                `json:"process"`
 	SemiSyncMasterStatus        bool                       `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                       `json:"semiSyncSlaveStatus"`
+	HaveSSHError                bool                       `json:"HaveSshError"`
 	HaveHealthyReplica          bool                       `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                       `json:"eventScheduler"`
 	HaveSemiSync                bool                       `json:"haveSemiSync"`
@@ -1595,41 +1596,52 @@ func (server *ServerMonitor) RotateSystemLogs() {
 	cluster := server.ClusterGroup
 	if server.HasLogsInSystemTables() && !server.IsDown() {
 		if server.HasLogSlowQuery() {
-			num, err := server.RotateTableToTime("replication_manager_schema", "slow_log")
-			if err != nil {
-				cluster.SetState("WARN0130", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0130"], server.URL, "slow_log", err.Error()), ErrFrom: "LOGS", ServerUrl: server.URL})
-			}
-			if num > 0 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s, %d tables rotated", server.URL, num)
+			err := server.RotateLogs("slow_log")
+			if err != nil && !isNoConnPoolError(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Rotate slow log: %v", err)
 			}
 		}
 		if server.HasLogGeneral() {
-			num, err := server.RotateTableToTime("mysql", "general_log")
-			if err != nil {
-				cluster.SetState("WARN0130", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0130"], server.URL, "general_log", err.Error()), ErrFrom: "LOGS", ServerUrl: server.URL})
+			err := server.RotateLogs("general_log")
+			if err != nil && !isNoConnPoolError(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Rotate general log: %v", err)
 			}
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s, %d tables rotated", server.URL, num)
-
 		}
 	}
+}
+
+func (server *ServerMonitor) RotateLogs(logtype string) error {
+	cluster := server.ClusterGroup
+	num, err := server.RotateTableToTime("replication_manager_schema", logtype)
+	if err != nil {
+		return err
+	}
+	if num > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log rotate on %s, %d tables rotated", server.URL, num)
+	}
+	return nil
 }
 
 func (server *ServerMonitor) RotateTableToTime(database string, table string) (int, error) {
 	cluster := server.ClusterGroup
 	dropped := 0
 
-	Conn, err := server.GetNewDBConn()
+	if server.Conn == nil {
+		return 0, fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
 		return 0, err
 	}
 	defer Conn.Close()
 
-	_, err = Conn.Exec("USE " + database)
+	_, err = server.ConnExecQuery(Conn, "USE "+database)
 	if err != nil {
 		return 0, err
 	}
 
-	_, err = Conn.Exec("set sql_log_bin=0")
+	_, err = server.ConnExecQuery(Conn, "set sql_log_bin=0")
 	if err != nil {
 		return 0, err
 	}
@@ -1637,7 +1649,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 	cleantables := []string{}
 
 	query := "SHOW TABLES LIKE '" + table + "_%'"
-	err = Conn.Select(&cleantables, query)
+	err = server.ConnSelectQuery(Conn, &cleantables, query)
 	if err != nil {
 		return dropped, err
 	}
@@ -1651,7 +1663,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 
 		// Start dropping
 		for _, row := range cleantables {
-			if _, err := Conn.Exec("DROP TABLE " + database + "." + row); err != nil {
+			if _, err := server.ConnExecQuery(Conn, "DROP TABLE "+database+"."+row); err != nil {
 				return dropped, err
 			} else {
 				dropped++

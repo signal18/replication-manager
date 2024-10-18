@@ -115,7 +115,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename string, openfile string) (string, error) {
+func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename string, openfile string, task string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
 	var writers []io.Writer
@@ -149,12 +149,12 @@ func (cluster *Cluster) SSTRunReceiverToFile(server *ServerMonitor, filename str
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
 	SSTs.Unlock()
-	go sst.tcp_con_handle_to_file(server)
+	go sst.tcp_con_handle_to_file(server, task)
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename string, openfile string) (string, error) {
+func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename string, openfile string, task string) (string, error) {
 	sst := new(SST)
 	sst.cluster = cluster
 
@@ -190,17 +190,16 @@ func (cluster *Cluster) SSTRunReceiverToGZip(server *ServerMonitor, filename str
 	SSTs.Lock()
 	SSTs.SSTconnections[destinationPort] = sst
 	SSTs.Unlock()
-	go sst.tcp_con_handle_to_gzip(server)
+	go sst.tcp_con_handle_to_gzip(server, task)
 
 	return strconv.Itoa(destinationPort), nil
 }
 
-func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
+func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 
 	var err error
 
 	defer func() {
-		stat, _ := sst.file.Stat()
 		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
@@ -214,13 +213,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		if strings.Contains(stat.Name(), "xbtream") {
-			server.WriteBackupMetadata(config.BackupMethodPhysical)
-
-			backtype := "physical"
-			server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
-			sst.cluster.SetInPhysicalBackupState(false)
-		}
+		server.JobFinishReceiveFile(task)
 	}()
 
 	sst.in, err = sst.listener.Accept()
@@ -241,12 +234,11 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor) {
 	}
 }
 
-func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
+func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 	var err error
 
 	defer func() {
-		stat, _ := sst.file.Stat()
 		if sst.cluster.Conf.LogSST {
 			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST connection end cleanup %d", sst.listener.Addr().(*net.TCPAddr).Port)
 		}
@@ -259,13 +251,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor) {
 		sst.cluster.SSTSenderFreePort(strconv.Itoa(port))
 		SSTs.Unlock()
 
-		if strings.Contains(stat.Name(), "xbtream") {
-			server.WriteBackupMetadata(config.BackupMethodPhysical)
-
-			backtype := "physical"
-			server.BackupRestic(sst.cluster.Conf.Cloud18GitUser, sst.cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, sst.cluster.Conf.BackupPhysicalType)
-			sst.cluster.SetInPhysicalBackupState(false)
-		}
+		server.JobFinishReceiveFile(task)
 	}()
 
 	sst.in, err = sst.listener.Accept()

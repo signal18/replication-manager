@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"runtime"
 	"strings"
 	"sync"
@@ -70,6 +71,7 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
+	OsUser                        *user.User           `json:"-"`
 	Name                          string               `json:"name"`
 	Tenant                        string               `json:"tenant"`
 	WorkingDir                    string               `json:"workingDir"`

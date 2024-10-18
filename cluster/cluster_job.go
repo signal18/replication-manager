@@ -88,7 +88,12 @@ func (cluster *Cluster) GetSlowLogTable() {
 		for _, s := range cluster.Servers {
 			if s != nil {
 				wg.Add(1)
-				go s.GetSlowLogTable(wg)
+				go func() {
+					err := s.GetSlowLogTable(wg)
+					if err != nil && !isNoConnPoolError(err) {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "%s", err)
+					}
+				}()
 			}
 		}
 
