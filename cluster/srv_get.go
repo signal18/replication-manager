@@ -560,55 +560,56 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 
 }
 
-func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
+func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	cluster := server.ClusterGroup
 	defer wg.Done()
 
 	if cluster.IsInFailover() {
-		return
+		return nil
 	}
 	if !server.HasLogsInSystemTables() {
-		return
+		return nil
 	}
 	if server.IsDown() {
-		return
+		return nil
 	}
 	if !cluster.GetConf().MonitorQueries {
-		return
+		return nil
 	}
 	if server.IsInSlowQueryCapture {
-		return
+		return nil
 	}
 	server.IsInSlowQueryCapture = true
-
 	defer func() { server.IsInSlowQueryCapture = false }()
+
 	currentTime := time.Now()
 	timeStampString := currentTime.Format("20060102")
+	timeout := time.Duration(cluster.Conf.ReadTimeout) * time.Second
 
-	Conn, err := server.GetNewDBConn()
+	if server.Conn == nil {
+		return fmt.Errorf("No connection pool on %s", server.URL)
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error connecting to DB", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
-		return
+		return fmt.Errorf("Failed to connect on %s: %v", server.URL, err)
 	}
 	defer Conn.Close()
 
 	// Move previous batch and truncate if still exists
-	dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString)
+	dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout)
 
-	if err := dbhelper.FetchLogsToBufferTable(Conn, server.DBVersion, "slow_log", timeStampString); err != nil {
-		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error fetching slow_log table to buffer", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
-		return
+	if err := dbhelper.FetchLogsToBufferTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
+		return fmt.Errorf("Error fetch slow logs to buffer table on %s", server.URL)
 	}
 
-	if err := dbhelper.TruncateLogsTable(Conn, server.DBVersion, "slow_log"); err != nil {
-		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error truncating mysql.slow_log table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
-		return
+	if err := dbhelper.TruncateLogsTable(Conn, server.DBVersion, "slow_log", timeout); err != nil {
+		return fmt.Errorf("Error truncate slow logs buffer table on %s", server.URL)
 	}
 
 	f, err := os.OpenFile(server.Datadir+"/log/log_slow_query.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing slow queries %s", err)
-		return
+		return fmt.Errorf("Error writing slow queries logs on %s: %v", server.URL, err)
 	}
 	fi, _ := f.Stat()
 	if fi.Size() > 100000000 {
@@ -619,12 +620,11 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 
 	slowqueries := []dbhelper.LogSlow{}
 	query := "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  replication_manager_schema.slow_log_buffer WHERE start_time > FROM_UNIXTIME(" + strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10) + ")"
-	err = server.Conn.Select(&slowqueries, query)
+	err = server.ConnSelectQuery(Conn, &slowqueries, query)
 	if err != nil {
-		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Could not get slow queries from table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
+		return fmt.Errorf("Error selecting slow queries logs in buffer table on %s: %v", server.URL, err)
 	}
 	for _, s := range slowqueries {
-
 		fmt.Fprintf(f, "# User@Host: %s\n# Thread_id: %d  Schema: %s  QC_hit: No\n# Query_time: %s  Lock_time: %s  Rows_sent: %d  Rows_examined: %d\n# Rows_affected: %d\nSET timestamp=%d;\n%s;\n",
 			s.User_host.String,
 			s.Thread_id,
@@ -640,14 +640,14 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) {
 		server.MaxSlowQueryTimestamp = s.Start_time
 	}
 
-	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString); err != nil {
-		server.ClusterGroup.SetState("WARN0131", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0131"], server.URL, "Error moving logs from buffer to daily table", err.Error()), ServerUrl: server.URL, ErrFrom: "LOGS"})
-		return
+	if err := dbhelper.MoveLogsToDailyTable(Conn, server.DBVersion, "slow_log", timeStampString, timeout); err != nil {
+		return fmt.Errorf("Error moving logs from buffer to daily table on %s: %v", server.URL, err)
 	}
 
 	server.RotateSystemLogs()
 	time.Sleep(60 * time.Second)
 	//	server.ExecQueryNoBinLog("TRUNCATE mysql.slow_log")
+	return nil
 }
 
 func (server *ServerMonitor) GetTables() []v3.Table {
