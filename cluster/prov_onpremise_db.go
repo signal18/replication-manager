@@ -18,14 +18,14 @@ import (
 
 func (cluster *Cluster) OnPremiseGetSSHKey(user string) string {
 
-	repmanuser := os.Getenv("HOME")
-	if repmanuser == "" {
-		repmanuser = "/root"
-		if user != "root" {
-			repmanuser = "/home/" + user
-		}
-	}
-	key := repmanuser + "/.ssh/id_rsa"
+	// repmanuser := os.Getenv("HOME")
+	// if repmanuser == "" {
+	// 	repmanuser = "/root"
+	// 	if user != "root" {
+	// 		repmanuser = "/home/" + user
+	// 	}
+	// }
+	key := cluster.OsUser.HomeDir + "/.ssh/id_rsa"
 
 	if cluster.Conf.OnPremiseSSHPrivateKey != "" {
 		key = cluster.Conf.OnPremiseSSHPrivateKey
@@ -56,7 +56,7 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 		}
 		return client, nil
 	}
-	return nil, errors.New("onpremise-ssh no key no password ")
+	// return nil, errors.New("onpremise-ssh no key no password ")
 }
 
 func (cluster *Cluster) OnPremiseProvisionDatabaseService(server *ServerMonitor) {

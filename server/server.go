@@ -2069,6 +2069,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		repman.VersionConfs[clusterName].ConfInit.MonitoringKeyPath = repman.Conf.MonitoringKeyPath
 	}
 
+	repman.currentCluster.OsUser = repman.OsUser
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
