@@ -334,7 +334,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 			}
-
+			// if server is slave, and maintenance  set offline Soft in ProxySQL
 			if s.IsSlaveOrSync() && s.IsMaintenance && isFoundBackendRead && bke.PrxStatus == "ONLINE" {
 				// if cluster.Conf.ProxysqlDebug {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL  replicat %s Offline SOFT from reader group cause by maintenance ", s.URL)
@@ -393,10 +393,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			} else if s.IsLeader() && isFoundBackendRead && (!cluster.Configurator.HasProxyReadLeader()) {
 				// Drop the leader in reader group if not found and setup
 				// Cancel learder remove because no valid reader
-				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && !(cluster.HasNoValidSlave() || proxy.HasAvailableReader())) {
-					// if cluster.Conf.ProxysqlDebug {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
+
+				if !cluster.Configurator.HasProxyReadLeaderNoSlave() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (!cluster.HasNoValidSlave() || proxy.HasAvailableReader())) {
+
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL Drop the leader in reader group from %s", s.URL)
-					// }
 					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
