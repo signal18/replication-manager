@@ -30,4 +30,7 @@ data/
 .config/
 marie.Reveal
 share/dashboard_react/package-lock.json
-
+share/dashboard/images
+share/dashboard/assets
+share/dashboard/index.html
+share/dashboard/index.html.gz

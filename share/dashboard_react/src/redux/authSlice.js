@@ -1,4 +1,4 @@
-import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { authService } from '../services/authService'
 
 export const login = createAsyncThunk('auth/login', async ({ username, password }, thunkAPI) => {
@@ -13,9 +13,10 @@ export const login = createAsyncThunk('auth/login', async ({ username, password 
   }
 })
 
-export const gitLogin = createAsyncThunk('auth/gitLogin', async ({}, thunkAPI) => {
+export const gitLogin = createAsyncThunk('auth/gitLogin', async ({ username, password }, thunkAPI) => {
   try {
-    const response = await authService.gitLogin()
+    const response = await authService.gitLogin(username, password)
+    console.log('response::', response)
     return response
   } catch (error) {
     const errorMessage = error.message || 'Request failed'
@@ -27,7 +28,7 @@ export const gitLogin = createAsyncThunk('auth/gitLogin', async ({}, thunkAPI) =
 
 export const authSlice = createSlice({
   name: 'auth',
-  initialState: { user: null, loading: false, error: null, isLogged: false },
+  initialState: { user: null, loading: false, loadingGitLogin: false, error: null, isLogged: false },
   reducers: {
     logout: (state, action) => {
       localStorage.removeItem('user_token')
@@ -43,39 +44,38 @@ export const authSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
-    builder
-      .addCase(login.pending, (state) => {
+    builder.addMatcher(isAnyOf(login.pending, gitLogin.pending), (state, action) => {
+      if (action.type === 'login') {
         state.loading = true
-      })
-      .addCase(login.fulfilled, (state, action) => {
-        const { payload, meta } = action
-        const { data } = payload
-        const { arg } = meta
-        localStorage.setItem('user_token', data.token)
-        localStorage.setItem('username', arg.username)
+      } else {
+        state.loadingGitLogin = true
+      }
+    })
+    builder.addMatcher(isAnyOf(login.fulfilled, gitLogin.fulfilled), (state, action) => {
+      const { payload, meta } = action
+      const { data } = payload
+      const { arg } = meta
+
+      localStorage.setItem('user_token', JSON.parse(data)?.token)
+      localStorage.setItem('username', arg.username)
+      state.isLogged = true
+      state.user = {
+        username: arg.username
+      }
+      if (action.type === 'login') {
         state.loading = false
-        state.isLogged = true
-        state.user = {
-          username: arg.username
-        }
-      })
-      .addCase(login.rejected, (state, action) => {
+      } else {
+        state.loadingGitLogin = false
+      }
+    })
+    builder.addMatcher(isAnyOf(login.rejected, gitLogin.rejected), (state, action) => {
+      if (action.type === 'login') {
         state.loading = false
-        state.error = action.payload.errorMessage
-      })
-      .addCase(gitLogin.pending, (state) => {
-        state.loading = true
-      })
-      .addCase(gitLogin.fulfilled, (state, action) => {
-        const { apiOAuthProvider, apiOAuthClientID, apiOAuthSecretID } = action.payload.config
-        const authURL = `${apiOAuthProvider}/oauth/authorize?authority=${apiOAuthProvider}&client_id=${apiOAuthClientID}&secret_id=${apiOAuthSecretID}&redirect_uri=https://${location.host}:${location.port}/api/auth/callback&response_type=code&scope=openid profile email api`
-        // Redirect the user to the oAuth URL
-        window.location.href = authURL
-      })
-      .addCase(gitLogin.rejected, (state, action) => {
-        state.loading = false
-        state.error = action.payload.errorMessage
-      })
+      } else {
+        state.loadingGitLogin = false
+      }
+      state.error = action?.payload?.errorMessage
+    })
   }
 })
 

@@ -8,6 +8,7 @@ import PageContainer from '../PageContainer'
 import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
 import RMButton from '../../components/RMButton'
+import Message from '../../components/Message'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -19,7 +20,7 @@ function Login(props) {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const {
-    auth: { isLogged, loading, user, error }
+    auth: { isLogged, loading, loadingGitLogin, user, error }
   } = useSelector((state) => state)
 
   useEffect(() => {
@@ -29,7 +30,7 @@ function Login(props) {
   }, [])
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
         navigate('/')
       }
@@ -37,9 +38,10 @@ function Login(props) {
         setErrorMessage(error)
       }
     }
-  }, [loading, isLogged])
+  }, [loading, loadingGitLogin, isLogged])
 
-  const onButtonClick = () => {
+  const onButtonClick = (e) => {
+    e.preventDefault()
     setUsernameError('')
     setPasswordError('')
 
@@ -52,16 +54,19 @@ function Login(props) {
       setPasswordError('Please enter a password')
       return
     }
-
-    logIn()
+    if (e.target.id === 'btnGitLogin') {
+      logInGit()
+    } else {
+      logIn()
+    }
   }
 
   const logIn = () => {
     dispatch(login({ username, password }))
   }
 
-  const onGitButtonClick = () => {
-    dispatch(gitLogin({}))
+  const logInGit = () => {
+    dispatch(gitLogin({ username, password }))
   }
 
   return (
@@ -88,10 +93,11 @@ function Login(props) {
                   className={`${styles.revealButton} ${styles.errorMessage}`}
                 />
               </Stack>
-              {error && <Text color='red.500'>{error}</Text>}
+              {error && <Message message={errorMessage} />}
 
               <Stack spacing='6'>
                 <RMButton
+                  id='btnLogin'
                   type='submit'
                   size='medium'
                   onClick={onButtonClick}
@@ -99,7 +105,13 @@ function Login(props) {
                   loadingText={'Signing in'}>
                   Sign in
                 </RMButton>
-                <RMButton size='medium' onClick={onGitButtonClick} isLoading={false}>
+                <RMButton
+                  id='btnGitLogin'
+                  type='submit'
+                  size='medium'
+                  onClick={onButtonClick}
+                  isLoading={loadingGitLogin}
+                  loadingText={'Signing in with Cloud18'}>
                   Sign in with cloud18
                 </RMButton>
               </Stack>

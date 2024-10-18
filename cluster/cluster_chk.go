@@ -504,7 +504,7 @@ func (cluster *Cluster) CheckCapture(st state.State) {
 	}
 }
 
-func (cluster *Cluster) CheckAlert(state state.State) {
+func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 	if cluster.Conf.MonitoringAlertTrigger == "" {
 		return
 	}
@@ -516,8 +516,9 @@ func (cluster *Cluster) CheckAlert(state state.State) {
 
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
-			State:   state.ErrDesc,
-			Cluster: cluster.Name,
+			State:    state.ErrDesc,
+			Cluster:  cluster.Name,
+			Resolved: resolved,
 		}
 
 		err := cluster.SendAlert(a)
@@ -845,12 +846,18 @@ func (cluster *Cluster) CheckInjectConfig() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot truncate config file after extraction %s : %s", cluster.Conf.WorkingDir+"/"+cluster.Name+"/inject.toml", err)
 			}
 			file.Close()
-			if cluster.Conf.GitUrl != "" {
-				go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
-			}
+
+			cluster.PushConfigs()
 		}
 	}
+}
 
+func (cluster *Cluster) PushConfigs() {
+	if cluster.Conf.GitUrl != "" && !cluster.IsGitPush {
+		go cluster.PushConfigToGit(cluster.Conf.Secrets["git-acces-token"].Value, cluster.Conf.GitUsername, cluster.GetConf().WorkingDir, cluster.Name)
+	} else if !cluster.IsExportPush {
+		go cluster.PushConfigToExtraDir(cluster.GetConf().WorkingDir, cluster.Name)
+	}
 }
 
 func (cluster *Cluster) CheckDefaultUser(i bool) {

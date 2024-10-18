@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://repman.marie-dev.svc.cloud18:10001/',
+        target: 'https://repman.marie-dev.svc.cloud18:10005/',
         secure: false
       }
     }

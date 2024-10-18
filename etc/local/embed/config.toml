@@ -1,10 +1,4 @@
 [Default]
-monitoring-sharedir="./replication-manager/share"
-monitoring-datadir="./replication-manager/data"
-monitoring-basedir="./.replication-manager"
-monitoring-confdir="./.replication-manager"
-
-monitoring-save-config = true
 prov-orchestrator = "onpremise"
 [mycluster]
 db-servers-hosts="localhost:3306"

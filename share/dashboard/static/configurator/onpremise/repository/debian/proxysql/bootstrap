@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# I've changed default proxysql config path to the one with subdirectory.
+# It helps protect against the automatic removal of newly created files from the /etc directory by the auditd service.
+# At least fixes an issue on Debian 12.
+CONFIG_DIR="/etc/proxysql"
+
+function help {
+	echo "Required Environment:" >&2
+	echo "  REPLICATION_MANAGER_USER" >&2
+	echo "  REPLICATION_MANAGER_PASSWORD" >&2
+	echo "  REPLICATION_MANAGER_URL" >&2
+	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+}
+[ -z $REPLICATION_MANAGER_USER ] && help && exit 1
+[ -z $REPLICATION_MANAGER_PASSWORD ] && help && exit 1
+[ -z $REPLICATION_MANAGER_URL ] && help && exit 1
+[ -z $REPLICATION_MANAGER_CLUSTER_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
+
+set +x
+
+GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
+AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html $REPLICATION_MANAGER_URL/api/login)
+
+function get {
+	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" $@
+}
+
+function write_cnf() {
+	dir_path="$1"
+	copy_date="$(date +%s)"
+	src_path="/bootstrap/etc/proxysql/proxysql.cnf"
+	mkdir -p $dir_path
+	if [ -f "$dir_path/proxysql.cnf" ]; then
+	    # keeping previous configuration backups
+	    mv "$dir_path/proxysql.cnf" "$dir_path/proxysql.cnf-$copy_date"
+	fi
+	if [ -f $src_path ]; then
+	    cp -vf $src_path "$dir_path/"
+	    chown -R proxysql:proxysql "$dir_path/proxysql.cnf"
+	else
+	    echo "ERROR. No source file "$src_path" available."
+	fi
+}
+
+get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
+if [ $? -eq 0 ]; then
+	systemctl stop proxysql
+	mkdir -p /bootstrap
+	cat config.tar.gz  | tar xzvmf - -C /bootstrap
+	rm -rf /var/lib/proxysql/*
+	cp -rpn /bootstrap/data/* /var/lib/proxysql
+	chown -R proxysql:proxysql /var/lib/proxysql
+	write_cnf "${CONFIG_DIR}"
+	rm -rf config.tar.gz
+	rm -rf /bootstrap
+	systemctl start proxysql
+else
+    echo "ERROR. Failed to get config from the ${REPLICATION_MANAGER_URL}."
+fi

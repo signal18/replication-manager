@@ -11,7 +11,7 @@ import RMButton from '../../../components/RMButton'
 function OrchestratorImages({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [serviceRepos, setServiceRepos] = useState([])
   const [versionOptions, setVersionOptions] = useState([])
@@ -36,8 +36,8 @@ function OrchestratorImages({ selectedCluster, user }) {
         const selectedType = dbTypes.find((x) => x.value == dbType)
         setSelectedDBType(selectedType)
         setPreviousDBType(selectedType)
-        const versions = monitor.serviceRepos.find((repo) => repo.name === selectedType.value)?.tags?.results
-        const versionsWithValues = versions.map((x) => ({ name: x.name, value: x.name }))
+        const versions = monitor.serviceRepos.find((repo) => repo.name === selectedType?.value)?.tags?.results
+        const versionsWithValues = versions?.map((x) => ({ name: x.name, value: x.name }))
         setVersionOptions(versionsWithValues)
         setSelectedDBVersion({ name: dbVersion, value: dbVersion })
         setPreviousDBVersion({ name: dbVersion, value: dbVersion })
@@ -49,7 +49,7 @@ function OrchestratorImages({ selectedCluster, user }) {
     setValueChanged(true)
     setSelectedDBType(selectedType)
     const versions = serviceRepos.find((repo) => repo.name === selectedType.value)?.tags?.results
-    const versionsWithValues = versions.map((x) => ({ name: x.name, value: x.name }))
+    const versionsWithValues = versions?.map((x) => ({ name: x.name, value: x.name }))
     setVersionOptions(versionsWithValues)
   }
 
@@ -185,7 +185,7 @@ function OrchestratorImages({ selectedCluster, user }) {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'setprov-sphinx-docker-img',
+                setting: 'prov-sphinx-img',
                 value: `sphinx:${value}`
               })
             )

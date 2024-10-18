@@ -1,77 +1,187 @@
 [Default]
 
-## Configs ar loeded in that revert order :
+## Parameters in this section have a server scope not relevent per cluster
+## Cluster scope parameters defined in this section will be forced to all clusters
+## Parameter defined in /etc will not be preserved when changed via API without manual merging
+
+### Configs are loaded in following order with overwrite
+
+### Dynamic configs
+
+## /var/lib/replication-manager/<cluster>/cluster.toml
+## /var/lib/replication-manager/default.toml
+## all *.toml in a single include directory in next file
+## /home/$USER/.config/replication-maneger/config.toml
+
+### Immutable configs
+
+##  all *.toml in single include directory in next file
 ## /etc/replication-manager/config.toml
-## ./replication-maneger/config.toml
-## all *.toml in a single include directory in this file
-## /var/lib/replication-manager/<cluster>/cluster.json
+## command line arguments & env variables
 
 include = "/etc/replication-manager/cluster.d"
 
-## Default for replcation-manager-osc following extra orchestration in osc
+## Saving config changed via API preserved between restart
+## Use the merge command line option in sudo to overwrite /etc/replication-manager configs forced by root user
+## Disable saving config change via API
 
-prov-orchestrator = "onpremise"
-# prov-orchestrator = "local"
+# monitoring-save-config = false
 
-## Default for replcation-manager-pro following extra orchestration in pro
+## Maintenance jobs will fetch and report to this address
 
-# prov-orchestrator = "opensvc"
-# prov-orchestrator = "slapos"
-# prov-orchestrator = "kube"
+# monitoring-address ="localhost"
 
-## Save options changed using API between restart and not forced in config file
-## Use the merge command line option in sudo to overwrite system config of a cluster proposed by api users
+# monitoring-basedir = "/"
+# monitoring-confdir = "/etc/replication-manager"
+# monitoring-confdir-backup = "/home/repman/.config/replication-manager/recover"
+# monitoring-confdir-extra = "/home/repman/.config"
+# monitoring-datadir = "/var/lib/replication-manager"
+# monitoring-ssl-cert = "/home/repman/.ssh/id_rsa"
 
-# monitoring-save-config = true
+## Using replication-manager-flavor keygen to generate the key manually used for encrypting secret in config
 
-## To enable ssh to database and proxy hosts, use ssh-keygen ssh-copy-id for first deployment
-
-# onpremise-ssh = true
-# onpremise-ssh-credential = "root:"
-# scheduler-jobs-ssh = true
+# monitoring-key-path = /etc/replication-manager/.replication-manager.key"
 
 ## The network address of this replocation-manager
+
 # monitoring-address = "127.0.0.1"
 
 ## Timeout in seconds between consecutive monitoring
-monitoring-ticker = 2
+# monitoring-ticker = 2
 
 #########
 ## LOG ##
 #########
 
-log-file = "/var/log/replication-manager.log"
+# log-file = "/var/log/replication-manager.log"
 # log-syslog = false
-
-## pto release with arbitrator
-
-# log-heartbeat = false
-# log-heartbeat-level = 1
 
 ##############
 ## HTTP API ##
 ##############
 
-http-server = true
-http-bind-address = "0.0.0.0"
-http-port = "10001"
-http-auth = false
-http-session-lifetime =   3600
-http-refresh-interval = 4000
+# http-server = true
+# http-bind-address = "0.0.0.0"
+# http-port = "10001"
 
+# http-session-lifetime =   3600
+# http-refresh-interval = 4000
+# http-use-react = false
 
 ###############
 ## HTTPS API ##
 ###############
 
-api-port = "10005"
-api-credentials = "admin:repman"
-# api-credentials-external = ""
-api-credentials-acl-allow = "admin:cluster db prov"
+## Disable API http & https server
+
+# api-port = "10005"
+# api-credentials = "admin:repman"
+# api-credentials-acl-allow = "admin:cluster db prov"
 # api-credentials-acl-discard = ""
 
 ## force https with ssl key path and disbale http for web client
 
 # api-https-bind = true
+# api-bind="0.0.0.0"
+# api-public-url = ""
+
+# api-oauth-client-id = ""
+# api-oauth-client-secret = ""
+# api-oauth-provider-url = ""
+
+# api-token-timeout=48
+
 # monitoring-ssl-cert = ""
 # monitoring-ssl-key = ""
+
+#####################################
+## ACTIVE PASSIVE WITH ARBITRATION ##
+#####################################
+
+# arbitration-external = true
+# arbitration-external-hosts = "reparb.signal18.io:80"
+# arbitration-external-secret = "XXXXXX"
+# arbitration-external-unique-id = ""
+# arbitration-failed-master-script = ""
+# arbitration-peer-hosts "repman2"
+# arbitration-read-timeout = 800
+
+######################################
+## BACKUP DYNAMIC CONFIG TO CLOUD18 ##
+######################################
+
+# cloud18 = true
+# cloud18-gitlab-password = "xxx"
+# cloud18-gitlab-user = "xx@xx.xx"
+
+## Unique instance URI
+
+# cloud18-domain = "signal18"
+# cloud18-sub-domain = "ovh-1"
+# cloud18-sub-domain-zone ="fr"
+
+# cloud18-platform-description = ""
+# cloud18-shared = false
+
+##################################
+## BACKUP DYNAMIC CONFIG TO GIT ##
+##################################
+
+# git-acces-token = ""
+# git-monitoring-ticker = 60
+# git-url = ""
+# git-username = ""
+
+#######################
+## GRAPH MONITORING  ##
+#######################
+
+# disable graphite
+# graphite-embedded = false
+# graphite-metrics = false
+
+# graphite-carbon-host = "127.0.0.13
+# graphite-carbon-api-port = 10002
+# graphite-carbon-link-port = 7002
+# graphite-carbon-pickle-port = 2004
+# graphite-carbon-port = 2003
+# graphite-carbon-pprof-port = 7007
+# graphite-carbon-server-port = 10003
+
+###### NEXT IS CLUSTER SCOPE BUT CONVIENIENT TO SPREAD IN ALL CLUSTERS  ######
+
+## Default onpremise for replcation-manager-osc follow by orchestors available in osc
+
+# prov-orchestrator = "onpremise"
+# prov-orchestrator = "local"
+
+## Default opensvc for replcation-manager-pro follow by orchestrators available in pro
+
+# prov-orchestrator = "opensvc"
+# prov-orchestrator = "slapos"
+# prov-orchestrator = "kube"
+
+## Enable ssh to database and proxy hosts, use ssh-keygen ssh-copy-id for first deployment
+
+# onpremise-ssh = true
+# onpremise-ssh-credential = "root:"
+# scheduler-jobs-ssh = true
+
+##################
+## DEPENDENCIES ##
+##################
+
+# sysbench-binary-path = "/usr/bin/sysbench"
+# sysbench-v1 = true
+
+# backup-mydumper-path = "/usr/bin/mydumper"
+# backup-myloader-path = "/usr/bin/myloader"
+# backup-restic-binary-path = "/usr/bin/restic"
+# haproxy-binary-path =  "/usr/sbin/haproxy"
+# maxscale-binary-path =  "/usr/sbin/maxscale"
+
+## Leave following empty for auto detetection
+
+# backup-mysqlbinlog-path =  "/usr/bin/mariadb-binlog"
+# backup-mysqlclient-path = "/usr/bin/mariadb"
+# backup-mysqldump-path = "/usr/bin/mariadb-dump"

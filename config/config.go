@@ -33,6 +33,7 @@ import (
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/viper"
@@ -47,22 +48,24 @@ type Config struct {
 	WithEmbed                                 string                 `mapstructure:"-" toml:"-" json:"withEmbed"`
 	MemProfile                                string                 `mapstructure:"-" toml:"-" json:"-"`
 	Include                                   string                 `mapstructure:"include" toml:"-" json:"-"`
-	BaseDir                                   string                 `mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
-	WorkingDir                                string                 `mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
+	MonitoringSystemUser                      string                 `scope:"server" mapstructure:"user" toml:"-" json:"-"`
+	BaseDir                                   string                 `scope:"server" mapstructure:"monitoring-basedir" toml:"monitoring-basedir" json:"monitoringBasedir"`
+	WorkingDir                                string                 `scope:"server" mapstructure:"monitoring-datadir" toml:"monitoring-datadir" json:"monitoringDatadir"`
 	ShareDir                                  string                 `mapstructure:"monitoring-sharedir" toml:"monitoring-sharedir" json:"monitoringSharedir"`
-	ConfDir                                   string                 `mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
-	ConfDirExtra                              string                 `mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`
-	ConfRewrite                               bool                   `mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig"`
-	MonitoringSSLCert                         string                 `mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
-	MonitoringSSLKey                          string                 `mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
-	MonitoringKeyPath                         string                 `mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
+	ConfDir                                   string                 `scope:"server" mapstructure:"monitoring-confdir" toml:"monitoring-confdir" json:"monitoringConfdir"`
+	ConfDirBackup                             string                 `scope:"server" mapstructure:"monitoring-confdir-backup" toml:"monitoring-confdir-backup" json:"monitoringConfdirBackup"`
+	ConfDirExtra                              string                 `scope:"server" mapstructure:"monitoring-confdir-extra" toml:"monitoring-confdir-extra" json:"monitoringConfdirExtra"`
+	ConfRewrite                               bool                   `scope:"server" mapstructure:"monitoring-save-config" toml:"monitoring-save-config" json:"monitoringSaveConfig"`
+	MonitoringSSLCert                         string                 `scope:"server" mapstructure:"monitoring-ssl-cert" toml:"monitoring-ssl-cert" json:"monitoringSSLCert"`
+	MonitoringSSLKey                          string                 `scope:"server" mapstructure:"monitoring-ssl-key" toml:"monitoring-ssl-key" json:"monitoringSSLKey"`
+	MonitoringKeyPath                         string                 `scope:"server" mapstructure:"monitoring-key-path" toml:"monitoring-key-path" json:"monitoringKeyPath"`
 	MonitoringTicker                          int64                  `mapstructure:"monitoring-ticker" toml:"monitoring-ticker" json:"monitoringTicker"`
 	MonitorWaitRetry                          int64                  `mapstructure:"monitoring-wait-retry" toml:"monitoring-wait-retry" json:"monitoringWaitRetry"`
 	Socket                                    string                 `mapstructure:"monitoring-socket" toml:"monitoring-socket" json:"monitoringSocket"`
 	TunnelHost                                string                 `mapstructure:"monitoring-tunnel-host" toml:"monitoring-tunnel-host" json:"monitoringTunnelHost"`
 	TunnelCredential                          string                 `mapstructure:"monitoring-tunnel-credential" toml:"monitoring-tunnel-credential" json:"monitoringTunnelCredential"`
 	TunnelKeyPath                             string                 `mapstructure:"monitoring-tunnel-key-path" toml:"monitoring-tunnel-key-path" json:"monitoringTunnelKeyPath"`
-	MonitorAddress                            string                 `mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress"`
+	MonitorAddress                            string                 `scope:"server" mapstructure:"monitoring-address" toml:"monitoring-address" json:"monitoringAddress"`
 	MonitorWriteHeartbeat                     bool                   `mapstructure:"monitoring-write-heartbeat" toml:"monitoring-write-heartbeat" json:"monitoringWriteHeartbeat"`
 	MonitorPause                              bool                   `mapstructure:"monitoring-pause" toml:"monitoring-pause" json:"monitoringPause"`
 	MonitorWriteHeartbeatCredential           string                 `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
@@ -263,16 +266,16 @@ type Config struct {
 	ForceSyncInnoDB                           bool                   `mapstructure:"force-sync-innodb" toml:"force-sync-innodb" json:"forceSyncInnodb"`
 	ForceNoslaveBehind                        bool                   `mapstructure:"force-noslave-behind" toml:"force-noslave-behind" json:"forceNoslaveBehind"`
 	Spider                                    bool                   `mapstructure:"spider" toml:"-" json:"-"`
-	BindAddr                                  string                 `mapstructure:"http-bind-address" toml:"http-bind-address" json:"httpBindAdress"`
-	HttpPort                                  string                 `mapstructure:"http-port" toml:"http-port" json:"httpPort"`
-	HttpServ                                  bool                   `mapstructure:"http-server" toml:"http-server" json:"httpServer"`
-	ApiServ                                   bool                   `mapstructure:"http-server" toml:"api-server" json:"apiServer"`
-	HttpRoot                                  string                 `mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
-	HttpAuth                                  bool                   `mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
-	HttpUseReact                              bool                   `mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
-	HttpBootstrapButton                       bool                   `mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
-	SessionLifeTime                           int                    `mapstructure:"http-session-lifetime" toml:"http-session-lifetime" json:"httpSessionLifetime"`
-	HttpRefreshInterval                       int                    `mapstructure:"http-refresh-interval" toml:"http-refresh-interval" json:"httpRefreshInterval"`
+	BindAddr                                  string                 `scope:"server" mapstructure:"http-bind-address" toml:"http-bind-address" json:"httpBindAdress"`
+	HttpPort                                  string                 `scope:"server" mapstructure:"http-port" toml:"http-port" json:"httpPort"`
+	HttpServ                                  bool                   `scope:"server" mapstructure:"http-server" toml:"http-server" json:"httpServer"`
+	ApiServ                                   bool                   `scope:"server" mapstructure:"api-server" toml:"api-server" json:"apiServer"`
+	HttpRoot                                  string                 `scope:"server" mapstructure:"http-root" toml:"http-root" json:"httpRoot"`
+	HttpAuth                                  bool                   `scope:"server" mapstructure:"http-auth" toml:"http-auth" json:"httpAuth"`
+	HttpUseReact                              bool                   `scope:"server" mapstructure:"http-use-react" toml:"http-use-react" json:"http-use-react"`
+	HttpBootstrapButton                       bool                   `scope:"server" mapstructure:"http-bootstrap-button" toml:"http-bootstrap-button" json:"httpBootstrapButton"`
+	SessionLifeTime                           int                    `scope:"server" mapstructure:"http-session-lifetime" toml:"http-session-lifetime" json:"httpSessionLifetime"`
+	HttpRefreshInterval                       int                    `scope:"server" mapstructure:"http-refresh-interval" toml:"http-refresh-interval" json:"httpRefreshInterval"`
 	Daemon                                    bool                   `mapstructure:"daemon" toml:"-" json:"-"`
 	MailFrom                                  string                 `mapstructure:"mail-from" toml:"mail-from" json:"mailFrom"`
 	MailTo                                    string                 `mapstructure:"mail-to" toml:"mail-to" json:"mailTo"`
@@ -404,34 +407,34 @@ type Config struct {
 	KeyPath                                   string                 `mapstructure:"keypath" toml:"-" json:"-"`
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	TopologyTarget                            string                 `mapstructure:"topology-target" toml:"topology-target" json:"topologyTarget"`
-	GraphiteMetrics                           bool                   `mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
-	GraphiteEmbedded                          bool                   `mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
-	GraphiteWhitelist                         bool                   `mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
-	GraphiteBlacklist                         bool                   `mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteBlacklist"`
-	GraphiteWhitelistTemplate                 string                 `mapstructure:"graphite-whitelist-template" toml:"graphite-whitelist-template" json:"graphiteWhitelistTemplate"`
-	GraphiteCarbonHost                        string                 `mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
-	GraphiteCarbonPort                        int                    `mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
-	GraphiteCarbonApiPort                     int                    `mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
-	GraphiteCarbonServerPort                  int                    `mapstructure:"graphite-carbon-server-port" toml:"graphite-carbon-server-port" json:"graphiteCarbonServerPort"`
-	GraphiteCarbonLinkPort                    int                    `mapstructure:"graphite-carbon-link-port" toml:"graphite-carbon-link-port" json:"graphiteCarbonLinkPort"`
-	GraphiteCarbonPicklePort                  int                    `mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
-	GraphiteCarbonPprofPort                   int                    `mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
-	SysbenchBinaryPath                        string                 `mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
+	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
+	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
+	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
+	GraphiteBlacklist                         bool                   `scope:"server" mapstructure:"graphite-blacklist" toml:"graphite-blacklist" json:"graphiteBlacklist"`
+	GraphiteWhitelistTemplate                 string                 `scope:"server" mapstructure:"graphite-whitelist-template" toml:"graphite-whitelist-template" json:"graphiteWhitelistTemplate"`
+	GraphiteCarbonHost                        string                 `scope:"server" mapstructure:"graphite-carbon-host" toml:"graphite-carbon-host" json:"graphiteCarbonHost"`
+	GraphiteCarbonPort                        int                    `scope:"server" mapstructure:"graphite-carbon-port" toml:"graphite-carbon-port" json:"graphiteCarbonPort"`
+	GraphiteCarbonApiPort                     int                    `scope:"server" mapstructure:"graphite-carbon-api-port" toml:"graphite-carbon-api-port" json:"graphiteCarbonApiPort"`
+	GraphiteCarbonServerPort                  int                    `scope:"server" mapstructure:"graphite-carbon-server-port" toml:"graphite-carbon-server-port" json:"graphiteCarbonServerPort"`
+	GraphiteCarbonLinkPort                    int                    `scope:"server" mapstructure:"graphite-carbon-link-port" toml:"graphite-carbon-link-port" json:"graphiteCarbonLinkPort"`
+	GraphiteCarbonPicklePort                  int                    `scope:"server" mapstructure:"graphite-carbon-pickle-port" toml:"graphite-carbon-pickle-port" json:"graphiteCarbonPicklePort"`
+	GraphiteCarbonPprofPort                   int                    `scope:"server" mapstructure:"graphite-carbon-pprof-port" toml:"graphite-carbon-pprof-port" json:"graphiteCarbonPprofPort"`
+	SysbenchBinaryPath                        string                 `scope:"server" mapstructure:"sysbench-binary-path" toml:"sysbench-binary-path" json:"sysbenchBinaryPath"`
 	SysbenchTest                              string                 `mapstructure:"sysbench-test" toml:"sysbench-test" json:"sysbenchBinaryTest"`
-	SysbenchV1                                bool                   `mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
+	SysbenchV1                                bool                   `scope:"server" mapstructure:"sysbench-v1" toml:"sysbench-v1" json:"sysbenchV1"`
 	SysbenchTime                              int                    `mapstructure:"sysbench-time" toml:"sysbench-time" json:"sysbenchTime"`
 	SysbenchThreads                           int                    `mapstructure:"sysbench-threads" toml:"sysbench-threads" json:"sysbenchThreads"`
 	SysbenchTables                            int                    `mapstructure:"sysbench-tables" toml:"sysbench-tables" json:"sysbenchTables"`
 	SysbenchScale                             int                    `mapstructure:"sysbench-scale" toml:"sysbench-scale" json:"sysbenchScale"`
-	Arbitration                               bool                   `mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
-	ArbitrationSasSecret                      string                 `mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
-	ArbitrationSasHosts                       string                 `mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
-	ArbitrationSasUniqueId                    int                    `mapstructure:"arbitration-external-unique-id" toml:"arbitration-external-unique-id" json:"arbitrationExternalUniqueId"`
-	ArbitrationPeerHosts                      string                 `mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
-	ArbitrationFailedMasterScript             string                 `mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
+	Arbitration                               bool                   `scope:"server" mapstructure:"arbitration-external" toml:"arbitration-external" json:"arbitrationExternal"`
+	ArbitrationSasSecret                      string                 `scope:"server" mapstructure:"arbitration-external-secret" toml:"arbitration-external-secret" json:"arbitrationExternalSecret"`
+	ArbitrationSasHosts                       string                 `scope:"server" mapstructure:"arbitration-external-hosts" toml:"arbitration-external-hosts" json:"arbitrationExternalHosts"`
+	ArbitrationSasUniqueId                    int                    `scope:"server" mapstructure:"arbitration-external-unique-id" toml:"arbitration-external-unique-id" json:"arbitrationExternalUniqueId"`
+	ArbitrationPeerHosts                      string                 `scope:"server" mapstructure:"arbitration-peer-hosts" toml:"arbitration-peer-hosts" json:"arbitrationPeerHosts"`
+	ArbitrationFailedMasterScript             string                 `scope:"server" mapstructure:"arbitration-failed-master-script" toml:"arbitration-failed-master-script" json:"arbitrationFailedMasterScript"`
 	ArbitratorAddress                         string                 `mapstructure:"arbitrator-bind-address" toml:"arbitrator-bind-address" json:"arbitratorBindAddress"`
 	ArbitratorDriver                          string                 `mapstructure:"arbitrator-driver" toml:"arbitrator-driver" json:"arbitratorDriver"`
-	ArbitrationReadTimout                     int                    `mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
+	ArbitrationReadTimout                     int                    `scope:"server" mapstructure:"arbitration-read-timeout" toml:"arbitration-read-timeout" json:"arbitrationReadTimout"`
 	SwitchoverCopyOldLeaderGtid               bool                   `toml:"-" json:"-"` //suspicious code
 	Test                                      bool                   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool                   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
@@ -549,8 +552,8 @@ type Config struct {
 	ProvNetCNI                                bool                   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	ProvNetCNICluster                         string                 `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
 	ProvDockerDaemonPrivate                   bool                   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
-	ProvServicePlan                           string                 `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
-	ProvServicePlanRegistry                   string                 `mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
+	ProvServicePlan                           string                 `scope:"server" mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
+	ProvServicePlanRegistry                   string                 `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
 	ProvDbBootstrapScript                     string                 `mapstructure:"prov-db-bootstrap-script" toml:"prov-db-bootstrap-script" json:"provDbBootstrapScript"`
 	ProvProxyBootstrapScript                  string                 `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
 	ProvDbCleanupScript                       string                 `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
@@ -566,10 +569,10 @@ type Config struct {
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
 	APIUsersACLDiscard                        string                 `mapstructure:"api-credentials-acl-discard" toml:"api-credentials-acl-discard" json:"apiCredentialsACLDiscard"`
 	APISecureConfig                           bool                   `mapstructure:"api-credentials-secure-config" toml:"api-credentials-secure-config" json:"apiCredentialsSecureConfig"`
-	APIPort                                   string                 `mapstructure:"api-port" toml:"api-port" json:"apiPort"`
-	APIBind                                   string                 `mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
-	APIPublicURL                              string                 `mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
-	APIHttpsBind                              bool                   `mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
+	APIPort                                   string                 `scope:"server" mapstructure:"api-port" toml:"api-port" json:"apiPort"`
+	APIBind                                   string                 `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
+	APIPublicURL                              string                 `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
+	APIHttpsBind                              bool                   `scope:"server" mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
 	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
 	MonitorScheduler                          bool                   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
@@ -655,18 +658,18 @@ type Config struct {
 	VaultToken                                string                 `mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
 	LogVault                                  bool                   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
 	LogVaultLevel                             int                    `mapstructure:"log-vault-level" toml:"log-vault-level" json:"logVaultLevel"`
-	GitUrl                                    string                 `mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
-	GitUsername                               string                 `mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
-	GitAccesToken                             string                 `mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
-	GitMonitoringTicker                       int                    `mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
-	Cloud18                                   bool                   `mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Domain                             string                 `mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
-	Cloud18SubDomain                          string                 `mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
-	Cloud18SubDomainZone                      string                 `mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
-	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
-	Cloud18GitUser                            string                 `mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
-	Cloud18GitPassword                        string                 `mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
-	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
+	GitUrl                                    string                 `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
+	GitUsername                               string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
+	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
+	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
+	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
+	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
+	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
+	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
+	Cloud18Shared                             bool                   `scope:"server" mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
+	Cloud18GitUser                            string                 `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
+	Cloud18GitPassword                        string                 `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18PlatformDescription                string                 `scope:"server" mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `json:"-"`
 	SecretKey                                 []byte                 `json:"-"`
@@ -940,6 +943,9 @@ const (
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
+
+	GrantGlobalSettings string = "global-settings" // Can update global settings
+	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
 )
 
 const (
@@ -1300,6 +1306,88 @@ func (conf *Config) IsVaultUsed() bool {
 		return false
 	}
 	return true
+}
+
+func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
+	_, err := os.Stat(conf.MonitoringKeyPath)
+	// Check if the file does not exist
+	if err == nil {
+		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		return nil
+	} else {
+		if !os.IsNotExist(err) {
+			Logger.Errorf("Error when checking key for encryption: %v", err)
+			return err
+		}
+
+		newdir := "/home/repman/.config/replication-manager/etc"
+		newpath := newdir + "/.replication-manager.key"
+
+		Logger.Infof("Key not found. Checking in extra path : %s", newpath)
+
+		_, err = os.Stat(newpath)
+		if err == nil {
+			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+			conf.MonitoringKeyPath = newpath
+			return nil
+		} else {
+
+			Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+
+			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
+				newdir := "/home/repman/.config/replication-manager/etc"
+				newpath := newdir + "/.replication-manager.key"
+
+				Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, newpath)
+
+				_, err := os.Stat(newpath)
+				if err == nil {
+					Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+					return nil
+				}
+
+				_, err = os.Stat(newdir)
+				if err != nil {
+					if !os.IsNotExist(err) {
+						Logger.Errorf("Can't access %s : %v", newdir, err)
+						return err
+					} else {
+						err = os.MkdirAll(newdir, 0755)
+						if err != nil {
+							Logger.Errorf("Can't create directory %s : %v", newdir, err)
+							return err
+						}
+					}
+				}
+
+				if err := misc.TryOpenFile(newpath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil {
+					Logger.Errorf("Can't write keys in %s : %v", newdir, err)
+					return err
+				}
+
+				// New path is writable
+				conf.MonitoringKeyPath = newpath
+				Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", newpath)
+				Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
+
+			}
+		}
+
+		p := crypto.Password{}
+		var err error
+		p.Key, err = crypto.Keygen()
+		if err != nil {
+			Logger.Errorf("Error when generating key for encryption: %v", err)
+			return err
+		}
+		err = crypto.WriteKey(p.Key, conf.MonitoringKeyPath, false)
+		if err != nil {
+			Logger.Errorf("Error when writing key for encryption: %v", err)
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (conf *Config) LoadEncrytionKey() ([]byte, error) {
@@ -1795,6 +1883,8 @@ func (conf *Config) GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantGlobalGrant:               GrantGlobalGrant,
+		GrantGlobalSettings:            GrantGlobalSettings,
 	}
 }
 
@@ -2016,6 +2106,21 @@ func GetScope(conf Config, toml string) (string, bool) {
 	}
 
 	return "", false
+}
+
+func GetParamsByScope(scopeFilter string) map[string]bool {
+	conf := Config{}
+	to := reflect.TypeOf(conf)
+	var params map[string]bool = make(map[string]bool)
+
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		if f.Tag.Get("scope") == scopeFilter {
+			params[f.Tag.Get("toml")] = true
+		}
+	}
+
+	return params
 }
 
 func IsScope(toml string, scope string) bool {
@@ -2362,4 +2467,28 @@ func IsValidLogLevel(lvl string) bool {
 type LogEntry struct {
 	Server string `json:"server"`
 	Log    string `json:"log"`
+}
+
+func (conf *Config) IsVariableImmutable(v string) bool {
+	_, ok := conf.ImmuableFlagMap[v]
+	return ok
+}
+
+func (conf *Config) IsVariableServerLevel(v string) bool {
+	_, ok := conf.ImmuableFlagMap[v]
+	return ok
+}
+
+func (conf *Config) SetApiTokenTimeout(value int) {
+	conf.TokenTimeout = value
+}
+
+func (conf *Config) SwitchCloud18Shared() {
+	if conf.Cloud18 {
+		conf.Cloud18Shared = !conf.Cloud18Shared
+	}
+}
+
+func (conf *Config) SwitchCloud18() {
+	conf.Cloud18 = !conf.Cloud18
 }

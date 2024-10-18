@@ -1,16 +1,14 @@
 [cluster1]
+#### to get full options list:> replication-mananager-osc monitor --help
+
 title = "cluster1"
 prov-orchestrator = "onpremise"
-
 db-servers-hosts = "127.0.0.1:3331"
 db-servers-prefered-master = "127.0.0.1:3331"
 db-servers-credential = "root:mariadb"
+# db-servers-connect-timeout = 1
 
 replication-credential = "root:mariadb"
-
-## to get full options list:> replication-mananager-osc monitor --help
-
-# db-servers-connect-timeout = 1
 
 ##############
 ## TOPOLOGY ##
@@ -32,6 +30,38 @@ replication-credential = "root:mariadb"
 # replication-source-name = ""
 # replication-use-ssl  = false
 
+################
+## MONITORING ##
+################
+
+## to stop monitoring this cluster
+# monitoring-pause = true
+
+# monitoring-innodb-status = false
+# monitoring-performance-schema  = false
+# monitoring-plugins = false
+# monitoring-processlist = false
+# monitoring-queries = false
+# monitoring-query-rules = false
+# monitoring-schema-change = false
+# monitoring-variable-diff = false
+
+# monitoring-capture = false
+# monitoring-capture-file-keep = 5
+# monitoring-capture-trigger = "ERR00076,ERR00041"
+
+# monitoring-long-query-with-process = false
+# monitoring-long-query-log-length = 200
+# monitoring-long-query-time = 10000
+# monitoring-long-query-with-table = true
+
+# monitoring-write-heartbeat = true
+# monitoring-write-heartbeat-credential = "user:password"
+
+# monitoring-check-grants = false
+# monitoring-erreur-log-length = 20
+# monitoring-ignore-errors = ""
+
 ###########################
 ## DATABASE CONFIGURATOR ##
 ###########################
@@ -42,71 +72,40 @@ replication-credential = "root:mariadb"
 # prov-db-disk-size = "1"
 # prov-db-cpu-cores = "1"
 # prov-db-disk-iops = "300"
+# prov-db-expire-log-days = 5
+# prov-db-max-connections = 1000
 
 ####################
 ##  CLUSTER LOGS  ##
 ####################
 
-# log-writer-election  = true
+# log-writer-election  = false
 # log-level = 3
 # log-rotate-max-age = 7
 # log-rotate-max-backup = 7
 # log-rotate-max-size = 5
-# log-sst = true
+# log-sst = false
 # log-sst-level =  1
-# log-backup-stream = true
+# log-backup-stream = false
 # log-backup-stream-level = 2
 # log-binlog-purge = false
 # log-binlog-purge-level = 1
-# log-config-load = true
+# log-config-load = false
 # log-config-load-level= 2
-# log-writer-election = true
+# log-writer-election = false
 # log-writer-election-level 1
 # log-git = true
 # log-git-level = 1
 # log-graphite = true
 # log-graphite-level = 2
-# log-orchestrator = true
+# log-orchestrator = false
 # log-orchestrator-level = 2
-# log-secrets = false
-# log-sql-in-monitoring = false
-# log-vault  = true
+# log-vault  = false
 # log-vault-level = 1
 
+# log-secrets = true
+# log-sql-in-monitoring = true
 
-############
-# BACKUPS ##
-############
-
-# backup-streaming = false
-# backup-streaming-aws-access-key-id = "admin"
-# backup-streaming-aws-access-secret = "xxxx"
-# backup-streaming-endpoint= "https://s3.signal18.io/"
-# backup-streaming-region= "fr-1"
-# backup-streaming-bucket= "repman"
-
-# backup-restic = true
-backup-physical-type = "mariabackup"
-backup-logical-type = "mysqldump"
-
-
-# backup-restic-aws =  false
-# backup-restic-aws-access-secret = "xxxx"
-# backup-restic-password = "xxxx"
-# backup-restic-binary-path = "/usr/local/bin/restic"
-
-# monitoring-scheduler = true
-# scheduler-db-servers-logical-backup  = false
-# scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
-# scheduler-db-servers-logs   =  false
-# scheduler-db-servers-logs-cron = "0 0 * * * *"
-# scheduler-db-servers-logs-table-keep = 4
-# scheduler-db-servers-logs-table-rotate  = false
-# scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
-# scheduler-db-servers-optimize  = false
-# scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
-# scheduler-db-servers-physical-backup = false
-# scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"
 
 ##############
 ## FAILOVER ##
@@ -118,32 +117,35 @@ backup-logical-type = "mysqldump"
 
 ## Slaves will re enter with read-only
 
-# failover-readonly-state = true
-# failover-event-scheduler = false
-# failover-event-status = false
+# failover-readonly-state = false
+# failover-falsepositive-heartbeat = false
+# failover-falsepositive-heartbeat-timeout = 3
+
+# failover-event-scheduler = true
+# failover-event-status = true
 
 ## Failover after N failures detection
-
-failover-falsepositive-ping-counter = 5
-
 ## Cancel failover if already N failover
 ## Cancel failover if last failover was N seconds before
-## Cancel failover in semi-sync when one slave is not in sync
 ## Cancel failover if one slave receive master heartbeat
 ## Cancel failover when replication delay is more than N seconds
+## Cancel failover in semi-sync when no slave is in sync
 
+# failover-falsepositive-ping-counter = 5
 # failover-limit = 0
 # failover-time-limit = 0
-# failover-at-sync = false
 # failover-max-slave-delay = 30
-# failover-restart-unsafe = false
 
-# failover-falsepositive-heartbeat = true
-# failover-falsepositive-heartbeat-timeout = 3
-# failover-falsepositive-maxscale = false
+# failover-at-sync = true
+# failover-restart-unsafe = true
+
+# failover-falsepositive-maxscale = true
 # failover-falsepositive-maxscale-timeout = 14
-# failover-falsepositive-external = false
+# failover-falsepositive-external = true
 # failover-falsepositive-external-port = 80
+
+# failover-mdev-check = true
+# failover-mdev-level = "blocker"
 
 ################
 ## SWITCHOVER ##
@@ -157,20 +159,28 @@ failover-falsepositive-ping-counter = 5
 # switchover-wait-kill = 5000
 # switchover-wait-trx = 10
 # switchover-wait-write-query = 10
-# switchover-at-equal-gtid = false
-# switchover-at-sync = false
+# switchover-at-equal-gtid = true
+# switchover-at-sync = true
 # switchover-max-slave-delay = 30
 
 ############
 ## REJOIN ##
 ############
 
-# autorejoin = true
+# autorejoin = false
+# autorejoin-flashback-on-sync  = false
+# autorejoin-backup-binlog = false
+
 # autorejoin-script = ""
+
 # autorejoin-semisync = true
 # autorejoin-backup-binlog = true
-# autorejoin-flashback = false
-# autorejoin-mysqldump = false
+# autorejoin-flashback-on-unsync =true
+# autorejoin-flashback = true
+# autorejoin-mysqldump = true
+# autorejoin-force-restore = true
+# autorejoin-physical-backup = true
+# autorejoin-slave-positional-heartbeat =true
 
 ####################
 ## CHECKS & FORCE ##
@@ -179,59 +189,171 @@ failover-falsepositive-ping-counter = 5
 # check-replication-filters = true
 # check-binlog-filters = true
 # check-replication-state = true
+# check-binlog-filters = false
 
-# force-slave-heartbeat= false
+# force-slave-readonly = false
+# force-slave-failover-readonly-state = false
+
+# force-slave-heartbeat = true
 # force-slave-heartbeat-retry = 5
 # force-slave-heartbeat-time = 3
-# force-slave-gtid-mode = false
-# force-slave-semisync = false
-# force-slave-failover-readonly-state = false
+# force-slave-gtid-mode = true
+# force-slave-no-gtid-mode = true
+# force-slave-semisync = true
+# force-slave-strict = true
+# force-slave-idempotent = true
+
+# force-binlog-row = true
+# force-binlog-annotate = true
+# force-binlog-slowqueries = true
+# force-binlog-compress = true
+# force-binlog-checksum = true
+# force-inmemory-binlog-cache-size = true
+# force-disk-relaylog-size-limit = true
+# force-disk-relaylog-size-limit-size = 1000000000
+# force-sync-binlog = true
+# force-sync-innodb = true
+
+## serialized|minimal|conservative|optimistic|aggressive
+# force-slave-parallel-mode = ""
+
+################
+# MAINTENANCE ##
+################
+
+# backup-streaming = true
+# backup-streaming-aws-access-key-id = "admin"
+# backup-streaming-aws-access-secret = "xxxx"
+# backup-streaming-endpoint= "https://s3.signal18.io/"
+# backup-streaming-region= "fr-1"
+# backup-streaming-bucket= "repman"
+
+# backup-restic = true
+# backup-physical-type = "mariabackup"
+# backup-logical-type = "mysqldump"
+
+# backup-restic-aws = true
+# backup-restic-aws-access-secret = "xxxx"
+# backup-restic-password = "xxxx"
+# backup-restic-binary-path = "/usr/local/bin/restic"
+
+# monitoring-scheduler = true
+# scheduler-jobs-ssh = true
+# scheduler-db-servers-logical-backup  = false
+# scheduler-db-servers-logical-backup-cron= "0 0 1 * * 6"
+# scheduler-db-servers-logs   =  true
+# scheduler-db-servers-logs-cron = "0 0 * * * *"
+# scheduler-db-servers-logs-table-keep = 4
+# scheduler-db-servers-logs-table-rotate  = false
+# scheduler-db-servers-logs-table-rotate-cron = "0 0 0/6 * * *"
+# scheduler-db-servers-optimize  = true
+# scheduler-db-servers-optimize-cron = "0 0 3 1 * 5"
+# scheduler-db-servers-physical-backup = false
+# scheduler-db-servers-physical-backup-cron = "0 0 0 * * *"
+# scheduler-db-servers-analyze = false
+# scheduler-db-servers-analyze-cron = "0 0 4 2 * *"
+
+##################
+## BINARY LOGS ###
+##################
+
+# backup-binlogs = true
+# check-binlog-server-id = 10000
+
+## Method for backing up binlogs: mysqlbinlog|ssh|gomysql|script (old value 'client' will be treated same as 'mysqlbinlog')
+# binlog-copy-mode = "mysqlbinlog"
+
+## Method for parsing binlogs: mysqlbinlog|gomysql
+# binlog-parse-mode = "gomysql"
+
 # force-binlog-row = false
 # force-binlog-annotate = false
 # force-binlog-slowqueries = false
 # force-binlog-compress = false
 # force-binlog-checksum = false
-# force-inmemory-binlog-cache-size = false
-# force-disk-relaylog-size-limit = false
-# force-disk-relaylog-size-limit-size = 1000000000
 # force-sync-binlog = false
-# force-sync-innodb = false
+
+# force-binlog-purge = true
+# force-binlog-purge-min-replica = 1
+# force-binlog-purge-on-restore = true
+# force-binlog-purge-replicas = true
+# force-binlog-purge-total-size = 30
+
+#############
+## SCRIPTS ##
+#############
+
+# alert-script = ""
+# arbitration-failed-master-script = ""
+# autorejoin-script = ""
+# backup-load-script = ""
+# backup-save-scrip = ""
+# binlog-copy-script = ""
+# binlog-rotation-script = ""
+# db-servers-state-change-script = ""
+# failover-post-script = ""
+# failover-pre-script = ""
+# monitoring-close-state-script = ""
+# monitoring-long-query-script = ""
+# monitoring-open-state-script = ""
+# monitoring-schema-change-script = ""
+# onpremise-ssh-db-job-script = ""
+# onpremise-ssh-start-db-script = ""
+# onpremise-ssh-start-proxy-script = ""
+# onpremise-ssh-stop-proxy-script = ""
+# prov-db-bootstrap-script = ""
+# prov-db-cleanup-script = ""
+# prov-db-start-script = ""
+# prov-db-stop-script = ""
+# prov-proxy-bootstrap-script = ""
+# prov-proxy-cleanup-script = ""
+# prov-proxy-start-script = ""
+# prov-proxy-stop-script = ""
+# proxy-servers-state-change-script = ""
+# replication-error-script = ""
+
+#############
+## PROXIES ##
+#############
+
+# proxy-servers-backend-compression = true
+# proxy-servers-backend-max-connections = 1000
+# proxy-servers-backend-max-replication-lag = 30
+# proxy-servers-read-on-master = true
+# proxy-servers-read-on-master-no-slave = false
+# proxy-servers-state-change-script = "/usr/share/replication-manager/proxychangestate.sh"
 
 ##############
-## MAXSCALE ##
+## PROXYSQL ##
 ##############
 
-## for 2 nodes cluster maxscale can be driven by replication manager
+# proxysql = true
+# proxysql-servers "proxysql1,proxysql2"
+# proxysql-servers-ipv6 = ""
+# proxysql-user = "admin"
+# proxysql-password = "admin"
+# proxysql-port = "3306"
+# proxysql-admin-port = "6032"
+# proxysql-reader-hostgroup ="1"
+# proxysql-writer-hostgroup  "0"
 
-# maxscale = false
-# maxscale-binlog = false
-# maxscale-servers = "192.168.0.201"
-# maxscale-port = 4003
-# maxscale-user = "admin"
-# maxscale-pass = "mariadb"
+## Bootstrap ProxySQL backend servers and hostgroup
 
-## When true replication manager drive maxscale server state
-## Not required unless multiple maxscale or release does not support detect_stale_slave
-
-# maxscale-disable-monitor = false
-
-## maxinfo|maxadmin
-
-# maxscale-get-info-method = "maxadmin"
-# maxscale-maxinfo-port = 4002
-
-# maxscale-write-port = 4007
-# maxscale-read-port = 4008
-# maxscale-read-write-port = 4006
-# maxscale-binlog-port = 4000
+# proxysql-bootstrap = true
+# proxysql-bootstrap-hostgroups = true
+# proxysql-bootstrap-query-rules = true
+# proxysql-bootstrap-users = true
+# proxysql-bootstrap-variables = true
+# proxysql-multiplexing  = true
+# proxysql-save-to-disk = true
+# proxysql-binary-path = "/usr/sbin/proxysql"
+# prov-proxy-docker-proxysql-img   =  "signal18/proxysql:1.4"
 
 #############
 ## HAPROXY ##
 #############
 
-## Wrapper mode unless maxscale or proxysql required to be located with replication-manager
-
-# haproxy = false
+# haproxy = true
 # haproxy-mode = "runtimeapi"
 # haproxy-servers = "127.0.0.1"
 # haproxy-servers-ipv6 = ""
@@ -257,11 +379,67 @@ failover-falsepositive-ping-counter = 5
 # prov-proxy-docker-haproxy-img = "haproxytech/haproxy-alpine:2.4"
 # slapos-haproxy-partitions = ""
 
-
 ####################
 ## SHARDING PROXY ##
 ####################
 
-# mdbshardproxy = false
+# mdbshardproxy = true
 # mdbshardproxy-hosts = "127.0.0.1:3306"
 # mdbshardproxy-user = "root:mariadb"
+
+##############
+## MAXSCALE ##
+##############
+
+# maxscale = true
+# maxscale-binlog = false
+# maxscale-servers = "192.168.0.201"
+# maxscale-port = 4003
+# maxscale-user = "admin"
+# maxscale-pass = "mariadb"
+
+## When true replication manager drive maxscale server state
+## Not required unless multiple maxscale or release does not support detect_stale_slave
+
+# maxscale-disable-monitor = false
+
+## maxinfo|maxadmin
+
+# maxscale-get-info-method = "maxadmin"
+# maxscale-maxinfo-port = 4002
+
+# maxscale-write-port = 4007
+# maxscale-read-port = 4008
+# maxscale-read-write-port = 4006
+# maxscale-binlog-port = 4000
+
+##############
+## EXTPROXY ##
+##############
+
+## External proxy can be used to monitor a route managed with external scripts
+
+# extproxy = true
+# extproxy-address = "host:port"
+# proxy-servers-state-change-script = ""
+
+###################
+## JANITOR PROXY ##
+###################
+
+## Janitor ProxySQL is an entry point in a DC for routing to multiple clusters per database users
+## Database users are translated to user.domain.
+
+# proxyjanitor-servers = "proxysql1, proxysql2"
+# proxyjanitor-servers-ipv6 = ""
+# proxyjanitor-user  "external"
+# proxyjanitor-password =  "admin"
+# proxyjanitor-admin-port = "6032"
+# proxyjanitor-port = "3306"
+
+# haproxy-janitor-weights = "100"
+# maxscale-janitor-weights = "100"
+# proxysql-janitor-weights = "100"
+# registry-consul-weights = "100"
+# shardproxy-janitor-weights = "100"
+# sphinx-janitor-weights = "100"

@@ -32,7 +32,7 @@ export const showErrorBanner = (message, error, thunkAPI) => {
     showErrorToast({
       status: 'error',
       title: message,
-      description: error
+      description: error?.message || error
     })
   )
 }

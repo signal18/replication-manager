@@ -2,24 +2,6 @@ import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 
-export const getClusters = createAsyncThunk('cluster/getClusters', async ({}, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.getClusters()
-    return { data, status }
-  } catch (error) {
-    handleError(error, thunkAPI)
-  }
-})
-
-export const getMonitoredData = createAsyncThunk('cluster/getMonitoredData', async ({}, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.getMonitoredData()
-    return { data, status }
-  } catch (error) {
-    handleError(error, thunkAPI)
-  }
-})
-
 export const getClusterData = createAsyncThunk('cluster/getClusterData', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.getClusterData(clusterName)
@@ -215,22 +197,39 @@ export const unProvisionCluster = createAsyncThunk('cluster/unProvisionCluster',
   }
 })
 
-export const setDBCredential = createAsyncThunk('cluster/setDBCredential', async ({ clusterName }, thunkAPI) => {
-  try {
-    const { data, status } = await clusterService.setDBCredential(clusterName)
-    showSuccessBanner('Database credentials set!', status, thunkAPI)
-    return { data, status }
-  } catch (error) {
-    showErrorBanner('Setting Database credentials failed!', error, thunkAPI)
-    handleError(error, thunkAPI)
+export const setCredentials = createAsyncThunk(
+  'cluster/setCredentials',
+  async ({ clusterName, credentialType, credential }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setCredentials(clusterName, credentialType, credential)
+      showSuccessBanner(`Credentials for ${credentialType} set!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Setting credentials for ${credentialType} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
   }
-})
+)
+
+export const setDBCredential = createAsyncThunk(
+  'cluster/setDBCredential',
+  async ({ clusterName, credential }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.setDBCredential(clusterName, credential)
+      showSuccessBanner('Database credentials set!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Setting Database credentials failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
 
 export const setReplicationCredential = createAsyncThunk(
   'cluster/setReplicationCredential',
-  async ({ clusterName }, thunkAPI) => {
+  async ({ clusterName, credential }, thunkAPI) => {
     try {
-      const { data, status } = await clusterService.setReplicationCredential(clusterName)
+      const { data, status } = await clusterService.setReplicationCredential(clusterName, credential)
       showSuccessBanner('Replication credentials set!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -894,11 +893,23 @@ export const toggleDatabaseActions = createAsyncThunk(
   }
 )
 
+export const addUser = createAsyncThunk(
+  'cluster/addUser',
+  async ({ clusterName, username, password, grants }, thunkAPI) => {
+    try {
+      const { data, status } = await clusterService.addUser(clusterName, username, password, grants)
+      showSuccessBanner(`User is added successful!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Adding user failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
-  clusters: null,
-  monitor: null,
   clusterData: null,
   clusterAlerts: null,
   clusterMaster: null,
@@ -956,26 +967,6 @@ export const clusterSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
-    builder
-      .addCase(getClusters.pending, (state) => {
-        state.loading = true
-      })
-      .addCase(getClusters.fulfilled, (state, action) => {
-        state.loading = false
-        state.clusters = action.payload.data
-      })
-      .addCase(getClusters.rejected, (state, action) => {
-        state.loading = false
-        state.error = action.error
-      })
-      .addCase(getMonitoredData.pending, (state) => {})
-      .addCase(getMonitoredData.fulfilled, (state, action) => {
-        state.monitor = action.payload.data
-      })
-      .addCase(getMonitoredData.rejected, (state, action) => {
-        state.error = action.error
-      })
-
     builder.addMatcher(
       isAnyOf(
         getClusterData.fulfilled,

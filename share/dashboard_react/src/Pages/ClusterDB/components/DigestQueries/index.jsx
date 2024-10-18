@@ -75,10 +75,11 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         header: 'Schema',
         id: 'schema'
       }),
-      columnHelper.accessor((row) => row.digest_text, {
+      columnHelper.accessor((row) => row.digestText, {
         header: 'Query',
         id: 'query',
-        cell: (info) => <ShowMoreText text={info.getValue()} />
+        cell: (info) => <ShowMoreText text={info.getValue()} />,
+        textAlign: 'start'
       }),
       columnHelper.accessor((row) => row.execCount, {
         header: 'Count',

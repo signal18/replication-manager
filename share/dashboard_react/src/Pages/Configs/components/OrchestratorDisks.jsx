@@ -11,7 +11,7 @@ import TextForm from '../../../components/TextForm'
 function OrchestratorDisks({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const {
-    cluster: { monitor }
+    globalClusters: { monitor }
   } = useSelector((state) => state)
   const [serviceDisks, setServiceDisks] = useState([])
   const [serviceFS, setServiceFS] = useState([])
@@ -252,7 +252,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
                     value={selectedCluster?.config?.provProxyDiskDevice}
                     confirmTitle={`Confirm change proxy disk device name to `}
                     className={parentStyles.textbox}
-                    onSave={(value) =>
+                    onSave={(value) => {
                       dispatch(
                         setSetting({
                           clusterName: selectedCluster?.name,
@@ -260,7 +260,7 @@ function OrchestratorDisks({ selectedCluster, user }) {
                           value: value
                         })
                       )
-                    }
+                    }}
                   />
                 )
               }

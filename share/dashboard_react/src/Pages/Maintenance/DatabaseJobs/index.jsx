@@ -35,10 +35,10 @@ function DatabaseJobs({ clusterName }) {
       columnHelper.accessor((row) => row.result, {
         header: 'Desc'
       }),
-      columnHelper.accessor((row) => formatDate(new Date(row.start * 1000)), {
+      columnHelper.accessor((row) => (row.start ? formatDate(new Date(row.start * 1000)) : ''), {
         header: 'Start'
       }),
-      columnHelper.accessor((row) => formatDate(new Date(row.end * 1000)), {
+      columnHelper.accessor((row) => (row.end ? formatDate(new Date(row.end * 1000)) : ''), {
         header: 'End'
       }),
       columnHelper.accessor((row) => row, {

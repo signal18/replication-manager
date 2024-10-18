@@ -62,18 +62,19 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
         <ModalBody>
           <Stack spacing='5'>
             <FormControl isInvalid={hostError}>
-              <FormLabel htmlFor='username'>Host</FormLabel>
+              <FormLabel htmlFor='host'>Host</FormLabel>
               <Input id='host' type='text' isRequired={true} value={host} onChange={(e) => setHost(e.target.value)} />
               <FormErrorMessage>{hostError}</FormErrorMessage>
             </FormControl>
             <FormControl isInvalid={portError}>
-              <FormLabel htmlFor='username'>Port</FormLabel>
+              <FormLabel htmlFor='port'>Port</FormLabel>
               <Input id='port' type='number' isRequired={true} value={port} onChange={(e) => setPort(e.target.value)} />
               <FormErrorMessage>{portError}</FormErrorMessage>
             </FormControl>
             <FormControl isInvalid={dbTypeError}>
-              <FormLabel htmlFor='username'>Database type</FormLabel>
+              <FormLabel htmlFor='dbType'>Database type</FormLabel>
               <Dropdown
+                id='dbType'
                 isMenuPortalTarget={false}
                 onChange={(option) => {
                   setDbType(option.value)

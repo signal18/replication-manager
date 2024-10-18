@@ -1,13 +1,13 @@
 [Unit]
-Description=MariaDB replication-manager pro including provisioning and testing
+Description=Signal 18 Replication Manager provisioning edition
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/replication-manager-pro --user=repman monitor
-
 Restart=on-failure
-
-# Configures the time to wait before service is stopped forcefully.
+RestartSec=5
+StartLimitBurst=3
+StartLimitInterval=10s
 TimeoutStopSec=10
 
 [Install]
