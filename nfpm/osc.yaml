@@ -1,0 +1,26 @@
+name: replication-manager-osc
+version: ${version}
+release: 1
+maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
+description: "Replication Manager for MariaDB and MySQL - open source core"
+license: "GPLv3"
+arch: amd64
+platform: linux
+contents:
+  - src: build/binaries/replication-manager-osc
+    dst: /usr/bin/
+  - src: etc/cluster.d/cluster1.toml.sample
+    dst: /etc/replication-manager/cluster.d/
+    type: config
+  - src: etc/config.toml
+    dst: /etc/replication-manager/
+    type: config
+  - src: service/replication-manager-osc.service 
+    dst: /etc/systemd/system/replication-manager.service
+    type: config
+  - src: share/
+    dst: /usr/share/replication-manager
+    type: tree
+
+scripts:
+  postinstall: ./scripts/post_install.sh

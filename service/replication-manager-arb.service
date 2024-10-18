@@ -3,7 +3,7 @@ Description=replication-manager arbitrator
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/replication-manager-arb arbitrator
+ExecStart=/usr/bin/replication-manager-arb --user=repman arbitrator
 
 [Install]
 WantedBy=multi-user.target
