@@ -80,6 +80,7 @@ type ServerMonitor struct {
 	Process                     *os.Process                `json:"process"`
 	SemiSyncMasterStatus        bool                       `json:"semiSyncMasterStatus"`
 	SemiSyncSlaveStatus         bool                       `json:"semiSyncSlaveStatus"`
+	HaveSSHError                bool                       `json:"HaveSshError"`
 	HaveHealthyReplica          bool                       `json:"HaveHealthyReplica"`
 	HaveEventScheduler          bool                       `json:"eventScheduler"`
 	HaveSemiSync                bool                       `json:"haveSemiSync"`

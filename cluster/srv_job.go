@@ -12,6 +12,7 @@ package cluster
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/json"
 	"slices"
@@ -72,10 +73,14 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
-	Conn, err := server.GetNewDBConn()
+	//If no default connection no alert
+	if server.Conn == nil {
+		return nil
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
-		return err
+		return fmt.Errorf("Failed to create connection: %v", err)
 	}
 	defer Conn.Close()
 
@@ -84,39 +89,38 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
-	server.ExecQueryNoBinLog("CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
-	err = server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+	_, err = server.ConnExecQuery(Conn, "CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs")
-		return err
+		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
+	}
+	_, err = server.ConnExecQuery(Conn, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+	if err != nil {
+		return fmt.Errorf("Failed to create jobs table: %v", err)
 	}
 
 	var exist int
-	Conn.Get(&exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.ConnGetQuery(Conn, &exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
-		server.ExecQueryNoBinLog("DROP TABLE IF EXISTS replication_manager_schema.jobs")
-		err := server.ExecQueryNoBinLog("CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+		server.ConnExecQuery(Conn, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
+		_, err := server.ConnExecQuery(Conn, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't create table replication_manager_schema.jobs_tmp")
-			return err
+			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
 	}
 
-	Conn.Get(&exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	server.ConnGetQuery(Conn, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
 	if exist == 0 {
 		//Add column instead of changing create table for compatibility
-		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
+		_, err := server.ConnExecQuery(Conn, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-			return err
+			return fmt.Errorf("Failed to add column on jobs table: %v", err)
 		}
 
 		//Add index
 		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't add column on table replication_manager_schema.jobs")
-			return err
+			return fmt.Errorf("Failed to add index on jobs table: %v", err)
 		}
 	}
 
@@ -136,23 +140,31 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		return errors.New("Node is down")
 	}
 
-	Conn, err := server.GetNewDBConn()
+	Conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error connecting for retrieve jobs data from %s: %s", server.URL, err)
-		server.JobsCreateTable()
-		return err
+		return fmt.Errorf("Failed creating connection to retrieve jobs data: %v", err)
 	}
 	defer Conn.Close()
 
 	query := "SELECT id, task, port, server, done, state, result, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
-	rows, err := Conn.Queryx(query)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout))
+	rows, err := Conn.QueryContext(ctx, query)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't retrieve jobs data from server %s", server.URL)
-		server.JobsCreateTable()
-		return err
+		cancel()
+		err2 := server.JobsCreateTable()
+		if err2 != nil {
+			return fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
+		}
+
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout))
+		rows, err = Conn.QueryContext(ctx, query)
+		if err != nil {
+			return fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
+		}
 	}
 	defer rows.Close()
+	defer cancel()
 
 	for rows.Next() {
 		var t config.Task
@@ -160,7 +172,7 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 		var end sql.NullInt64
 		err := rows.Scan(&t.Id, &t.Task, &t.Port, &t.Server, &t.Done, &t.State, &res, &t.Start, &end)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error retrieving job data from %s: %s", server.URL, err.Error())
+			return fmt.Errorf("Failed to scan row values on jobs table: %v. Row: %v", err, t)
 		}
 		t.Result = res.String
 		t.End = end.Int64
@@ -177,13 +189,11 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost string) (int64, error) {
 	cluster := server.ClusterGroup
 	if cluster.InRollingRestart {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during rolling restart", task)
-		return 0, errors.New("In rolling restart, can't insert job")
+		return 0, errors.New("In rolling restart")
 	}
 
 	if cluster.IsInFailover() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancel job %s during failover", task)
-		return 0, errors.New("In failover, can't insert job")
+		return 0, errors.New("In failover")
 	}
 
 	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
@@ -191,29 +201,32 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		return 0, nil
 	}
 
-	conn, err := server.GetNewDBConn()
+	if server.Conn == nil {
+		return 0, fmt.Errorf("No pool connection")
+	}
+
+	// Create jobs table if not exists yet
+	server.JobsCreateTable()
+
+	conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't connect")
-		return 0, err
+		return 0, fmt.Errorf("Job can't connect: %v", err)
 	}
 	defer conn.Close()
 
-	// Better to create after connection established
-	server.JobsCreateTable()
-
 	if task == "" {
-		err = errors.New("Job can't insert empty task")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert empty task")
-		return 0, err
+		return 0, errors.New("Job can't insert empty task")
 	}
 
-	rows, err := conn.Queryx("SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')")
-	if err != nil && err != sql.ErrNoRows {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error fetching replication_manager_schema.jobs: %s", err)
-		server.JobsCreateTable()
-		return 0, err
+	query := "SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')"
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout))
+	rows, err := conn.QueryContext(ctx, query)
+	if err != nil {
+		cancel()
+		return 0, fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
 	}
 	defer rows.Close()
+	defer cancel()
 
 	t, _ := server.JobResults.LoadOrStore(task, &config.Task{Task: task, Start: time.Now().Unix()})
 	nr := 0
@@ -222,34 +235,24 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 		rows.Scan(&t.Id, &t.Task, &t.Done, &t.State)
 
 		if t.State <= 3 && t.Done == 0 {
-			cluster.SetState("WARN0123", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0123"], server.URL, t.Task), ErrFrom: "JOB", ServerUrl: server.URL})
-			rows.Close()
-			return 0, err
+			return 0, fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
 		}
 	}
 	rows.Close()
+	cancel()
 
-	_, err = conn.Exec("set sql_log_bin=0")
-	if err != nil {
-		cluster.SetState("WARN0124", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0124"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
-		return 0, err
-	}
-
-	var res sql.Result
+	//delete row to reset all values
 	if nr > 0 {
-		_, err = conn.Exec(fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
+		_, err = server.ConnExecQuery(conn, fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
 		if err != nil {
-			cluster.SetState("WARN0125", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0125"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
-			return 0, err
+			return 0, fmt.Errorf("Failed to delete row on jobs table for %s: %v", t.Task, err)
 		}
 	}
 
 	//Reuse the same id
-	res, err = conn.Exec(fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
+	res, err := server.ConnExecQuery(conn, fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
 	if err != nil {
-		cluster.SetState("WARN0126", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0126"], server.URL, t.Task, err.Error()), ErrFrom: "JOB", ServerUrl: server.URL})
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't insert job %s", err)
-		return 0, err
+		return 0, fmt.Errorf("Failed to insert row on jobs table for %s: %v", t.Task, err)
 	}
 
 	server.SetNeedRefreshJobs(true)
@@ -2255,8 +2258,13 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	}
 	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "OnPremise run  job  %s", err)
+		if !server.HaveSSHError {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "OnPremise run  job  %s", err)
+			server.HaveSSHError = true
+		}
 		return err
+	} else {
+		server.HaveSSHError = false
 	}
 	defer client.Close()
 
