@@ -364,7 +364,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 
-			} else if s.IsLeader() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(bkWriters) == 0 || !isBackendWriter)) {
+			} else if s.IsLeader() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isBackendWriter)) {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
 
