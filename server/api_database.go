@@ -2310,7 +2310,7 @@ func (repman *ReplicationManager) handlerMuxRunJobs(w http.ResponseWriter, r *ht
 		if node != nil {
 			err := node.JobRunViaSSH()
 			if err != nil {
-				http.Error(w, "Encoding running job", 500)
+				http.Error(w, "Error running job: "+err.Error(), 500)
 				return
 			}
 			return
