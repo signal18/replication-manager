@@ -22,7 +22,7 @@ if [ ! -d /home/repman/.ssh ]; then
     echo "Creating .ssh directory for user 'repman'..."
     mkdir -p /home/repman/.ssh
     chmod 700 /home/repman/.ssh
-    chown repman:repman /home/repman/.ssh
+    chown -R repman:repman /home/repman/.ssh
 fi
 
 # Key types to check for (RSA, ECDSA, ED25519)
@@ -34,7 +34,7 @@ for key in "${key_types[@]}"; do
         echo "Copying $key from /root/.ssh to /home/repman/.ssh/$key..."
         cp /root/.ssh/$key /home/repman/.ssh/
         chmod 600 /home/repman/.ssh/$key
-        chown repman:repman /home/repman/.ssh/$key
+        chown chown -R repman:repman /home/repman/.ssh/$key
     else
         echo "$key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
@@ -47,7 +47,7 @@ for key in "${key_types[@]}"; do
         echo "Copying $pub_key from /root/.ssh to /home/repman/.ssh/$pub_key..."
         cp /root/.ssh/$pub_key /home/repman/.ssh/
         chmod 644 /home/repman/.ssh/$pub_key
-        chown repman:repman /home/repman/.ssh/$pub_key
+        chown chown -R repman:repman /home/repman/.ssh/$pub_key
     else
         echo "$pub_key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
@@ -63,7 +63,7 @@ fi
 
 # Set ownership to repman:repman
 echo "Setting ownership of /var/lib/replication-manager to repman:repman..."
-chown repman:repman /var/lib/replication-manager
+chown -R repman:repman /var/lib/replication-manager
 
 # Set appropriate permissions to 755 (owner read/write/execute, group/others read/execute)
 chmod 755 /var/lib/replication-manager
