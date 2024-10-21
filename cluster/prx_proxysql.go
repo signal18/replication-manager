@@ -411,7 +411,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					}
 					updated = true
 				}
-			} else if s.IsSlaveOrSync() && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
+			} else if s.IsSlaveOrSync() && s.State == stateSlave && !s.IsIgnored() && (s.PrevState == stateUnconn || s.PrevState == stateFailed) {
 				err = psql.SetReader(misc.Unbracket(s.Host), s.Port)
 				// if cluster.Conf.ProxysqlDebug {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting reader standalone server %s", s.URL)
