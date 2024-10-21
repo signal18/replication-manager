@@ -616,7 +616,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
 
-	server.SetInReseedBackup(backtype)
+	server.SetInReseedBackup(task)
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
@@ -627,7 +627,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		_, err := server.ResetSlave()
 		if err != nil {
 			if mysqlErr, ok := err.(*mysql.MySQLError); ok && mysqlErr.Number != 1617 {
-				if server.HasReseedingState(backtype) {
+				if server.HasReseedingState(task) {
 					server.SetInReseedBackup("")
 				}
 				return err
@@ -638,7 +638,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
 	if err != nil {
-		if server.HasReseedingState(backtype) {
+		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
 		}
 		return err
@@ -663,7 +663,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			Channel:   cluster.Conf.MasterConn,
 		}, server.DBVersion)
 		if err != nil {
-			if server.HasReseedingState(backtype) {
+			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
 			}
 			return err
