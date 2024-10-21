@@ -755,13 +755,13 @@ export const resetSlave = createAsyncThunk('cluster/resetSlave', async ({ cluste
 
 export const cancelServerJob = createAsyncThunk(
   'cluster/cancelServerJob',
-  async ({ clusterName, serverId, taskId }, thunkAPI) => {
+  async ({ clusterName, serverId, taskName }, thunkAPI) => {
     try {
-      const { data, status } = await clusterService.cancelServerJob(clusterName, serverId, taskId)
-      showSuccessBanner(`Job ${taskId} cancelled successful!`, status, thunkAPI)
+      const { data, status } = await clusterService.cancelServerJob(clusterName, serverId, taskName)
+      showSuccessBanner(`Job ${taskName} cancelled successful!`, status, thunkAPI)
       return { data, status }
     } catch (error) {
-      showErrorBanner(`Cancellation of job ${taskId} failed!`, error, thunkAPI)
+      showErrorBanner(`Cancellation of job ${taskName} failed!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }

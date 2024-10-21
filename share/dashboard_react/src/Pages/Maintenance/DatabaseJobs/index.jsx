@@ -70,8 +70,8 @@ function DatabaseJobs({ clusterName }) {
     setTaskToCancel(null)
   }
 
-  const handleCancelTask = (serverId, taskId) => {
-    dispatch(cancelServerJob({ clusterName, serverId, taskId }))
+  const handleCancelTask = (serverId, taskName) => {
+    dispatch(cancelServerJob({ clusterName, serverId, taskName }))
   }
 
   const getJobState = (state) => {
@@ -126,9 +126,9 @@ function DatabaseJobs({ clusterName }) {
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={closeConfirmModal}
-          title={`Warning! \n\n This action will forcefully cancel the job. Ensure the job is not currently running.\n\n Confirm to proceed with the cancellation of task id ${taskToCancel.id} on server ${taskToCancel.dbhost}:${taskToCancel.dbport} (${taskToCancel.dbId})`}
+          title={`Warning! \n\n This action will forcefully cancel the job. Ensure the job is not currently running.\n\n Confirm to proceed with the cancellation of task ${taskToCancel.task} on server ${taskToCancel.dbhost}:${taskToCancel.dbport} (${taskToCancel.dbId})`}
           onConfirmClick={() => {
-            handleCancelTask(taskToCancel.dbId, taskToCancel.id)
+            handleCancelTask(taskToCancel.dbId, taskToCancel.task)
             closeConfirmModal()
           }}
         />
