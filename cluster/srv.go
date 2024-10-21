@@ -1386,11 +1386,7 @@ func (server *ServerMonitor) ExecQueryNoBinLog(query string, timeout time.Durati
 	cluster := server.ClusterGroup
 	DbConn := server.Conn
 	if DbConn == nil {
-		DbConn, err = server.GetNewDBConn()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s %s", query, err)
-			return err
-		}
+		return fmt.Errorf("No connection pool on %s: query:%s", query, err)
 	}
 
 	conn, err := server.GetConnNoBinlog(DbConn)
