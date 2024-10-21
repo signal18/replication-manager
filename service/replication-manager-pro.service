@@ -3,7 +3,7 @@ Description=Signal 18 Replication Manager provisioning edition
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/replication-manager-pro monitor
+ExecStart=/usr/bin/replication-manager-pro --user=repman monitor
 Restart=on-failure
 RestartSec=5
 StartLimitBurst=3
