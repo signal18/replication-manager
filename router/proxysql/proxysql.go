@@ -438,3 +438,12 @@ func (psql *ProxySQL) SaveProxiesToDisk() error {
 	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
 	return err
 }
+
+func (psql *ProxySQL) SetMonitorIsAlsoWriter(v bool) error {
+	var val int
+	if v {
+		val = 1
+	}
+	_, err := psql.Connection.Exec("SET mysql-monitor_writer_is_also_reader = %d", val)
+	return err
+}

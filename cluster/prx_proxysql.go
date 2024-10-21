@@ -384,12 +384,15 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 			} else if s.IsLeader() && !IsBackendReader && (cluster.Configurator.HasProxyReadLeader() || (cluster.Configurator.HasProxyReadLeaderNoSlave() && (cluster.HasNoValidSlave() || !proxy.HasAvailableReader()))) {
 				// Add  leader in reader group if not found and setup
-				// if cluster.Conf.ProxysqlDebug {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
-				// }
 				err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxReplicationLag), strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+				}
+
+				if cluster.Conf.ProxysqlBootstrapVariables {
+					// This is needed for preventing proxySQL removing leader as reader
+					psql.SetMonitorIsAlsoWriter(true)
 				}
 				updated = true
 			} else if s.IsLeader() && IsBackendReader && !cluster.Configurator.HasProxyReadLeader() { // Drop the leader in reader group if not found and setup
@@ -400,6 +403,11 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
 					if err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop reader in %s (%s)", s.URL, err)
+					}
+
+					if cluster.Conf.ProxysqlBootstrapVariables {
+						// This is needed for preventing proxySQL keeping leader as reader
+						psql.SetMonitorIsAlsoWriter(false)
 					}
 					updated = true
 				}
@@ -418,13 +426,14 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 				updated = true
-			} else if !s.IsLeader() && IsBackendReader && isBackendWriter && (bkeread.PrxStatus == "ONLINE" || bkeread.PrxStatus == "OFFLINE_SOFT") {
+			} else if s.IsSlaveOrSync() && isBackendWriter {
 				// Drop slave from writer HG if exists
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop slave in writer group from %s", s.URL)
 				err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop slave in writer in %s (%s)", s.URL, err)
 				}
+				updated = true
 			}
 		} //if bootstrap
 
