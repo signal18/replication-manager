@@ -34,7 +34,7 @@ for key in "${key_types[@]}"; do
         echo "Copying $key from /root/.ssh to /home/repman/.ssh/$key..."
         cp /root/.ssh/$key /home/repman/.ssh/
         chmod 600 /home/repman/.ssh/$key
-        chown chown -R repman:repman /home/repman/.ssh/$key
+        chown -R repman:repman /home/repman/.ssh/$key
     else
         echo "$key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
@@ -47,7 +47,7 @@ for key in "${key_types[@]}"; do
         echo "Copying $pub_key from /root/.ssh to /home/repman/.ssh/$pub_key..."
         cp /root/.ssh/$pub_key /home/repman/.ssh/
         chmod 644 /home/repman/.ssh/$pub_key
-        chown chown -R repman:repman /home/repman/.ssh/$pub_key
+        chown -R repman:repman /home/repman/.ssh/$pub_key
     else
         echo "$pub_key already exists in /home/repman/.ssh or not found in /root/.ssh."
     fi
