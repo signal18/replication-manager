@@ -226,6 +226,12 @@ func (psql *ProxySQL) DropReader(host string, port string) error {
 	return err
 }
 
+func (psql *ProxySQL) DropWriter(host string, port string) error {
+	sql := fmt.Sprintf("DELETE FROM mysql_servers WHERE  hostgroup_id='%s' AND hostname='%s' AND port='%s' ", psql.WriterHG, host, port)
+	_, err := psql.Connection.Exec(sql)
+	return err
+}
+
 func (psql *ProxySQL) Truncate() error {
 	_, err := psql.Connection.Exec("DELETE FROM mysql_servers WHERE hostgroup_id in ('%s','%s')", psql.ReaderHG, psql.WriterHG)
 	return err
@@ -430,5 +436,14 @@ func (psql *ProxySQL) LoadProxiesToRuntime() error {
 
 func (psql *ProxySQL) SaveProxiesToDisk() error {
 	_, err := psql.Connection.Exec("SAVE PROXYSQL SERVERS TO DISK")
+	return err
+}
+
+func (psql *ProxySQL) SetMonitorIsAlsoWriter(v bool) error {
+	var val int
+	if v {
+		val = 1
+	}
+	_, err := psql.Connection.Exec("SET mysql-monitor_writer_is_also_reader = %d", val)
 	return err
 }
