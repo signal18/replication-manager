@@ -22,10 +22,10 @@ func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
 		return nil, fmt.Errorf("Error getting single connection, %s", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(server.GetCluster().Conf.Timeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	defer cancel()
 
-	_, err = conn.ExecContext(ctx, "set sql_log_bin=0")
+	_, err = conn.ExecContext(ctx, "set session sql_log_bin=0")
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("Error disabling binlog, %s", err)
@@ -55,7 +55,7 @@ func (server *ServerMonitor) ConnGetQueryWithTimeout(conn *sqlx.Conn, timeout ti
 
 	err := conn.GetContext(ctx, dest, query, args...)
 	if err != nil {
-		return fmt.Errorf("Error disabling binlog, %s", err)
+		return fmt.Errorf("Error get query (%s): %s", query, err)
 	}
 
 	return nil
@@ -82,7 +82,7 @@ func (server *ServerMonitor) ConnSelectQueryWithTimeout(conn *sqlx.Conn, timeout
 
 	err := conn.SelectContext(ctx, dest, query, args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error select query (%s): %s", query, err)
 	}
 
 	return nil
@@ -109,7 +109,7 @@ func (server *ServerMonitor) ConnExecQueryWithTimeout(conn *sqlx.Conn, timeout t
 
 	res, err := conn.ExecContext(ctx, query, args...)
 	if err != nil {
-		return res, fmt.Errorf("Error disabling binlog, %s", err)
+		return res, fmt.Errorf("Error exec query (%s): %s", query, err)
 	}
 
 	return res, nil

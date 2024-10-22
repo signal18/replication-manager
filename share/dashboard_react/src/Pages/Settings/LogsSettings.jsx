@@ -16,6 +16,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       logSqlInMonLoading,
       logSysLogLoading,
       logLevelLoading,
+      logFileLevelLoading,
       logTaskLoading,
       logWriterEleLoading,
       logSSTLoading,
@@ -87,6 +88,26 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'log-level',
+                value: val
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Log File Level',
+      value: (
+        <LogSlider
+          value={selectedCluster?.config?.logFileLevel}
+          loading={logFileLevelLoading}
+          confirmTitle={`Confirm change 'log-file-level' to: `}
+          isDisabled={user?.grants['global-settings'] == false}
+          onChange={(val) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'log-file-level',
                 value: val
               })
             )

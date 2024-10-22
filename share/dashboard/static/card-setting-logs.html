@@ -66,6 +66,23 @@
                 <span ng-if="selectedCluster.config.logLevel >= 4" class="label label-primary"> DEBUG </span>
             </td>
         </tr>
+        <tr>
+            <th>Log File Level</th>
+        </tr>
+        <tr>
+            <td><md-slider ng-disabled="selectedCluster.apiUsers[user].grants['cluster-settings']==false" md-discrete
+                    flex ng-model="selectedCluster.config.logFileLevel"
+                    ng-change="setsettings('log-file-level',selectedCluster.config.logFileLevel)" step="1" min="0" max="4"
+                    round="0" aria-label="log file level"></md-slider></td>
+        </tr>
+        <tr>
+            <td>
+                <span ng-if="selectedCluster.config.logFileLevel >= 1" class="label label-danger"> ERROR </span> &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logFileLevel >= 2" class="label label-warning"> WARNING </span> &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logFileLevel >= 3" class="label label-info"> INFO </span> &nbsp; &nbsp;
+                <span ng-if="selectedCluster.config.logFileLevel >= 4" class="label label-primary"> DEBUG </span>
+            </td>
+        </tr>
     </table>
 </md-card>
 <md-card>

@@ -804,7 +804,7 @@ func (server *ServerMonitor) Refresh() error {
 
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
-			if server.HavePFS {
+			if server.HavePFS && !server.HasAnyReseedingState() && !(cluster.IsInBackup() && server == cluster.GetBackupServer()) {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
@@ -880,17 +880,7 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
 		if cluster.Conf.MonitorScheduler {
-
-			if !cluster.IsInFailover() && !cluster.InRollingRestart {
-				server.JobsCheckFinished()
-				server.JobsCheckErrors()
-				server.JobsCheckPending()
-			}
-
-			if server.NeedRefreshJobs {
-				server.JobsUpdateEntries()
-			}
-
+			server.JobsCheckStates()
 			server.JobsCheckRunning()
 		}
 
@@ -1395,12 +1385,6 @@ func (server *ServerMonitor) ExecQueryNoBinLog(query string, timeout time.Durati
 		return err
 	}
 	defer conn.Close()
-
-	_, err = server.ConnExecQueryWithTimeout(conn, time.Second, "set sql_log_bin=0")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error disabling binlog %s", err)
-		return err
-	}
 
 	_, err = server.ConnExecQueryWithTimeout(conn, timeout, query)
 	if err != nil {

@@ -215,7 +215,7 @@ func RunCarbon(conf *config.Config) error {
 
 	if conf.LogGraphite {
 		//Log based on repman config
-		loglevel = conf.ToLogrusLevel(conf.LogGraphiteLevel)
+		loglevel = config.ToLogrusLevel(conf.LogGraphiteLevel)
 	} else {
 		//Only log errors
 		loglevel = logrus.ErrorLevel
