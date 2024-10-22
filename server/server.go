@@ -1150,8 +1150,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		tmp_read.Unmarshal(&conf)
 	}
 
-	dynRead := viper.GetViper()
-	dynRead.SetConfigType("toml")
+	savedRead := viper.GetViper()
+	savedRead.SetConfigType("toml")
 
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
@@ -1160,8 +1160,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
 		}
 
-		dynRead := viper.GetViper()
-		dynRead.SetConfigType("toml")
 		//read and set config from all files in the working dir
 		files, err := os.ReadDir(conf.WorkingDir)
 		//load files from the working dir
@@ -1172,23 +1170,28 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if _, err := os.Stat(conf.WorkingDir + "/default.toml"); os.IsNotExist(err) {
 			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
 		} else {
-			dynRead.SetConfigFile(conf.WorkingDir + "/default.toml")
-			err = dynRead.MergeInConfig()
+			savedRead.SetConfigFile(conf.WorkingDir + "/default.toml")
+			err = savedRead.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/default.toml" + err.Error())
 			}
+
+			// repman.Logrus.WithField("cnf", savedConf.AllSettings()).Infof("Dynamic values after merge %s", conf.WorkingDir+"/default.toml")
 		}
 
 		// Preserve overwrite immutable config after restart
 		if _, err := os.Stat(conf.WorkingDir + "/overwrite.toml"); os.IsNotExist(err) {
 			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite.toml")
 		} else {
-			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
-			err = dynRead.MergeInConfig()
+			savedRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
+			err = savedRead.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite.toml" + err.Error())
 			}
 		}
+
+		dynRead := viper.GetViper()
+		dynRead.SetConfigType("toml")
 
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
@@ -1239,6 +1242,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	cfgGroupIndex = 0
 	//extract the default section of the config files
 	cf1 := fistRead.Sub("Default")
+	savedConf := savedRead.Sub("saved-default")
 
 	//cf1.Debug()
 	if cf1 == nil {
@@ -1250,6 +1254,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
+		if savedConf != nil {
+			savedConf.Unmarshal(&conf)
+		}
 
 		// Generate default keygen
 		conf.GenerateKey(repman.Logrus)
