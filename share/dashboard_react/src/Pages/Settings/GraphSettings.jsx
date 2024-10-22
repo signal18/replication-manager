@@ -81,7 +81,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <RegexText
               user={user}
-              value={selectedCluster?.Whitelist.join('\n')}
+              value={selectedCluster?.Whitelist?.join('\n')}
               isSwitchChecked={selectedCluster?.config?.graphiteWhitelist}
               switchConfirmTitle={'Confirm switch settings for graphite-whitelist?'}
               onSwitchChange={() =>
@@ -104,7 +104,7 @@ function GraphSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <RegexText
               user={user}
-              value={selectedCluster?.Blacklist.join('\n')}
+              value={selectedCluster?.Blacklist?.join('\n')}
               isSwitchChecked={selectedCluster?.config?.graphiteBlacklist}
               switchConfirmTitle={'Confirm switch settings for graphite-blacklist?'}
               onSwitchChange={() =>
