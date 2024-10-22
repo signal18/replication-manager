@@ -116,10 +116,10 @@ function Scheduler({
       const weekdayPart = currentValue.split(' ')[5]
       if (weekdayPart !== '*') {
         recType = 'weekly'
-        const arrSelectedWkdays = weekdayPart.split(',')
+        const arrSelectedWkdays = weekdayPart?.split(',')
         let weekdayNames = ''
         const updatedWeekdays = weekDays.map((wd) => {
-          if (arrSelectedWkdays.includes(wd.value.toString())) {
+          if (arrSelectedWkdays?.includes(wd.value.toString())) {
             wd.selected = true
             weekdayNames += `${wd.name}, `
           } else {
