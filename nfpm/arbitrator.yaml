@@ -1,0 +1,18 @@
+name: replication-manager-arbitrator
+version: ${version}
+release: 1
+maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
+description: "Replication Manager for MariaDB and MySQL - arbitrator package"
+license: "GPLv3"
+arch: amd64
+platform: linux
+contents:
+  - src: build/binaries/replication-manager-arb
+    dst: /usr/bin/
+  - src: service/replication-manager-arb.service
+    dst: /etc/systemd/system/replication-manager-arb.service
+    type: config
+  - dst: /etc/replication-manager/
+    type: dir
+  - dst: /var/lib/replication-manager/
+    type: dir
