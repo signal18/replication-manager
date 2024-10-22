@@ -620,7 +620,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 
 	slowqueries := []dbhelper.LogSlow{}
 	query := "SELECT FLOOR(UNIX_TIMESTAMP(start_time)) as start_time, user_host,TIME_TO_SEC(query_time) AS query_time,TIME_TO_SEC(lock_time) AS lock_time,rows_sent,rows_examined,db,last_insert_id,insert_id,server_id,sql_text,thread_id, 0 as rows_affected FROM  replication_manager_schema.slow_log_buffer WHERE start_time > FROM_UNIXTIME(" + strconv.FormatInt(server.MaxSlowQueryTimestamp+1, 10) + ")"
-	err = server.ConnSelectQuery(Conn, &slowqueries, query)
+	err = server.ConnSelectQueryWithTimeout(Conn, time.Duration(cluster.Conf.ReadTimeout)*time.Second, &slowqueries, query)
 	if err != nil {
 		return fmt.Errorf("Error selecting slow queries logs in buffer table on %s: %v", server.URL, err)
 	}

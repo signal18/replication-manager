@@ -420,6 +420,68 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 }
 
 /*
+This function is for printing log based on module log level
+set forcingLog = true if you want to force print
+*/
+func (cluster *Cluster) LogTaskPrintDebug(forcingLog bool, module int, key string, format string, args ...interface{}) int {
+	line := 0
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+	padright := func(str, pad string, lenght int) string {
+		for {
+			str += pad
+			if len(str) > lenght {
+				return str[0:lenght]
+			}
+		}
+	}
+
+	tag := config.GetTagsForLog(module)
+	cliformat := format
+	format = "[" + cluster.Name + "] [" + tag + "] " + padright(config.LvlDbg, " ", 5) + " - " + format
+
+	eligible := cluster.Conf.IsEligibleForPrinting(module, config.LvlDbg)
+	//Write to htlog and tlog
+	if eligible || forcingLog {
+		// line = cluster.LogPrintf(level, format, args...)
+		if cluster.tlog != nil && cluster.tlog.Len > 0 {
+			cluster.tlog.Add(fmt.Sprintf(format, args...))
+		}
+
+		if cluster.Conf.HttpServ {
+			httpformat := fmt.Sprintf("[%s] %s", tag, cliformat)
+			msg := s18log.HttpMessage{
+				Group:     cluster.Name,
+				Level:     config.LvlDbg,
+				Timestamp: stamp,
+				Text:      fmt.Sprintf(httpformat, args...),
+			}
+			line = cluster.htlog.Add(msg)
+			switch module {
+			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+				if line2, ok := cluster.debugLineMap[key]; ok {
+					cluster.LogTask.Update(line2, msg)
+				} else {
+					cluster.debugLineMap[key] = cluster.LogTask.Add(msg)
+				}
+
+			default:
+				if line2, ok := cluster.debugLineMap[key]; ok {
+					cluster.Log.Update(line2, msg)
+				} else {
+					cluster.debugLineMap[key] = cluster.Log.Add(msg)
+				}
+			}
+		}
+
+		if cluster.Conf.Daemon {
+			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Debugf(cliformat, args...)
+		}
+	}
+
+	return line
+}
+
+/*
 This function is for printing state
 */
 func (cluster *Cluster) LogPrintAllStates() {

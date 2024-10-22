@@ -63,6 +63,9 @@ var (
 	JobStateErrorAfter int = 6
 )
 
+// Timeout for getting job records
+var JobTimeout time.Duration = time.Second
+
 func (server *ServerMonitor) JobRun() {
 
 }
@@ -89,36 +92,36 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		return nil
 	}
 
-	_, err = server.ConnExecQuery(Conn, "CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE DATABASE IF NOT EXISTS  replication_manager_schema")
 	if err != nil {
 		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
 	}
-	_, err = server.ConnExecQuery(Conn, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 	if err != nil {
 		return fmt.Errorf("Failed to create jobs table: %v", err)
 	}
 
 	var exist int
-	server.ConnGetQuery(Conn, &exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(CASE WHEN COLUMN_KEY = 'UNI' THEN 1 END) AS num_task_unique FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' GROUP BY table_name")
 
 	if exist == 0 {
-		server.ConnExecQuery(Conn, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
-		_, err := server.ConnExecQuery(Conn, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 		if err != nil {
 			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
 	}
 
-	server.ConnGetQuery(Conn, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'state'")
 	if exist == 0 {
 		//Add column instead of changing create table for compatibility
-		_, err := server.ConnExecQuery(Conn, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD COLUMN state tinyint not null default 0 AFTER `done`")
 		if err != nil {
 			return fmt.Errorf("Failed to add column on jobs table: %v", err)
 		}
 
 		//Add index
-		err = server.ExecQueryNoBinLog("ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
+		_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs ADD INDEX idx3 (task, state)")
 		if err != nil {
 			return fmt.Errorf("Failed to add index on jobs table: %v", err)
 		}
@@ -127,28 +130,10 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobsUpdateEntries() error {
-	cluster := server.ClusterGroup
-	if server.IsLoadingJobList {
-		return errors.New("Waiting for previous update")
-	}
-
-	server.SetLoadingJobList(true)
-	defer server.SetLoadingJobList(false)
-
-	if server.IsDown() {
-		return errors.New("Node is down")
-	}
-
-	Conn, err := server.GetConnNoBinlog(server.Conn)
-	if err != nil {
-		return fmt.Errorf("Failed creating connection to retrieve jobs data: %v", err)
-	}
-	defer Conn.Close()
-
+func (server *ServerMonitor) JobsUpdateEntries(Conn *sqlx.Conn) error {
 	query := "SELECT id, task, port, server, done, state, result, floor(UNIX_TIMESTAMP(start)) start, floor(UNIX_TIMESTAMP(end)) end FROM replication_manager_schema.jobs"
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	rows, err := Conn.QueryContext(ctx, query)
 	if err != nil {
 		cancel()
@@ -157,7 +142,7 @@ func (server *ServerMonitor) JobsUpdateEntries() error {
 			return fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
 		}
 
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), JobTimeout)
 		rows, err = Conn.QueryContext(ctx, query)
 		if err != nil {
 			cancel()
@@ -220,7 +205,7 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	}
 
 	query := "SELECT id, task, done, state FROM replication_manager_schema.jobs WHERE id = (SELECT max(id) FROM replication_manager_schema.jobs WHERE task = '" + task + "')"
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	rows, err := conn.QueryContext(ctx, query)
 	if err != nil {
 		cancel()
@@ -244,14 +229,14 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 
 	//delete row to reset all values
 	if nr > 0 {
-		_, err = server.ConnExecQuery(conn, fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
+		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf("DELETE FROM replication_manager_schema.jobs WHERE ID = %d", t.Id))
 		if err != nil {
 			return 0, fmt.Errorf("Failed to delete row on jobs table for %s: %v", t.Task, err)
 		}
 	}
 
 	//Reuse the same id
-	res, err := server.ConnExecQuery(conn, fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
+	res, err := server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf("INSERT INTO replication_manager_schema.jobs(id, task, port,server,start) VALUES(%d,'%s',%s,'%s', NOW())", t.Id, task, port, repmanhost))
 	if err != nil {
 		return 0, fmt.Errorf("Failed to insert row on jobs table for %s: %v", t.Task, err)
 	}
@@ -1087,7 +1072,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 		}
 		if server.IsMariaDB() && server.HaveMariaDBGTID {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='" + meta.BinLogUuid + "'")
+			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
 			server.StartSlave()
 		}
 	}
@@ -1144,7 +1129,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	}
 
 	go func() {
-		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
+		server.copyTaskDebugLogs(stderr, config.ConstLogModBackupStream, "reseedmysqldump")
 	}()
 
 	err = clientCmd.Wait()
@@ -1215,7 +1200,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 		if task.ct > 10 {
 			cluster.SetState("ERR00060", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00060"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
 			purge := "DELETE from replication_manager_schema.jobs WHERE task='" + task.task + "' AND done=0 AND result IS NULL order by start asc limit  " + strconv.Itoa(task.ct-1)
-			err := server.ExecQueryNoBinLog(purge)
+			_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, purge)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Scheduler error purging replication_manager_schema.jobs %s", err)
 			}
@@ -1253,34 +1238,14 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobsCheckPending() error {
-	cluster := server.ClusterGroup
-	if server.IsDown() {
-		return nil
-	}
-
-	if server.Conn == nil {
-		return nil
-	}
-
+func (server *ServerMonitor) JobsCheckPending(Conn *sqlx.Conn) error {
+	var err error
 	// Prevent interrupting current reseed
 	if server.HasAnyReseedingState() {
 		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
 	}
-
-	Conn, err := server.GetConnNoBinlog(server.Conn)
-	if err != nil {
-		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
-	}
-	defer Conn.Close()
-
-	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
-		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
-		return nil
-	}
-
 	// Set timeout for old task
-	server.ConnExecQuery(Conn, "UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start', done=1, end=now() where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
+	server.ConnExecQueryWithTimeout(Conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET state=5, result='Timeout waiting for job to start', done=1, end=now() where state=0 and start <= DATE_SUB(NOW(), interval 1 hour)")
 
 	tasks, err := server.GetTasksByState(Conn, JobStateHalted)
 	if err != nil {
@@ -1291,7 +1256,7 @@ func (server *ServerMonitor) JobsCheckPending() error {
 		if strings.HasPrefix(task.task, "reseed") || strings.HasPrefix(task.task, "flashback") {
 			res := "Replication-manager is down while preparing task, cancelling operation for data safety."
 			query := "UPDATE replication_manager_schema.jobs SET state=5, done=1, end=now(), result='%s' where task = '%s'"
-			server.ConnExecQuery(Conn, fmt.Sprintf(query, res, task.task))
+			server.ConnExecQueryWithTimeout(Conn, JobTimeout, fmt.Sprintf(query, res, task.task))
 			server.SetNeedRefreshJobs(true)
 		}
 	}
@@ -1299,26 +1264,12 @@ func (server *ServerMonitor) JobsCheckPending() error {
 	return nil
 }
 
-func (server *ServerMonitor) JobsCheckErrors() error {
+func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 	var err error
-
 	cluster := server.ClusterGroup
-	if server.IsDown() {
-		return nil
-	}
-
-	if server.Conn == nil {
-		return nil
-	}
-
-	Conn, err := server.GetConnNoBinlog(server.Conn)
-	if err != nil {
-		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
-	}
-	defer Conn.Close()
 
 	query := "SELECT task, result FROM replication_manager_schema.jobs WHERE done=0 AND state=5"
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	rows, err := Conn.QueryContext(ctx, query)
 	if err != nil {
 		cancel()
@@ -1327,7 +1278,7 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 			return fmt.Errorf("Failed to retrieve data on jobs table: %v", err)
 		}
 
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), JobTimeout)
 		rows, err = Conn.QueryContext(ctx, query)
 		if err != nil {
 			cancel()
@@ -1357,7 +1308,7 @@ func (server *ServerMonitor) JobsCheckErrors() error {
 
 	if ct > 0 {
 		query := "UPDATE replication_manager_schema.jobs SET done=1 WHERE done=0 AND state=5 and task in (%s)"
-		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")))
+		server.ExecQueryNoBinLog(fmt.Sprintf(query, strings.Join(p, ",")), JobTimeout)
 		server.SetNeedRefreshJobs(true)
 	}
 
@@ -1410,12 +1361,12 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Cancelling tasks on %s as requested", server.URL)
 	//Using lock to prevent wrong reads
-	_, err = server.ConnExecQuery(conn, "LOCK TABLES replication_manager_schema.jobs WRITE;")
+	_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "LOCK TABLES replication_manager_schema.jobs WRITE;")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Job can't lock table jobs for cancel task")
 		return err
 	}
-	defer server.ConnExecQuery(conn, "UNLOCK TABLES;")
+	defer server.ConnExecQueryWithTimeout(conn, JobTimeout, "UNLOCK TABLES;")
 
 	query := "UPDATE replication_manager_schema.jobs SET done=1, state=5, result='cancelled by user' WHERE done=0 AND state=0 and task in (?);"
 	if force {
@@ -1431,7 +1382,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	query = conn.Rebind(query)
 
 	var res sql.Result
-	res, err = server.ConnExecQuery(conn, query, args...)
+	res, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, query, args...)
 	if err != nil {
 		return fmt.Errorf("Error exec query for cancel tasks on %s: %s", server.URL, err)
 	}
@@ -1455,10 +1406,18 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 	return err
 }
 
-func (server *ServerMonitor) JobsCheckFinished() error {
+func (server *ServerMonitor) JobsCheckStates() error {
 	var err error
-
 	cluster := server.ClusterGroup
+
+	if cluster.IsInFailover() {
+		return nil
+	}
+
+	if cluster.InRollingRestart {
+		return nil
+	}
+
 	if server.IsDown() {
 		return nil
 	}
@@ -1466,6 +1425,13 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	if server.Conn == nil {
 		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
+
+	if server.IsLoadingJobList {
+		return errors.New("Waiting for previous update")
+	}
+
+	server.SetLoadingJobList(true)
+	defer server.SetLoadingJobList(false)
 
 	conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
@@ -1478,11 +1444,32 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 		return nil
 	}
 
+	server.JobsCheckFinished(conn)
+	server.JobsCheckErrors(conn)
+	server.JobsCheckPending(conn)
+
+	if server.NeedRefreshJobs {
+		err = server.JobsUpdateEntries(conn)
+		return err
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
+	var err error
+	cluster := server.ClusterGroup
+
+	if cluster.Conf.SuperReadOnly && cluster.GetMaster().URL != server.URL && server.HasSuperReadOnlyCapability() {
+		cluster.SetState("WARN0114", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0114"], server.URL), ErrFrom: "JOB"})
+		return nil
+	}
+
 	var logs [][]string = make([][]string, 0)
 	tasks, err := server.GetTasksByState(conn, JobStateFinished, 1)
 	for _, task := range tasks {
 		var logrow []string
-		if err := server.AfterJobProcess(task); err != nil {
+		if err := server.AfterJobProcess(conn, task); err != nil {
 			logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			logs = append(logs, logrow)
 		} else {
@@ -1505,7 +1492,7 @@ func (server *ServerMonitor) JobsCheckFinished() error {
 	return err
 }
 
-func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
+func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error {
 	//Still use done=1 and state=3 to prevent unwanted changes
 	query := "UPDATE replication_manager_schema.jobs SET result=CONCAT(result,'%s'), state=%d WHERE id=%d AND done=1 AND state=3"
 	errStr := ""
@@ -1528,13 +1515,13 @@ func (server *ServerMonitor) AfterJobProcess(task DBTask) error {
 				// Only set as failed if no error connection
 				if server.Conn != nil {
 					// Set state as 6 to differ post-job error with in-job error (code: 5)
-					server.ExecQueryNoBinLog(fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
+					server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, "\n"+errStr, JobStateErrorAfter, task.id))
 				}
 				return err
 			}
 		}
 	}
-	server.ExecQueryNoBinLog(fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
+	server.ConnExecQueryWithTimeout(conn, JobTimeout, fmt.Sprintf(query, errStr, JobStateSuccess, task.id))
 	return nil
 }
 
@@ -2137,6 +2124,22 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 			//Remove empty lines
 			if strings.TrimSpace(s.Text()) != "" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
+			}
+		}
+	}
+}
+
+func (server *ServerMonitor) copyTaskDebugLogs(r io.Reader, module int, task string) {
+	cluster := server.ClusterGroup
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			//Remove empty lines
+			if strings.TrimSpace(s.Text()) != "" {
+				cluster.LogTaskPrintDebug(cluster.Conf.Verbose, module, server.Name+task, "[%s] %s", server.Name, s.Text())
 			}
 		}
 	}
@@ -3066,17 +3069,10 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	}
 	defer conn.Close()
 
-	_, err = server.ConnExecQuery(conn, "LOCK TABLES replication_manager_schema.jobs WRITE;")
-	if err != nil {
-		return err
-	}
-
-	defer server.ConnExecQuery(conn, "UNLOCK TABLES;")
-
 	if done == 1 {
-		_, err = server.ConnExecQuery(conn, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=?, end=NOW() WHERE task =?;", done, state, result, task)
+		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=?, end=NOW() WHERE task =?;", done, state, result, task)
 	} else {
-		_, err = server.ConnExecQuery(conn, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
+		_, err = server.ConnExecQueryWithTimeout(conn, JobTimeout, "UPDATE replication_manager_schema.jobs SET done=?, state=?, result=? WHERE task =?;", done, state, result, task)
 	}
 	if err != nil {
 		return err

@@ -707,6 +707,10 @@ func (cluster *Cluster) SetLogLevel(level int) {
 	cluster.Conf.LogLevel = level
 }
 
+func (cluster *Cluster) SetLogFileLevel(level int) {
+	cluster.Conf.LogFileLevel = level
+}
+
 func (cluster *Cluster) SetRejoin(check bool) {
 	cluster.Conf.Autorejoin = check
 }
@@ -1810,7 +1814,7 @@ func (cluster *Cluster) SetLogGraphiteLevel(value int) {
 		cluster.Conf.LogGraphite = false
 	}
 
-	cluster.clog.SetLevel(cluster.Conf.ToLogrusLevel(value))
+	cluster.clog.SetLevel(config.ToLogrusLevel(value))
 }
 
 func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {

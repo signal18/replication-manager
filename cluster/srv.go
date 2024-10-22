@@ -804,7 +804,7 @@ func (server *ServerMonitor) Refresh() error {
 
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
-			if server.HavePFS {
+			if server.HavePFS && !server.HasAnyReseedingState() && !(cluster.IsInBackup() && server == cluster.GetBackupServer()) {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
@@ -880,17 +880,7 @@ func (server *ServerMonitor) Refresh() error {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
 		if cluster.Conf.MonitorScheduler {
-
-			if !cluster.IsInFailover() && !cluster.InRollingRestart {
-				server.JobsCheckFinished()
-				server.JobsCheckErrors()
-				server.JobsCheckPending()
-			}
-
-			if server.NeedRefreshJobs {
-				server.JobsUpdateEntries()
-			}
-
+			server.JobsCheckStates()
 			server.JobsCheckRunning()
 		}
 
@@ -1319,7 +1309,7 @@ func (server *ServerMonitor) ResetMaster() (string, error) {
 }
 
 func (server *ServerMonitor) ResetPFSQueries() error {
-	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest")
+	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest", 5*time.Second)
 }
 
 func (server *ServerMonitor) StopSlaveIOThread() (string, error) {
@@ -1382,24 +1372,26 @@ func (server *ServerMonitor) KillQuery(id string) (string, error) {
 	return dbhelper.KillQuery(server.Conn, id, server.DBVersion)
 }
 
-func (server *ServerMonitor) ExecQueryNoBinLog(query string) error {
+func (server *ServerMonitor) ExecQueryNoBinLog(query string, timeout time.Duration) (err error) {
 	cluster := server.ClusterGroup
-	Conn, err := server.GetNewDBConn()
+	DbConn := server.Conn
+	if DbConn == nil {
+		return fmt.Errorf("No connection pool on %s: query:%s", query, err)
+	}
+
+	conn, err := server.GetConnNoBinlog(DbConn)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error connection in exec query no log %s %s", query, err)
 		return err
 	}
-	defer Conn.Close()
-	_, err = Conn.Exec("set sql_log_bin=0")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error disabling binlog %s", err)
-		return err
-	}
-	_, err = Conn.Exec(query)
+	defer conn.Close()
+
+	_, err = server.ConnExecQueryWithTimeout(conn, timeout, query)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error query %s %s", query, err)
 		return err
 	}
+
 	return err
 }
 
@@ -1437,7 +1429,7 @@ func (server *ServerMonitor) InstallPlugin(name string) error {
 	} else {
 		if val.Status == "NOT INSTALLED" {
 			query := "INSTALL PLUGIN " + name + " SONAME '" + val.Library.String + "'"
-			err := server.ExecQueryNoBinLog(query)
+			err := server.ExecQueryNoBinLog(query, 5*time.Second)
 			if err != nil {
 				return err
 			}
@@ -1457,7 +1449,7 @@ func (server *ServerMonitor) UnInstallPlugin(name string) error {
 	} else {
 		if val.Status == "ACTIVE" {
 			query := "UNINSTALL PLUGIN " + name
-			err := server.ExecQueryNoBinLog(query)
+			err := server.ExecQueryNoBinLog(query, 5*time.Second)
 			if err != nil {
 				return err
 			}
@@ -1636,12 +1628,12 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 	}
 	defer Conn.Close()
 
-	_, err = server.ConnExecQuery(Conn, "USE "+database)
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "USE "+database)
 	if err != nil {
 		return 0, err
 	}
 
-	_, err = server.ConnExecQuery(Conn, "set sql_log_bin=0")
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "set sql_log_bin=0")
 	if err != nil {
 		return 0, err
 	}
@@ -1649,7 +1641,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 	cleantables := []string{}
 
 	query := "SHOW TABLES LIKE '" + table + "_%'"
-	err = server.ConnSelectQuery(Conn, &cleantables, query)
+	err = server.ConnSelectQueryWithTimeout(Conn, 5*time.Second, &cleantables, query)
 	if err != nil {
 		return dropped, err
 	}
@@ -1663,7 +1655,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 
 		// Start dropping
 		for _, row := range cleantables {
-			if _, err := server.ConnExecQuery(Conn, "DROP TABLE "+database+"."+row); err != nil {
+			if _, err := server.ConnExecQueryWithTimeout(Conn, 5*time.Second, "DROP TABLE "+database+"."+row); err != nil {
 				return dropped, err
 			} else {
 				dropped++
@@ -1676,7 +1668,7 @@ func (server *ServerMonitor) RotateTableToTime(database string, table string) (i
 
 func (server *ServerMonitor) WaitInnoDBPurge() error {
 	query := "SET GLOBAL innodb_purge_rseg_truncate_frequency=1"
-	server.ExecQueryNoBinLog(query)
+	server.ExecQueryNoBinLog(query, 5*time.Second)
 	ct := 0
 	for {
 		if server.EngineInnoDB.Get("history_list_lenght_inside_innodb") == "0" {
