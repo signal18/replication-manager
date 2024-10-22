@@ -1080,7 +1080,7 @@ func (cluster *Cluster) PushConfigToGit(tok string, user string, dir string, nam
 	}
 }
 
-func (cluster *Cluster) PushConfigToExtraDir(dir string, name string) {
+func (cluster *Cluster) PushConfigToBackupDir() {
 	var err error
 	cluster.IsExportPush = true
 	defer func() {

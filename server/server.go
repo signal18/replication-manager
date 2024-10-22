@@ -127,6 +127,7 @@ type ReplicationManager struct {
 	HasSavingConfigQueue                             bool                           `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                           `json:"isGitPull"`
 	CanConnectVault                                  bool                           `json:"canConnectVault"`
+	IsExportPush                                     bool                           `json:"-"`
 	errorConnectVault                                error                          `json:"-"`
 	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
 	fileHook                                         log.Hook
@@ -1149,57 +1150,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		tmp_read.Unmarshal(&conf)
 	}
 
-	dynRead := viper.GetViper()
-	dynRead.SetConfigType("toml")
+	savedRead := viper.GetViper()
+	savedRead.SetConfigType("toml")
 
-	/*
-		//load files from the backup dir
-		files, err := os.ReadDir(conf.ConfDirBackup)
-		if err != nil {
-			repman.Logrus.Infof("No backup directory %s ", conf.ConfDirBackup)
-		} else {
-			if _, err := os.Stat(conf.ConfDirBackup + "/default.toml"); os.IsNotExist(err) {
-				repman.Logrus.Infof("No monitoring extra saved config found %s", conf.ConfDirBackup+"/default.toml")
-			} else {
-				fistRead.SetConfigFile(conf.ConfDirBackup + "/default.toml")
-				err := fistRead.MergeInConfig()
-				if err != nil {
-					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/default.toml" + err.Error())
-				}
-			}
-			// unneeded already in datadir
-			// load files from the backup dir
-			if _, err := os.Stat(conf.ConfDirBackup + "/overwrite-default.toml"); os.IsNotExist(err) {
-				repman.Logrus.Infof("No monitoring overwrite config found %s", conf.ConfDirBackup+"/overwrite-default.toml")
-			} else {
-				dynRead.SetConfigFile(conf.ConfDirBackup + "/overwrite-default.toml")
-				err = dynRead.MergeInConfig()
-				if err != nil {
-					repman.Logrus.Error("Config error in " + conf.ConfDirBackup + "/overwrite-default.toml" + err.Error())
-				}
-			}
-
-			// read and set config from all files in the backup dir
-			for _, f := range files {
-				if f.IsDir() && f.Name() != "graphite" {
-					fistRead.SetConfigName(f.Name())
-					dynRead.SetConfigName("overwrite-" + f.Name())
-					if _, err := os.Stat(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
-						if f.Name() != "overwrite" {
-							repman.Logrus.Warning("No monitoring saved config found " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
-						}
-					} else {
-						repman.Logrus.Infof("Parsing saved config from working directory %s ", conf.ConfDirBackup+"/"+f.Name()+"/"+f.Name()+".toml")
-						fistRead.SetConfigFile(conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml")
-						err := fistRead.MergeInConfig()
-						if err != nil {
-							repman.Logrus.Fatal("Config error in " + conf.ConfDirBackup + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
-						}
-					}
-				}
-			}
-		}
-	*/
 	// Proceed dynamic config
 	if fistRead.GetBool("default.monitoring-save-config") {
 		//read working dir from config
@@ -1207,8 +1160,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
 		}
 
-		dynRead := viper.GetViper()
-		dynRead.SetConfigType("toml")
 		//read and set config from all files in the working dir
 		files, err := os.ReadDir(conf.WorkingDir)
 		//load files from the working dir
@@ -1219,23 +1170,28 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		if _, err := os.Stat(conf.WorkingDir + "/default.toml"); os.IsNotExist(err) {
 			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
 		} else {
-			dynRead.SetConfigFile(conf.WorkingDir + "/default.toml")
-			err = dynRead.MergeInConfig()
+			savedRead.SetConfigFile(conf.WorkingDir + "/default.toml")
+			err = savedRead.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/default.toml" + err.Error())
 			}
+
+			// repman.Logrus.WithField("cnf", savedConf.AllSettings()).Infof("Dynamic values after merge %s", conf.WorkingDir+"/default.toml")
 		}
 
 		// Preserve overwrite immutable config after restart
 		if _, err := os.Stat(conf.WorkingDir + "/overwrite.toml"); os.IsNotExist(err) {
 			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/overwrite.toml")
 		} else {
-			dynRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
-			err = dynRead.MergeInConfig()
+			savedRead.SetConfigFile(conf.WorkingDir + "/overwrite.toml")
+			err = savedRead.MergeInConfig()
 			if err != nil {
 				repman.Logrus.Error("Config error in " + conf.WorkingDir + "/overwrite.toml" + err.Error())
 			}
 		}
+
+		dynRead := viper.GetViper()
+		dynRead.SetConfigType("toml")
 
 		for _, f := range files {
 			if f.IsDir() && f.Name() != "graphite" {
@@ -1268,9 +1224,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 			}
 		}
 
-		//fmt.Printf("%+v\n", dynRead.AllSettings())
-		//fmt.Printf("%s\n", dynRead.AllKeys())
-
 	} else {
 		repman.Logrus.Warning("No monitoring-save-config variable in default section config change lost on restart")
 	}
@@ -1289,6 +1242,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 	cfgGroupIndex = 0
 	//extract the default section of the config files
 	cf1 := fistRead.Sub("Default")
+	savedConf := savedRead.Sub("saved-default")
 
 	//cf1.Debug()
 	if cf1 == nil {
@@ -1300,6 +1254,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config) {
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
+		if savedConf != nil {
+			savedConf.Unmarshal(&conf)
+		}
 
 		// Generate default keygen
 		conf.GenerateKey(repman.Logrus)
@@ -1505,6 +1462,45 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		repman.VersionConfs[cluster] = confs
 	}
 	return clusterconf
+}
+
+func (repman *ReplicationManager) PushConfigToBackupDir() {
+	var err error
+	repman.IsExportPush = true
+	defer func() {
+		repman.IsExportPush = false
+	}()
+
+	if repman.Conf.WithEmbed == "ON" {
+		return
+	}
+
+	srcDir := repman.Conf.WorkingDir
+	dstDir := repman.Conf.ConfDirBackup
+
+	_, err = os.Stat(srcDir)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error accessing source dir (%s): %s", srcDir, err)
+		return
+	}
+
+	_, err = os.Stat(dstDir)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(dstDir, 0755)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error creating destination dir (%s)  : %s", dstDir, err)
+			return
+		}
+	}
+
+	err = misc.CopyFilesWithSuffix(srcDir, dstDir, ".toml")
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Config : error copying *.toml files to destination dir (%s)  : %s", dstDir, err)
+		return
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Config : Success copying *.toml files to destination dir :%s", dstDir)
+
 }
 
 /*
@@ -2453,24 +2449,20 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		s := t
 		keys := t.Keys()
 		for _, key := range keys {
-			if _, ok := repman.ServerScopeList[key]; ok {
-				v, ok := repman.Conf.ImmuableFlagMap[key]
-				if !ok {
+			v, ok := repman.Conf.ImmuableFlagMap[key]
+			if !ok {
+				s.Delete(key)
+			} else {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
 					s.Delete(key)
-				} else {
-					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+				} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
 						s.Delete(key)
-					} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
-						v := repman.GetEncryptedValueFromMemory(key)
-						if v != "" {
-							s.Set(key, v)
-						} else {
-							s.Delete(key)
-						}
 					}
 				}
-			} else {
-				s.Delete(key)
 			}
 		}
 
@@ -2530,29 +2522,25 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 	s := t
 	keys := t.Keys()
 	for _, key := range keys {
-		if _, ok := repman.ServerScopeList[key]; ok {
-			_, ok := repman.Conf.ImmuableFlagMap[key]
-			if ok {
+		_, ok := repman.Conf.ImmuableFlagMap[key]
+		if ok {
+			s.Delete(key)
+		} else {
+			v, ok := repman.DefaultFlagMap[key]
+			if !ok {
 				s.Delete(key)
 			} else {
-				v, ok := repman.DefaultFlagMap[key]
-				if !ok {
+				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
 					s.Delete(key)
-				} else {
-					if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) {
+				} else if _, ok = repman.Conf.Secrets[key]; ok {
+					v := repman.GetEncryptedValueFromMemory(key)
+					if v != "" {
+						s.Set(key, v)
+					} else {
 						s.Delete(key)
-					} else if _, ok = repman.Conf.Secrets[key]; ok {
-						v := repman.GetEncryptedValueFromMemory(key)
-						if v != "" {
-							s.Set(key, v)
-						} else {
-							s.Delete(key)
-						}
 					}
 				}
 			}
-		} else {
-			s.Delete(key)
 		}
 	}
 
@@ -2648,6 +2636,7 @@ func (repman *ReplicationManager) Save() error {
 		// Dynamic
 		new_h, err := repman.SaveDynamic()
 		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "error while saving dynamic params: %v", err)
 			return err
 		}
 		h, ok := repman.CheckSumConfig["saved"]
@@ -2664,6 +2653,7 @@ func (repman *ReplicationManager) Save() error {
 		// Immutable
 		new_h, err = repman.SaveImmutable()
 		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "error while saving immutable params: %v", err)
 			return err
 		}
 
@@ -2682,6 +2672,8 @@ func (repman *ReplicationManager) Save() error {
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
 		}
+
+		repman.PushConfigToBackupDir()
 	}
 
 	return nil
