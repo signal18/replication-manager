@@ -75,7 +75,7 @@ func (cluster *Cluster) SSTRunReceiverToRestic(filename string) (string, error) 
 	resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "backup", "--stdin", "--stdin-filename", filename)
 	newEnv := append(os.Environ(), "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
 	newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
-	newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticAwsBucket)
+	newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticAwsBucket+"/"+cluster.Name)
 	newEnv = append(newEnv, "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
 	resticcmd.Env = newEnv
 
