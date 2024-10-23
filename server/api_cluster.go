@@ -1771,6 +1771,24 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.BackupResticPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-password")
 		mycluster.Conf.Secrets["backup-restic-password"] = new_secret
+	case "backup-mydumper-options":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupMyDumperOptions = string(val)
+	case "backup-myloader-options":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupMyLoaderOptions = string(val)
+	case "backup-mysqldump-options":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupMysqldumpOptions = string(val)
 	default:
 		return errors.New("Setting not found")
 	}
