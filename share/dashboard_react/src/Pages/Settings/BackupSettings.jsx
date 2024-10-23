@@ -475,7 +475,7 @@ function BackupSettings({ selectedCluster, user }) {
                   key: 'Backup restic aws bucket',
                   value: (
                     <TextForm
-                      value={selectedCluster?.config?.backupResticAwsBucket}
+                      value={selectedCluster?.config?.backupResticRepository}
                       confirmTitle={`Confirm backup-restic-repository to `}
                       className={styles.textbox}
                       onSave={(value) =>
