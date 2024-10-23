@@ -1242,7 +1242,7 @@ func (conf *Config) GetDecryptedPassword(key string, value string) string {
 		value = strings.TrimPrefix(value, "hash_")
 		p := crypto.Password{Key: conf.SecretKey}
 		if conf.LogConfigLoad {
-			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("GetDecryptedPassword: key(%s) value(%s) %s", key, value, conf.SecretKey)
+			log.WithFields(log.Fields{"cluster": "none", "type": "log", "module": "config"}).Infof("GetDecryptedPassword: decrypting key `%s`: %s", key, value)
 		}
 
 		if value != "" {
