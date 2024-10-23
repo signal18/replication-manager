@@ -651,7 +651,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticBinaryPath, "backup-restic-binary-path", "/usr/bin/restic", "Path to restic binary")
 	flags.StringVar(&conf.BackupResticAwsAccessKeyId, "backup-restic-aws-access-key-id", "admin", "Restic backup AWS key id")
 	flags.StringVar(&conf.BackupResticAwsAccessSecret, "backup-restic-aws-access-secret", "secret", "Restic backup AWS key sercret")
-	flags.StringVar(&conf.BackupResticAwsBucket, "backup-restic-aws-bucket", "s3:https://s3.signal18.io/backups", "Restic backend repository")
+	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
 	flags.BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
@@ -1439,7 +1439,7 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 func (repman *ReplicationManager) InitRestic() error {
 	os.Setenv("AWS_ACCESS_KEY_ID", repman.Conf.BackupResticAwsAccessKeyId)
 	os.Setenv("AWS_SECRET_ACCESS_KEY", repman.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
-	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticAwsBucket)
+	os.Setenv("RESTIC_REPOSITORY", repman.Conf.BackupResticRepository)
 	os.Setenv("RESTIC_PASSWORD", repman.Conf.GetDecryptedValue("backup-restic-password"))
 	//os.Setenv("RESTIC_FORGET_ARGS", repman.Conf.BackupResticStoragePolicy)
 	return nil
