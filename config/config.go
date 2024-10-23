@@ -624,7 +624,7 @@ type Config struct {
 	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticAwsAccessKeyId                string                 `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"-"`
 	BackupResticAwsAccessSecret               string                 `mapstructure:"backup-restic-aws-access-secret"  toml:"backup-restic-aws-access-secret" json:"-"`
-	BackupResticRepository                    string                 `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
+	BackupResticAwsBucket                     string                 `mapstructure:"backup-restic-aws-bucket" toml:"backup-restic-aws-bucket" json:"backupResticAwsBucket"`
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`

@@ -972,9 +972,9 @@
           "type": "string",
           "x-go-name": "BackupResticBinaryPath"
         },
-        "backupResticRepository": {
+        "backupResticAwsBucket": {
           "type": "string",
-          "x-go-name": "BackupResticRepository"
+          "x-go-name": "backupResticAwsBucket"
         },
         "backupStreaming": {
           "type": "boolean",

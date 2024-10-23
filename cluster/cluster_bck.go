@@ -87,15 +87,15 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	if cluster.Conf.BackupResticAws {
 		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
 		newEnv = append(newEnv, "AWS_SECRET_ACCESS_KEY="+cluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret"))
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticRepository)
+		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.Conf.BackupResticAwsBucket+"/"+cluster.Name)
 	} else {
-		if _, err := os.Stat(cluster.ArchiveDir); os.IsNotExist(err) {
-			err := os.MkdirAll(cluster.ArchiveDir, os.ModePerm)
+		if _, err := os.Stat(cluster.GetResticLocalDir()); os.IsNotExist(err) {
+			err := os.MkdirAll(cluster.GetResticLocalDir(), os.ModePerm)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.ArchiveDir, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create archive directory failed: %s,%s", cluster.GetResticLocalDir(), err)
 			}
 		}
-		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.ArchiveDir)
+		newEnv = append(newEnv, "RESTIC_REPOSITORY="+cluster.GetResticLocalDir())
 	}
 	return newEnv
 }

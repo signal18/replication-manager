@@ -1742,6 +1742,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-file-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
+	case "backup-restic-aws-bucket":
+		mycluster.Conf.BackupResticAwsBucket = value
+	case "backup-restic-aws-access-key-id":
+		mycluster.Conf.BackupResticAwsAccessKeyId = value
+	case "backup-restic-aws-access-secret":
+		mycluster.Conf.BackupResticAwsAccessSecret = value
+	case "backup-restic-password":
+		mycluster.Conf.BackupResticPassword = value
 	default:
 		return errors.New("Setting not found")
 	}
