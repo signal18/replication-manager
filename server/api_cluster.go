@@ -1748,7 +1748,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		mycluster.Conf.BackupResticAwsBucket = string(val)
+		mycluster.Conf.BackupResticRepository = string(val)
 	case "backup-restic-aws-access-key-id":
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
 	case "backup-restic-aws-access-secret":
