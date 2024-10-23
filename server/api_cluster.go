@@ -7,6 +7,7 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1742,6 +1743,34 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-file-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
+	case "backup-restic-aws-bucket":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsBucket = string(val)
+	case "backup-restic-aws-access-key-id":
+		mycluster.Conf.BackupResticAwsAccessKeyId = value
+	case "backup-restic-aws-access-secret":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupResticAwsAccessSecret = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
+		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
+	case "backup-restic-password":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupResticPassword = string(val)
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.BackupResticPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-password")
+		mycluster.Conf.Secrets["backup-restic-password"] = new_secret
 	default:
 		return errors.New("Setting not found")
 	}
