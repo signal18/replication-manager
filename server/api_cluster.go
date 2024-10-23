@@ -1748,8 +1748,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
 	case "backup-restic-aws-access-secret":
 		mycluster.Conf.BackupResticAwsAccessSecret = value
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.BackupResticAwsAccessSecret
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-aws-access-secret")
+		mycluster.Conf.Secrets["backup-restic-aws-access-secret"] = new_secret
 	case "backup-restic-password":
 		mycluster.Conf.BackupResticPassword = value
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.BackupResticPassword
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-password")
+		mycluster.Conf.Secrets["backup-restic-password"] = new_secret
 	default:
 		return errors.New("Setting not found")
 	}
