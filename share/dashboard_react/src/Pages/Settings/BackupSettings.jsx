@@ -78,6 +78,7 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm
           value={selectedCluster?.config?.backupMysqldumpOptions}
           confirmTitle={`Confirm backup-mysqldump-options to `}
+          maxLength={1024}
           className={styles.textbox}
           onSave={(value) =>
             dispatch(
@@ -97,6 +98,7 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm
           value={selectedCluster?.config?.backupMyDumperOptions}
           confirmTitle={`Confirm backup-mydumper-options to `}
+          maxLength={1024}
           className={styles.textbox}
           onSave={(value) =>
             dispatch(
@@ -116,6 +118,7 @@ function BackupSettings({ selectedCluster, user }) {
         <TextForm
           value={selectedCluster?.config?.backupMyLoaderOptions}
           confirmTitle={`Confirm backup-myloader-options to `}
+          maxLength={1024}
           className={styles.textbox}
           onSave={(value) =>
             dispatch(
