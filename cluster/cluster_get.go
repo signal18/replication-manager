@@ -1289,3 +1289,7 @@ func (cluster *Cluster) GetVaultToken() {
 		//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "COUCOU test %s", authInfo.Auth.ClientToken)
 	}
 }
+
+func (cluster *Cluster) GetResticLocalDir() string {
+	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+}

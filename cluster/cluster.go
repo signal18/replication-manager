@@ -220,7 +220,6 @@ type Cluster struct {
 	InBinlogBackup            bool                        `json:"inBinlogBackup"`
 	InResticBackup            bool                        `json:"inResticBackup"`
 	InRollingRestart          bool                        `json:"inRollingRestart"`
-	ArchiveDir                string                      `json:"archiveDir"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -352,7 +351,6 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
-	cluster.ArchiveDir = cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
 	if cluster.Conf.Arbitration {
 		cluster.Status = ConstMonitorStandby
 	} else {
