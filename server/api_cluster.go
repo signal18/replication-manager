@@ -1743,12 +1743,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-file-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
-	case "backup-restic-aws-bucket":
+	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		mycluster.Conf.BackupResticAwsBucket = string(val)
+		mycluster.Conf.BackupResticRepository = string(val)
 	case "backup-restic-aws-access-key-id":
 		mycluster.Conf.BackupResticAwsAccessKeyId = value
 	case "backup-restic-aws-access-secret":
