@@ -43,7 +43,7 @@ function DBServers({ selectedCluster, user }) {
         })
       )
     }
-  }, [clusterServers])
+  }, [clusterServers, clusterMaster?.id])
 
   const showGridView = () => {
     setViewType('grid')
@@ -237,7 +237,8 @@ function DBServers({ selectedCluster, user }) {
       hasMysqlGtid,
       selectedCluster?.name,
       selectedCluster?.config?.backupPhysicalType,
-      selectedCluster?.config?.backupLogicalType
+      selectedCluster?.config?.backupLogicalType,
+      clusterMaster?.id
     ]
   )
 

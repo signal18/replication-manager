@@ -74,8 +74,10 @@ function Maintenance({ selectedCluster, user }) {
   useEffect(() => {
     if (backupSnapshots?.length > 0) {
       setSnapshotData(backupSnapshots)
+    } else {
+      setSnapshotData([])
     }
-  }, [backupSnapshots])
+  }, [selectedCluster?.name,backupSnapshots])
 
   const columns = useMemo(
     () => [
