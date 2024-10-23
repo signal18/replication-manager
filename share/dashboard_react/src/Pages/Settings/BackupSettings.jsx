@@ -73,6 +73,66 @@ function BackupSettings({ selectedCluster, user }) {
       )
     },
     {
+      key: 'Mysqldump options',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupMysqldumpOptions}
+          confirmTitle={`Confirm backup-mysqldump-options to `}
+          maxLength={1024}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-mysqldump-options',
+                value: btoa(value)
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Mydumper options',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupMyDumperOptions}
+          confirmTitle={`Confirm backup-mydumper-options to `}
+          maxLength={1024}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-mydumper-options',
+                value: btoa(value)
+              })
+            )
+          }
+        />
+      )
+    },
+    {
+      key: 'Myloader options',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupMyLoaderOptions}
+          confirmTitle={`Confirm backup-myloader-options to `}
+          maxLength={1024}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-myloader-options',
+                value: btoa(value)
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Physical Backup',
       value: (
         <Flex className={styles.dropdownContainer}>
