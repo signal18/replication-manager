@@ -2433,8 +2433,8 @@ func (repman *ReplicationManager) GetEncryptedValueFromMemory(key string) string
 }
 
 func (repman *ReplicationManager) Overwrite(has_changed bool) error {
-
 	if repman.Conf.ConfRewrite {
+		// Open the overwrite.toml file for writing
 		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -2444,8 +2444,18 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 		}
 		defer file.Close()
 
-		readconf, _ := toml.Marshal(repman.Conf)
-		t, _ := toml.LoadBytes(readconf)
+		// Marshal the configuration to TOML bytes
+		readconf, err := toml.Marshal(repman.Conf)
+		if err != nil {
+			return fmt.Errorf("failed to marshal config: %v", err)
+		}
+
+		// Load TOML content from bytes
+		t, err := toml.LoadBytes(readconf)
+		if err != nil {
+			return fmt.Errorf("failed to load TOML bytes: %v", err)
+		}
+
 		s := t
 		keys := t.Keys()
 		for _, key := range keys {
@@ -2453,7 +2463,9 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 			if !ok {
 				s.Delete(key)
 			} else {
-				if ok && fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) && (repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
+				// Ensure secrets are updated correctly
+				if fmt.Sprintf("%v", s.Get(key)) == fmt.Sprintf("%v", v) &&
+					(repman.Conf.Secrets[key].Value == repman.Conf.Secrets[key].OldValue || repman.Conf.Secrets[key].OldValue == "") {
 					s.Delete(key)
 				} else if _, ok = repman.Conf.Secrets[key]; ok && repman.Conf.Secrets[key].Value != v {
 					v := repman.GetEncryptedValueFromMemory(key)
@@ -2466,27 +2478,46 @@ func (repman *ReplicationManager) Overwrite(has_changed bool) error {
 			}
 		}
 
-		file.WriteString("[overwrite-default]\n")
+		// Write a header before the TOML content
+		if _, err := file.WriteString("[overwrite-default]\n"); err != nil {
+			return fmt.Errorf("failed to write header to file: %v", err)
+		}
+
+		// Write the modified TOML content to the file
 		_, err = s.WriteTo(file)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to overwrite.toml file: %s", err)
+			return err
 		}
 
+		// Sync the file to disk
+		err = file.Sync()
+		if err != nil {
+			return fmt.Errorf("failed to sync file: %v", err)
+		}
+
+		// Calculate the MD5 hash of the file content
 		new_h := md5.New()
-		if _, err := io.Copy(new_h, file); err != nil {
+		_, err = file.Seek(0, 0) // Reset file cursor to the beginning
+		if err != nil {
+			return fmt.Errorf("failed to seek in file: %v", err)
+		}
+
+		if _, err = io.Copy(new_h, file); err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+			return err
 		}
 
+		// Check if the file content has changed by comparing hashes
 		h, ok := repman.CheckSumConfig["overwrite"]
-		if !ok {
-			has_changed = true
-		}
-		if ok && !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
+		if !ok || !bytes.Equal(h.Sum(nil), new_h.Sum(nil)) {
 			has_changed = true
 		}
 
-		repman.CheckSumConfig["overwrite"] = new_h
-
+		// Update the checksum with the new hash only if changes are detected
+		if has_changed {
+			repman.CheckSumConfig["overwrite"] = new_h
+		}
 	}
 
 	return nil
@@ -2507,6 +2538,7 @@ func (repman *ReplicationManager) WaitAndSave() {
 func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 	new_h := md5.New()
 
+	// Open the file for writing
 	file, err := os.OpenFile(repman.Conf.WorkingDir+"/default.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		if os.IsPermission(err) {
@@ -2516,9 +2548,21 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 	}
 	defer file.Close()
 
+	// Write initial section header to the file
 	file.WriteString("[saved-default]\n")
-	readconf, _ := toml.Marshal(repman.Conf)
-	t, _ := toml.LoadBytes(readconf)
+
+	// Marshal the configuration into TOML bytes
+	readconf, err := toml.Marshal(repman.Conf)
+	if err != nil {
+		return new_h, fmt.Errorf("failed to marshal config: %v", err)
+	}
+
+	// Load the TOML content
+	t, err := toml.LoadBytes(readconf)
+	if err != nil {
+		return new_h, fmt.Errorf("failed to load TOML bytes: %v", err)
+	}
+
 	s := t
 	keys := t.Keys()
 	for _, key := range keys {
@@ -2544,42 +2588,66 @@ func (repman *ReplicationManager) SaveDynamic() (hash.Hash, error) {
 		}
 	}
 
+	// Write the modified TOML to the file
 	_, err = s.WriteTo(file)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default.toml file: %s", err)
-	}
-	//fmt.Printf("SAVE CLUSTER IMMUABLE MAP : %s", repman.Conf.ImmuableFlagMap)
-	//fmt.Printf("SAVE CLUSTER DYNAMIC MAP : %s", repman.Conf.DynamicFlagMap)
-	_, err = io.Copy(new_h, file)
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting hash: %s", err)
+		return new_h, err
 	}
 
-	return new_h, err
+	// Ensure the file is synced to disk before calculating hash
+	err = file.Sync()
+	if err != nil {
+		return new_h, fmt.Errorf("failed to sync file: %v", err)
+	}
+
+	// Calculate the hash of the file content after writing
+	_, err = file.Seek(0, 0) // Reset file cursor to the beginning
+	if err != nil {
+		return new_h, fmt.Errorf("failed to seek in file: %v", err)
+	}
+
+	_, err = io.Copy(new_h, file)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during copying file content to hash: %s", err)
+		return new_h, err
+	}
+
+	return new_h, nil
 }
 
 func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
 	new_h := md5.New()
 
+	// Open the immutable.toml file for writing
 	file, err := os.OpenFile(repman.Conf.WorkingDir+"/immutable.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		if os.IsPermission(err) {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/"+"/immutable.toml")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", repman.Conf.WorkingDir+"/immutable.toml")
 		}
 		return new_h, err
 	}
 	defer file.Close()
 
-	readconf, _ := toml.Marshal(repman.Conf)
-	t, _ := toml.LoadBytes(readconf)
+	// Marshal the configuration to TOML bytes
+	readconf, err := toml.Marshal(repman.Conf)
+	if err != nil {
+		return new_h, fmt.Errorf("failed to marshal config: %v", err)
+	}
+
+	// Load TOML content from bytes
+	t, err := toml.LoadBytes(readconf)
+	if err != nil {
+		return new_h, fmt.Errorf("failed to load TOML bytes: %v", err)
+	}
+
 	s := t
 	keys := t.Keys()
 	for _, key := range keys {
 		if _, ok := repman.ServerScopeList[key]; ok {
 			val, ok := repman.Conf.ImmuableFlagMap[key]
 			if ok {
-				_, ok := repman.Conf.Secrets[key]
-				if ok {
+				if _, ok := repman.Conf.Secrets[key]; ok {
 					v := repman.GetEncryptedValueFromMemory(key)
 					if v != "" {
 						s.Set(key, v)
@@ -2597,17 +2665,32 @@ func (repman *ReplicationManager) SaveImmutable() (hash.Hash, error) {
 		}
 	}
 
+	// Write the modified TOML content to the file
 	_, err = s.WriteTo(file)
 	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to default immutable.toml file: %s", err)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during writing to immutable.toml file: %s", err)
+		return new_h, err
 	}
 
-	if _, err := io.Copy(new_h, file); err != nil {
+	// Sync file content to disk
+	err = file.Sync()
+	if err != nil {
+		return new_h, fmt.Errorf("failed to sync file: %v", err)
+	}
+
+	// Calculate the hash of the file content
+	_, err = file.Seek(0, 0) // Reset file cursor to the beginning
+	if err != nil {
+		return new_h, fmt.Errorf("failed to seek in file: %v", err)
+	}
+
+	// Copy the file content to the hash object
+	if _, err = io.Copy(new_h, file); err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during overwriting default immutable hash: %s", err)
+		return new_h, err
 	}
 
-	return new_h, err
-
+	return new_h, nil
 }
 
 func (repman *ReplicationManager) Save() error {
