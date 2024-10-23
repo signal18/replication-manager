@@ -411,7 +411,7 @@ function BackupSettings({ selectedCluster, user }) {
                       setSetting({
                         clusterName: selectedCluster?.name,
                         setting: 'backup-restic-password',
-                        value: value
+                        value: btoa(value)
                       })
                     )
                   }
@@ -464,7 +464,7 @@ function BackupSettings({ selectedCluster, user }) {
                           setSetting({
                             clusterName: selectedCluster?.name,
                             setting: 'backup-restic-aws-access-secret',
-                            value: value
+                            value: btoa(value)
                           })
                         )
                       }
@@ -483,7 +483,7 @@ function BackupSettings({ selectedCluster, user }) {
                           setSetting({
                             clusterName: selectedCluster?.name,
                             setting: 'backup-restic-aws-bucket',
-                            value: value
+                            value: btoa(value)
                           })
                         )
                       }
