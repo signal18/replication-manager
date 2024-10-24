@@ -542,7 +542,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master found from replication")
 		return errors.New("No master found from replication")
 	}
-	if cluster.master != nil && mycurrentmaster != nil {
+	if cluster.master != nil && cluster.master.Id != server.Id && mycurrentmaster != nil {
 		if cluster.master.URL == mycurrentmaster.URL {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Cancel rejoin, found same leader already from replication %s	", mycurrentmaster.URL)
 			return errors.New("Same master found from replication")

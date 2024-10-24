@@ -255,11 +255,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
 					}
-					// Prevent unneeded set master
-					if cluster.master != cluster.Servers[k] || cluster.master == nil {
-						cluster.master = cluster.Servers[k]
-						cluster.master.SetMaster()
-					}
+
+					cluster.master = cluster.Servers[k]
+					cluster.master.SetMaster()
 
 					// Set master when master reconnect after become suspect
 					if cluster.master == cluster.Servers[k] && cluster.master.State == stateSuspect {
@@ -370,11 +368,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 
 			_, err := s.GetSlaveStatus(s.ReplicationSourceName)
-
 			if err != nil {
-				// if cluster.Conf.DynamicTopology {
 				cluster.Conf.MultiMaster = false
-				// }
 			}
 		}
 		if srw > 1 {
@@ -471,7 +466,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					// }
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
-					if replMaster != nil && replMaster.Id != cluster.master.Id && !cluster.Conf.MultiTierSlave {
+					if replMaster != nil && replMaster.Id != cluster.master.Id && cluster.master.Id != sl.Id && !cluster.Conf.MultiTierSlave {
 						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 
 						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {

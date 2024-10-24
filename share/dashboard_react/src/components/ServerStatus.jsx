@@ -18,6 +18,14 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
           setStateValue('SLAVE_LATE')
           setColorScheme('yellow')
           break
+        case 'RelayErr':
+          setStateValue('RELAY_ERROR')
+          setColorScheme('orange')
+          break
+        case 'RelayLate':
+          setStateValue('RELAY_LATE')
+          setColorScheme('yellow')
+          break
         case 'StandAlone':
           setStateValue('STANDALONE')
           setColorScheme('gray')
@@ -26,6 +34,9 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
           setColorScheme('blue')
           break
         case 'Slave':
+          setColorScheme('gray')
+          break
+        case 'Relay':
           setColorScheme('gray')
           break
         case 'Suspect':
