@@ -466,7 +466,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					// }
 					replMaster, _ := cluster.GetMasterFromReplication(sl)
 
-					if replMaster != nil && replMaster.Id != cluster.master.Id && !cluster.Conf.MultiTierSlave {
+					if replMaster != nil && replMaster.Id != cluster.master.Id && cluster.master.Id != sl.Id && !cluster.Conf.MultiTierSlave {
 						cluster.SetState("ERR00064", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00064"], sl.URL, cluster.master.URL, replMaster.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 
 						if cluster.Conf.ReplicationNoRelay && cluster.Status == ConstMonitorActif {
