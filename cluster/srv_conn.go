@@ -13,7 +13,6 @@ import (
 
 // All next query will not use binlog, except changing database via USE
 func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
-	cluster := server.ClusterGroup
 	if db == nil {
 		return nil, nil
 	}
@@ -23,10 +22,10 @@ func (server *ServerMonitor) GetConnNoBinlog(db *sqlx.DB) (*sqlx.Conn, error) {
 		return nil, fmt.Errorf("Error getting single connection, %s", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ReadTimeout)*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), JobTimeout)
 	defer cancel()
 
-	_, err = conn.ExecContext(ctx, "set sql_log_bin=0")
+	_, err = conn.ExecContext(ctx, "set session sql_log_bin=0")
 	if err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("Error disabling binlog, %s", err)
@@ -42,11 +41,11 @@ func (server *ServerMonitor) ConnGetQuery(conn *sqlx.Conn, dest interface{}, que
 		return errors.New("No connection established")
 	}
 
-	return server.ConnGetQueryWithTimeout(conn, dest, query, time.Duration(cluster.Conf.ReadTimeout)*time.Second, args...)
+	return server.ConnGetQueryWithTimeout(conn, time.Duration(cluster.Conf.ReadTimeout)*time.Second, dest, query, args...)
 }
 
 // This function will execute query and will use default read timeout
-func (server *ServerMonitor) ConnGetQueryWithTimeout(conn *sqlx.Conn, dest interface{}, query string, timeout time.Duration, args ...interface{}) error {
+func (server *ServerMonitor) ConnGetQueryWithTimeout(conn *sqlx.Conn, timeout time.Duration, dest interface{}, query string, args ...interface{}) error {
 	if conn == nil {
 		return nil
 	}
@@ -56,7 +55,7 @@ func (server *ServerMonitor) ConnGetQueryWithTimeout(conn *sqlx.Conn, dest inter
 
 	err := conn.GetContext(ctx, dest, query, args...)
 	if err != nil {
-		return fmt.Errorf("Error disabling binlog, %s", err)
+		return fmt.Errorf("Error get query (%s): %s", query, err)
 	}
 
 	return nil
@@ -69,11 +68,11 @@ func (server *ServerMonitor) ConnSelectQuery(conn *sqlx.Conn, dest interface{}, 
 		return errors.New("No connection established")
 	}
 
-	return server.ConnSelectQueryWithTimeout(conn, dest, query, time.Duration(cluster.Conf.ReadTimeout)*time.Second, args...)
+	return server.ConnSelectQueryWithTimeout(conn, time.Duration(cluster.Conf.ReadTimeout)*time.Second, dest, query, args...)
 }
 
 // This function will execute query and will use default read timeout
-func (server *ServerMonitor) ConnSelectQueryWithTimeout(conn *sqlx.Conn, dest interface{}, query string, timeout time.Duration, args ...interface{}) error {
+func (server *ServerMonitor) ConnSelectQueryWithTimeout(conn *sqlx.Conn, timeout time.Duration, dest interface{}, query string, args ...interface{}) error {
 	if conn == nil {
 		return nil
 	}
@@ -83,7 +82,7 @@ func (server *ServerMonitor) ConnSelectQueryWithTimeout(conn *sqlx.Conn, dest in
 
 	err := conn.SelectContext(ctx, dest, query, args...)
 	if err != nil {
-		return err
+		return fmt.Errorf("Error select query (%s): %s", query, err)
 	}
 
 	return nil
@@ -96,11 +95,11 @@ func (server *ServerMonitor) ConnExecQuery(conn *sqlx.Conn, query string, args .
 		return nil, errors.New("No connection established")
 	}
 
-	return server.ConnExecQueryWithTimeout(conn, query, time.Duration(cluster.Conf.ReadTimeout)*time.Second, args...)
+	return server.ConnExecQueryWithTimeout(conn, time.Duration(cluster.Conf.ReadTimeout)*time.Second, query, args...)
 }
 
 // This function will execute query and will use parameter for timeout
-func (server *ServerMonitor) ConnExecQueryWithTimeout(conn *sqlx.Conn, query string, timeout time.Duration, args ...interface{}) (sql.Result, error) {
+func (server *ServerMonitor) ConnExecQueryWithTimeout(conn *sqlx.Conn, timeout time.Duration, query string, args ...interface{}) (sql.Result, error) {
 	if conn == nil {
 		return nil, nil
 	}
@@ -110,7 +109,7 @@ func (server *ServerMonitor) ConnExecQueryWithTimeout(conn *sqlx.Conn, query str
 
 	res, err := conn.ExecContext(ctx, query, args...)
 	if err != nil {
-		return res, fmt.Errorf("Error disabling binlog, %s", err)
+		return res, fmt.Errorf("Error exec query (%s): %s", query, err)
 	}
 
 	return res, nil

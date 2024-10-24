@@ -198,6 +198,7 @@ type Cluster struct {
 	idSchedulerDbsjobsSsh     cron.EntryID                `json:"-"`
 	idSchedulerRollingReprov  cron.EntryID                `json:"-"`
 	idSchedulerAlertDisable   cron.EntryID                `json:"-"`
+	debugLineMap              map[string]int              `json:"-"`
 	WaitingRejoin             int                         `json:"waitingRejoin"`
 	WaitingSwitchover         int                         `json:"waitingSwitchover"`
 	WaitingFailover           int                         `json:"waitingFailover"`
@@ -309,6 +310,7 @@ const (
 // Init initial cluster definition
 func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, RepMgrVersion string, RepMgrHostname string) error {
 	cluster.Confs = confs
+	cluster.debugLineMap = make(map[string]int)
 
 	cluster.Conf = confs.ConfInit
 
@@ -679,7 +681,7 @@ func (cluster *Cluster) Run() {
 		}
 
 		if cluster.clog != nil {
-			clevel := cluster.Conf.ToLogrusLevel(cluster.Conf.LogGraphiteLevel)
+			clevel := config.ToLogrusLevel(cluster.Conf.LogGraphiteLevel)
 			if cluster.clog.GetLevel() != clevel {
 				cluster.clog.SetLevel(clevel)
 			}

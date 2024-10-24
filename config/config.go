@@ -95,8 +95,9 @@ type Config struct {
 	MonitoringCloseStateScript                string                 `mapstructure:"monitoring-close-state-script" toml:"monitoring-close-state-script" json:"monitoringCloseStateScript"`
 	Interactive                               bool                   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool                   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
-	LogFile                                   string                 `mapstructure:"log-file" toml:"log-file" json:"logFile"`
-	LogSyslog                                 bool                   `mapstructure:"log-syslog" toml:"log-syslog" json:"logSyslog"`
+	LogFile                                   string                 `scope:"server" mapstructure:"log-file" toml:"log-file" json:"logFile"`
+	LogFileLevel                              int                    `scope:"server" mapstructure:"log-file-level" toml:"log-file-level" json:"logFileLevel"`
+	LogSyslog                                 bool                   `scope:"server" mapstructure:"log-syslog" toml:"log-syslog" json:"logSyslog"`
 	LogLevel                                  int                    `mapstructure:"log-level" toml:"log-level" json:"logLevel"`
 	LogRotateMaxSize                          int                    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
@@ -2150,7 +2151,7 @@ func (conf *Config) SetLogOutput(out io.Writer) {
 	log.SetOutput(out)
 }
 
-func (conf *Config) ToLogrusLevel(l int) log.Level {
+func ToLogrusLevel(l int) log.Level {
 	switch l {
 	case 2:
 		return log.WarnLevel

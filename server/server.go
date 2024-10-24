@@ -114,6 +114,7 @@ type ReplicationManager struct {
 	cloud18CheckSum                                  hash.Hash                      `json:"-"`
 	clog                                             *clog.Logger                   `json:"-"`
 	Logrus                                           *log.Logger                    `json:"-"`
+	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
 	sync.Mutex
@@ -1491,7 +1492,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.CpuProfile = cpuprofile
 	repman.clog = clog.New()
 
-	repman.clog.SetLevel(repman.Conf.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
+	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
 		fcpupprof, err := os.Create(repman.CpuProfile)
 		if err != nil {
@@ -1534,7 +1535,7 @@ func (repman *ReplicationManager) Run() error {
 			MaxSize:    repman.Conf.LogRotateMaxSize,
 			MaxBackups: repman.Conf.LogRotateMaxBackup,
 			MaxAge:     repman.Conf.LogRotateMaxAge,
-			Level:      log.GetLevel(),
+			Level:      config.ToLogrusLevel(repman.Conf.LogFileLevel),
 			Formatter: &log.TextFormatter{
 				DisableColors:   true,
 				TimestampFormat: "2006-01-02 15:04:05",
@@ -1545,6 +1546,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.Logrus.WithError(err).Error("Can't init log file")
 		}
 		repman.Logrus.AddHook(hook)
+		repman.fileHook = hook
 	}
 
 	if !repman.Conf.Daemon {

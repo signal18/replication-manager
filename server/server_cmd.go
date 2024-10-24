@@ -115,6 +115,7 @@ func initLogFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.LogRotateMaxAge, "log-rotate-max-age", 7, "Log rotate max age")
 
 	cmd.Flags().IntVar(&conf.LogLevel, "log-level", 3, "Log verbosity level. Default 3 (INFO)")
+	cmd.Flags().IntVar(&conf.LogFileLevel, "log-file-level", 2, "Log verbosity level. Default 2 (WARNING)")
 	cmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
 	cmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 2, "Log Config Load Level. Default 2 (WARNING)")
 	cmd.Flags().BoolVar(&conf.LogSecrets, "log-secrets", false, "Decrypt values of secrets and log them")

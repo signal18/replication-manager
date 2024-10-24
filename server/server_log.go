@@ -100,3 +100,32 @@ func (repman *ReplicationManager) LogPanicToFile(r interface{}) {
 		"stacktrace": string(debug.Stack()),
 	}).Error("Application terminated unexpectedly")
 }
+
+// Function to update the log level for the RotateFileHook
+func (repman *ReplicationManager) UpdateFileHookLogLevel(hook *s18log.RotateFileHook, newLogLevel int) error {
+	// Update the log level in the hook's configuration
+	hook.Config.Level = config.ToLogrusLevel(newLogLevel)
+	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+	text := fmt.Sprintf("File log level changed successfully to %s", hook.Config.Level.String())
+
+	if repman.tlog.Len > 0 {
+		repman.tlog.Add(text)
+	}
+
+	if repman.Conf.HttpServ {
+		msg := s18log.HttpMessage{
+			Group:     "none",
+			Level:     "INFO",
+			Timestamp: stamp,
+			Text:      text,
+		}
+
+		for _, cl := range repman.Clusters {
+			cl.Log.Add(msg)
+		}
+	}
+
+	repman.Logrus.WithFields(log.Fields{"new_file_log_level": hook.Config.Level.String()}).Info(text)
+
+	return nil
+}

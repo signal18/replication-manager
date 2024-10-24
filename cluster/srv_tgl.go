@@ -10,6 +10,8 @@
 package cluster
 
 import (
+	"time"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
@@ -68,7 +70,7 @@ func (server *ServerMonitor) SwitchQueryResponseTime() {
 		server.HaveQueryResponseTimeLog = false
 	} else {
 		server.InstallPlugin("QUERY_RESPONSE_TIME")
-		server.ExecQueryNoBinLog("set global query_response_time_stats=1")
+		server.ExecQueryNoBinLog("set global query_response_time_stats=1", 5*time.Second)
 		server.HaveQueryResponseTimeLog = true
 	}
 }
@@ -101,9 +103,9 @@ func (server *ServerMonitor) SwitchSlowQueryCapturePFS() {
 		return
 	}
 	if !server.HavePFSSlowQueryLog {
-		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')")
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='YES' WHERE NAME IN('events_statements_history_long','events_stages_history')", 5*time.Second)
 	} else {
-		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')")
+		server.ExecQueryNoBinLog("update performance_schema.setup_consumers set ENABLED='NO' WHERE NAME IN('events_statements_history_long','events_stages_history')", 5*time.Second)
 	}
 }
 

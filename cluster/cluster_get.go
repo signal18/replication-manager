@@ -299,6 +299,10 @@ func (cluster *Cluster) GetMaxFail() int {
 func (cluster *Cluster) GetLogLevel() int {
 	return cluster.Conf.LogLevel
 }
+
+func (cluster *Cluster) GetLogFileLevel() int {
+	return cluster.Conf.LogFileLevel
+}
 func (cluster *Cluster) GetSwitchSync() bool {
 	return cluster.Conf.SwitchSync
 }
