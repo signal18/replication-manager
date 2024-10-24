@@ -734,6 +734,11 @@ func (cluster *Cluster) GetTopologyFromConf() string {
 			cluster.Conf.Topology = topoMasterSlave
 		}
 	}
+
+	if cluster.Conf.TopologyTarget == "" || cluster.Conf.TopologyTarget == topoUnknown {
+		cluster.Conf.TopologyTarget = cluster.Conf.Topology
+	}
+
 	return cluster.Conf.Topology
 }
 

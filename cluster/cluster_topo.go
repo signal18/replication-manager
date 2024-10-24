@@ -255,11 +255,9 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
 					}
-					// Prevent unneeded set master
-					if cluster.master != cluster.Servers[k] || cluster.master == nil {
-						cluster.master = cluster.Servers[k]
-						cluster.master.SetMaster()
-					}
+
+					cluster.master = cluster.Servers[k]
+					cluster.master.SetMaster()
 
 					// Set master when master reconnect after become suspect
 					if cluster.master == cluster.Servers[k] && cluster.master.State == stateSuspect {
@@ -370,11 +368,8 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			}
 
 			_, err := s.GetSlaveStatus(s.ReplicationSourceName)
-
 			if err != nil {
-				// if cluster.Conf.DynamicTopology {
 				cluster.Conf.MultiMaster = false
-				// }
 			}
 		}
 		if srw > 1 {
