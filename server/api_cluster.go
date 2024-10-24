@@ -714,7 +714,10 @@ func (repman *ReplicationManager) bootstrapTopology(mycluster *cluster.Cluster, 
 		mycluster.SetMultiMasterRing(false)
 		mycluster.SetMultiMasterWsrep(true)
 		mycluster.Topology = config.TopoMultiMasterWsrep
+	default:
+		return
 	}
+	mycluster.Conf.TopologyTarget = mycluster.Topology
 }
 
 func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {
