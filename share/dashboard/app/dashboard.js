@@ -66,6 +66,21 @@ app.controller('DashboardController', function (
   $scope.missingProxyTags = [];
   $scope.promise = undefined;
   $scope.processlist = {};
+  
+  $scope.isEditing = {};
+  $scope.editableData = {};
+
+  // Start editing by setting the item id in isEditing and initializing editableData
+  $scope.startEditing = function(key, value) {
+    $scope.isEditing[key] = true;
+    $scope.editableData[key] = value;  // Store the initial value in editableData
+  };
+
+  // Cancel editing by removing the item from editableData and resetting isEditing
+  $scope.cancelEditing = function(itemId) {
+    $scope.isEditing[itemId] = false;        // Reset editing state for this item
+    delete $scope.editableData[itemId];      // Discard changes by deleting from editableData
+};
 
   $scope.UpdateProcessList = function (newData) {
     // Iterate over each key in the new data
@@ -1885,6 +1900,10 @@ app.controller('DashboardController', function (
 
   $scope.setsettings = function (setting, value) {
     if (confirm("Confirm change '" + setting.toString() + "' to: " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + value);
+  };
+
+  $scope.setSettingsEncode = function (setting, value) {
+    if (confirm("Confirm change '" + setting.toString() + "' to: " + value.toString())) httpGetWithoutResponse(getClusterUrl() + '/settings/actions/set/' + setting + '/' + btoa(value));
   };
 
   $scope.setsettingsnullable = function (setting, value) {

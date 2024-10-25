@@ -16,10 +16,60 @@
                 <md-select name="selectedLogicalBackup" ng-model="selectedLogicalBackup">
                     <md-option ng-selected="{{key ==  selectedCluster.config.backupLogicalType}}" ng-repeat="(key, value) in settings.backupLogicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
+                Mysqldump options: <br/>
+                <div ng-if="!isEditing['backupMysqldumpOptions']" style="display: flex;">
+                    <input type="text" ng-model="selectedCluster.config.backupMysqldumpOptions" readonly placeholder="Original text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="startEditing('backupMysqldumpOptions', selectedCluster.config.backupMysqldumpOptions)">Edit</button>
+                </div>
+                <div ng-if="isEditing['backupMysqldumpOptions']" style="display: flex;">
+                    <input type="text" ng-model="editableData.backupMysqldumpOptions" placeholder="Edit text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="setSettingsEncode('backup-mysqldump-options',editableData.backupMysqldumpOptions)">Save</button>
+                    <button ng-click="cancelEditing('backupMysqldumpOptions')">Cancel</button>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
+                MyDumper options: <br/>
+                <div ng-if="!isEditing['backupMyDumperOptions']" style="display: flex;">
+                    <input type="text" ng-model="selectedCluster.config.backupMyDumperOptions" readonly placeholder="Original text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="startEditing('backupMyDumperOptions', selectedCluster.config.backupMyDumperOptions)">Edit</button>
+                </div>
+                <div ng-if="isEditing['backupMyDumperOptions']" style="display: flex;">
+                    <input type="text" ng-model="editableData.backupMyDumperOptions" placeholder="Edit text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="setSettingsEncode('backup-mydumper-options',editableData.backupMyDumperOptions)">Save</button>
+                    <button ng-click="cancelEditing('backupMyDumperOptions')">Cancel</button>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
+                MyLoader options: <br/>
+                <div ng-if="!isEditing['backupMyLoaderOptions']" style="display: flex;">
+                    <input type="text" ng-model="selectedCluster.config.backupMyLoaderOptions" readonly placeholder="Original text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="startEditing('backupMyLoaderOptions', selectedCluster.config.backupMyLoaderOptions)">Edit</button>
+                </div>
+                <div ng-if="isEditing['backupMyLoaderOptions']" style="display: flex;">
+                    <input type="text" ng-model="editableData.backupMyLoaderOptions" placeholder="Edit text here" style="flex: 1; margin-right: 8px;"/>
+                    <button ng-click="setSettingsEncode('backup-myloader-options',editableData.backupMyLoaderOptions)">Save</button>
+                    <button ng-click="cancelEditing('backupMyLoaderOptions')">Cancel</button>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
                 Physical Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.backupPhysicalType }}</span>
                 <md-select name="selectedPhysicalBackup" ng-model="selectedPhysicalBackup">
                     <md-option ng-selected="{{key ==  selectedCluster.config.backupPhysicalType}}" ng-repeat="(key, value) in settings.backupPhysicalList" ng-value="key">{{key}}</md-option>
                 </md-select>
+            </td>
+        </tr>
+        <tr>
+            <td colspan=4>
                 Binlog Backup: <span style="display:inline-block;;margin: 2px;" class="label label-success">{{selectedCluster.config.binlogCopyMode }}</span>
                 <md-select name="selectedBinlogBackup" ng-model="selectedBinlogBackup">
                     <md-option ng-selected="{{key ==  selectedCluster.config.binlogCopyMode}}" ng-repeat="(key, value) in settings.backupBinlogList" ng-value="key">{{key}}</md-option>
