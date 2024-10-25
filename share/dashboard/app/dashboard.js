@@ -2033,13 +2033,20 @@ app.controller('DashboardController', function (
       parent: angular.element(document.body),
     });
   };
-  $scope.closeNewUserDialog = function () {
+  $scope.closeNewUserDialog = function (username, acls) {
     $mdDialog.hide({ contentElement: '#myNewUserDialog', });
-    if (confirm("Confirm Creating Cluster " + $scope.dlgAddUserName)) {
-      angular.forEach($scope.newUserAcls, function (value, index) {
-        //   console.log(value);
-        alert(value.grant + ':' + value.enable);
-      });
+    selectedAcls = acls.filter(item => item.enable).map(item => `${item.grant}`).join(' ')
+    if (confirm("Confirm Creating Cluster User '" + username + "' with ACL: [" + selectedAcls + "]")) {
+      $http.post(getClusterUrl() + "/users/add", { "username": username, "grants": selectedAcls }).then(function (res) {
+        if (res.status == 200) {
+          alert("User '" + username + "' added for cluster " + $scope.selectedClusterName)
+        } else {
+          alert("Failed to add '" + username + "' to cluster " + $scope.selectedClusterName + ": " + res)
+        }
+      },
+        function (err) {
+          alert("Error while creating user: "+err)
+        });
     };
 
     $mdSidenav('right').close();
