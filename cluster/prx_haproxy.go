@@ -274,8 +274,16 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 	}
 
-	result, err := haRuntime.ApiCmd("show stat")
+	if proxy.Version == "" {
+		vstring, err := haRuntime.GetVersion()
+		if err == nil {
+			if vstring != "" {
+				proxy.Version = vstring
+			}
+		}
+	}
 
+	result, err := haRuntime.ApiCmd("show stat")
 	if err != nil {
 		cluster.SetState("ERR00052", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00052"], err), ErrFrom: "MON"})
 		return err

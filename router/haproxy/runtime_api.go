@@ -27,6 +27,25 @@ func (r *Runtime) ApiCmd(cmd string) (string, error) {
 	return string(result), nil
 }
 
+func (r *Runtime) GetVersion() (string, error) {
+	conn, err := net.DialTimeout("tcp", r.Host+":"+r.Port, DefaultTimeout)
+	if err != nil {
+		return "", err
+	}
+	defer conn.Close()
+	_, err = conn.Write([]byte("show version \n"))
+	if err != nil {
+
+		return "", err
+	}
+	//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "haproxy entering  readall stats: ")
+	result, err := io.ReadAll(conn)
+	if err != nil {
+		return "", err
+	}
+	return string(result), nil
+}
+
 func (r *Runtime) SetMaster(host string, port string) (string, error) {
 
 	if net.ParseIP(host) == nil {
