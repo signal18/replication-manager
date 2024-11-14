@@ -4,7 +4,7 @@ release: 1
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - arbitrator package"
 license: "GPLv3"
-arch: amd64
+arch: ${architecture}
 platform: linux
 contents:
   - src: build/binaries/replication-manager-arb
