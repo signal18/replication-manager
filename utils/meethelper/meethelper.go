@@ -13,7 +13,7 @@ import (
 )
 
 const meetUrl string = "https://meet.signal18.io"
-const meetToken string = "wmy8p6nugffx5cfnzzzy8y79ty"
+const meetToken string = "***"
 
 // Test Channel Id : ranzunsjkfrftnregi789br13e
 
