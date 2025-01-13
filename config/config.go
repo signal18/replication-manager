@@ -1239,7 +1239,8 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"cloud18-dba-user-credentials":          {"", ""},
 		"cloud18-sponsor-user-credentials":      {"", ""},
 		"vault-token":                           {"", ""},
-		"api-oauth-client-secret":               {"", ""}}
+		"api-oauth-client-secret":               {"", ""},
+		"meet-token":                            {"", ""}}
 
 	for k := range conf.Secrets {
 

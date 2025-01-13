@@ -16,8 +16,9 @@ const authConfig = {
     }
   },
   3: { // Mattermost API
-    resolveUrl: (apiUrl) => `https://meet.signal18.io/api/v4/${apiUrl}`,
-    getToken: () => localStorage.getItem('meet_token')
+    //resolveUrl: (apiUrl) => `https://meet.signal18.io/api/v4/${apiUrl}`,
+    resolveUrl: (apiUrl) => `/meet/${apiUrl}`,
+    getToken: () => localStorage.getItem('user_token')
   }
 };
 
@@ -56,7 +57,6 @@ const handleResponse = async (response) => {
       }
     }
   }
-
   return { data, status: response.status };
 };
 
@@ -71,6 +71,7 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
   const options = {
     method,
     headers,
+    credentials: 'include',
     ...(params ? { body: JSON.stringify(params) } : {})
   };
 

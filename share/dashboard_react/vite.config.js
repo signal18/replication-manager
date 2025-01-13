@@ -13,6 +13,7 @@ export default defineConfig({
         secure: false
       }
     }
+    
   },
   plugins: [react(), viteCompression({ algorithm: 'gzip' }), basicSSL()],
   css: {

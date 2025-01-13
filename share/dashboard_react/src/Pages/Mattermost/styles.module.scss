@@ -1,0 +1,76 @@
+.mattermostContainer {
+  margin-top: 1rem;  
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;  
+  
+  .accordionPanel {
+    padding: 1rem;  // 16px / 16 = 1rem
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;  // 12px / 16 = 0.75rem
+
+    h2 {
+      font-size: 1.125rem;  // 18px / 16 = 1.125rem
+      color: var(--primary-color);
+      margin-bottom: 0.75rem;  // 12px / 16 = 0.75rem
+    }
+
+    .channelSelect {
+      width: 100%;
+      padding: 0.5rem;  // 8px / 16 = 0.5rem
+      border-radius: 0.25rem;  // 4px / 16 = 0.25rem
+      border: 1px solid var(--gray-color);
+      font-size: 0.875rem;  // 14px / 16 = 0.875rem
+      color: var(--text-color);
+      background-color: var(--background-color);
+      transition: border-color 0.3s ease;
+
+      &:focus {
+        outline: none;
+        border-color: var(--secondary-color);
+      }
+    }
+
+    .messageInput {
+      width: 100%;
+      padding: 0.75rem;  // 12px / 16 = 0.75rem
+      border-radius: 0.25rem;  // 4px / 16 = 0.25rem
+      border: 1px solid var(--gray-color);
+      font-size: 0.875rem;  // 14px / 16 = 0.875rem
+      color: var(--text-color);
+      margin-top: 0.5rem;  // 8px / 16 = 0.5rem
+      min-height: 7.5rem;  // 120px / 16 = 7.5rem
+      resize: vertical;
+      background-color: var(--background-color);
+      transition: border-color 0.3s ease;
+
+      &:focus {
+        outline: none;
+        border-color: var(--secondary-color);
+      }
+    }
+
+    .sendButton {
+      padding: 0.625rem 1.25rem;  // 10px / 16 = 0.625rem, 20px / 16 = 1.25rem
+      background-color: var(--primary-color);
+      color: var(--white-color);
+      font-size: 0.875rem;  // 14px / 16 = 0.875rem
+      border: none;
+      border-radius: 0.25rem;  // 4px / 16 = 0.25rem
+      cursor: pointer;
+      margin-top: 0.75rem;  // 12px / 16 = 0.75rem
+      transition: background-color 0.3s ease;
+
+      &:hover {
+        background-color: var(--secondary-color);
+      }
+
+      &:active {
+        background-color: var(--tertiary-color);
+      }
+    }
+  }
+}
+

@@ -49,6 +49,7 @@ import (
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -204,7 +205,18 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
-	router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
+	// Meet Handler
+	//router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
+	router.Handle("/meet/info", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.MeetInfoHandler)),
+	))
+	router.Handle("/meet/read/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.ReadMeetMessageHandler)),
+	))
+	router.Handle("/meet/post/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.PostMeetHandler)),
+	))
+	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
 	router.HandleFunc("/peer/{encodedpeer}/{route:.*}", repman.DynamicPeerHandler)
@@ -1661,4 +1673,89 @@ func logResponse(resp *http.Response) {
 		log.Printf("Response Body: %s", string(body))
 		resp.Body = io.NopCloser(bytes.NewReader(body)) // Reset the body for further use
 	}
+}
+
+// Meet Handler
+// to send user info to the front (userID, All available channels, allusers id for private chat)
+func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.CreateMeetClient()
+	info := struct {
+		UserID            string            `json:"user_id"`
+		ChannelIdsOpen    map[string]string `json:"channel_ids_open"`
+		ChannelIdsPrivate map[string]string `json:"channel_ids_private"`
+		ChannelIdsDirect  map[string]string `json:"channel_ids_direct"`
+		AllUsers          map[string]string `json:"all_users"`
+	}{
+		UserID:            meetClient.UserID,
+		ChannelIdsOpen:    meetClient.ChannelIdsOpen,
+		ChannelIdsPrivate: meetClient.ChannelIdsPrivate,
+		ChannelIdsDirect:  meetClient.ChannelIdsDirect,
+		AllUsers:          meetClient.AllUser,
+	}
+
+	err := json.NewEncoder(w).Encode(info)
+	if err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.CreateMeetClient()
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	messages, err := meetClient.ReadMessages(channelID)
+	if messages == nil || err != nil {
+		http.Error(w, "Error reading messages", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.NewEncoder(w).Encode(messages)
+	if err != nil {
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.CreateMeetClient()
+	var request struct {
+		Message string `json:"message"`
+	}
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err := json.NewDecoder(r.Body).Decode(&request)
+	if err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	err = meetClient.PostMessage(channelID, request.Message)
+	if err != nil {
+		http.Error(w, "Error posting message", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

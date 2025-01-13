@@ -43,6 +43,7 @@ import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
 import RMIconButton from '../../components/RMIconButton'
 import { setBaseURL } from '../../redux/authSlice'
+import MattermostManager from '../Mattermost'
 
 function Home() {
   const dispatch = useDispatch()
@@ -72,7 +73,7 @@ function Home() {
   useEffect(() => {
     const loggedUser = localStorage.getItem('username')
     if (monitor?.config?.cloud18) {
-      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
+      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale','Mattermost Chat']
     } else {
       globalTabsRef.current = ['Clusters Local']
     }
@@ -161,7 +162,8 @@ function Home() {
       }
       if (
         globalTabsRef.current[selectedTabRef.current] === 'Clusters Peer' ||
-        globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale'
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale' ||
+        globalTabsRef.current[selectedTabRef.current] === 'Mattermost Chat'
       ) {
         dispatch(getClusterPeers({}))
       }
@@ -256,7 +258,7 @@ function Home() {
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
-                ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList onLogin={setDashboardTab} mode='shared' />, <ClustersGlobalSettings />]
+                ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList onLogin={setDashboardTab} mode='shared' />, <MattermostManager/>, <ClustersGlobalSettings />]
                 : [<ClustersGlobalSettings />])
           ]}
         />
