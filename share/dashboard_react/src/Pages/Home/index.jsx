@@ -112,7 +112,6 @@ function Home() {
           if (apiUser.grants['db-show-schema']) {
             authorizedTabs.push('Shards')
           }
-
           if (apiUser.grants['cluster-grant']) {
             authorizedTabs.push('Users')
           }

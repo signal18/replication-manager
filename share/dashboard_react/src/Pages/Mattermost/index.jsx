@@ -12,8 +12,13 @@ function MattermostIntegration({}) {
 
     useEffect(() => {
         const fetchChannels = async () => {
-            const data = await meetService.getMeetPublicChannels();
-            setChannels(data);
+            const { data } = await meetService.getMeetInfo();
+            const allChannels = [
+                ...Object.entries(data.channel_ids_open).map(([name, id]) => ({ name, id })),
+                ...Object.entries(data.channel_ids_private).map(([name, id]) => ({ name, id })),
+                ...Object.entries(data.channel_ids_direct).map(([name, id]) => ({ name, id })),
+            ];
+            setChannels(allChannels);
         };
         fetchChannels();
     }, []);
