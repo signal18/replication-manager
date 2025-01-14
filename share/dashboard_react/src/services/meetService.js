@@ -30,7 +30,7 @@ async function postMeetMessageOnChannel(channelId, message) {
 async function getMeetMessageFromChannel(channelId) {
     try {
         const response = await meetApi.get(`read/${channelId}`);
-        return response;
+        return response.data;
     } catch (error) {
         console.error('Error fetching messages:', error);
         throw error;

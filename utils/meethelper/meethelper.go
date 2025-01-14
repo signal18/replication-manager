@@ -13,7 +13,9 @@ import (
 )
 
 const meetUrl string = "https://meet.signal18.io"
-const meetToken string = "***"
+const meetToken string = "****"
+
+///A MODIF TOKEN AVANT COMMIT
 
 // Test Channel Id : ranzunsjkfrftnregi789br13e
 
@@ -37,6 +39,18 @@ type MeetChatClient struct {
 	URL               string
 	Token             string
 	AllUser           map[string]string //to store id and name of all users (for direct chat)
+}
+
+type MeetChannelMessages struct {
+	ChannelId   string
+	ChannelType string // O:Open, P:Private, D:Direct
+	Messages    []MeetMessage
+}
+
+type MeetMessage struct {
+	UserId    string
+	ChannelID string
+	Message   string
 }
 
 // create a client for mattermost and set user info
@@ -108,8 +122,7 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 	return channelsMapO, channelsMapP, channelsMapD
 }
 
-func (c *MeetChatClient) ReadMessages(channelID string) ([]*model.Post, error) {
-
+func (c *MeetChatClient) ReadMessages(channelID string) (*MeetChannelMessages, error) {
 	posts, resp, err := c.Client.GetPostsForChannel(channelID, 0, 50, "", true)
 	if err != nil {
 		fmt.Println("ReadMessages Mattermost Error:", err, resp.StatusCode)
@@ -118,11 +131,43 @@ func (c *MeetChatClient) ReadMessages(channelID string) ([]*model.Post, error) {
 
 	fmt.Println("Message:", posts)
 
+	messages := make([]MeetMessage, 0)
 	for _, post := range posts.ToSlice() {
-		fmt.Println("Message:", post.Message)
-		fmt.Println("Message post by:", c.AllUser[post.UserId])
+		messages = append(messages, MeetMessage{
+			UserId:    post.UserId,
+			ChannelID: post.ChannelId,
+			Message:   post.Message,
+		})
 	}
-	return posts.ToSlice(), nil
+
+	//A modifier, peut être inverser key et value dans les map des channels ???
+	var channelType string
+	if containsValue(c.ChannelIdsOpen, channelID) {
+		channelType = "O"
+	} else if containsValue(c.ChannelIdsPrivate, channelID) {
+		channelType = "P"
+	} else if containsValue(c.ChannelIdsDirect, channelID) {
+		channelType = "D"
+	} else {
+		channelType = "Unknown"
+	}
+
+	channelMessages := &MeetChannelMessages{
+		ChannelId:   channelID,
+		ChannelType: channelType,
+		Messages:    messages,
+	}
+
+	return channelMessages, nil
+}
+
+func containsValue(m map[string]string, value string) bool {
+	for _, v := range m {
+		if v == value {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *MeetChatClient) PostMessage(channelID, message string) error {

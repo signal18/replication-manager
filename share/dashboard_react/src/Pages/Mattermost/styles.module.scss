@@ -15,7 +15,46 @@
       font-size: 1.125rem;  // 18px / 16 = 1.125rem
       color: var(--primary-color);
       margin-bottom: 0.75rem;  // 12px / 16 = 0.75rem
-    }
+    }// filepath: /home/emma/Stage_Signal18/replication-manager/share/dashboard_react/src/Pages/Mattermost/styles.module.scss
+.mattermostContainer {
+  padding: 20px;
+  background-color: #f5f5f5;
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+}
+
+.channelSelect {
+  margin-bottom: 10px;
+}
+
+.messagesContainer {
+  max-height: 400px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+}
+
+.message {
+  padding: 5px;
+  border-bottom: 1px solid #eee;
+}
+
+.messageInput {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+.sendButton {
+  width: 100%;
+  background-color: #007bff;
+  color: #fff;
+  &:hover {
+      background-color: #0056b3;
+  }
+}
 
     .channelSelect {
       width: 100%;

@@ -20,6 +20,7 @@ export const gtidstring = function (arr) {
 }
 
 export const showSuccessBanner = (message, responseStatus, thunkAPI) => {
+  console.log(message, status);
   thunkAPI.dispatch(
     showSuccessToast({
       status: 'success',
@@ -28,6 +29,7 @@ export const showSuccessBanner = (message, responseStatus, thunkAPI) => {
   )
 }
 export const showErrorBanner = (message, error, thunkAPI) => {
+  console.error(message, error);
   thunkAPI.dispatch(
     showErrorToast({
       status: 'error',
@@ -47,6 +49,7 @@ export const showLoaderBanner = (action, thunkAPI) => {
 }
 
 export const handleError = (error, thunkAPI) => {
+  console.error(error);
   const errorMessage = error.message || 'Request failed'
   const errorStatus = error.errorStatus || 500 // Default error status if not provided
   // Handle errors (including custom errorStatus)
