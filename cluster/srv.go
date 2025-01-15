@@ -207,6 +207,7 @@ type ServerMonitor struct {
 	NeedRefreshJobs             bool
 	PointInTimeMeta             config.PointInTimeMeta
 	BinaryLogDir                string
+	BinaryLogName               string
 	DBDataDir                   string
 	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
 }

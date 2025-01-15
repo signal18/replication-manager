@@ -461,6 +461,10 @@ func (server *ServerMonitor) SetBinaryLogDir(value string) {
 	server.BinaryLogDir = value
 }
 
+func (server *ServerMonitor) SetBinaryLogName(value string) {
+	server.BinaryLogName = value
+}
+
 func (server *ServerMonitor) SetInCaptureMode(value bool) {
 	server.InCaptureMode = value
 }

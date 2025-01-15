@@ -820,3 +820,71 @@ func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
 	}
 	return cur - prev
 }
+
+func (server *ServerMonitor) GetBinaryLogName(refresh bool) string {
+	cluster := server.ClusterGroup
+
+	// If we already have the binary log name, return it
+	if server.BinaryLogName != "" && !refresh {
+		return server.BinaryLogName
+	}
+
+	// If we have a connection, get the binary log name from the server
+	if server.Conn != nil {
+		//Not using Variables[] due to uppercase values
+		basename, _, err := dbhelper.GetVariableByName(server.Conn, "LOG_BIN_BASENAME", server.DBVersion)
+		if err == nil {
+			parts := strings.Split(basename, "/")
+			binlogpath := strings.Join(parts[:len(parts)-1], "/")
+			binlogname := parts[len(parts)-1]
+
+			// If the binary log path is different from the one we have, update it
+			if binlogpath != server.BinaryLogDir {
+				server.SetBinaryLogDir(binlogpath)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Binary log path changed to %s", binlogpath)
+			}
+
+			// If the binary log name is different from the one we have, update it
+			if binlogname != server.BinaryLogName && basename != server.BinaryLogName {
+				server.SetBinaryLogName(basename)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Binary log name changed to %s", binlogname)
+			}
+
+			// Update the cluster configuration
+			cluster.Conf.ProvDBBinaryLogName = basename
+
+			return basename
+		}
+	}
+
+	// Fallback to old name
+	if server.BinaryLogName != "" {
+		return server.BinaryLogName
+	}
+
+	// Fallback to config
+	parts := strings.Split(cluster.Conf.ProvDBBinaryLogName, "/")
+	binlogpath := strings.Join(parts[:len(parts)-1], "/")
+	binlogname := parts[len(parts)-1]
+
+	if binlogpath != server.BinaryLogDir {
+		server.SetBinaryLogDir(binlogpath)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Binary log path changed to %s", binlogpath)
+	}
+
+	server.SetBinaryLogName(cluster.Conf.ProvDBBinaryLogName)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Binary log name changed to %s", binlogname)
+	return cluster.Conf.ProvDBBinaryLogName
+}
+
+func (server *ServerMonitor) GetBinaryLogDir() string {
+	if server.BinaryLogDir != "" {
+		return server.BinaryLogDir
+	}
+
+	parts := strings.Split(server.GetBinaryLogName(false), "/")
+	binlogpath := strings.Join(parts[:len(parts)-1], "/")
+	server.SetBinaryLogDir(binlogpath)
+
+	return binlogpath
+}

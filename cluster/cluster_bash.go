@@ -170,7 +170,7 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	if cluster.Conf.BinlogCopyScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Calling binlog copy script on %s. Binlog: %s", server.URL, binlog)
 		var out []byte
-		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.BinaryLogDir, server.GetMyBackupDirectory(), binlog).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.BinlogCopyScript, cluster.Name, server.Host, server.Port, strconv.Itoa(cluster.Conf.OnPremiseSSHPort), server.GetBinaryLogDir(), server.GetMyBackupDirectory(), binlog).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		} else {
