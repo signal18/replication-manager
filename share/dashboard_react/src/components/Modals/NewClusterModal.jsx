@@ -48,16 +48,11 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
       return
     }
 
-    if (!plan) {
-      setPlanError('Plan is required')
-      return
-    }
-
     dispatch(addCluster({ clusterName, formdata: { orchestrator, plan } }))
     closeModal()
   }
 
-  const getOrchestatorOptions = (orcs = []) => orcs?.filter((obj) => obj.available).map((obj) => ({ name: obj.name, value: obj.name }))
+  const getOrchestatorOptions = (orcs = []) => [{ name: "No Orchestrator", value: '' } ,...orcs?.filter((obj) => obj.available).map((obj) => ({ name: obj.name, value: obj.name }))]
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' } ,...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
 
   const onPlanChange = (option) => {
