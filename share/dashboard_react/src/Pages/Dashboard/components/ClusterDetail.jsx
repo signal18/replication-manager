@@ -377,6 +377,9 @@ function ClusterDetail({ selectedCluster }) {
           {
             <>
               {selectedCluster?.config?.testInjectTraffic && <TagPill type='success' text='PrxTraffic' />}
+              {selectedCluster?.config?.monitoringPause && (
+                <TagPill colorScheme='red' isBlinking={true} text='NotMonitored' />
+              )}
               {selectedCluster?.isProvision ? (
                 <TagPill colorScheme='green' text='IsProvision' />
               ) : (
