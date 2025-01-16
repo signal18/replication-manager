@@ -1845,6 +1845,9 @@ func (repman *ReplicationManager) Run() error {
 		}
 		repman.Logrus.AddHook(hook)
 		repman.fileHook = hook
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Log to file: %s", repman.Conf.LogFile)
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No log file defined. Writing logs to stdout. Use journalctl to view logs.")
 	}
 
 	if !repman.Conf.Daemon {

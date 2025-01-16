@@ -140,7 +140,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 
 	//	cluster.pingServerList()
 	if cluster.StateMachine.IsInFailover() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "In Failover skip topology detection")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "In Failover skip topology detection")
 		return errors.New("In Failover skip topology detection")
 	}
 
@@ -233,7 +233,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 					//	cluster.Servers[k].RejoinMaster() /* remove for rolling restart , wrongly rejoin server as master before just after swithover while the server is just stopping */
 				} else {
 					// if cluster.Conf.LogLevel > 2 {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s was set master as last non slave", sv.URL)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was set master as last non slave", sv.URL)
 					// }
 					if len(cluster.Servers) == 1 {
 						cluster.Conf.ActivePassive = true
@@ -399,7 +399,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 						cluster.master.SetMaster()
 						cluster.master.SetReadWrite()
 						// if cluster.Conf.LogLevel > 2 {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s was autodetected as a master", s.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
 						// }
 						break
 					}
@@ -413,7 +413,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 							cluster.vmaster = cluster.Servers[k]
 						}
 						// if cluster.Conf.LogLevel > 2 {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Server %s was autodetected as a master", s.URL)
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
 						// }
 						break
 					}
