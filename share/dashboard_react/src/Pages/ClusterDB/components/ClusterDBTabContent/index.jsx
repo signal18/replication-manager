@@ -42,7 +42,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
                 user={user}
                 showCompareWithOption={false}
               />
-              <ServerStatus state={selectedDBServer?.state} />
+              <ServerStatus state={selectedDBServer?.state} isVirtualMaster={selectedDBServer?.isVirtualMaster} />
               <ServerName className={styles.serverName} name={`${selectedDBServer?.host}:${selectedDBServer?.port}`} />
             </>
           )}

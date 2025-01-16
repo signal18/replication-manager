@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import TagPill from './TagPill'
 
 function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
-  const [isVirtual, setIsVirtual] = useState(isVirtualMaster ? '-VMaster' : '')
+  const [isVirtual, setIsVirtual] = useState('')
   const [colorScheme, setColorScheme] = useState('gray')
   const [stateValue, setStateValue] = useState(state.toUpperCase())
 
@@ -47,10 +47,23 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
           break
         default:
           setStateValue(state.toUpperCase())
+          setColorScheme('gray')
           break
       }
     }
-  }, [state])
+
+    if (isVirtualMaster) {
+      setIsVirtual('-VMaster')
+    } else {
+      setIsVirtual('')
+    }
+
+    return () => {
+      setColorScheme('gray')
+      setStateValue('')
+      setIsVirtual('')
+    }
+  }, [state, isVirtualMaster])
 
   return (
     <TagPill

@@ -385,11 +385,38 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	// ********
 	// Phase 5: Switch slaves to new master
 	// ********
+	cluster.SwitchSlavesToMaster(fail)
+	// if consul or internal proxy need to adapt read only route to new slaves
+	cluster.backendStateChangeProxies()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master switch on %s complete", cluster.master.URL)
+	cluster.master.FailCount = 0
+	if fail == true {
+		cluster.FailoverCtr++
+		cluster.FailoverTs = time.Now().Unix()
+	}
 
+	// Not a prefered master this code is not default
+	// such code is to dangerous documentation is needed
+	/*	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
+		prm := cluster.foundPreferedMaster(cluster.slaves)
+		if prm != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switchover after failover not on a prefered leader after failover")
+			cluster.MasterFailover(false)
+		}
+	}*/
+
+	return true
+}
+
+func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
+	var err error
+	var logs string
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switching other slaves to the new master")
 	for _, sl := range cluster.slaves {
-		// Don't switch if slave was the old master or is in a multiple master setup or with relay server.
-		if (!cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep) || sl.URL == cluster.oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
+
+		// Don't switch if slave was the old master or is in a multiple master or loop setup or with relay server or in wsrep state  .
+
+		if cluster.Conf.MultiMaster || cluster.Conf.MultiMasterGrouprep || sl.State == stateWsrep || sl.State == stateWsrepDonor || sl.State == stateWsrepLate || sl.URL == cluster.oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
 			continue
 		}
 		// maxscale is in the list of slave
@@ -537,27 +564,6 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			}
 		}
 	}
-	// if consul or internal proxy need to adapt read only route to new slaves
-	cluster.backendStateChangeProxies()
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Master switch on %s complete", cluster.master.URL)
-	cluster.master.FailCount = 0
-	if fail == true {
-		cluster.FailoverCtr++
-		cluster.FailoverTs = time.Now().Unix()
-	}
-
-	// Not a prefered master this code is not default
-	// such code is to dangerous documentation is needed
-	/*	if cluster.Conf.FailoverSwitchToPrefered && fail == true && cluster.Conf.PrefMaster != "" && !cluster.master.IsPrefered() {
-		prm := cluster.foundPreferedMaster(cluster.slaves)
-		if prm != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switchover after failover not on a prefered leader after failover")
-			cluster.MasterFailover(false)
-		}
-	}*/
-
-	return true
 }
 
 func (cluster *Cluster) failoverProxiesWaitMonitor() {
@@ -1410,6 +1416,12 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		// Phase 5: Closing loop
 		// ********
 		cluster.CloseRing(cluster.oldMaster)
+	}
+	if cluster.GetTopology() == config.TopoMultiMasterWsrep {
+		// ********
+		// Phase 5: Case where assyc slave point to wsrep cluster node
+		// ********
+		cluster.SwitchSlavesToMaster(fail)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Virtual Master switch on %s complete", cluster.vmaster.URL)
 	cluster.vmaster.FailCount = 0

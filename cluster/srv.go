@@ -207,6 +207,7 @@ type ServerMonitor struct {
 	NeedRefreshJobs             bool
 	PointInTimeMeta             config.PointInTimeMeta
 	BinaryLogDir                string
+	BinaryLogName               string
 	DBDataDir                   string
 	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
 }
@@ -1488,7 +1489,7 @@ func (server *ServerMonitor) SaveInfos() error {
 		MaxSlowQueryTimestamp int64                  `json:"maxSlowQueryTimestamp"`
 	}
 	var clsave Save
-	server.Variables.ToNormalMap(clsave.Variables)
+	clsave.Variables = server.SensitiveVariables.ToNewMap()
 	clsave.Status = server.Status.ToNewMap()
 	clsave.ProcessList = server.FullProcessList
 	clsave.SlaveStatus = server.LastSeenReplications
@@ -1522,10 +1523,10 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "File error: %v\n", err)
 		return err
 	}
-	if server.Variables == nil {
-		server.Variables = new(config.StringsMap)
+	if server.SensitiveVariables == nil {
+		server.SensitiveVariables = new(config.StringsMap)
 	}
-	server.Variables = config.FromNormalStringMap(server.Variables, clsave.Variables)
+	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }

@@ -84,6 +84,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
+		"%%ENV:SVC_CONF_ENV_BINARY_LOG_NAME%%":                      server.GetBinaryLogName(),
 		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
 		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
 	}
@@ -91,24 +92,35 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 	//	size = ` + collector.ProvDisk + `
 }
 
+// GetDatabaseDatadir returns the database data directory from variables
+// If the data is not exists, it will return the default datadir
+// If the server is localhost, default will return server.Datadir + "/var"
+// If the server is slapOS, default will return server.SlapOSDatadir + "/var/lib/mysql"
+// If the server is not localhost or slapOS, default will return "/var/lib/mysql"
 func (server *ServerMonitor) GetDatabaseDatadir() string {
+
+	// If sensitive variables is not loaded, reload it
+	if server.SensitiveVariables == nil {
+		server.ReloadSaveInfosVariables()
+	}
+
+	// Check if DATADIR is exists
+	if value, ok := server.SensitiveVariables.CheckAndGet("DATADIR"); ok && value != "" {
+		value, _ := strings.CutSuffix(value, "/")
+		return value
+	}
+
+	// If server is localhost or slapOS return the default datadir based on the server
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		return server.Datadir + "/var"
 	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return server.SlapOSDatadir + "/var/lib/mysql"
-	} else if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorOnPremise {
-		if server.DBDataDir == "" {
-			if value, ok := server.SensitiveVariables.CheckAndGet("DATADIR"); ok && value != "" {
-				value, _ := strings.CutSuffix(value, "/")
-				server.DBDataDir = value
-				return server.DBDataDir
-			}
-		} else {
-			return server.DBDataDir
-		}
 	}
+
+	// Return the default datadir
 	return "/var/lib/mysql"
 }
+
 func (server *ServerMonitor) GetDatabaseConfdir() string {
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		return server.Datadir + "/init/etc/mysql"
@@ -117,6 +129,7 @@ func (server *ServerMonitor) GetDatabaseConfdir() string {
 	}
 	return "/etc/mysql"
 }
+
 func (server *ServerMonitor) GetDatabaseBinary() string {
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorLocalhost {
 		return server.ClusterGroup.Conf.ProvDBBinaryBasedir + "/mysqld"
@@ -239,4 +252,30 @@ func (server *ServerMonitor) GetSlaveVariables() SlaveVariables {
 	}
 
 	return svar
+}
+
+func (server *ServerMonitor) GetBinaryLogName() string {
+	cluster := server.ClusterGroup
+
+	// If no variables loaded, load them from disk
+	if server.SensitiveVariables == nil {
+		server.ReloadSaveInfosVariables()
+	}
+
+	binlogname := server.SensitiveVariables.Get("LOG_BIN_BASENAME")
+	if binlogname != "" {
+		return binlogname
+	}
+
+	return cluster.Conf.ProvDBBinaryLogName
+}
+
+func (server *ServerMonitor) GetBinaryLogDir() string {
+	parts := strings.Split(server.GetBinaryLogName(), "/")
+
+	if len(parts) > 1 {
+		return strings.Join(parts[:len(parts)-1], "/")
+	}
+
+	return server.GetDatabaseDatadir()
 }

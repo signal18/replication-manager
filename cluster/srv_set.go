@@ -461,6 +461,10 @@ func (server *ServerMonitor) SetBinaryLogDir(value string) {
 	server.BinaryLogDir = value
 }
 
+func (server *ServerMonitor) SetBinaryLogName(value string) {
+	server.BinaryLogName = value
+}
+
 func (server *ServerMonitor) SetInCaptureMode(value bool) {
 	server.InCaptureMode = value
 }
@@ -483,4 +487,8 @@ func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 
 func (server *ServerMonitor) SetPointInTimeMeta(value config.PointInTimeMeta) {
 	server.PointInTimeMeta = value
+}
+
+func (server *ServerMonitor) SetSuspect() {
+	server.SetState(stateSuspect)
 }

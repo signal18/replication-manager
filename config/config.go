@@ -360,6 +360,9 @@ type Config struct {
 	HaproxyBinaryPath                         string                 `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string                 `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string                 `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
+	HaproxyStagingPort                        string                 `mapstructure:"haproxy-staging-port"  toml:"haproxy-staging-port" json:"haproxyStagingPort"`
+	HaproxyStagingBind                        string                 `mapstructure:"haproxy-staging-bind" toml:"haproxy-staging-bind" json:"haproxyStagingBind"`
+	HaproxyStagingBackend                     string                 `mapstructure:"haproxy-staging-backend" toml:"haproxy-staging-backend" json:"haproxyStagingBackend"`
 	ProxysqlOn                                bool                   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
 	ProxysqlLogLevel                          int                    `mapstructure:"proxysql-log-level" toml:"proxysql-log-level" json:"proxysqlLogLevel"`
@@ -380,6 +383,8 @@ type Config struct {
 	ProxysqlBootstrapQueryRules               bool                   `mapstructure:"proxysql-bootstrap-query-rules" toml:"proxysql-bootstrap-query-rules" json:"proxysqlBootstrapQueryRules"`
 	ProxysqlMultiplexing                      bool                   `mapstructure:"proxysql-multiplexing" toml:"proxysql-multiplexing" json:"proxysqlMultiplexing"`
 	ProxysqlBinaryPath                        string                 `mapstructure:"proxysql-binary-path" toml:"proxysql-binary-path" json:"proxysqlBinaryPath"`
+	ProxysqlWriteTrackState                   string                 `mapstructure:"proxysql-write-track-state" toml:"proxysql-write-track-state" json:"proxysqlWriteTrackState"`
+	ProxysqlreadTrackState                    string                 `mapstructure:"proxysql-read-track-state" toml:"proxysql-read-track-state" json:"proxysqlReadTrackState"`
 	ProxyJanitorDebug                         bool                   `mapstructure:"proxyjanitor-debug" toml:"proxyjanitor-debug" json:"proxyjanitorDebug"`
 	ProxyJanitorLogLevel                      int                    `mapstructure:"proxyjanitor-log-level" toml:"proxyjanitor-log-level" json:"proxyjanitorLogLevel"`
 	ProxyJanitorHosts                         string                 `mapstructure:"proxyjanitor-servers" toml:"proxyjanitor-servers" json:"proxyjanitorServers"`
@@ -419,6 +424,9 @@ type Config struct {
 	KeyPath                                   string                 `mapstructure:"keypath" toml:"-" json:"-"`
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	TopologyTarget                            string                 `mapstructure:"topology-target" toml:"topology-target" json:"topologyTarget"`
+	TopologyStaging                           bool                   `mapstructure:"topology-staging" toml:"topology-staging" json:"topologyStaging"`
+	TopologyStagingRefreshScript              string                 `mapstructure:"staging-refresh-script" toml:"staging-refresh-script" json:"stagingRefreshScript"`
+	TopologyStagingPostDetachScript           string                 `mapstructure:"staging-post-detach-script" toml:"staging-refresh-script" json:"stagingPostDetachScript"`
 	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
@@ -484,6 +492,7 @@ type Config struct {
 	ProvDBForceWriteConfig                    bool                   `mapstructure:"prov-db-force-write-config" toml:"prov-db-force-write-config" json:"provDBForceWriteConfig"`
 	ProvDBClientBasedir                       string                 `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
 	ProvDBBinaryBasedir                       string                 `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
+	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
 	ProvMem                                   string                 `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`

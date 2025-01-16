@@ -18,7 +18,7 @@ import CopyToClipboard from '../../../../components/CopyToClipboard'
 function DBServers({ selectedCluster, user }) {
   const {
     common: { isDesktop },
-    cluster: { clusterServers, clusterMaster }
+    cluster: { clusterServers, clusterStates, clusterMaster }
   } = useSelector((state) => state)
 
   const [data, setData] = useState([])
@@ -43,7 +43,7 @@ function DBServers({ selectedCluster, user }) {
         })
       )
     }
-  }, [clusterServers, clusterMaster?.id])
+  }, [clusterServers, clusterStates, clusterMaster?.id])
 
   const showGridView = () => {
     setViewType('grid')
@@ -114,7 +114,7 @@ function DBServers({ selectedCluster, user }) {
         }
       ),
 
-      columnHelper.accessor((row) => <ServerStatus state={row?.state} isBlinking={true} />, {
+      columnHelper.accessor((row) => <ServerStatus state={row?.state} isVirtualMaster={row?.isVirtualMaster} isBlinking={true} />, {
         cell: (info) => info.getValue(),
         header: 'Status',
         id: 'status'
@@ -238,7 +238,7 @@ function DBServers({ selectedCluster, user }) {
       selectedCluster?.name,
       selectedCluster?.config?.backupPhysicalType,
       selectedCluster?.config?.backupLogicalType,
-      clusterMaster?.id
+      clusterStates,
     ]
   )
 

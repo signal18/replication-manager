@@ -34,6 +34,9 @@ func (cluster *Cluster) OnPremiseGetSSHKey(user string) string {
 }
 
 func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Client, error) {
+	if server == nil {
+		return nil, errors.New("OnPremise provisioning failed no server instance")
+	}
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise provisioning cancel during failover")
 	}

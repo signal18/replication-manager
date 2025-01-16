@@ -1073,6 +1073,7 @@ const initialState = {
   clusterServers: null,
   clusterProxies: null,
   clusterCertificates: null,
+  clusterStates: null,
   backupSnapshots: null,
   topProcess: null,
   jobs: null,
@@ -1148,6 +1149,7 @@ export const clusterSlice = createSlice({
           state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
           state.clusterServers = action.payload.data
+          state.clusterStates = action.payload.data.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',')
         } else if (action.type.includes('getClusterProxies')) {
           state.clusterProxies = action.payload.data
         } else if (action.type.includes('getClusterCertificates')) {

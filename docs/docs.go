@@ -5338,6 +5338,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/attr/{attrName}": {
+            "get": {
+                "description": "Retrieves the details of a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attribute Name (using json path notation split by dot)",
+                        "name": "attrName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Server Attribute (partial based on attrName)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ServerMonitor"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Server Not Found\" or \"Attribute not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/digest-statements-pfs": {
             "get": {
                 "description": "Retrieves the PFS statements of a specified server within a cluster.",
@@ -5640,6 +5697,48 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "503 -Not a Valid Slave!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Check if a server is in slave Stop state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Stop state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -7126,6 +7225,54 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "503 -Not a Valid Slave!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is in a slave Stop state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Check if a server is in slave Stop state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Stop state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -Server is not in Slave Stop state!\" or \"500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -9350,6 +9497,46 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/topology/servers/count": {
+            "get": {
+                "description": "Return number of servers for that specific named cluster",
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Return number of servers for that specific named cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of servers",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/topology/slaves": {
             "get": {
                 "description": "Shows the slaves for that specific named cluster",
@@ -9383,6 +9570,340 @@ const docTemplate = `{
                                 "type": "object",
                                 "additionalProperties": true
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/slaves/count": {
+            "get": {
+                "description": "Return number of slaves for that specific named cluster",
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Return number of slaves for that specific named cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of slaves",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}": {
+            "get": {
+                "description": "Shows the slaves for that specific named cluster",
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Shows the slaves for that specific named cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slave Index (start from 0)",
+                        "name": "slaveIndex",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Slave Data",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ServerMonitor"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}/attr/{attrName}": {
+            "get": {
+                "description": "Shows the slaves for that specific named cluster",
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Shows the slaves for that specific named cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Slave Index (start from 0)",
+                        "name": "slaveIndex",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attribute Name (using json path notation split by dot)",
+                        "name": "attrName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Slave Attribute (partial based on attrName)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ServerMonitor"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/standalones": {
+            "get": {
+                "description": "This endpoint retrieves the servers for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve all standalone server for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Standalone Server",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/cluster.ServerMonitor"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/standalones/count": {
+            "get": {
+                "description": "Return number of servers for that specific named cluster",
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Return number of servers for that specific named cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Number of servers",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/standalones/index/{index}": {
+            "get": {
+                "description": "This endpoint retrieves the servers for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve first standalone server for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Standalone Server",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ServerMonitor"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName}": {
+            "get": {
+                "description": "This endpoint retrieves the servers for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve first standalone server for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Attribute Name with dot notation",
+                        "name": "attrName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Standalone Server (partial based on attrName)",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ServerMonitor"
                         }
                     },
                     "500": {
@@ -11461,9 +11982,6 @@ const docTemplate = `{
                 "dbopsEmail": {
                     "type": "string"
                 },
-                "domains": {
-                    "type": "string"
-                },
                 "id": {
                     "type": "integer"
                 },
@@ -12773,6 +13291,15 @@ const docTemplate = `{
                 "haproxyServers-ipv6": {
                     "type": "string"
                 },
+                "haproxyStagingBackend": {
+                    "type": "string"
+                },
+                "haproxyStagingBind": {
+                    "type": "string"
+                },
+                "haproxyStagingPort": {
+                    "type": "string"
+                },
                 "haproxyStatPort": {
                     "type": "integer"
                 },
@@ -13645,6 +14172,9 @@ const docTemplate = `{
                 "proxysqlPort": {
                     "type": "string"
                 },
+                "proxysqlReadTrackState": {
+                    "type": "string"
+                },
                 "proxysqlReaderHostgroup": {
                     "type": "string"
                 },
@@ -13658,6 +14188,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "proxysqlUser": {
+                    "type": "string"
+                },
+                "proxysqlWriteTrackState": {
                     "type": "string"
                 },
                 "proxysqlWriterHostgroup": {
@@ -13915,6 +14448,12 @@ const docTemplate = `{
                 "sstSendBuffer": {
                     "type": "integer"
                 },
+                "stagingPostDetachScript": {
+                    "type": "string"
+                },
+                "stagingRefreshScript": {
+                    "type": "string"
+                },
                 "switchoverAtEqualGtid": {
                     "type": "boolean"
                 },
@@ -13973,6 +14512,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "testInjectTraffic": {
+                    "type": "boolean"
+                },
+                "topologyStaging": {
                     "type": "boolean"
                 },
                 "topologyTarget": {

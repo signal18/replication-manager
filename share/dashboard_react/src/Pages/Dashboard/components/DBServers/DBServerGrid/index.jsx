@@ -1,5 +1,5 @@
 import { Flex, HStack, SimpleGrid, Spacer, useDisclosure, VStack } from '@chakra-ui/react'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from '../ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
@@ -44,8 +44,12 @@ function DBServerGrid({
   hasMysqlGtid
 }) {
   const {
-    common: { isDesktop }
+    common: { isDesktop },
+    cluster: { clusterStates }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+  }, [clusterStates])
 
   const { isOpen: isServiceInfoOpen, onToggle: onServiceInfoToggle } = useDisclosure({ defaultIsOpen: false })
   const { isOpen: isReplicationVarOpen, onToggle: onReplicationVarToggle } = useDisclosure({ defaultIsOpen: false })

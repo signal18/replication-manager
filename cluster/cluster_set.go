@@ -897,7 +897,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 
 	}
 
-	cluster.hostList = strings.Split(cluster.Conf.Hosts, ",")
+	cluster.SetDbServerHosts(cluster.Conf.Hosts)
 	/*
 		cluster.dbUser, cluster.dbPass = misc.SplitPair(splitmonitoringuser)
 

@@ -88,10 +88,12 @@ func (cluster *Cluster) PrepareBench() error {
 }
 
 func (cluster *Cluster) CleanupBench() error {
-	prx := cluster.GetProxies()[0]
-	if prx == nil {
+	proxies := cluster.GetProxies()
+	if len(proxies) == 0 {
 		return errors.New("No proxy")
 	}
+
+	prx := proxies[0]
 	if cluster.benchmarkType == "sysbench" {
 		test := "--test=oltp"
 		if cluster.Conf.SysbenchV1 {

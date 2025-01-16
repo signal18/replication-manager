@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
@@ -46,6 +47,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-error", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsSlaveErrorStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-slave-stopped", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsSlaveStopStatus)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-stopped", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsSlaveStopStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-slave-late", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsSlaveLateStatus)),
@@ -102,6 +109,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServer)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/attr/{attrName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAttribute)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortBackup)),
@@ -452,6 +463,73 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 	}
 }
 
+// handlerMuxServer handles the HTTP request to get the server details within a cluster.
+// @Summary Get server details
+// @Description Retrieves the details of a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param attrName path string true "Attribute Name (using json path notation split by dot)"
+// @Success 200 {object} cluster.ServerMonitor "Server Attribute (partial based on attrName)"
+// @Failure 500 {string} string "No cluster" or "Server Not Found" or "Attribute not found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/attr/{attrName} [get]
+func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWriter, r *http.Request) {
+	//marshal unmarchal for ofuscation deep copy of struc
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		uname := repman.GetUserFromRequest(r)
+		if _, ok := mycluster.APIUsers[uname]; !ok {
+			http.Error(w, "No Valid ACL", 500)
+			return
+		}
+
+		var node *cluster.ServerMonitor
+		if v, ok := vars["serverPort"]; ok && v != "" {
+			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		} else {
+			node = mycluster.GetServerFromName(vars["serverName"])
+		}
+		if node == nil {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+
+		var data, value []byte
+		var valtype jsonparser.ValueType
+		// get the value from the json path
+		// if the attribute is binaryLogFiles, we need to convert the map to json
+		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
+		// otherwise, we just get the value from the json path
+		if vars["attrName"] == "binaryLogFiles" {
+			value, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
+		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
+			data, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
+			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
+		} else {
+			data, _ = json.Marshal(node)
+			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
+		}
+
+		// if the value is not found, return an error
+		if valtype == jsonparser.NotExist {
+			http.Error(w, "Attribute not found", 500)
+			return
+		}
+
+		// Write the value to the response
+		w.WriteHeader(http.StatusOK)
+		w.Write(value)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
 // handlerMuxServerIsFailedStatus handles the HTTP request to check if a server is failed within a cluster.
 // @Summary Check if a server is failed
 // @Description Checks if a specified server within a cluster is in a failed state.
@@ -528,6 +606,54 @@ func (repman *ReplicationManager) handlerMuxServerIsSlaveErrorStatus(w http.Resp
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -Server is not in Slave Error state!"))
+		}
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
+		return
+	}
+}
+
+// handlerMuxServerIsSlaveStopStatus handles the HTTP request to check if a server replication is in OFF state for both IO and SQL thread within a cluster.
+// @Summary Check if a server is in slave Stop state
+// @Description Checks if a specified server within a cluster is in a slave Stop state.
+// @Tags Database
+// @Produce text/plain
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "200 -Server is in Slave Stop state!"
+// @Failure 500 {string} string "500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster!"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop [get]
+func (repman *ReplicationManager) handlerMuxServerIsSlaveStopStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		var node *cluster.ServerMonitor
+		if v, ok := vars["serverPort"]; ok && v != "" {
+			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		} else {
+			node = mycluster.GetServerFromName(vars["serverName"])
+		}
+		if node == nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+			return
+		}
+
+		if _, err := node.GetSlaveStatus(node.ReplicationSourceName); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -Replication not found!"))
+			return
+		}
+
+		if !node.IsSQLThreadRunning() && !node.IsIOThreadRunning() {
+			w.Write([]byte("200 -Server IO and SQL Threads are stopped!"))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -Server replication still has thread running!"))
 		}
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -1726,6 +1852,7 @@ func (repman *ReplicationManager) handlerMuxServerResetSlaveAll(w http.ResponseW
 		if node != nil {
 			node.StopSlave()
 			node.ResetSlave()
+			node.SetSuspect() // For refreshing state
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

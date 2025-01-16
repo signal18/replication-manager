@@ -574,6 +574,7 @@ func (cluster *Cluster) Run() {
 
 	// createKeys do nothing yet
 	if _, err := os.Stat(cluster.Conf.WorkingDir + "/" + cluster.Name + "/ca-key.pem"); os.IsNotExist(err) {
+		os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
 		go cluster.createKeys()
 	}
 
@@ -602,7 +603,7 @@ func (cluster *Cluster) Run() {
 			default:
 				if cluster.Conf.LogLevel > 2 {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Monitoring server loop")
-					if cluster.Servers[0] != nil {
+					if len(cluster.Servers) > 0 {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers not nil : %v\n", cluster.Servers)
 						for k, v := range cluster.Servers {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Servers loops k : %d, url : %s, state : %s, prevstate %s", k, v.URL, v.State, v.PrevState)
