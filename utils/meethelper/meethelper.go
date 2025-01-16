@@ -8,14 +8,18 @@ package meethelper
 
 import (
 	"fmt"
+	"html"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
 
 	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 const meetUrl string = "https://meet.signal18.io"
-const meetToken string = "****"
 
-///A MODIF TOKEN AVANT COMMIT
+var meetToken string = ""
 
 // Test Channel Id : ranzunsjkfrftnregi789br13e
 
@@ -67,6 +71,81 @@ func CreateMeetClient() *MeetChatClient {
 	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect = c.GetChannels() //to get the channels for the user
 	c.AllUser = c.GetAllUsers()
 	return c
+}
+
+// Follow the flow of the browser: log to mm using your gitlab account
+func GetMeetToken(gitlabUser string, gitlabPassword string) {
+	gitlabHost := "https://gitlab.signal18.io"
+
+	//cookie jar
+	jar, _ := cookiejar.New(nil)
+	client := &http.Client{Jar: jar}
+
+	// 1. Login gitlab
+	// 1.1 get the csrf from login page
+	gitlabLoginPageURL := fmt.Sprintf("%s/users/sign_in", gitlabHost)
+
+	body, err := misc.GetRequest(client, gitlabLoginPageURL)
+	if err != nil {
+		return
+	}
+
+	gitCsrfToken, err := misc.ExtractValue(body, "name=\"authenticity_token\" value=\"([^\"]+)\"")
+	if err != nil {
+		fmt.Println("GetMeetToken: cannot extract CSFR token from gitlab:", err)
+		return
+	}
+
+	//1.2 Send login credentials
+	form := url.Values{
+		"user[login]":        {gitlabUser},
+		"user[password]":     {gitlabPassword},
+		"authenticity_token": {gitCsrfToken},
+	}
+	_, err = misc.PostRequest(client, gitlabLoginPageURL, form, nil)
+	if err != nil {
+		fmt.Println("GetMeetToken: cannot post gitlab login credentials:", err)
+		return
+	}
+
+	// 2. Login meet
+	// 2.1 Request login with gitlab account
+	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=/signal18/channels/test", meetUrl)
+
+	body, err = misc.GetRequest(client, meetLoginPageURL)
+	if err != nil {
+		fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
+		return
+	}
+
+	// 2.2 Extract RedirectUrl and unescape it
+	redirectUrl, err := misc.ExtractValue(body, "href=\"([^\"]+)")
+	if err != nil {
+		fmt.Println("GetMeetToken: cannot extract redirectUrl from mattermost login request", err)
+		return
+	}
+
+	decodedValue, _ := url.QueryUnescape(redirectUrl)
+	meetAuthURL := html.UnescapeString(decodedValue)
+
+	// 2.3 Forward Oauth code to meet
+	body, err = misc.GetRequest(client, meetAuthURL)
+	if err != nil {
+		fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
+		return
+	}
+
+	// 2.4 Get MMAUTHTOKEN from cookies
+	meetParsedUrl, _ := url.Parse(meetUrl)
+	for _, cookie := range jar.Cookies(meetParsedUrl) {
+		if cookie.Name == "MMAUTHTOKEN" {
+			meetToken = cookie.Value
+		}
+	}
+
+	if meetToken == "" {
+		fmt.Println("GetMeetToken: Failed to retrieve meet token")
+	}
 }
 
 func (c *MeetChatClient) GetMeetUserInfo() string {

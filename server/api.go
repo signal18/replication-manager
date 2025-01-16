@@ -545,6 +545,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 
+		meethelper.GetMeetToken(user.Username, user.Password)
+
 		userInfo = struct {
 			Name     string
 			Role     string
