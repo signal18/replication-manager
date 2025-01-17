@@ -416,7 +416,7 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 
 		// Don't switch if slave was the old master or is in a multiple master or loop setup or with relay server or in wsrep state  .
 
-		if cluster.Conf.MultiMaster || cluster.Conf.MultiMasterGrouprep || sl.State == stateWsrep || sl.State == stateWsrepDonor || sl.State == stateWsrepLate || sl.URL == cluster.oldMaster.URL || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
+		if cluster.Conf.MultiMaster || cluster.Conf.MultiMasterGrouprep || sl.State == stateWsrep || sl.State == stateWsrepDonor || sl.State == stateWsrepLate || (cluster.oldMaster != nil && sl.URL == cluster.oldMaster.URL) || sl.State == stateMaster || (sl.IsRelay == false && cluster.Conf.MxsBinlogOn == true) {
 			continue
 		}
 		// maxscale is in the list of slave
