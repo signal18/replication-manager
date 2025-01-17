@@ -552,7 +552,8 @@ func (proxy *ProxySQLProxy) CountAvailableReaders() (n int) {
 
 func (proxy *ProxySQLProxy) HasLeaderInReader() bool {
 	for _, b := range proxy.BackendsRead {
-		if b.Host == proxy.GetCluster().master.Host && b.Port == proxy.GetCluster().master.Port && b.PrxStatus == "ONLINE" {
+		master := proxy.GetCluster().GetMaster()
+		if master != nil && b.Host == master.Host && b.Port == master.Port && b.PrxStatus == "ONLINE" {
 			return true
 		}
 	}

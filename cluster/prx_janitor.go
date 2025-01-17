@@ -356,7 +356,8 @@ func (proxy *ProxyJanitor) HasAvailableReader() bool {
 
 func (proxy *ProxyJanitor) HasLeaderInReader() bool {
 	for _, b := range proxy.BackendsRead {
-		if b.Host == proxy.GetCluster().master.Host && b.Port == proxy.GetCluster().master.Port {
+		master := proxy.GetCluster().GetMaster()
+		if master != nil && b.Host == master.Host && b.Port == master.Port {
 			return true
 		}
 	}
