@@ -707,11 +707,14 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 		return true
 	}
 	for _, s := range cluster.Servers {
-		if s.IsFailed() {
+		// if server is failed or ignored, skip comparison
+		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
+
 		for _, sothers := range cluster.Servers {
-			if sothers.IsFailed() || s.URL == sothers.URL {
+			// if other server is failed or ignored, skip comparison
+			if sothers.IsFailed() || s.URL == sothers.URL || sothers.IsIgnored() {
 				continue
 			}
 			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") != sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") {
