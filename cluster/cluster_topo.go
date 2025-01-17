@@ -390,31 +390,37 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			// Depending if we are doing a failover or a switchover, we will find the master in the list of
 			// failed hosts or unconnected hosts.
 			// First of all, get a server id from the cluster.slaves slice, they should be all the same
-			sid := cluster.slaves[0].GetReplicationServerID()
+			sid := cluster.GetReplicationMasterServerID()
 
-			for k, s := range cluster.Servers {
-				if cluster.Conf.MultiMaster == false && s.State == stateUnconn {
-					if s.ServerID == sid {
-						cluster.master = cluster.Servers[k]
-						cluster.master.SetMaster()
-						cluster.master.SetReadWrite()
-						// if cluster.Conf.LogLevel > 2 {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
-						// }
-						break
+			// This is just the same with old logic, but only split the loop into two parts
+			// Find master from SID first
+			found := cluster.FindMasterByReplicationServerID(sid)
+
+			// If master is not found and topology is multi-master, find it in the list of servers
+			if found == false && (cluster.Conf.MultiMaster == true || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep) {
+				for k, s := range cluster.Servers {
+					if s.IsIgnored() {
+						continue
 					}
-				}
-				if (cluster.Conf.MultiMaster == true || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep) && !cluster.Servers[k].IsDown() {
-					if s.IsReadWrite() {
-						cluster.master = cluster.Servers[k]
+
+					if !cluster.Servers[k].IsDown() && s.IsReadWrite() {
+
 						if cluster.Conf.MultiMaster == true {
+							cluster.master = cluster.Servers[k]
 							cluster.master.SetMaster()
-						} else {
-							cluster.vmaster = cluster.Servers[k]
+							found = true
+						} else if cluster.GetMaster() == nil {
+							if (cluster.GetTopology() == config.TopoMultiMasterWsrep && s.HasWsrepPrimary()) || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
+								cluster.master = cluster.Servers[k]
+								cluster.vmaster = cluster.Servers[k]
+								cluster.master.SetMaster()
+								found = true
+							}
 						}
-						// if cluster.Conf.LogLevel > 2 {
+					}
+
+					if found {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
-						// }
 						break
 					}
 				}
@@ -741,4 +747,74 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		return
 	}
 	cluster.Conf.TopologyTarget = cluster.Topology
+}
+
+func (cluster *Cluster) GetReplicationMasterServerID() uint64 {
+	if len(cluster.slaves) == 0 {
+		return 0
+	}
+
+	for _, sl := range cluster.slaves {
+		sid := sl.GetReplicationServerID()
+		if sid != 0 {
+			return sid
+		}
+	}
+
+	return 0
+}
+
+// FindMasterByReplicationServerID Find master by server id
+// If found set the server with the same server id as master and return true
+func (cluster *Cluster) FindMasterByReplicationServerID(sid uint64) bool {
+	found := false
+
+	// If multi-master is enabled, do not autodetect master
+	if cluster.Conf.MultiMaster {
+		return false
+	}
+
+	// loop through all servers
+	for k, s := range cluster.Servers {
+		if s.IsIgnored() {
+			continue
+		}
+		// If sid found, and server is standalone and master not found, set it as master
+		if s.State == stateUnconn && s.ServerID == sid {
+			cluster.master = cluster.Servers[k]
+			cluster.master.SetMaster()
+			cluster.master.SetReadWrite()
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
+			return true
+		}
+	}
+
+	return found
+}
+
+// FindMasterByReplicationServerID Find master by server id
+// If found set the server with the same server id as master and return true
+func (cluster *Cluster) SetReadWriteAsMaster() bool {
+	found := false
+
+	// loop through all servers
+	for k, s := range cluster.Servers {
+		if s.IsIgnored() {
+			continue
+		}
+		// If sid found, and server is standalone and master not found, set it as master
+		if !s.IsDown() && s.IsReadWrite() {
+			cluster.master = cluster.Servers[k]
+			if cluster.Conf.MultiMaster == true {
+				cluster.master.SetMaster()
+			} else {
+				cluster.vmaster = cluster.Servers[k]
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Server %s was autodetected as a master", s.URL)
+			return true
+		}
+	}
+
+	return found
 }
