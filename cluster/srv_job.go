@@ -814,14 +814,6 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	server.SetInReseedBackup(task)
 
-	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
-	if err != nil {
-		if server.HasReseedingState(task) {
-			server.SetInReseedBackup("")
-		}
-		return err
-	}
-
 	logs, err := server.StopSlave()
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
@@ -848,6 +840,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLoadScript != "" {
+		server.SetInReseedBackup("script")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
 		go server.JobReseedBackupScript()
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
@@ -2043,18 +2036,31 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		server.LastBackupMeta.Logical.BackupTool = "script"
-		server.LastBackupMeta.Logical.Dest = cluster.Conf.BackupSaveScript
+		task := "script"
+		filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+
+		// Override backup tool and destination
+		server.LastBackupMeta.Logical.BackupTool = task
+		server.LastBackupMeta.Logical.Dest = filename
+
+		// Record task for metadata check
+		server.JobsUpdateState(task, "", 1, 0)
+
 		err = server.JobBackupScript()
 		if err == nil {
+			server.JobsUpdateState(task, "Backup completed", 3, 1)
 			server.LastBackupMeta.Logical.Completed = true
-			server.SetBackupLogicalCookie("script")
+			server.SetBackupLogicalCookie(task)
+		} else {
+			server.JobsUpdateState(task, err.Error(), 5, 1)
 		}
 	} else {
 		task := cluster.Conf.BackupLogicalType
+
 		if cluster.Conf.MonitorScheduler {
-			//Only for record
 			server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		} else {
+			server.JobsUpdateState(task, "", 0, 0)
 		}
 
 		//Change to switch since we only allow one type of backup (for now)
