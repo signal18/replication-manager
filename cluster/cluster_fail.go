@@ -1251,7 +1251,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "-------------------------------")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting virtual master failover")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "-------------------------------")
-		cluster.oldMaster = cluster.master
+		cluster.oldMaster = cluster.GetMaster()
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Electing a new virtual master")
 	for _, s := range cluster.slaves {

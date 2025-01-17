@@ -144,7 +144,7 @@ func (cluster *Cluster) isMasterFailed() bool {
 	/*if cluster.master == nil {
 		return false
 	}*/
-	if cluster.master.State == stateFailed {
+	if cluster.GetMaster().State == stateFailed {
 		return true
 	}
 	return false
@@ -383,7 +383,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// do not failover if master info is unknowned:
 	// - first replication-manager start on no topology
 	// - all cluster down
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		cluster.SetState("ERR00026", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return false
 	}
