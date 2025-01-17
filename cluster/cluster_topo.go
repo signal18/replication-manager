@@ -355,7 +355,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 				cluster.Conf.MultiMaster = false
 			}
 		}
-		if srw > 1 {
+		if srw > 1 && cluster.Conf.MultiMaster {
 			cluster.SetState("WARN0003", state.State{ErrType: "WARNING", ErrDesc: "RW server count > 1 in multi-master mode. set read_only=1 in cnf is a must have, choosing prefered master", ErrFrom: "TOPO"})
 		}
 		sro := 0
