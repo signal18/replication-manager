@@ -192,6 +192,21 @@ export const addServer = createAsyncThunk(
   }
 )
 
+export const dropServer = createAsyncThunk(
+  'cluster/dropServer',
+  async ({ clusterName, host, port }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropServer(clusterName, host, port, baseURL)
+      showSuccessBanner('New server dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a new server', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const provisionCluster = createAsyncThunk('cluster/provisionCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1198,6 +1213,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.pending,
         resetSLA.pending,
         addServer.pending,
+        dropServer.pending,
         toggleTraffic.pending,
         provisionCluster.pending,
         unProvisionCluster.pending,
@@ -1264,6 +1280,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.fulfilled,
         resetSLA.fulfilled,
         addServer.fulfilled,
+        dropServer.fulfilled,
         toggleTraffic.fulfilled,
         provisionCluster.fulfilled,
         unProvisionCluster.fulfilled,
@@ -1330,6 +1347,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.rejected,
         resetSLA.rejected,
         addServer.rejected,
+        dropServer.rejected,
         toggleTraffic.rejected,
         provisionCluster.rejected,
         unProvisionCluster.rejected,

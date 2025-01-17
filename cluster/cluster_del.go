@@ -23,22 +23,25 @@ func (cluster *Cluster) RemoveServerFromIndex(index int) {
 
 func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 	newServers := make([]*ServerMonitor, 0)
+	newList := make([]string, 0)
 	index := -1
 	//Find the index
 	for i, srv := range cluster.Servers {
+
 		//Skip the server
 		if srv.Host == host && srv.Port == port {
 			index = i
+			continue
 		}
 
+		newServers = append(newServers, srv)
+		newList = append(newList, srv.HostCnf)
 	}
 
 	if index >= 0 {
-		cluster.Conf.Hosts = strings.ReplaceAll(strings.Replace(cluster.Conf.Hosts, host+":"+port, "", 1), ",,", ",")
+		cluster.Conf.Hosts = strings.Join(newList, ",")
 		cluster.StateMachine.SetFailoverState()
 		cluster.Lock()
-		newServers = append(newServers, cluster.Servers[:index]...)
-		newServers = append(newServers, cluster.Servers[index+1:]...)
 		cluster.Servers = newServers
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()

@@ -52,6 +52,7 @@ type ServerMonitor struct {
 	URL                         string                     `json:"url"`
 	DSN                         string                     `json:"-"`
 	Host                        string                     `json:"host"`
+	HostCnf                     string                     `json:"-"` // used to store host from config file
 	Port                        string                     `json:"port"`
 	TunnelPort                  string                     `json:"tunnelPort"`
 	IP                          string                     `json:"ip"`
@@ -260,6 +261,7 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
+	server.HostCnf = url // store host from config file
 	server.QPS = 0
 	server.IsCompute = compute
 	server.Domain = domain

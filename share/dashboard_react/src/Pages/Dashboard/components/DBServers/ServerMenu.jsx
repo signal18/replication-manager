@@ -2,6 +2,7 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import {
+  dropServer,
   flushLogs,
   logicalBackup,
   optimizeServer,
@@ -209,7 +210,15 @@ function ServerMenu({
                       }
                     }
                   ]
-                : [])
+                : []),
+                {
+                  name: 'Run Remote Jobs',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
+                    setConfirmHandler(() => () => dispatch(runRemoteJobs({ clusterName, serverId: row.id })))
+                  }
+                }
             ]
           },
           {
@@ -261,16 +270,16 @@ function ServerMenu({
                         setConfirmHandler(() => () => dispatch(unprovisionDatabase({ clusterName, serverId: row.id })))
                       }
                     },
-                    {
-                      name: 'Run Remote Jobs',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(runRemoteJobs({ clusterName, serverId: row.id })))
-                      }
-                    }
                   ]
-                : [])
+                : []),
+                {
+                  name: 'Remove Monitor',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm removing monitor for ${serverName}?`)
+                    setConfirmHandler(() => () => dispatch(dropServer({ clusterName, host: row.host, port: row.port })))
+                  }
+                },
             ]
           },
           {

@@ -22,6 +22,7 @@ export const clusterService = {
   resetSLA,
   toggleTraffic,
   addServer,
+  dropServer,
   provisionCluster,
   unProvisionCluster,
   setCredentials,
@@ -170,6 +171,10 @@ function toggleTraffic(clusterName, baseURL) {
 
 function addServer(clusterName, host, port, dbType, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${dbType}`)
+}
+
+function dropServer(clusterName, host, port, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}`)
 }
 
 function provisionCluster(clusterName, baseURL) {
