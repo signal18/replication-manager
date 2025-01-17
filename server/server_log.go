@@ -103,7 +103,7 @@ func (repman *ReplicationManager) LogPanicToFile() {
 			"cluster":    "none",
 			"panic":      r,
 			"stacktrace": string(debug.Stack()),
-		}).Error("Application terminated unexpectedly")
+		}).Print("Application terminated unexpectedly")
 	}
 }
 
