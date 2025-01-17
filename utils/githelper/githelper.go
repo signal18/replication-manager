@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -451,8 +452,9 @@ type ErrorResponse struct {
 }
 
 func GetGitLabTokenBasicAuth(user string, password string, log_git bool) (string, error) {
+	escpasswd := url.QueryEscape(password)
 	url := "https://gitlab.signal18.io/oauth/token"
-	data := "grant_type=password&username=" + user + "&password=" + password
+	data := "grant_type=password&username=" + user + "&password=" + escpasswd
 
 	client := &http.Client{}
 	req, err := http.NewRequest("POST", url, strings.NewReader(data))
