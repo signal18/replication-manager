@@ -245,6 +245,34 @@ func (cluster *Cluster) GetServers() serverList {
 	return cluster.Servers
 }
 
+func (cluster *Cluster) GetServersByState(state string) serverList {
+	var srvs serverList
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			srvs = append(srvs, server)
+		}
+	}
+	return srvs
+}
+
+func (cluster *Cluster) GetServerByStateAndIndex(state string, idx int) (*ServerMonitor, error) {
+	counter := 0
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			if counter == idx {
+				return server, nil
+			}
+			counter++
+		}
+	}
+
+	if idx > counter {
+		return nil, errors.New("Invalid index")
+	}
+
+	return nil, errors.New("Server Not Found")
+}
+
 func (cluster *Cluster) GetStandaloneServers() serverList {
 	var standaloneServers serverList
 	for _, server := range cluster.Servers {

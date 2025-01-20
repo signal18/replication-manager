@@ -344,21 +344,21 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSlaveAttributeByIndex)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServers)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServersByState)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/count", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/count", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServersCount)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServersByStateCount)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/index/{index}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/index/{index}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServerByIndex)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServerByStateAndIndex)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneAttributeByIndex)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServerAttributeByStateAndIndex)),
 	))
 	router.Handle("/api/clusters/{clusterName}/topology/logs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -518,16 +518,17 @@ func (repman *ReplicationManager) handlerMuxServersCount(w http.ResponseWriter, 
 	}
 }
 
-// @Summary Retrieve all standalone server for a specific cluster
+// @Summary Retrieve all servers by state for a specific cluster
 // @Description This endpoint retrieves the servers for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} cluster.ServerMonitor "Standalone Server"
+// @Param state path string true "Server State"
+// @Success 200 {array} cluster.ServerMonitor "server by state"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state} [get]
+func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -543,7 +544,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.Response
 		res := ServersContainer{
 			servers: make([]map[string]interface{}, 0),
 		}
-		for _, srv := range mycluster.GetStandaloneServers() {
+		for _, srv := range mycluster.GetServersByState(vars["state"]) {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
 			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
@@ -580,10 +581,11 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.Response
 // @Tags ClusterTopology
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Success 200 {string} string "Number of servers"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/count [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/count [get]
+func (repman *ReplicationManager) handlerMuxGetServersByStateCount(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -591,7 +593,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.Res
 	if mycluster != nil {
 		counter := 0
 		for _, srv := range mycluster.Servers {
-			if srv.IsStandAlone() {
+			if srv.State == vars["state"] {
 				counter++
 			}
 		}
@@ -603,17 +605,18 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.Res
 	}
 }
 
-// @Summary Retrieve first standalone server for a specific cluster
-// @Description This endpoint retrieves the servers for the specified cluster.
+// @Summary Retrieve server by state and index for a specific cluster
+// @Description This endpoint retrieves the server for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Param index path string true "Index"
-// @Success 200 {object} cluster.ServerMonitor "Standalone Server"
+// @Success 200 {object} cluster.ServerMonitor "server by state"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/index/{index} [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index} [get]
+func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -627,7 +630,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.Re
 			return
 		}
 
-		srv, err := mycluster.GetStandaloneServerByIndex(index)
+		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -649,18 +652,19 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.Re
 	}
 }
 
-// @Summary Retrieve first standalone server for a specific cluster
+// @Summary Retrieve server attributes by state and index for a specific cluster
 // @Description This endpoint retrieves the servers for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Param index path string true "Index"
 // @Param attrName path string true "Attribute Name with dot notation"
-// @Success 200 {object} cluster.ServerMonitor "Standalone Server (partial based on attrName)"
+// @Success 200 {object} cluster.ServerMonitor "Server (partial based on attrName)"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName} [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneAttributeByIndex(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName} [get]
+func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -674,7 +678,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneAttributeByIndex(w http
 			return
 		}
 
-		srv, err := mycluster.GetStandaloneServerByIndex(index)
+		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
 			http.Error(w, err.Error(), 500)
 			return

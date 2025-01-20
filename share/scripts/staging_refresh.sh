@@ -36,8 +36,8 @@ echo $NB_SLAVES
 # Scenario 1 : 2 slaves, then we will stop the replication on one that will be the "staging"  
 if [ $NB_SLAVES -eq 2 ]; then
   echo "picking first slave \n"
-  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[1].id' | sed 's/"//g' )
-  PORT=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[1].port')
+  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/id | sed 's/"//g' )
+  PORT=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/port)
   echo "$ID:$PORT"
   echo "Reseting first slave \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-slave-all
@@ -52,8 +52,8 @@ if [ $NB_SLAVES -eq 2 ]; then
   loop=true	
   while $loop; do
     sleep 1
-    IO_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[1].replications[0].slaveIoRunning.String')
-    SQL_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[1].replications[0].slaveSqlRunning.String')
+    IO_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/replications.[0].slaveIoRunning.String)
+    SQL_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/replications.[0].slaveSqlRunning.String)
     echo $IO_THREADS
     echo $SQL_THREADS
     if [ "$IO_THREADS" == "\"No\"" ] || [ "$SQL_THREADS" == "\"No\"" ]; then 
@@ -62,7 +62,7 @@ if [ $NB_SLAVES -eq 2 ]; then
   done
 
   echo "Getting and saving slaves initial statuses \n"	
-  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[1].replications'>replications.save
+  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/replications >replications.save
 
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-slave-all
   sleep 2
@@ -70,8 +70,8 @@ if [ $NB_SLAVES -eq 2 ]; then
   echo "Waiting for database server $ID to status failed \n"
   loop=true
   while $loop; do
-    ID_CHECK=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers | jq -c '.[] | select(.state == "Failed").id' | sed 's/"//g')
-    if [ "$ID_CHECK" == "$ID" ]; then
+    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/attr/state | sed 's/"//g')
+    if [ "$SV_STATE" == "Failed" ]; then
       loop=false
     fi
   done 
@@ -80,7 +80,7 @@ fi
 
 if [ $NB_SLAVES -eq 1 ]; then
   echo "picking last slave and founding standalone \n"
-  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers | jq -c '.[] | select( .state == "StandAlone" ).id' | sed 's/"//g')
+  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/{state}/index/0/attr/id | sed 's/"//g')
   echo "found standalone server $ID \n"
   echo "reseting master position on standalone \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-master
@@ -94,8 +94,8 @@ if [ $NB_SLAVES -eq 1 ]; then
   echo "Waiting for database server $ID to status failed \n"
   loop=true
   while $loop; do
-    ID_CHECK=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers | jq -c '.[] | select(.state == "Failed").id' | sed 's/"//g')
-    if [ "$ID_CHECK" == "$ID" ]; then
+    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/attr/state | sed 's/"//g')
+    if [ "$SV_STATE" == "Failed" ]; then
       loop=false
     fi
   done
@@ -112,7 +112,7 @@ if [ $NB_SLAVES -eq 1 ]; then
 
 
 # Get the last available slave
-ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers | jq -c '.[] | select(.state == "Slave").id' | sed 's/"//g')
+ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/slave/index/0/attr/id | sed 's/"//g')
   echo "last slave found for staging $ID_SLAVE \n"
   echo "Stopping replication on last slave \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/stop-slave
@@ -120,8 +120,8 @@ ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTE
   while $loop; do
     echo "Waiting replication to stop \n"
     sleep 5
-    IO_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq --arg id "$ID_SLAVE" '.[] | select(.id == $id).replications[0].slaveIoRunning.String')
-    SQL_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq --arg id "$ID_SLAVE" '.[] | select(.id == $id).replications[0].slaveSqlRunning.String')
+    IO_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/replications.[0].slaveIoRunning.String)
+    SQL_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/replications.[0].slaveSqlRunning.String)
 #    IO_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[] | select( .id == $ID_SLAVE ).replications[0].slaveIoRunning.String')
 #    SQL_THREADS=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[] | select( .id == $ID_SLAVE ).replications[0].slaveSqlRunning.String')
     echo $IO_THREADS
@@ -131,7 +131,7 @@ ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTE
     fi
     done
     echo "Saving replication info in replication.save \n"
-    get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq --arg id "$ID_SLAVE" '.[] | select(.id == $id).replications' > replications.save
+    get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers/$ID_SLAVE/attr/replications > replications.save
 #    get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq '.[] | select( .id == $ID_SLAVE ).replications'>replications.save
     echo "Reset all replication information \n"
     get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/reset-slave-all
