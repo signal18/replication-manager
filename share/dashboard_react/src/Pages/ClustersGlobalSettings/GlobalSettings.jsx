@@ -9,6 +9,7 @@ import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
 import { TbApi } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
+import NumberInput from '../../components/NumberInput'
 
 function GlobalSettings({ config }) {
   const dispatch = useDispatch()
@@ -18,6 +19,19 @@ function GlobalSettings({ config }) {
   }, [config]);
 
   const dataObject = [
+    {
+      key: 'API Token Timeout in Hours',
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.apiTokenTimeout}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'api-token-timeout' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-token-timeout', value: value }))}
+        />
+      )
+    },
     {
       key: 'API Public URL',
       value: (

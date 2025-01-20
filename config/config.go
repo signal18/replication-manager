@@ -425,8 +425,8 @@ type Config struct {
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	TopologyTarget                            string                 `mapstructure:"topology-target" toml:"topology-target" json:"topologyTarget"`
 	TopologyStaging                           bool                   `mapstructure:"topology-staging" toml:"topology-staging" json:"topologyStaging"`
-	TopologyStagingRefreshScript              string                 `mapstructure:"staging-refresh-script" toml:"staging-refresh-script" json:"stagingRefreshScript"`
-	TopologyStagingPostDetachScript           string                 `mapstructure:"staging-post-detach-script" toml:"staging-refresh-script" json:"stagingPostDetachScript"`
+	TopologyStagingRefreshScript              string                 `mapstructure:"topology-staging-refresh-script" toml:"topology-staging-refresh-script" json:"topologyStagingRefreshScript"`
+	TopologyStagingPostDetachScript           string                 `mapstructure:"topology-staging-post-detach-script" toml:"topology-staging-post-detach-script" json:"topologyStagingPostDetachScript"`
 	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
