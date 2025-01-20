@@ -30,7 +30,7 @@ function get {
 }
 
 # Counting the slaves, depending, we will play one of the two following scenarios 
-NB_SLAVES=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves | jq length) 
+NB_SLAVES=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/count) 
 echo $NB_SLAVES
 
 # Scenario 1 : 2 slaves, then we will stop the replication on one that will be the "staging"  
