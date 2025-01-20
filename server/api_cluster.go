@@ -2721,13 +2721,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.Conf.Cloud18ExternalDbOps = value
 		}
 	case "backup-save-script":
-		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("Unable to decode")
-		}
-		mycluster.Conf.BackupSaveScript = string(val)
+		mycluster.Conf.BackupSaveScript = value
 	case "backup-load-script":
-		val, err := base64.StdEncoding.DecodeString(value)
+		mycluster.Conf.BackupLoadScript = value
 	case "topology-staging-refresh-script":
 		mycluster.Conf.TopologyStagingRefreshScript = value
 	case "topology-staging-post-detach-script":
