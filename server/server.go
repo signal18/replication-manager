@@ -440,6 +440,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
 	flags.StringVar(&conf.ReplicationRestartOnSQLErrorMatch, "replication-restart-on-sqlerror-match", "", "Auto restart replication on SQL Error regexep")
 
+	flags.BoolVar(&conf.TopologyStaging, "topology-staging", false, "Use topology staging")
+	flags.StringVar(&conf.TopologyStagingRefreshScript, "topology-staging-refresh-script", "", "Topology staging refresh script path. Empty will use copy of embedded template in working directory")
+	flags.StringVar(&conf.TopologyStagingPostDetachScript, "topology-staging-post-detach-script", "", "Topology staging post detach script path. Empty will not execute anything")
+
 	flags.StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
 	flags.BoolVar(&conf.ReadOnly, "failover-readonly-state", true, "Failover Switchover set slaves as read-only")

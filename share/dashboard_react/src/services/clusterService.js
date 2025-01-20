@@ -41,6 +41,7 @@ export const clusterService = {
   configReload,
   configDiscoverDB,
   configDynamic,
+  refreshStaging,
 
   // Server management APIs
   setMaintenanceMode,
@@ -247,6 +248,10 @@ function configDiscoverDB(clusterName, baseURL) {
 
 function configDynamic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/apply-dynamic-config`)
+}
+
+function refreshStaging(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/refresh-staging`)
 }
 //#endregion Cluster management APIs
 

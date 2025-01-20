@@ -660,3 +660,7 @@ func (cluster *Cluster) SwitchCloud18SubscribedDbops() {
 func (cluster *Cluster) SwitchCloud18OpenSysops() {
 	cluster.Conf.Cloud18OpenSysops = !cluster.Conf.Cloud18OpenSysops
 }
+
+func (cluster *Cluster) SwitchTopologyStaging() {
+	cluster.Conf.TopologyStaging = !cluster.Conf.TopologyStaging
+}

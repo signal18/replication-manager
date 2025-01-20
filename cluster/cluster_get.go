@@ -245,6 +245,34 @@ func (cluster *Cluster) GetServers() serverList {
 	return cluster.Servers
 }
 
+func (cluster *Cluster) GetServersByState(state string) serverList {
+	var srvs serverList
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			srvs = append(srvs, server)
+		}
+	}
+	return srvs
+}
+
+func (cluster *Cluster) GetServerByStateAndIndex(state string, idx int) (*ServerMonitor, error) {
+	counter := 0
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			if counter == idx {
+				return server, nil
+			}
+			counter++
+		}
+	}
+
+	if idx > counter {
+		return nil, errors.New("Invalid index")
+	}
+
+	return nil, errors.New("Server Not Found")
+}
+
 func (cluster *Cluster) GetStandaloneServers() serverList {
 	var standaloneServers serverList
 	for _, server := range cluster.Servers {
@@ -1353,4 +1381,19 @@ func (cluster *Cluster) GetVaultToken() {
 
 func (cluster *Cluster) GetResticLocalDir() string {
 	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+}
+
+func (cluster *Cluster) GetExecEnv() []string {
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := cluster.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	return append(
+		os.Environ(),
+		`REPLICATION_MANAGER_URL="https://`+cluster.Conf.MonitorAddress+`:`+cluster.Conf.APIPort+`"`,
+		`REPLICATION_MANAGER_USER="`+adminuser+`"`,
+		`REPLICATION_MANAGER_PASSWORD="`+adminpassword+`"`,
+		`REPLICATION_MANAGER_CLUSTER_NAME="`+cluster.Name+`"`,
+	)
 }

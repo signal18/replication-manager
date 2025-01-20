@@ -9722,7 +9722,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/topology/standalones": {
+        "/api/clusters/{clusterName}/topology/state/{state}": {
             "get": {
                 "description": "This endpoint retrieves the servers for the specified cluster.",
                 "produces": [
@@ -9731,7 +9731,7 @@ const docTemplate = `{
                 "tags": [
                     "ClusterTopology"
                 ],
-                "summary": "Retrieve all standalone server for a specific cluster",
+                "summary": "Retrieve all servers by state for a specific cluster",
                 "parameters": [
                     {
                         "type": "string",
@@ -9747,11 +9747,18 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server State",
+                        "name": "state",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Standalone Server",
+                        "description": "server by state",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -9768,7 +9775,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/topology/standalones/count": {
+        "/api/clusters/{clusterName}/topology/state/{state}/count": {
             "get": {
                 "description": "Return number of servers for that specific named cluster",
                 "tags": [
@@ -9790,6 +9797,13 @@ const docTemplate = `{
                         "name": "clusterName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server State",
+                        "name": "state",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
@@ -9808,16 +9822,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/topology/standalones/index/{index}": {
+        "/api/clusters/{clusterName}/topology/state/{state}/index/{index}": {
             "get": {
-                "description": "This endpoint retrieves the servers for the specified cluster.",
+                "description": "This endpoint retrieves the server for the specified cluster.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "ClusterTopology"
                 ],
-                "summary": "Retrieve first standalone server for a specific cluster",
+                "summary": "Retrieve server by state and index for a specific cluster",
                 "parameters": [
                     {
                         "type": "string",
@@ -9831,6 +9845,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Cluster Name",
                         "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server State",
+                        "name": "state",
                         "in": "path",
                         "required": true
                     },
@@ -9844,7 +9865,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Standalone Server",
+                        "description": "server by state",
                         "schema": {
                             "$ref": "#/definitions/cluster.ServerMonitor"
                         }
@@ -9858,7 +9879,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName}": {
+        "/api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName}": {
             "get": {
                 "description": "This endpoint retrieves the servers for the specified cluster.",
                 "produces": [
@@ -9867,7 +9888,7 @@ const docTemplate = `{
                 "tags": [
                     "ClusterTopology"
                 ],
-                "summary": "Retrieve first standalone server for a specific cluster",
+                "summary": "Retrieve server attributes by state and index for a specific cluster",
                 "parameters": [
                     {
                         "type": "string",
@@ -9881,6 +9902,13 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Cluster Name",
                         "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server State",
+                        "name": "state",
                         "in": "path",
                         "required": true
                     },
@@ -9901,7 +9929,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Standalone Server (partial based on attrName)",
+                        "description": "Server (partial based on attrName)",
                         "schema": {
                             "$ref": "#/definitions/cluster.ServerMonitor"
                         }
@@ -11343,6 +11371,9 @@ const docTemplate = `{
                 },
                 "binaryLogFilesCount": {
                     "type": "integer"
+                },
+                "binaryLogName": {
+                    "type": "string"
                 },
                 "binaryLogOldestTimestamp": {
                     "type": "integer"
@@ -13812,6 +13843,9 @@ const docTemplate = `{
                 "provDbBinaryInTarball": {
                     "type": "boolean"
                 },
+                "provDbBinaryLogName": {
+                    "type": "string"
+                },
                 "provDbBinaryTarballName": {
                     "type": "string"
                 },
@@ -14448,12 +14482,6 @@ const docTemplate = `{
                 "sstSendBuffer": {
                     "type": "integer"
                 },
-                "stagingPostDetachScript": {
-                    "type": "string"
-                },
-                "stagingRefreshScript": {
-                    "type": "string"
-                },
                 "switchoverAtEqualGtid": {
                     "type": "boolean"
                 },
@@ -14516,6 +14544,12 @@ const docTemplate = `{
                 },
                 "topologyStaging": {
                     "type": "boolean"
+                },
+                "topologyStagingPostDetachScript": {
+                    "type": "string"
+                },
+                "topologyStagingRefreshScript": {
+                    "type": "string"
                 },
                 "topologyTarget": {
                     "type": "string"

@@ -1079,6 +1079,21 @@ export const endSubscription = createAsyncThunk(
   }
 )
 
+export const refreshStaging = createAsyncThunk(
+  'cluster/refreshStaging',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.refreshStaging(clusterName, baseURL)
+      showSuccessBanner(`Refresh staging initiated successfully!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Failed to initiate refresh staging!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
@@ -1261,7 +1276,8 @@ export const clusterSlice = createSlice({
         provisionProxy.pending,
         unprovisionProxy.pending,
         startProxy.pending,
-        stopProxy.pending
+        stopProxy.pending,
+        refreshStaging.pending,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1328,7 +1344,8 @@ export const clusterSlice = createSlice({
         provisionProxy.fulfilled,
         unprovisionProxy.fulfilled,
         startProxy.fulfilled,
-        stopProxy.fulfilled
+        stopProxy.fulfilled,
+        refreshStaging.fulfilled,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1395,7 +1412,8 @@ export const clusterSlice = createSlice({
         provisionProxy.rejected,
         unprovisionProxy.rejected,
         startProxy.rejected,
-        stopProxy.rejected
+        stopProxy.rejected,
+        refreshStaging.rejected,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
