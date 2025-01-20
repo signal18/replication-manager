@@ -80,7 +80,7 @@ fi
 
 if [ $NB_SLAVES -eq 1 ]; then
   echo "picking last slave and founding standalone \n"
-  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/{state}/index/0/attr/id | sed 's/"//g')
+  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/standalone/index/0/attr/id | sed 's/"//g')
   echo "found standalone server $ID \n"
   echo "reseting master position on standalone \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-master
