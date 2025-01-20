@@ -1354,3 +1354,18 @@ func (cluster *Cluster) GetVaultToken() {
 func (cluster *Cluster) GetResticLocalDir() string {
 	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
 }
+
+func (cluster *Cluster) GetExecEnv() []string {
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := cluster.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	return append(
+		os.Environ(),
+		`REPLICATION_MANAGER_URL="https://`+cluster.Conf.MonitorAddress+`:`+cluster.Conf.APIPort+`"`,
+		`REPLICATION_MANAGER_USER="`+adminuser+`"`,
+		`REPLICATION_MANAGER_PASSWORD="`+adminpassword+`"`,
+		`REPLICATION_MANAGER_CLUSTER_NAME="`+cluster.Name+`"`,
+	)
+}
