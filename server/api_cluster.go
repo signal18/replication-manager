@@ -100,7 +100,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
 	))
-	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
 	))
@@ -108,7 +108,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
@@ -183,6 +183,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/replication/cleanup", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplicationCleanup)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/refresh-staging", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRefreshStagingCluster)),
 	))
 	router.Handle("/api/clusters/{clusterName}/services/actions/provision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2084,6 +2088,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCloud18SubscribedDbops()
 	case "cloud18-open-sysops":
 		mycluster.SwitchCloud18OpenSysops()
+	case "topology-staging":
+		mycluster.SwitchTopologyStaging()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2722,10 +2728,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.BackupSaveScript = string(val)
 	case "backup-load-script":
 		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("Unable to decode")
-		}
-		mycluster.Conf.BackupSaveScript = string(val)
+	case "topology-staging-refresh-script":
+		mycluster.Conf.TopologyStagingRefreshScript = value
+	case "topology-staging-post-detach-script":
+		mycluster.Conf.TopologyStagingPostDetachScript = value
 	default:
 		return errors.New("Setting not found")
 	}
@@ -4675,4 +4681,33 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Credentials sent to user!"))
+}
+
+// handlerMuxRefreshStagingCluster handles the HTTP request to refresh the staging cluster.
+// @Summary Refresh Staging Cluster
+// @Description Refreshes the staging cluster specified by the cluster name in the URL.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Staging cluster refresh initiated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/refresh-staging [post]
+func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.RefreshStaging()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
 }

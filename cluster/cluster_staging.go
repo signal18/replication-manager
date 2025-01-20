@@ -13,7 +13,8 @@ func (cluster *Cluster) RefreshStaging() error {
 	var script string
 	var content []byte
 
-	template := "scripts/staging_refresh.sh"
+	filename := "staging_refresh.sh"
+	template := "scripts/" + filename
 
 	if !cluster.Conf.TopologyStaging {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging not enabled")
@@ -24,7 +25,7 @@ func (cluster *Cluster) RefreshStaging() error {
 
 	script = cluster.Conf.TopologyStagingRefreshScript
 	if cluster.Conf.TopologyStagingRefreshScript == "" {
-		script = cluster.Conf.WorkingDir + "/" + template
+		script = cluster.Conf.WorkingDir + "/" + filename
 
 		if _, err := os.Stat(script); os.IsNotExist(err) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Refresh Staging script not found. Use default script")
@@ -60,12 +61,12 @@ func (cluster *Cluster) RefreshStaging() error {
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
-		cluster.CopyLogs(stdoutIn, config.ConstLogModGeneral, config.LvlDbg, "staging")
+		cluster.CopyLogs(stdoutIn, config.ConstLogModTask, config.LvlInfo, "staging")
 		wg.Done()
 	}()
 
 	go func() {
-		cluster.CopyLogs(stderrIn, config.ConstLogModGeneral, config.LvlDbg, "staging")
+		cluster.CopyLogs(stderrIn, config.ConstLogModTask, config.LvlInfo, "staging")
 		wg.Done()
 	}()
 
