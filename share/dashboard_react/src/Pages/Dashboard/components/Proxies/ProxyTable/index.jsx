@@ -12,7 +12,7 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyTable({ proxies, isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
+function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (proxies?.length > 0) {
