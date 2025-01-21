@@ -3492,6 +3492,40 @@ paths:
       summary: Optimize a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/refresh-staging:
+    post:
+      description: Refreshes the staging cluster specified by the cluster name in
+        the URL.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staging cluster refresh initiated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Refresh Staging Cluster
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}:
     post:
       consumes:
@@ -9847,15 +9881,48 @@ paths:
           description: Cluster deleted successfully
           schema:
             type: string
-        "400":
-          description: Invalid cluster name
-          schema:
-            type: string
         "500":
-          description: Internal server error
+          description: Invalid cluster name" or "No Valid ACL
           schema:
             type: string
       summary: Delete a cluster
+      tags:
+      - Cluster
+  /api/clusters/actions/rename/{clusterName}/{newClusterName}:
+    post:
+      consumes:
+      - application/json
+      description: Renames a cluster identified by its name.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: New Cluster Name
+        in: path
+        name: newClusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cluster renamed successfully
+          schema:
+            type: string
+        "500":
+          description: Invalid cluster name" or "Cluster name already exists" or "No
+            Valid ACL
+          schema:
+            type: string
+      summary: Rename a cluster
       tags:
       - Cluster
   /api/clusters/for-sale:

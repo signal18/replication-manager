@@ -114,6 +114,7 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 		client, err := cluster.OnPremiseConnect(server)
 		if err != nil {
 			cluster.errorChan <- err
+			continue
 		}
 		defer client.Close()
 

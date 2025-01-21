@@ -22,7 +22,7 @@ type APIUser struct {
 	Password   string          `json:"-"`
 	GitToken   string          `json:"-"`
 	GitUser    string          `json:"-"`
-	IsExternal bool            `json:"-"`
+	IsExternal bool            `json:"isExternal"`
 	Roles      map[string]bool `json:"roles"`
 	Grants     map[string]bool `json:"grants"`
 }
@@ -816,6 +816,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterDelete] {
 		if strings.Contains(URL, "/api/clusters/actions/delete") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/actions/rename") {
 			return true
 		}
 	}

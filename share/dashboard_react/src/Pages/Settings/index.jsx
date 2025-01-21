@@ -16,7 +16,7 @@ import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import StagingSettings from './StagingSettings'
 
-function Settings({ selectedCluster, user }) {
+function Settings({ selectedCluster, user, onTabChange }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -111,7 +111,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGeneralOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} />}
       />
       <AccordionComponent
         heading={'Replication Failover Constraints'}

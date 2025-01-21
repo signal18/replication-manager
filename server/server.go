@@ -70,30 +70,31 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	OpenSVC          opensvc.Collector                 `json:"-"`
-	Version          string                            `json:"version"`
-	Fullversion      string                            `json:"fullVersion"`
-	Os               string                            `json:"os"`
-	OsUser           *user.User                        `json:"osUser"`
-	Arch             string                            `json:"arch"`
-	MemProfile       string                            `json:"memprofile"`
-	CpuProfile       string                            `json:"cpuprofile"`
-	Clusters         map[string]*cluster.Cluster       `json:"-"`
-	PeerClusters     []config.PeerCluster              `json:"-"`
-	PeerBooked       map[string]string                 `json:"-"`
-	Partners         []config.Partner                  `json:"partners"`
-	Partner          config.Partner                    `json:"partner"`
-	Agents           []opensvc.Host                    `json:"agents"`
-	UUID             string                            `json:"uuid"`
-	Hostname         string                            `json:"hostname"`
-	Status           string                            `json:"status"`
-	SplitBrain       bool                              `json:"spitBrain"`
-	ClusterList      []string                          `json:"clusters"`
-	Tests            []string                          `json:"tests"`
-	Conf             config.Config                     `json:"config"`
-	ImmuableFlagMaps map[string]map[string]interface{} `json:"-"`
-	DynamicFlagMaps  map[string]map[string]interface{} `json:"-"`
-	DefaultFlagMap   map[string]interface{}            `json:"-"`
+	OpenSVC              opensvc.Collector                 `json:"-"`
+	Version              string                            `json:"version"`
+	Fullversion          string                            `json:"fullVersion"`
+	Os                   string                            `json:"os"`
+	OsUser               *user.User                        `json:"osUser"`
+	Arch                 string                            `json:"arch"`
+	MemProfile           string                            `json:"memprofile"`
+	CpuProfile           string                            `json:"cpuprofile"`
+	Clusters             map[string]*cluster.Cluster       `json:"-"`
+	PeerClusters         []config.PeerCluster              `json:"-"`
+	PeerBooked           map[string]string                 `json:"-"`
+	Partners             []config.Partner                  `json:"partners"`
+	Partner              config.Partner                    `json:"partner"`
+	Agents               []opensvc.Host                    `json:"agents"`
+	UUID                 string                            `json:"uuid"`
+	Hostname             string                            `json:"hostname"`
+	Status               string                            `json:"status"`
+	SplitBrain           bool                              `json:"spitBrain"`
+	ClusterList          []string                          `json:"clusters"`
+	ImmutableClusterList []string                          `json:"-"`
+	Tests                []string                          `json:"tests"`
+	Conf                 config.Config                     `json:"config"`
+	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
+	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
+	DefaultFlagMap       map[string]interface{}            `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
@@ -1239,6 +1240,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	} else {
 		repman.Logrus.Warning("No include directory in default section")
 	}
+
+	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
 
 	tmp_read := fistRead.Sub("Default")
 	if tmp_read != nil {

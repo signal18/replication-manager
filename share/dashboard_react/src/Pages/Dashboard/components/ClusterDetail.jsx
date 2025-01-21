@@ -113,7 +113,7 @@ function ClusterDetail({ selectedCluster }) {
                   openConfirmModal()
                   setConfirmTitle('Confirm switchover?')
                   setConfirmHandler(
-                    () => () => dispatch(switchOverCluster({ clustclusterName: selectedCluster?.nameerName }))
+                    () => () => dispatch(switchOverCluster({ clusterName: selectedCluster?.name }))
                   )
                 }
               }

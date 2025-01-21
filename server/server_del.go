@@ -9,6 +9,7 @@ package server
 import (
 	"os"
 
+	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -45,13 +46,14 @@ func (repman *ReplicationManager) DeleteCluster(clusterName string) error {
 
 	err := os.RemoveAll(repman.Conf.WorkingDir + "/" + clusterName)
 	if err != nil {
-		log.Errorf("Delete cluster working directory fail: %s", err)
-
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Delete cluster working directory fail: %s", err)
 	}
+
 	if repman.currentCluster == cl {
 		repman.currentCluster = nil
 	}
-	log.Warnf("Cluster %s is delete\n", clusterName)
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Cluster %s is deleted\n", clusterName)
 	return nil
 
 }

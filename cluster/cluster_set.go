@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -2227,4 +2228,35 @@ func (cluster *Cluster) SetResticVersion() error {
 
 func (cluster *Cluster) SetInRollingRestart(value bool) {
 	cluster.InRollingRestart = value
+}
+
+func (cluster *Cluster) RenameCluster(newClusterName string) error {
+
+	cluster.Lock()
+	defer func() {
+		cluster.Unlock()
+		cluster.Save()
+	}()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
+
+	// Rename cluster directory
+	err := os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster configuration file
+	err = os.Rename(cluster.Conf.WorkingDir+"/"+newClusterName+"/"+cluster.Name+".toml", cluster.Conf.WorkingDir+"/"+newClusterName+"/"+newClusterName+".toml")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster name
+	cluster.Name = newClusterName
+
+	return nil
+
 }

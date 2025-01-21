@@ -1298,14 +1298,67 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Cluster deleted successfully"
-// @Failure 400 {string} string "Invalid cluster name"
-// @Failure 500 {string} string "Internal server error"
+// @Failure 500 {string} string "Invalid cluster name" or "No Valid ACL"
 // @Router /api/clusters/actions/delete/{clusterName} [delete]
 func (repman *ReplicationManager) handlerMuxClusterDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.DeleteCluster(vars["clusterName"])
 
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Invalid cluster name", 500)
+		return
+	}
+
+	valid, _ := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, "No Valid ACL", 500)
+		return
+	}
+
+	repman.DeleteCluster(vars["clusterName"])
+}
+
+// handlerMuxClusterRename handles the HTTP request to rename a cluster.
+// @Summary Rename a cluster
+// @Description Renames a cluster identified by its name.
+// @Tags Cluster
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param newClusterName path string true "New Cluster Name"
+// @Success 200 {string} string "Cluster renamed successfully"
+// @Failure 500 {string} string "Invalid cluster name" or "Cluster name already exists" or "No Valid ACL"
+// @Router /api/clusters/actions/rename/{clusterName}/{newClusterName} [post]
+func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Invalid cluster name", 500)
+		return
+	}
+
+	if slices.Contains(repman.ImmutableClusterList, mycluster.Name) {
+		http.Error(w, "Cluster is not dynamic", 500)
+		return
+	}
+
+	valid, _ := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, "No Valid ACL", 500)
+		return
+	}
+
+	// Check if new cluster name is already exist
+	if newcluster := repman.getClusterByName(vars["newClusterName"]); newcluster != nil {
+		http.Error(w, "Cluster name already exists", 500)
+		return
+	}
+
+	mycluster.RenameCluster(vars["newClusterName"])
 }
 
 // handlerMuxPrometheus handles HTTP requests to fetch Prometheus metrics for all servers in all clusters.
