@@ -677,7 +677,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMasterSlave
 	case "master-slave-no-gtid":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -686,7 +685,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMasterSlave
 	case "multi-master":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -695,7 +693,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMultiMaster
 	case "multi-tier-slave":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(true)
@@ -704,7 +701,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMultiTierSlave
 	case "maxscale-binlog":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -713,7 +709,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetBinlogServer(true)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoBinlogServer
 	case "multi-master-ring":
 		cluster.SetMultiTierSlave(false)
 		cluster.SetForceSlaveNoGtid(false)
@@ -722,7 +717,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetMultiMasterRing(true)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMultiMasterRing
 	case "multi-master-wsrep":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -732,7 +726,6 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiMasterWsrep(true)
 		cluster.SetMultiMasterGroupRep(false)
-		cluster.Topology = config.TopoMultiMasterWsrep
 	case "multi-master-grprep":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -742,11 +735,10 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(true)
-		cluster.Topology = config.TopoMultiMasterGrouprep
 	default:
 		return
 	}
-	cluster.Conf.TopologyTarget = cluster.Topology
+	cluster.SetTopologyTarget(topology)
 }
 
 func (cluster *Cluster) GetReplicationMasterServerID() uint64 {

@@ -820,7 +820,7 @@ func (cluster *Cluster) GetTopologyFromConf() string {
 	}
 
 	if cluster.Conf.TopologyTarget == "" || cluster.Conf.TopologyTarget == config.TopoUnknown {
-		cluster.Conf.TopologyTarget = cluster.Conf.Topology
+		cluster.SetTopologyTarget(cluster.Conf.Topology)
 	}
 
 	return cluster.Conf.Topology
