@@ -23,6 +23,28 @@ export const addCluster = createAsyncThunk('globalClusters/addCluster', async ({
   }
 })
 
+export const dropCluster = createAsyncThunk('globalClusters/dropCluster', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.dropCluster(clusterName)
+    showSuccessBanner("Drop cluster '"+clusterName+"' is successful!", status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner("Drop cluster '"+clusterName+"' is failed!", error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const renameCluster = createAsyncThunk('globalClusters/renameCluster', async ({ clusterName,  newClusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.renameCluster(clusterName, newClusterName)
+    showSuccessBanner("Rename cluster '"+clusterName+"' is successful!", status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner("Rename cluster '"+clusterName+"' is failed!", error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers', async ({}, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusterPeers()

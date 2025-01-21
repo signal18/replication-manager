@@ -144,14 +144,61 @@
                             "type": "string"
                         }
                     },
-                    "400": {
-                        "description": "Invalid cluster name",
+                    "500": {
+                        "description": "Invalid cluster name\" or \"No Valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/actions/rename/{clusterName}/{newClusterName}": {
+            "post": {
+                "description": "Renames a cluster identified by its name.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Rename a cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "New Cluster Name",
+                        "name": "newClusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cluster renamed successfully",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Invalid cluster name\" or \"Cluster name already exists\" or \"No Valid ACL",
                         "schema": {
                             "type": "string"
                         }
@@ -1002,6 +1049,55 @@
                     },
                     "403": {
                         "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/refresh-staging": {
+            "post": {
+                "description": "Refreshes the staging cluster specified by the cluster name in the URL.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterActions"
+                ],
+                "summary": "Refresh Staging Cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Staging cluster refresh initiated",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
                         "schema": {
                             "type": "string"
                         }

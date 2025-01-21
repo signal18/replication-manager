@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -2227,4 +2228,31 @@ func (cluster *Cluster) SetResticVersion() error {
 
 func (cluster *Cluster) SetInRollingRestart(value bool) {
 	cluster.InRollingRestart = value
+}
+
+func (cluster *Cluster) RenameCluster(newClusterName string) error {
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
+
+	err := os.MkdirAll(cluster.Conf.WorkingDir+"/"+newClusterName, 0755)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create new cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster directory
+	err = os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster name
+	cluster.Name = newClusterName
+
+	// Save cluster
+	cluster.Save()
+
+	return nil
+
 }

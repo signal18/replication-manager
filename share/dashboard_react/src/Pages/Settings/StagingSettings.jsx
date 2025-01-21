@@ -52,7 +52,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     ...(selectedCluster?.config?.topologyStaging ? [{
-      key: 'Staging post-detach script',
+      key: 'Refresh Staging',
       value: (
         <RMIconButton icon={TbDatabaseExport} onClick={() => {
           openConfirmModal(`Confirm refresh-staging? This action can not be undone!`, () => () => {

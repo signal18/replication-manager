@@ -10,6 +10,8 @@ export const globalClustersService = {
   setGlobalSetting,
   clearGlobalSetting,
   addCluster,
+  dropCluster,
+  renameCluster,
   reloadClustersPlan
 }
 
@@ -47,6 +49,14 @@ function clearGlobalSetting(setting) {
 
 function addCluster(clusterName, formdata) {
   return getApi().post(`clusters/actions/add/${clusterName}`, formdata)
+}
+
+function dropCluster(clusterName) {
+  return getApi().post(`clusters/actions/delete/${clusterName}`)
+}
+
+function renameCluster(clusterName, newClusterName) {
+  return getApi().post(`clusters/actions/rename/${clusterName}/${newClusterName}`)
 }
 
 function reloadClustersPlan() {
