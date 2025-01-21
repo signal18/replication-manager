@@ -125,7 +125,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
         <TextForm
           value={selectedCluster?.name}
           confirmTitle={`Confirm rename cluster to `}
-          regexPattern={'^[a-zA-Z0-9]*$'}
+          regexPattern={'^[a-zA-Z0-9_-]*$'}
           onSave={(value) => {
             dispatch(renameCluster({ clusterName: selectedCluster?.name, newClusterName: value }))
           }}

@@ -1034,7 +1034,6 @@ const (
 	GrantDBDebug                   string = "db-debug"
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
-	GrantClusterDrop               string = "cluster-drop"
 	GrantClusterCreateMonitor      string = "cluster-create-monitor"
 	GrantClusterDropMonitor        string = "cluster-drop-monitor"
 	GrantClusterFailover           string = "cluster-failover"
@@ -2127,7 +2126,7 @@ func GetGrantType() map[string]string {
 		GrantDBShowLogs:                GrantDBShowLogs,
 		GrantDBDebug:                   GrantDBDebug,
 		GrantClusterCreate:             GrantClusterCreate,
-		GrantClusterDrop:               GrantClusterDrop,
+		GrantClusterDelete:             GrantClusterDelete,
 		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
 		GrantClusterDropMonitor:        GrantClusterDropMonitor,
 		GrantClusterFailover:           GrantClusterFailover,
@@ -2221,7 +2220,7 @@ func HasAllDBGrants(grants map[string]bool) bool {
 func GetGrantCluster() []string {
 	return []string{
 		GrantClusterCreate,
-		GrantClusterDrop,
+		GrantClusterDelete,
 		GrantClusterCreateMonitor,
 		GrantClusterDropMonitor,
 		GrantClusterFailover,
