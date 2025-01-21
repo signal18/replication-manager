@@ -322,7 +322,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 
 	router.Handle("/api/clusters/actions/rename/{clusterName}/{newClusterName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterDelete)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRename)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(

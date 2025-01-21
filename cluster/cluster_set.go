@@ -2240,14 +2240,15 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
 
-	err := os.MkdirAll(cluster.Conf.WorkingDir+"/"+newClusterName, 0755)
+	// Rename cluster directory
+	err := os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Create new cluster working directory fail: %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
 		return err
 	}
 
-	// Rename cluster directory
-	err = os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	// Rename cluster configuration file
+	err = os.Rename(cluster.Conf.WorkingDir+"/"+newClusterName+"/"+cluster.Name+".toml", cluster.Conf.WorkingDir+"/"+newClusterName+"/"+newClusterName+".toml")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
 		return err

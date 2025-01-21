@@ -1341,6 +1341,11 @@ func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter,
 		return
 	}
 
+	if slices.Contains(repman.ImmutableClusterList, mycluster.Name) {
+		http.Error(w, "Cluster is not dynamic", 500)
+		return
+	}
+
 	valid, _ := repman.IsValidClusterACL(r, mycluster)
 	if !valid {
 		http.Error(w, "No Valid ACL", 500)

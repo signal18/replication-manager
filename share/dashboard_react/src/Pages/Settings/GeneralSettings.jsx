@@ -12,7 +12,7 @@ import { TbTrash } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
 import TextForm from '../../components/TextForm'
 
-function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
+function GeneralSettings({ selectedCluster, user, openConfirmModal, onTabChange }) {
   const [topologyOptions, setTopologyOptions] = useState([])
   const dispatch = useDispatch()
 
@@ -127,7 +127,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
           confirmTitle={`Confirm rename cluster to `}
           regexPattern={'^[a-zA-Z0-9_-]*$'}
           onSave={(value) => {
-            dispatch(renameCluster({ clusterName: selectedCluster?.name, newClusterName: value }))
+            dispatch(renameCluster({ clusterName: selectedCluster?.name, newClusterName: value })).then(() => { onTabChange(0)})
           }}
         />
       )
@@ -136,10 +136,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Drop Cluster',
       value: (
         <RMIconButton icon={TbTrash} onClick={() => {
-          openConfirmModal(`Confirm drop cluster? This action can not be undone!`, () => () => {
-            dispatch(
-              dropCluster({ clusterName: selectedCluster?.name })
-            )
+          openConfirmModal(`Confirm drop cluster? This action can not be undone!`, () => () => { dispatch(dropCluster({ clusterName: selectedCluster?.name })).then(() => { onTabChange(0)})
           })
         }} />
       )
