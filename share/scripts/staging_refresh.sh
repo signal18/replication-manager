@@ -34,7 +34,7 @@ NB_SLAVES=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUST
 echo $NB_SLAVES
 
 # Scenario 1 : 2 slaves, then we will stop the replication on one that will be the "staging"  
-if [ $NB_SLAVES -eq 2 ]; then
+if [ "$NB_SLAVES" -eq 2 ]; then
   echo "picking first slave \n"
   ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/id | sed 's/"//g' )
   PORT=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/port)
@@ -78,7 +78,7 @@ if [ $NB_SLAVES -eq 2 ]; then
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/start
 fi
 
-if [ $NB_SLAVES -eq 1 ]; then
+if [ "$NB_SLAVES" -eq 1 ]; then
   echo "picking last slave and founding standalone \n"
   ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/standalone/index/0/attr/id | sed 's/"//g')
   echo "found standalone server $ID \n"

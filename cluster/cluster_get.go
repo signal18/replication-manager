@@ -1391,9 +1391,9 @@ func (cluster *Cluster) GetExecEnv() []string {
 	}
 	return append(
 		os.Environ(),
-		`REPLICATION_MANAGER_URL="https://`+cluster.Conf.MonitorAddress+`:`+cluster.Conf.APIPort+`"`,
-		`REPLICATION_MANAGER_USER="`+adminuser+`"`,
-		`REPLICATION_MANAGER_PASSWORD="`+adminpassword+`"`,
-		`REPLICATION_MANAGER_CLUSTER_NAME="`+cluster.Name+`"`,
+		`REPLICATION_MANAGER_URL=https://`+cluster.Conf.MonitorAddress+`:`+cluster.Conf.APIPort,
+		`REPLICATION_MANAGER_USER=`+adminuser,
+		`REPLICATION_MANAGER_PASSWORD=`+adminpassword,
+		`REPLICATION_MANAGER_CLUSTER_NAME=`+cluster.Name,
 	)
 }
