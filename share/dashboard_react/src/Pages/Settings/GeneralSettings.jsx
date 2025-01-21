@@ -136,7 +136,7 @@ function GeneralSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Drop Cluster',
       value: (
         <RMIconButton icon={TbTrash} onClick={() => {
-          openConfirmModal(`Confirm refresh-staging? This action can not be undone!`, () => () => {
+          openConfirmModal(`Confirm drop cluster? This action can not be undone!`, () => () => {
             dispatch(
               dropCluster({ clusterName: selectedCluster?.name })
             )

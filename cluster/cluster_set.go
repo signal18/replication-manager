@@ -2232,6 +2232,12 @@ func (cluster *Cluster) SetInRollingRestart(value bool) {
 
 func (cluster *Cluster) RenameCluster(newClusterName string) error {
 
+	cluster.Lock()
+	defer func() {
+		cluster.Unlock()
+		cluster.Save()
+	}()
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
 
 	err := os.MkdirAll(cluster.Conf.WorkingDir+"/"+newClusterName, 0755)
@@ -2249,9 +2255,6 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 
 	// Rename cluster name
 	cluster.Name = newClusterName
-
-	// Save cluster
-	cluster.Save()
 
 	return nil
 
