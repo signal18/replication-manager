@@ -13,9 +13,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/transport"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/githelper"
+	log "github.com/sirupsen/logrus"
 )
 
 func (repman *ReplicationManager) SetIsGitPush(val bool) {
@@ -179,14 +183,16 @@ func (repman *ReplicationManager) PushAllConfigsToGit() {
 		}
 	}
 
-	if repman.Conf.GitUrl != "" {
-		repman.AddPullToGitignore()
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
-		err := repman.Conf.PushConfigToGit(repman.Conf.GitUrl, repman.Conf.Secrets["git-acces-token"].Value, repman.Conf.GitUsername, repman.Conf.WorkingDir, repman.ClusterList)
-		if err != nil && err == transport.ErrRepositoryNotFound {
-			os.RemoveAll(repman.Conf.WorkingDir + "/.git")
-			repman.Conf.PushConfigToGit(repman.Conf.GitUrl, repman.Conf.Secrets["git-acces-token"].Value, repman.Conf.GitUsername, repman.Conf.WorkingDir, repman.ClusterList)
-		}
+	if repman.Conf.GitUrl == "" {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "No Git URL provided, skipping push")
+		return
+	}
+	repman.AddPullToGitignore()
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
+	err := repman.PushConfigToGit()
+	if err != nil && err == transport.ErrRepositoryNotFound {
+		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
+		repman.PushConfigToGit()
 	}
 }
 
@@ -463,4 +469,288 @@ func (repman *ReplicationManager) AddPullToGitignore() {
 			fmt.Println("Error appending to .gitignore:", err)
 		}
 	}
+}
+
+// Ensures ".tmp/" is in .gitignore.
+func (repman *ReplicationManager) AddTempDirToGitignore() {
+	gitignoreFile := repman.Conf.WorkingDir + "/.gitignore"
+	lineToAdd := ".tmp/"
+
+	// Check if .gitignore exists
+	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
+		// If .gitignore doesn't exist, create it and write the line
+		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
+		if err != nil {
+			fmt.Println("Error creating .gitignore:", err)
+		}
+		return
+	}
+
+	// Open .gitignore for reading and appending
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Println("Error opening .gitignore:", err)
+		return
+	}
+	defer file.Close()
+
+	// Check if the line already exists
+	scanner := bufio.NewScanner(file)
+	lineExists := false
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == lineToAdd {
+			lineExists = true
+			break
+		}
+	}
+
+	if scanner.Err() != nil {
+		fmt.Println("Error reading .gitignore:", scanner.Err())
+		return
+	}
+
+	// Append the line if it doesn't already exist
+	if !lineExists {
+		_, err := file.WriteString(lineToAdd + "\n")
+		if err != nil {
+			fmt.Println("Error appending to .gitignore:", err)
+		}
+	}
+}
+
+func (repman *ReplicationManager) MoveConfigsToTmpDir(path string) error {
+	// Create the .tmp directory
+	tmpDir := filepath.Join(path, ".tmp")
+	err := os.MkdirAll(tmpDir, 0755)
+	if err != nil {
+		repman.Logrus.Errorf("Error creating .tmp directory: %s", err)
+		return err
+	}
+
+	err = filepath.Walk(path, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip the .tmp directory itself
+		if info.IsDir() && filePath == tmpDir {
+			return filepath.SkipDir
+		}
+
+		// Process only .toml and .json files
+		if !info.IsDir() && (strings.HasSuffix(info.Name(), ".toml") || strings.HasSuffix(info.Name(), ".json")) {
+			// Calculate relative path and target path in .tmp
+			relPath, err := filepath.Rel(path, filePath)
+			if err != nil {
+				repman.Logrus.Errorf("Error calculating relative path for %s: %s", filePath, err)
+				return err
+			}
+			newPath := filepath.Join(tmpDir, relPath)
+
+			// Create directories in .tmp as needed
+			err = os.MkdirAll(filepath.Dir(newPath), 0755)
+			if err != nil {
+				repman.Logrus.Errorf("Error creating directories for %s: %s", newPath, err)
+				return err
+			}
+
+			// Move the file
+			err = os.Rename(filePath, newPath)
+			if err != nil {
+				repman.Logrus.Errorf("Error moving file %s to %s: %s", filePath, newPath, err)
+				return err
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		repman.Logrus.Errorf("Error moving files to .tmp directory: %s", err)
+		return err
+	}
+
+	return nil
+}
+
+func (repman *ReplicationManager) RestoreConfigsFromTmpDir(path string) error {
+	// Define the .tmp directory
+	tmpDir := filepath.Join(path, ".tmp")
+
+	// Check if the .tmp directory exists
+	if _, err := os.Stat(tmpDir); os.IsNotExist(err) {
+		log.Printf(".tmp directory does not exist in %s\n", path)
+		return nil
+	}
+
+	err := filepath.Walk(tmpDir, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Only process files
+		if !info.IsDir() {
+			// Calculate the original path of the file
+			relPath, err := filepath.Rel(tmpDir, filePath)
+			if err != nil {
+				log.Printf("Error calculating relative path for %s: %s\n", filePath, err)
+				return err
+			}
+
+			originalPath := filepath.Join(path, relPath)
+
+			// Ensure the parent directory exists
+			err = os.MkdirAll(filepath.Dir(originalPath), 0755)
+			if err != nil {
+				log.Printf("Error creating directories for %s: %s\n", originalPath, err)
+				return err
+			}
+
+			// Move the file back to its original location
+			err = os.Rename(filePath, originalPath)
+			if err != nil {
+				log.Printf("Error moving file %s back to %s: %s\n", filePath, originalPath, err)
+				return err
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error restoring files from .tmp directory: %s\n", err)
+		return err
+	}
+
+	// Remove the .tmp directory after restoration
+	err = os.RemoveAll(tmpDir)
+	if err != nil {
+		log.Printf("Error removing .tmp directory: %s\n", err)
+		return err
+	}
+
+	log.Println("Restoration completed successfully.")
+	return nil
+}
+
+func (repman *ReplicationManager) PushConfigToGit() error {
+	url := repman.Conf.GitUrl
+	tok := repman.Conf.GetDecryptedValue("git-acces-token")
+	user := repman.Conf.GitUsername
+	path := repman.Conf.WorkingDir
+	clusterList := repman.ClusterList
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Push to git : tok %s, dir %s, user %s, clustersList : %v\n", repman.Conf.PrintSecret(tok), path, user, clusterList)
+
+	auth := &git_https.BasicAuth{
+		Username: user, // yes, this can be anything except an empty string
+		Password: tok,
+	}
+
+	var r *git.Repository
+	if _, err := os.Stat(path + "/.git"); os.IsNotExist(err) {
+		if !repman.Conf.ConfRestoreOnStart {
+			repman.MoveConfigsToTmpDir(path)
+		}
+		// Clone the given repository to the given directory
+		r, err = git.PlainClone(path, false, &git.CloneOptions{
+			URL:               url,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth:              auth,
+		})
+		if err != nil {
+			if err == transport.ErrRepositoryNotFound {
+				repman.Conf.CreateGitlabProjects()
+				r, err = git.PlainClone(path, false, &git.CloneOptions{
+					URL:               url,
+					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+					Auth:              auth,
+				})
+				repman.RestoreConfigsFromTmpDir(path)
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Git error : cannot Clone %s repository : %s", url, err)
+					return err
+				}
+			} else {
+				repman.RestoreConfigsFromTmpDir(path)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Git error : cannot Clone %s repository : %s", url, err)
+				return err
+			}
+		}
+
+		w, err := r.Worktree()
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
+			return err
+		}
+
+		// checkout and keep files
+		w.Checkout(&git.CheckoutOptions{Keep: true})
+
+		if !repman.Conf.ConfRestoreOnStart {
+			repman.RestoreConfigsFromTmpDir(path)
+		}
+	} else {
+		r, err = git.PlainOpen(path)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot PlainOpen : %s", err)
+			return err
+		}
+	}
+
+	w, err := r.Worktree()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
+		return err
+	}
+
+	if len(clusterList) != 0 {
+		for _, name := range clusterList {
+			// Adds the new file to the staging area.
+			err = w.AddGlob(name + "/*.toml")
+			if err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
+			}
+
+			if _, err := os.Stat(repman.Conf.WorkingDir + "/" + name + "/agents.json"); !os.IsNotExist(err) {
+				_, err = w.Add(name + "/agents.json")
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/agents.json", err)
+				}
+				_, err = w.Add(name + "/queryrules.json")
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/queryrules.json", err)
+				}
+			}
+		}
+	}
+
+	if _, err := os.Stat(repman.Conf.WorkingDir + "/default.toml"); !os.IsNotExist(err) {
+		_, err = w.Add("default.toml")
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add default.toml : %s", err)
+		}
+	}
+
+	msg := "Update file"
+
+	_, err = w.Commit(msg, &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication-manager",
+			When: time.Now(),
+		},
+		All: true,
+	})
+
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Commit : %s", err)
+		return err
+	}
+
+	// push using default options
+	err = r.Push(&git.PushOptions{Auth: auth, RemoteURL: url})
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
+	}
+
+	return err
 }
