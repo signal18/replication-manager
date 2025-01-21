@@ -345,7 +345,7 @@ function stopSlave(clusterName, serverId, baseURL) {
 }
 
 function toggleReadOnly(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/set-readonly`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/toogle-read-only`)
 }
 
 function resetMaster(clusterName, serverId, baseURL) {
