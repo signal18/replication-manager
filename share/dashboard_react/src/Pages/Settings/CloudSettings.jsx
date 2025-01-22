@@ -1,4 +1,4 @@
-import { Flex } from '@chakra-ui/react'
+import { Flex, HStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
@@ -11,6 +11,9 @@ import TextForm from '../../components/TextForm'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import RMIconButton from '../../components/RMIconButton'
 import { HiKey } from 'react-icons/hi'
+import { TbUserCancel } from 'react-icons/tb'
+import { endExternalRole, subscribeExternalRole } from '../../redux/clusterSlice'
+import TextInputModal from '../../components/Modals/TextInputModal'
 
 function CloudSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -20,16 +23,38 @@ function CloudSettings({ selectedCluster, user }) {
   } = useSelector((state) => state)
 
   const [planOptions, setPlanOptions] = useState([])
+  const [dbopsOptions, setDbopsOptions] = useState([])
+  const [partnerOptions, setPartnerOptions] = useState([])
   const [credentialType, setCredentialType] = useState('')
+  const [roleType, setRoleType] = useState('')
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
+  const [isTextModalOpen, setIsTextModalOpen] = useState(false)
 
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' }, ...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
+  const getPartnerOptions = (plist = [], role) => [{ name: "No Partner", value: '' }, ...plist?.map((obj) => ({ name: obj.Name, value: role === 'extdbops' ? obj.DbopsEmail : obj.SysopsEmail }))]
 
+  const getExtRoleEmail = (role) => { 
+    if (role === 'extdbops') {
+      return selectedCluster?.config?.cloud18ExternalDbOps
+    }
+    
+    return selectedCluster?.config?.cloud18ExternalSysOps
+  }
+
+  const handleEndExternalRole = (value) => { 
+    dispatch(endExternalRole({ clusterName: selectedCluster?.name, username: getExtRoleEmail(roleType), roles: roleType, reason: value })) 
+  }
+  
   useEffect(() => {
     if (monitor?.servicePlans) {
       setPlanOptions(getPlanOptions(monitor.servicePlans))
     }
-  }, [monitor?.servicePlans])
+
+    if (monitor?.partners) {
+      setDbopsOptions(getPartnerOptions(monitor.partners, 'extdbops'))
+      setPartnerOptions(getPartnerOptions(monitor.partners, 'extsysops'))
+    }
+  }, [monitor?.servicePlans, monitor?.partners])
 
   const dataObject = [
     ...(selectedCluster?.config?.cloud18
@@ -131,9 +156,56 @@ function CloudSettings({ selectedCluster, user }) {
           )
         },
         {
-          key: 'Cloud18 DBA User Credentials',
+          key: 'Cloud18 External Sys Ops',
           value: (
+            <HStack w='100%'>
+            <Flex className={styles.dropdownContainer}>
+              <Dropdown
+                options={partnerOptions}
+                id='plan'
+                className={styles.dropdownButton}
+                selectedValue={selectedCluster?.config?.cloud18ExternalSysOps}
+                confirmTitle={`Confirm external Sys Ops change to`}
+                onChange={(option) => {
+                  dispatch(
+                    subscribeExternalRole({
+                      clusterName: selectedCluster?.name,
+                      username: option,
+                      roles: 'extsysops'
+                    })
+                  )
+                }}
+              />
+            </Flex>
+            <RMIconButton tooltip={'End External Sysops Role'} icon={TbUserCancel} onClick={() => { setRoleType('extsysops'); setIsTextModalOpen(true) }} />
+          </HStack>
+          )
+        },
+        {
+          key: 'Cloud18 External DB Ops',
+          value: (
+            <HStack w='100%'>
+            <Flex className={styles.dropdownContainer}>
+              <Dropdown
+                options={dbopsOptions}
+                id='plan'
+                className={styles.dropdownButton}
+                selectedValue={selectedCluster?.config?.cloud18ExternalDbOps}
+                confirmTitle={`Confirm external DB Ops change to`}
+                onChange={(option) => {
+                  dispatch(
+                    subscribeExternalRole({
+                      clusterName: selectedCluster?.name,
+                      username: option,
+                      roles: 'extdbops'
+                    })
+                  )
+                }}
+              />
+            </Flex>
+            <RMIconButton tooltip={'End External Role'} icon={TbUserCancel} onClick={() => { setRoleType('extdbops'); setIsTextModalOpen(true) }} />
             <RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-dba-user-credentials'); setIsCredentialModalOpen(true) }} />
+          </HStack>
           )
         },
         {
@@ -157,6 +229,20 @@ function CloudSettings({ selectedCluster, user }) {
           closeModal={() => {
             setIsCredentialModalOpen(false)
             setCredentialType('')
+          }}
+        />
+      )}
+      {isTextModalOpen && (
+        <TextInputModal
+        key={roleType}
+          isOpen={isTextModalOpen}
+          title={'End External Role'}
+          fieldname={'Reason'}
+          onSave={handleEndExternalRole}
+          isRequired={true}
+          closeModal={() => {
+            setIsTextModalOpen(false)
+            setRoleType('')
           }}
         />
       )}

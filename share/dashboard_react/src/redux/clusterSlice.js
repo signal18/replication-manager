@@ -1094,6 +1094,83 @@ export const refreshStaging = createAsyncThunk(
   }
 )
 
+export const subscribeExternalRole = createAsyncThunk(
+  'cluster/subscribeExternalRole',
+  async ({ clusterName, username, roles }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.subscribeExternalRole(clusterName, username, roles, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is requested successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`request external role '${roles}' for '${username}' failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const acceptExternalRole = createAsyncThunk(
+  'cluster/acceptExternalRole',
+  async ({ clusterName, username, roles }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.acceptExternalRole(clusterName, username, roles, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is accepted successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to accept external role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const refuseExternalRole = createAsyncThunk(
+  'cluster/refuseExternalRole',
+  async ({ clusterName, username, roles, reason }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.refuseExternalRole(clusterName, username, roles, reason, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is refused !`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to refuse role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+
+export const endExternalRole = createAsyncThunk(
+  'cluster/endExternalRole',
+  async ({ clusterName, username, roles, reason }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.endExternalRole(clusterName, username, roles, reason, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' is deactivated from '${username}'!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to deactivate external role '${roles}' from '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,

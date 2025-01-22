@@ -4,14 +4,15 @@ import { DataTable } from '../../components/DataTable'
 import AccordionComponent from '../../components/AccordionComponent'
 import styles from './styles.module.scss'
 import UserGrantModal from '../../components/Modals/UserGrantModal'
-import { acceptSubscription, dropUser, endSubscription, rejectSubscription, sendCredentials } from '../../redux/clusterSlice'
+import { acceptExternalRole, acceptSubscription, dropUser, endSubscription, refuseExternalRole, rejectSubscription, sendCredentials } from '../../redux/clusterSlice'
 import RMButton from '../../components/RMButton'
 import RMIconButton from '../../components/RMIconButton'
 import { HiUserGroup } from 'react-icons/hi'
-import { TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
+import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopCancel, TbDeviceDesktopStar, TbDeviceDesktopX, TbDevicesStar, TbMail, TbMailCog, TbMailDollar, TbMailStar, TbTrash, TbUserCancel, TbUserStar } from 'react-icons/tb'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { useDispatch, useSelector } from 'react-redux'
 import { HStack } from '@chakra-ui/react'
+import TextInputModal from '../../components/Modals/TextInputModal'
 
 function Users({ selectedCluster, user }) {
   const [data, setData] = useState([])
@@ -19,6 +20,7 @@ function Users({ selectedCluster, user }) {
   const [action, setAction] = useState({ type: '', title: '', payload: '' })
   const [isUserGrantModalOpen, setIsUserGrantModalOpen] = useState(null)
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
+  const [isTextModalOpen, setIsTextModalOpen] = useState(null)
   const columnHelper = createColumnHelper()
   const { type, title, payload } = action
   const dispatch = useDispatch()
@@ -87,11 +89,23 @@ function Users({ selectedCluster, user }) {
     setIsConfirmModalOpen(false)
   }
 
-  const handleConfirm = () => {
+  const openTextModal = () => {
+    setIsTextModalOpen(true)
+  }
+
+  const handleConfirm = (value) => {
     if (type === 'accept-sub') {
       dispatch(acceptSubscription({ clusterName: selectedCluster.name, username: payload }))
     } else if (type === 'reject-sub') {
       dispatch(rejectSubscription({ clusterName: selectedCluster.name, username: payload }))
+    } else if (type === 'accept-extdbops') {
+      dispatch(acceptExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extdbops' }))
+    } else if (type === 'reject-extdbops') {
+      dispatch(refuseExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extdbops', reason: value }))
+    } else if (type === 'accept-extsysops') {
+      dispatch(acceptExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops' }))
+    } else if (type === 'reject-extsysops') {
+      dispatch(refuseExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops', reason: value }))
     } else if (type === 'end-sub') {
       dispatch(endSubscription({ clusterName: selectedCluster.name, username: payload }))
     } else if (type === 'drop-user') {
@@ -138,6 +152,16 @@ function Users({ selectedCluster, user }) {
               <RMIconButton tooltip={"accept subscription"} icon={TbUserStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-sub", title: "Are you sure to accept subscription?", payload: row.user }); openConfirmModal() }} />
               <RMIconButton tooltip={"reject subscription"} icon={TbUserCancel} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-sub", title: "Are you sure to reject subscription?", payload: row.user }); openConfirmModal() }} />
             </>
+          ) : row?.roles?.["pending-extdbops"] ? (
+            <>
+              <RMIconButton tooltip={"accept external dbops"} icon={TbDatabaseStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extdbops", title: "Are you sure to accept external dbops?", payload: row.user }); openConfirmModal() }} />
+              <RMIconButton tooltip={"reject external dbops"} icon={TbDatabaseX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extdbops", title: "Are you sure to reject external dbops?", payload: row.user }); openTextModal() }} />
+            </>
+          ) : row?.roles?.["pending-extsysops"] ? (
+            <>
+              <RMIconButton tooltip={"accept external sysops"} icon={TbDeviceDesktopStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extsysops", title: "Are you sure to accept external sysops?", payload: row.user }); openConfirmModal() }} />
+              <RMIconButton tooltip={"reject external sysops"} icon={TbDeviceDesktopX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extsysops", title: "Are you sure to reject external sysops?", payload: row.user }); openTextModal() }} />
+            </>
           ) : (
             <>
               { row?.roles?.["sponsor"] && <RMIconButton tooltip={"unsubscribe sponsorship"} icon={TbUserCancel} onClick={(e) => { e.stopPropagation(); setAction({ type: "end-sub", title: "Are you sure to end subscription?", payload: row.user }); openConfirmModal() }} />}
@@ -170,6 +194,7 @@ function Users({ selectedCluster, user }) {
       />
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false);}} />}
     </>
   )
 }
