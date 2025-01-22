@@ -1358,7 +1358,14 @@ func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter,
 		return
 	}
 
-	mycluster.RenameCluster(vars["newClusterName"])
+	err := mycluster.RenameCluster(vars["newClusterName"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Cluster renamed successfully"))
 }
 
 // handlerMuxPrometheus handles HTTP requests to fetch Prometheus metrics for all servers in all clusters.
