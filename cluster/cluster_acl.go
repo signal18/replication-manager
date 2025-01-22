@@ -105,9 +105,9 @@ func (cluster *Cluster) SaveUserAcls(user string) (string, string) {
 
 func (cluster *Cluster) SaveUserRoles(user string) string {
 	var aEnabledRoles []string
-	for grant, value := range cluster.APIUsers[user].Roles {
+	for role, value := range cluster.APIUsers[user].Roles {
 		if value {
-			aEnabledRoles = append(aEnabledRoles, grant)
+			aEnabledRoles = append(aEnabledRoles, role)
 		}
 	}
 	return strings.Join(aEnabledRoles, " ")
@@ -861,14 +861,28 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
+	if cluster.APIUsers[strUser].Grants[config.GrantExternalRole] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/subscribe") {
+			return true
+		}
+	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesValidate] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/accept-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/accept") {
 			return true
 		}
 	}
 
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesRefuse] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/refuse-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/refuse") {
 			return true
 		}
 
@@ -879,6 +893,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesUnsubscribe] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/end-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/end") {
 			return true
 		}
 	}

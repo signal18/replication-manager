@@ -421,6 +421,23 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendCredentials)),
 	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/subscribe", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSubscribeExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/accept", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/refuse", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRefuseExternalOps)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/ext-role/end", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRemoveExternalOps)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/sales/accept-subscription", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2692,39 +2709,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 
 			mycluster.Conf.Cloud18DbOps = value
 		}
-	case "cloud18-external-sysops":
-		if value != "" && value != mycluster.Conf.Cloud18GitUser {
-			esys := repman.CreateExtSysopsForm(value)
-			if euser, ok := mycluster.APIUsers[value]; !ok {
-				err = mycluster.AddUser(esys, mycluster.Conf.Cloud18GitUser, true)
-			} else {
-				esys.Grants = mycluster.AppendGrants(esys.Grants, &euser)
-				esys.Roles = mycluster.AppendRoles(esys.Roles, &euser)
-				err = mycluster.UpdateUser(esys, mycluster.Conf.Cloud18GitUser, true)
-			}
-
-			if err != nil {
-				return err
-			}
-			mycluster.Conf.Cloud18ExternalSysOps = value
-		}
-	case "cloud18-external-dbops":
-		// If external dbops different from cloud18 dbops
-		if mycluster.Conf.Cloud18ExternalDbOps != "" && mycluster.Conf.Cloud18ExternalDbOps != mycluster.Conf.Cloud18DbOps {
-			edbops := repman.CreateExtDBOpsForm(mycluster.Conf.Cloud18ExternalDbOps)
-			if edbuser, ok := mycluster.APIUsers[mycluster.Conf.Cloud18ExternalDbOps]; !ok {
-				err = mycluster.AddUser(edbops, mycluster.Conf.Cloud18GitUser, true)
-			} else {
-				edbops.Grants = mycluster.AppendGrants(edbops.Grants, &edbuser)
-				edbops.Roles = mycluster.AppendRoles(edbops.Roles, &edbuser)
-				err = mycluster.UpdateUser(edbops, mycluster.Conf.Cloud18GitUser, true)
-			}
-
-			if err != nil {
-				return err
-			}
-			mycluster.Conf.Cloud18ExternalDbOps = value
-		}
 	case "backup-save-script":
 		mycluster.Conf.BackupSaveScript = value
 	case "backup-load-script":
@@ -4711,4 +4695,372 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 		return
 	}
 	return
+}
+
+// handlerMuxSubscribeExternalOps handles the registration of external operations for a given cluster.
+// @Summary subscribe external operations for a specific cluster
+// @Description This endpoint subscribes external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Email sent to sponsor!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error subscribing external operations"
+// @Router /api/clusters/{clusterName}/ext-role/subscribe [post]
+func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Registering external operations for %s with %s as %s", mycluster.Name, userform.Username, userform.Roles)
+
+	err = repman.RegisterExternalOps(userform, mycluster, uinfomap["User"])
+	if err != nil {
+		http.Error(w, "Error subscribing external operations :"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendSponsorExternalOpsSubscriptionMail(mycluster, userform, partner)
+	if err != nil {
+		http.Error(w, "Error sending email to sponsor :"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendExternalOpsSubscriptionMail(mycluster, userform)
+	if err != nil {
+		http.Error(w, "Error sending email to partner :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Partner %s requested as %s successfully", userform.Username, userform.Roles)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent to sponsor!"))
+}
+
+// handlerMuxAcceptExternalOps handles the acceptance of external operations for a given cluster.
+// @Summary Accept external operations for a specific cluster
+// @Description This endpoint accepts external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Email sent to sponsor!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error accepting subscription"
+// @Router /api/clusters/{clusterName}/sales/accept-external-ops [post]
+func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Processing external operations for %s with %s as %s", mycluster.Name, userform.Username, userform.Roles)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting up db credentials for sponsor of cluster %s", mycluster.Name)
+
+	if userform.Roles == "extdbops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting up db credentials for dba of cluster %s", mycluster.Name)
+		duser, dpass := misc.SplitPair(mycluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		if duser == "" {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No dba database credentials found. Generating dba credentials")
+			duser = "dba"
+		}
+		if dpass == "" {
+			dpass, _ = mycluster.GeneratePassword()
+		}
+
+		// Set dba credentials, return error if failed
+		err = repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte(duser+":"+dpass)))
+		if err != nil {
+			http.Error(w, "Error setting dba db credentials :"+err.Error(), 500)
+			return
+		}
+	}
+
+	err = repman.AcceptExternalOps(userform, mycluster, uinfomap["User"])
+	if err != nil {
+		http.Error(w, "Error accepting external operations :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "User %s registered as %s successfully", userform.Username, userform.Roles)
+
+	if repman.Conf.Cloud18SalesExternalOpsValidateScript != "" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Executing script after external ops validated")
+		repman.BashScriptExternalOpsValidate(mycluster, userform.Username, userform.Roles, uinfomap["User"])
+	} else {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No script to execute after external ops validated")
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending external ops activation email to user %s", userform.Username)
+
+	err = repman.SendExternalOpsActivationMail(mycluster, userform)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", userform.Username, err)
+		http.Error(w, "Error sending email :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External activation email sent to %s", userform.Username)
+
+	if userform.Roles == "extdbops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending dba db credentials to user %s", userform.Username)
+		err = repman.SendDBACredentialsMail(mycluster, userform.Username, uinfomap["User"])
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send dba db credentials to %s: %v", userform.Username, err)
+			http.Error(w, "Error sending email :"+err.Error(), 500)
+			return
+		}
+	} else if userform.Roles == "extsysops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending sysadm db credentials to user %s", userform.Username)
+		err = repman.SendSysAdmCredentialsMail(mycluster, userform.Username, uinfomap["User"])
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send sysadm db credentials to %s: %v", userform.Username, err)
+			http.Error(w, "Error sending email :"+err.Error(), 500)
+			return
+		}
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External ops credentials sent!")
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent to sponsor!"))
+}
+
+// handlerMuxRefuseExternalOps handles the rejection of external operations for a given cluster.
+// @Summary Reject external operations for a specific cluster
+// @Description This endpoint rejects external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Subscription removed!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error removing subscription"
+// @Router /api/clusters/{clusterName}/sales/refuse-external-ops [post]
+func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	if userform.Reason == "" {
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	// If user is not the submitter, check if he has the right to reject
+	if uinfomap["User"] != userform.Username {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+	}
+
+	err = repman.CancelExternalOps(userform, mycluster)
+	if err != nil {
+		http.Error(w, "Error removing partnership :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!")
+
+	err = repman.SendSponsorPendingRejectionExternalOpsMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		http.Error(w, "Error sending rejection mail to sponsor:"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendPartnerPendingRejectionExternalOpsMail(mycluster, userform)
+	if err != nil {
+		http.Error(w, "Error sending rejection mail to partner:"+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Subscription removed!"))
+}
+
+// handlerMuxRemoveExternalOps handles the removal of external operations for a given cluster.
+// @Summary Remove external operations for a specific cluster
+// @Description This endpoint removes external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Sponsor partnership removed!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error removing sponsor partnership"
+// @Router /api/clusters/{clusterName}/sales/end-external-ops [post]
+func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	if userform.Reason == "" {
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	// If user is not the submitter, check if he has the right to remove sponsor
+	if uinfomap["User"] != userform.Username {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Ending partnership with partner %s for cluster %s by %s", userform.Username, mycluster.Name, uinfomap["User"])
+	} else {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Partner %s ending their partnership for cluster %s", uinfomap["User"], mycluster.Name)
+	}
+
+	err = repman.EndExternalOps(userform, mycluster)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error removing external partnership: %s", err)
+		http.Error(w, "Error removing sponsor partnership :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing dba credentials for cluster %s", mycluster.Name)
+	dpass, _ := mycluster.GeneratePassword()
+	repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte("dba:"+dpass)))
+
+	if repman.Conf.Cloud18SalesExternalOpsStopScript != "" {
+		repman.BashScriptSalesUnsubscribe(mycluster, userform.Username, uinfomap["User"])
+	}
+
+	err = repman.SendSponsorExternalOpsEndMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		http.Error(w, "Error sending partnership end mail for sponsor :"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendPartnerExternalOpsEndMail(mycluster, userform)
+	if err != nil {
+		http.Error(w, "Error sending partnership end mail for partner :"+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sponsor partnership removed!"))
 }

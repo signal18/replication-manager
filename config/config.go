@@ -712,7 +712,9 @@ type Config struct {
 	Cloud18InfraGeoLocalizations              string                 `mapstructure:"cloud18-infra-geo-localizations"  toml:"cloud18-infra-geo-localizations" json:"cloud18InfraGeoLocalizations"`
 	Cloud18DbOps                              string                 `mapstructure:"cloud18-dbops"  toml:"cloud18-dbops" json:"cloud18DbOps"`
 	Cloud18ExternalDbOps                      string                 `mapstructure:"cloud18-external-dbops"  toml:"cloud18-external-dbops" json:"cloud18ExternalDbOps"`
+	Cloud18ExternalDbOpsStatus                string                 `mapstructure:"cloud18-external-dbops-status"  toml:"cloud18-external-dbops-status" json:"cloud18ExternalDbOpsStatus"`
 	Cloud18ExternalSysOps                     string                 `mapstructure:"cloud18-external-sysops" toml:"cloud18-external-sysops" json:"cloud18ExternalSysOps"`
+	Cloud18ExternalSysOpsStatus               string                 `mapstructure:"cloud18-external-sysops-status" toml:"cloud18-external-sysops-status" json:"cloud18ExternalSysOpsStatus"`
 	Cloud18InfraCertifications                string                 `mapstructure:"cloud18-infra-certifications"  toml:"cloud18-infra-certifications" json:"cloud18InfraCertifications"`
 	Cloud18OpenDbops                          bool                   `mapstructure:"cloud18-open-dbops"  toml:"cloud18-open-dbops" json:"cloud18OpenDbops"`
 	Cloud18SubscribedDbops                    bool                   `mapstructure:"cloud18-subscribed-dbops"  toml:"cloud18-subscribed-dbops" json:"cloud18SubscribedDbops"`
@@ -725,6 +727,8 @@ type Config struct {
 	Cloud18SalesSubscriptionScript            string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
 	Cloud18SalesSubscriptionValidateScript    string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
+	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
+	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
@@ -999,14 +1003,24 @@ type Role struct {
 }
 
 const (
-	RoleSysOps       string = "sysops"
-	RoleDBOps        string = "dbops"
-	RoleExtSysOps    string = "extsysops"
-	RoleExtDBOps     string = "extdbops"
-	RoleSponsor      string = "sponsor"
-	RoleUnsubscribed string = "unsubscribed"
-	RolePending      string = "pending"
-	RoleVisitor      string = "visitor"
+	ExternalPending string = "pending"
+	ExternalActive  string = "active"
+	ExternalExpired string = "expired"
+)
+
+const (
+	RoleSysOps                string = "sysops"
+	RoleDBOps                 string = "dbops"
+	RoleExtSysOps             string = "extsysops"
+	RoleExtDBOps              string = "extdbops"
+	RoleSponsor               string = "sponsor"
+	RoleUnsubscribed          string = "unsubscribed"
+	RoleUnsubscribedExtDBOps  string = "unsubscribed-extdbops"
+	RoleUnsubscribedExtSysOps string = "unsubscribed-extsysops"
+	RolePending               string = "pending"
+	RolePendingExtDBOps       string = "pending-extdbops"
+	RolePendingExtSysOps      string = "pending-extsysops"
+	RoleVisitor               string = "visitor"
 )
 
 const (
@@ -1085,11 +1099,12 @@ const (
 	GrantGrantModify string = "grant-modify" // Can modify user ACL
 	GrantGrantGlobal string = "grant-global" // Can grant global acl
 
-	GrantShow string = "show" // Can show basic view
+	GrantShow         string = "show"    // Can show basic view
+	GrantExternalRole string = "extrole" // Can manage external ops
 
-	GrantSalesValidate    string = "sales-validate"    // Can update sales settings
-	GrantSalesRefuse      string = "sales-refuse"      // Can grant sales settings
-	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can grant sales settings
+	GrantSalesValidate    string = "sales-validate"    // Can validate sales
+	GrantSalesRefuse      string = "sales-refuse"      // Can refuse sales
+	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can unsubscribe sales
 )
 
 const (
@@ -2172,6 +2187,7 @@ func GetGrantType() map[string]string {
 		GrantSalesValidate:             GrantSalesValidate,
 		GrantSalesRefuse:               GrantSalesRefuse,
 		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
+		GrantExternalRole:              GrantExternalRole,
 		GrantGrantShow:                 GrantGrantShow,
 		GrantGrantAdd:                  GrantGrantAdd,
 		GrantGrantModify:               GrantGrantModify,
@@ -2510,19 +2526,29 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		compactDiscardGrants = append(compactDiscardGrants, "show")
 	}
 
+	if grants["extrole"] {
+		compactGrants = append(compactGrants, "extrole")
+	} else {
+		compactDiscardGrants = append(compactDiscardGrants, "extrole")
+	}
+
 	return compactGrants, compactDiscardGrants
 }
 
 func GetRoleType() map[string]string {
 	return map[string]string{
-		RoleSysOps:       RoleSysOps,
-		RoleDBOps:        RoleDBOps,
-		RoleExtSysOps:    RoleExtSysOps,
-		RoleExtDBOps:     RoleExtDBOps,
-		RoleSponsor:      RoleSponsor,
-		RolePending:      RolePending,
-		RoleUnsubscribed: RoleUnsubscribed,
-		RoleVisitor:      RoleVisitor,
+		RoleSysOps:                RoleSysOps,
+		RoleDBOps:                 RoleDBOps,
+		RoleExtSysOps:             RoleExtSysOps,
+		RoleExtDBOps:              RoleExtDBOps,
+		RoleSponsor:               RoleSponsor,
+		RolePending:               RolePending,
+		RolePendingExtDBOps:       RolePendingExtDBOps,
+		RolePendingExtSysOps:      RolePendingExtSysOps,
+		RoleUnsubscribed:          RoleUnsubscribed,
+		RoleUnsubscribedExtDBOps:  RoleUnsubscribedExtDBOps,
+		RoleUnsubscribedExtSysOps: RoleUnsubscribedExtSysOps,
+		RoleVisitor:               RoleVisitor,
 	}
 }
 

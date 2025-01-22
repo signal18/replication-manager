@@ -1859,6 +1859,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/ext-role/subscribe": {
+            "post": {
+                "description": "This endpoint subscribes external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "subscribe external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email sent to sponsor!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error subscribing external operations",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/graphite-filterlist": {
             "get": {
                 "description": "This endpoint retrieves the Graphite filter list for the specified cluster.",
@@ -2487,6 +2548,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/sales/accept-external-ops": {
+            "post": {
+                "description": "This endpoint accepts external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Accept external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email sent to sponsor!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error accepting subscription",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/sales/accept-subscription": {
             "post": {
                 "description": "This endpoint accepts a subscription for the specified cluster.",
@@ -2548,6 +2670,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/sales/end-external-ops": {
+            "post": {
+                "description": "This endpoint removes external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Remove external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sponsor partnership removed!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error removing sponsor partnership",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/sales/end-subscription": {
             "post": {
                 "description": "This endpoint removes a sponsor from the specified cluster.",
@@ -2602,6 +2785,67 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error removing sponsor subscription",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/sales/refuse-external-ops": {
+            "post": {
+                "description": "This endpoint rejects external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Reject external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Subscription removed!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error removing subscription",
                         "schema": {
                             "type": "string"
                         }
@@ -10773,6 +11017,9 @@ const docTemplate = `{
                         "type": "boolean"
                     }
                 },
+                "isExternal": {
+                    "type": "boolean"
+                },
                 "roles": {
                     "type": "object",
                     "additionalProperties": {
@@ -13000,7 +13247,13 @@ const docTemplate = `{
                 "cloud18ExternalDbOps": {
                     "type": "string"
                 },
+                "cloud18ExternalDbOpsStatus": {
+                    "type": "string"
+                },
                 "cloud18ExternalSysOps": {
+                    "type": "string"
+                },
+                "cloud18ExternalSysOpsStatus": {
                     "type": "string"
                 },
                 "cloud18GitUser": {
@@ -13050,6 +13303,12 @@ const docTemplate = `{
                 },
                 "cloud18PromotionPct": {
                     "type": "number"
+                },
+                "cloud18SalesExternalOpsStopScript": {
+                    "type": "string"
+                },
+                "cloud18SalesExternalOpsValidateScript": {
+                    "type": "string"
                 },
                 "cloud18SalesSubscriptionScript": {
                     "type": "string"
@@ -14911,6 +15170,26 @@ const docTemplate = `{
                 },
                 "success": {
                     "type": "boolean"
+                }
+            }
+        },
+        "server.CloudUserForm": {
+            "type": "object",
+            "properties": {
+                "grants": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "roles": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
                 }
             }
         },

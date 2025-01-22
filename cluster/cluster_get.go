@@ -469,6 +469,15 @@ func (cluster *Cluster) GetDbaPass() string {
 	return pass
 }
 
+func (cluster *Cluster) GetSponsorEmail() string {
+	for user, u := range cluster.APIUsers {
+		if u.Roles[config.RoleSponsor] {
+			return user
+		}
+	}
+	return ""
+}
+
 func (cluster *Cluster) GetSponsorUser() string {
 	user, _ := misc.SplitPair(cluster.Conf.Secrets["cloud18-sponsor-user-credentials"].Value)
 	return user
@@ -1396,4 +1405,13 @@ func (cluster *Cluster) GetExecEnv() []string {
 		`REPLICATION_MANAGER_PASSWORD=`+adminpassword,
 		`REPLICATION_MANAGER_CLUSTER_NAME=`+cluster.Name,
 	)
+}
+
+func (cluster *Cluster) GetExternalCost(role string) float64 {
+	if role == config.RoleExtDBOps {
+		return cluster.Conf.Cloud18MonthlyDbopsCost
+	} else if role == config.RoleExtSysOps {
+		return cluster.Conf.Cloud18MonthlySysopsCost
+	}
+	return 0
 }
