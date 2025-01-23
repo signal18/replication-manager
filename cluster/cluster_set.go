@@ -2232,18 +2232,8 @@ func (cluster *Cluster) SetInRollingRestart(value bool) {
 
 func (cluster *Cluster) RenameCluster(newClusterName string) error {
 
-	// Unprovision cluster before rename
-	err := cluster.Unprovision()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision cluster fail: %s", err)
-		return err
-	}
-
-	// Wait for cluster stop
-	err = cluster.WaitClusterStop()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Wait for stop cluster fail: %s", err)
-		return err
+	if cluster.IsProvisioned() {
+		return errors.New("Cannot rename provisioned cluster")
 	}
 
 	cluster.Lock()
@@ -2255,7 +2245,7 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
 
 	// Rename cluster directory
-	err = os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	err := os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
 		return err
