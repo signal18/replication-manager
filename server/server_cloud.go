@@ -404,6 +404,12 @@ func (repman *ReplicationManager) EndExternalOps(userform CloudUserForm, cl *clu
 
 	cl.UpdateUser(extops, "admin", true)
 
+	if endrole == config.RoleExtDBOps {
+		cl.Conf.Cloud18ExternalDbOps = ""
+	} else if endrole == config.RoleExtSysOps {
+		cl.Conf.Cloud18ExternalSysOps = ""
+	}
+
 	return nil
 }
 
