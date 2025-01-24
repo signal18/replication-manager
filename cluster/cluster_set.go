@@ -358,6 +358,12 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.Conf.Interactive = check
+	if cluster.Conf.Interactive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to interactive mode")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
+	}
+
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
@@ -1223,6 +1229,23 @@ func (cluster *Cluster) SetActiveStatus(status string) {
 		if cluster.Status == ConstMonitorActif {
 			cluster.scheduler.Start()
 		} else {
+			cluster.scheduler.Stop()
+		}
+	}
+}
+
+func (cluster *Cluster) SetMonitoringScheduler(isactive bool) {
+	if cluster.Conf.MonitorScheduler != isactive {
+		cluster.Conf.MonitorScheduler = isactive
+		if cluster.Conf.MonitorScheduler {
+			if cluster.Status == ConstMonitorActif {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting scheduler")
+				cluster.scheduler.Start()
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Scheduler enabled but monitoring is in standby mode. Scheduler will start when monitoring is in active mode")
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler")
 			cluster.scheduler.Stop()
 		}
 	}
