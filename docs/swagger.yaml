@@ -4055,6 +4055,88 @@ paths:
       summary: Retrieve variable differences for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/ext-role/accept:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint accepts external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent to sponsor!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error accepting subscription
+          schema:
+            type: string
+      summary: Accept external operations for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/ext-role/refuse:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint rejects external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Subscription removed!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error removing subscription
+          schema:
+            type: string
+      summary: Reject external operations for a specific cluster
+      tags:
+      - Cloud18
   /api/clusters/{clusterName}/ext-role/subscribe:
     post:
       consumes:
@@ -4524,47 +4606,6 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
-  /api/clusters/{clusterName}/sales/accept-external-ops:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint accepts external operations for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: User Form
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.CloudUserForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Email sent to sponsor!
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error accepting subscription
-          schema:
-            type: string
-      summary: Accept external operations for a specific cluster
-      tags:
-      - Cloud18
   /api/clusters/{clusterName}/sales/accept-subscription:
     post:
       consumes:
@@ -4686,47 +4727,6 @@ paths:
           schema:
             type: string
       summary: Remove a sponsor from a specific cluster
-      tags:
-      - Cloud18
-  /api/clusters/{clusterName}/sales/refuse-external-ops:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint rejects external operations for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: User Form
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.CloudUserForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Subscription removed!
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error removing subscription
-          schema:
-            type: string
-      summary: Reject external operations for a specific cluster
       tags:
       - Cloud18
   /api/clusters/{clusterName}/sales/refuse-subscription:

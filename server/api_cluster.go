@@ -5268,7 +5268,7 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 // @Success 200 {string} string "Email sent to sponsor!"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error accepting subscription"
-// @Router /api/clusters/{clusterName}/sales/accept-external-ops [post]
+// @Router /api/clusters/{clusterName}/ext-role/accept [post]
 func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5402,7 +5402,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 // @Success 200 {string} string "Subscription removed!"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error removing subscription"
-// @Router /api/clusters/{clusterName}/sales/refuse-external-ops [post]
+// @Router /api/clusters/{clusterName}/ext-role/refuse [post]
 func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
