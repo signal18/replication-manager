@@ -216,6 +216,10 @@ func (cluster *Cluster) HasAllDbUp() bool {
 
 		}
 	}
+
+	if cluster.GetTopology() != config.TopoUnknown {
+		cluster.GetStateMachine().Discovered = true
+	}
 	return true
 }
 
