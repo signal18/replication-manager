@@ -96,7 +96,15 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
 	))
+	router.Handle("/api/clusters/settings/actions/switch/{settingName}/{state}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
 	))
@@ -1779,12 +1787,14 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param settingName path string true "Setting Name"
+// @Param state path string false "Toggle state (on/off)"
 // @Success 200 {string} string "Successfully switched setting"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName} [post]
+// @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state} [post]
 func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
-
+	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	cName := vars["clusterName"]
@@ -1798,16 +1808,31 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		return
 	}
 
+	if v, ok := vars["state"]; ok {
+		value = strings.ToLower(v)
+		if value != "on" && value != "off" {
+			http.Error(w, "Invalid state. Only accept on/off", 400)
+			return
+		}
+	}
+
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
 		valid, _ := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
-			//Set server scope
-			err := repman.switchClusterSettings(mycluster, setting)
-			if err != nil {
-				http.Error(w, "Setting Not Found", 501)
-				return
+			if value == "" {
+				err := repman.switchClusterSettings(mycluster, setting)
+				if err != nil {
+					http.Error(w, "Setting Not Found", 501)
+					return
+				}
+			} else {
+				err := repman.setClusterSetting(mycluster, setting, value)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
+					return
+				}
 			}
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
@@ -1827,14 +1852,16 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 // @Tags GlobalSetting
 // @Accept json
 // @Produce json
-// @Param settingName path string true "Setting Name"
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string false "Cluster Name"
+// @Param settingName path string true "Setting Name"
+// @Param state path string false "Toggle state (on/off)"
 // @Success 200 {string} string "Successfully switched setting"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/switch/{settingName} [post]
+// @Router /api/clusters/settings/actions/switch/{settingName}/{state} [post]
 func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	setting := vars["settingName"]
@@ -1856,11 +1883,19 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 		}
 	}
 
+	if v, ok := vars["state"]; ok {
+		value = strings.ToLower(v)
+		if value != "on" && value != "off" {
+			http.Error(w, "Invalid state. Only accept on/off", 400)
+			return
+		}
+	}
+
 	if mycluster != nil {
 		valid, user := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
-			err := repman.switchServerSetting(user, r.URL.Path, setting)
+			err := repman.switchServerSetting(user, r.URL.Path, setting, value)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
 				return
@@ -2185,7 +2220,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 // handlerMuxSetGlobalSettings handles the setting of global settings for the server.
 // @Summary Set global settings for the server
 // @Description This endpoint sets the global settings for the server.
-// @Tags ClusterSettings
+// @Tags GlobalSetting
 // @Accept json
 // @Produce json
 // @Param settingName path string true "Setting Name"
@@ -2282,6 +2317,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 }
 
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
+	var isactive bool = strings.ToLower(value) == "on"
 	var err error
 	//not immutable
 	if !mycluster.Conf.IsVariableImmutable(name) {
@@ -2717,6 +2753,406 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStagingRefreshScript = value
 	case "topology-staging-post-detach-script":
 		mycluster.Conf.TopologyStagingPostDetachScript = value
+
+	// Switches
+	case "verbose":
+		mycluster.Conf.Verbose = isactive
+	case "failover-mode":
+		mycluster.SetInteractive(strings.ToLower(value) == "on")
+	case "failover-readonly-state":
+		mycluster.SetReadOnly(strings.ToLower(value) == "on")
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "failover-restart-unsafe":
+		mycluster.Conf.FailRestartUnsafe = isactive
+	case "failover-at-sync":
+		mycluster.Conf.FailSync = isactive
+	case "force-slave-no-gtid-mode":
+		mycluster.Conf.ForceSlaveNoGtid = isactive
+	case "switchover-lower-release":
+		mycluster.Conf.SwitchLowerRelease = isactive
+	case "failover-event-status":
+		mycluster.Conf.FailEventStatus = isactive
+	case "failover-event-scheduler":
+		mycluster.Conf.FailEventScheduler = isactive
+	case "delay-stat-capture":
+		mycluster.Conf.DelayStatCapture = isactive
+		if !mycluster.Conf.DelayStatCapture {
+			mycluster.Conf.FailoverCheckDelayStat = false
+			mycluster.Conf.PrintDelayStat = false
+			mycluster.Conf.PrintDelayStatHistory = false
+		}
+	case "print-delay-stat":
+		mycluster.Conf.PrintDelayStat = isactive
+	case "print-delay-stat-history":
+		mycluster.Conf.PrintDelayStatHistory = isactive
+	case "failover-check-delay-stat":
+		mycluster.Conf.FailoverCheckDelayStat = isactive
+	case "autorejoin":
+		mycluster.Conf.Autorejoin = isactive
+	case "autoseed":
+		mycluster.Conf.Autoseed = isactive
+	case "autorejoin-backup-binlog":
+		mycluster.Conf.AutorejoinBackupBinlog = isactive
+	case "autorejoin-flashback":
+		mycluster.Conf.AutorejoinFlashback = isactive
+	case "autorejoin-flashback-on-sync":
+		mycluster.Conf.AutorejoinSemisync = isactive
+	case "autorejoin-slave-positional-heartbeat":
+		mycluster.Conf.AutorejoinSlavePositionalHeartbeat = isactive
+	case "autorejoin-zfs-flashback":
+		mycluster.Conf.AutorejoinZFSFlashback = isactive
+	case "autorejoin-mysqldump":
+		mycluster.Conf.AutorejoinMysqldump = isactive
+	case "autorejoin-logical-backup":
+		mycluster.Conf.AutorejoinLogicalBackup = isactive
+	case "autorejoin-physical-backup":
+		mycluster.Conf.AutorejoinPhysicalBackup = isactive
+	case "autorejoin-force-restore":
+		mycluster.Conf.AutorejoinForceRestore = isactive
+	case "switchover-at-sync":
+		mycluster.Conf.SwitchSync = isactive
+	case "check-replication-filters":
+		mycluster.Conf.CheckReplFilter = isactive
+	case "check-replication-state":
+		mycluster.Conf.RplChecks = isactive
+	case "scheduler-db-servers-logical-backup":
+		if mycluster.Conf.SchedulerBackupLogical != isactive {
+			mycluster.Conf.SchedulerBackupLogical = isactive
+			mycluster.SetSchedulerBackupLogical()
+		}
+	case "scheduler-db-servers-physical-backup":
+		if mycluster.Conf.SchedulerBackupPhysical != isactive {
+			mycluster.Conf.SchedulerBackupPhysical = isactive
+			mycluster.SetSchedulerBackupPhysical()
+		}
+	case "scheduler-db-servers-logs":
+		if mycluster.Conf.SchedulerDatabaseLogs != isactive {
+			mycluster.Conf.SchedulerDatabaseLogs = isactive
+			mycluster.SetSchedulerBackupLogs()
+		}
+	case "scheduler-jobs-ssh":
+		if mycluster.Conf.SchedulerJobsSSH != isactive {
+			mycluster.Conf.SchedulerJobsSSH = isactive
+			mycluster.SetSchedulerDbJobsSsh()
+		}
+	case "scheduler-db-servers-logs-table-rotate":
+		if mycluster.Conf.SchedulerDatabaseLogsTableRotate != isactive {
+			mycluster.Conf.SchedulerDatabaseLogsTableRotate = isactive
+			mycluster.SetSchedulerLogsTableRotate()
+		}
+	case "scheduler-rolling-restart":
+		if mycluster.Conf.SchedulerRollingRestart != isactive {
+			mycluster.Conf.SchedulerRollingRestart = isactive
+			mycluster.SetSchedulerRollingRestart()
+		}
+	case "scheduler-rolling-reprov":
+		if mycluster.Conf.SchedulerRollingReprov != isactive {
+			mycluster.Conf.SchedulerRollingReprov = isactive
+			mycluster.SetSchedulerRollingReprov()
+		}
+	case "scheduler-db-servers-optimize":
+		if mycluster.Conf.SchedulerDatabaseOptimize != isactive {
+			mycluster.Conf.SchedulerDatabaseOptimize = isactive
+			mycluster.SetSchedulerOptimize()
+		}
+	case "scheduler-db-servers-analyze":
+		if mycluster.Conf.SchedulerDatabaseAnalyze != isactive {
+			mycluster.Conf.SchedulerDatabaseAnalyze = isactive
+			mycluster.SetSchedulerAnalyze()
+		}
+	case "scheduler-alert-disable":
+		mycluster.Conf.SchedulerAlertDisable = isactive
+	case "graphite-metrics":
+		mycluster.Conf.GraphiteMetrics = isactive
+	case "graphite-embedded":
+		mycluster.Conf.GraphiteEmbedded = isactive
+	case "graphite-whitelist":
+		mycluster.Conf.GraphiteWhitelist = isactive
+	case "graphite-blacklist":
+		mycluster.Conf.GraphiteBlacklist = isactive
+	case "shardproxy-copy-grants":
+		mycluster.Conf.MdbsProxyCopyGrants = isactive
+	case "proxysql-copy-grants", "proxysql-bootstrap-users":
+		mycluster.Conf.ProxysqlCopyGrants = isactive
+	case "proxysql-bootstrap-variables":
+		mycluster.Conf.ProxysqlBootstrapVariables = isactive
+	case "proxysql-bootstrap-hostgroups":
+		mycluster.Conf.ProxysqlBootstrapHG = isactive
+	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
+		mycluster.Conf.ProxysqlBootstrap = isactive
+	case "proxysql-bootstrap-query-rules":
+		mycluster.Conf.ProxysqlBootstrapQueryRules = isactive
+	case "proxysql":
+		mycluster.Conf.ProxysqlOn = isactive
+	case "proxy-servers-read-on-master":
+		mycluster.Conf.PRXServersReadOnMaster = isactive
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "proxy-servers-read-on-master-no-slave":
+		mycluster.Conf.PRXServersReadOnMasterNoSlave = isactive
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "proxy-servers-backend-compression":
+		mycluster.Conf.PRXServersBackendCompression = isactive
+	case "database-heartbeat":
+		mycluster.Conf.TestInjectTraffic = isactive
+	case "test":
+		mycluster.Conf.Test = isactive
+	case "prov-net-cni":
+		mycluster.Conf.ProvNetCNI = isactive
+	case "prov-db-apply-dynamic-config":
+		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
+	case "prov-docker-daemon-private":
+		mycluster.Conf.ProvDockerDaemonPrivate = isactive
+	case "backup-restic-aws":
+		mycluster.Conf.BackupResticAws = isactive
+	case "backup-restic":
+		if mycluster.Conf.BackupRestic != isactive {
+			mycluster.Conf.BackupRestic = isactive
+			mycluster.CheckResticInstallation()
+		}
+	case "backup-binlogs":
+		if mycluster.Conf.BackupBinlogs != isactive {
+			mycluster.Conf.BackupBinlogs = isactive
+			if mycluster.Conf.BackupBinlogs {
+				for _, sv := range mycluster.GetServers() {
+					go sv.CheckBinaryLogs(true)
+				}
+			}
+		}
+	case "compress-backups":
+		mycluster.Conf.CompressBackups = isactive
+	case "monitoring-pause":
+		mycluster.Conf.MonitorPause = isactive
+	case "monitoring-save-config":
+		mycluster.Conf.ConfRewrite = isactive
+	case "monitoring-queries":
+		mycluster.Conf.MonitorQueries = isactive
+	case "monitoring-scheduler":
+		mycluster.SetMonitoringScheduler(isactive)
+	case "monitoring-schema-change":
+		mycluster.Conf.MonitorSchemaChange = isactive
+	case "monitoring-capture":
+		mycluster.Conf.MonitorCapture = isactive
+	case "monitoring-innodb-status":
+		mycluster.Conf.MonitorInnoDBStatus = isactive
+	case "monitoring-variable-diff":
+		mycluster.Conf.MonitorVariableDiff = isactive
+	case "monitoring-processlist":
+		mycluster.Conf.MonitorProcessList = isactive
+	case "force-slave-readonly":
+		mycluster.Conf.ForceSlaveReadOnly = isactive
+	case "force-binlog-row":
+		mycluster.Conf.ForceBinlogRow = isactive
+	case "force-slave-semisync":
+		mycluster.Conf.ForceSlaveSemisync = isactive
+	case "force-slave-Heartbeat":
+		mycluster.Conf.ForceSlaveHeartbeat = isactive
+	case "force-slave-gtid":
+		mycluster.Conf.ForceSlaveGtid = isactive
+	case "force-slave-gtid-mode-strict":
+		mycluster.Conf.ForceSlaveGtidStrict = isactive
+	case "force-slave-idempotent":
+		mycluster.Conf.ForceSlaveIdempotent = isactive
+	case "force-slave-strict":
+		mycluster.Conf.ForceSlaveStrict = isactive
+	case "force-slave-serialized":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "SERIALIZED"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-minimal":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "MINIMAL"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-conservative":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "CONSERVATIVE"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-optimistic":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "OPTIMISTIC"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-aggressive":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "AGGRESSIVE"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-binlog-compress":
+		mycluster.Conf.ForceBinlogCompress = isactive
+	case "force-binlog-annotate":
+		mycluster.Conf.ForceBinlogAnnotate = isactive
+	case "force-binlog-slow-queries":
+		mycluster.Conf.ForceBinlogSlowqueries = isactive
+	case "log-sql-in-monitoring":
+		mycluster.Conf.LogSQLInMonitoring = isactive
+	case "log-writer-election":
+		if mycluster.Conf.LogWriterElection != isactive {
+			if isactive {
+				mycluster.Conf.LogWriterElectionLevel = 1
+			} else {
+				mycluster.Conf.LogWriterElectionLevel = 0
+			}
+			mycluster.Conf.LogWriterElection = isactive
+		}
+	case "log-sst":
+		if mycluster.Conf.LogSST != isactive {
+			if isactive {
+				mycluster.Conf.LogSSTLevel = 1
+			} else {
+				mycluster.Conf.LogSSTLevel = 0
+			}
+			mycluster.Conf.LogSST = isactive
+		}
+	case "log-heartbeat":
+		if mycluster.Conf.LogHeartbeat != isactive {
+			if isactive {
+				mycluster.Conf.LogHeartbeatLevel = 1
+			} else {
+				mycluster.Conf.LogHeartbeatLevel = 0
+			}
+			mycluster.Conf.LogHeartbeat = isactive
+		}
+	case "log-config-load":
+		if mycluster.Conf.LogConfigLoad != isactive {
+			if isactive {
+				mycluster.Conf.LogConfigLoadLevel = 1
+			} else {
+				mycluster.Conf.LogConfigLoadLevel = 0
+			}
+			mycluster.Conf.LogConfigLoad = isactive
+		}
+	case "log-git":
+		if mycluster.Conf.LogGit != isactive {
+			if isactive {
+				mycluster.Conf.LogGitLevel = 1
+			} else {
+				mycluster.Conf.LogGitLevel = 0
+			}
+			mycluster.Conf.LogGit = isactive
+		}
+	case "log-backup-stream":
+		if mycluster.Conf.LogBackupStream != isactive {
+			if isactive {
+				mycluster.Conf.LogBackupStreamLevel = 1
+			} else {
+				mycluster.Conf.LogBackupStreamLevel = 0
+			}
+			mycluster.Conf.LogBackupStream = isactive
+		}
+	case "log-orchestrator":
+		if mycluster.Conf.LogOrchestrator != isactive {
+			if isactive {
+				mycluster.Conf.LogOrchestratorLevel = 1
+			} else {
+				mycluster.Conf.LogOrchestratorLevel = 0
+			}
+			mycluster.Conf.LogOrchestrator = isactive
+		}
+	case "log-vault":
+		if mycluster.Conf.LogVault != isactive {
+			if isactive {
+				mycluster.Conf.LogVaultLevel = 1
+			} else {
+				mycluster.Conf.LogVaultLevel = 0
+			}
+			mycluster.Conf.LogVault = isactive
+		}
+	case "log-topology":
+		if mycluster.Conf.LogTopology != isactive {
+			if isactive {
+				mycluster.Conf.LogTopologyLevel = 1
+			} else {
+				mycluster.Conf.LogTopologyLevel = 0
+			}
+			mycluster.Conf.LogTopology = isactive
+		}
+	case "log-proxy":
+		if mycluster.Conf.LogProxy != isactive {
+			if isactive {
+				mycluster.Conf.LogProxyLevel = 1
+			} else {
+				mycluster.Conf.LogProxyLevel = 0
+			}
+			mycluster.Conf.LogProxy = isactive
+		}
+	case "proxysql-debug":
+		if mycluster.Conf.ProxysqlDebug != isactive {
+			if isactive {
+				mycluster.Conf.ProxysqlLogLevel = 1
+			} else {
+				mycluster.Conf.ProxysqlLogLevel = 0
+			}
+			mycluster.Conf.ProxysqlDebug = isactive
+		}
+	case "haproxy-debug":
+		if mycluster.Conf.HaproxyDebug != isactive {
+			if isactive {
+				mycluster.Conf.HaproxyLogLevel = 1
+			} else {
+				mycluster.Conf.HaproxyLogLevel = 0
+			}
+			mycluster.Conf.HaproxyDebug = isactive
+		}
+	case "proxyjanitor-debug":
+		if mycluster.Conf.ProxyJanitorDebug != isactive {
+			if isactive {
+				mycluster.Conf.ProxyJanitorLogLevel = 1
+			} else {
+				mycluster.Conf.ProxyJanitorLogLevel = 0
+			}
+			mycluster.Conf.ProxyJanitorDebug = isactive
+		}
+	case "maxscale-debug":
+		if mycluster.Conf.MxsDebug != isactive {
+			if isactive {
+				mycluster.Conf.MxsLogLevel = 1
+			} else {
+				mycluster.Conf.MxsLogLevel = 0
+			}
+			mycluster.Conf.MxsDebug = isactive
+		}
+	case "force-binlog-purge":
+		mycluster.Conf.ForceBinlogPurge = isactive
+	case "force-binlog-purge-on-restore":
+		mycluster.Conf.ForceBinlogPurgeOnRestore = isactive
+	case "force-binlog-purge-replicas":
+		mycluster.Conf.ForceBinlogPurgeReplicas = isactive
+	case "multi-master-concurrent-write":
+		mycluster.Conf.MultiMasterConcurrentWrite = isactive
+	case "multi-master-ring-unsafe":
+		mycluster.Conf.MultiMasterRingUnsafe = isactive
+	case "dynamic-topology":
+		mycluster.Conf.DynamicTopology = isactive
+	case "replication-no-relay":
+		mycluster.Conf.ReplicationNoRelay = isactive
+	case "prov-db-force-write-config":
+		if mycluster.Conf.ProvDBForceWriteConfig != isactive {
+			mycluster.Conf.ProvDBForceWriteConfig = isactive
+			if isactive {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files activated. Will replace config files on next provision.")
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files de-activated. Will create config files with suffix (.new) for conflicting files on next provision.")
+			}
+		}
+	case "backup-keep-until-valid":
+		mycluster.Conf.BackupKeepUntilValid = isactive
+	case "mail-smtp-tls-skip-verify":
+		mycluster.Conf.MailSMTPTLSSkipVerify = isactive
+	case "cloud18-shared":
+		mycluster.Conf.Cloud18Shared = isactive
+	case "cloud18-open-dbops":
+		mycluster.Conf.Cloud18OpenDbops = isactive
+	case "cloud18-open-sysops":
+		mycluster.Conf.Cloud18OpenSysops = isactive
+	case "topology-staging":
+		mycluster.Conf.TopologyStaging = isactive
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2725,6 +3161,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
+	var isactive bool = strings.ToLower(value) == "on"
 	var v int
 	//not immutable
 	if !repman.Conf.IsVariableImmutable(name) {
@@ -2889,6 +3326,37 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetMailTo(value)
 	case "mail-from":
 		repman.Conf.SetMailFrom(value)
+	case "cloud18-shared":
+		if repman.Conf.Cloud18 {
+			repman.Conf.Cloud18Shared = isactive
+		}
+	case "api-https-bind":
+		repman.Conf.APIHttpsBind = isactive
+	case "api-server":
+		repman.Conf.ApiServ = isactive
+	case "api-swagger-enabled":
+		repman.Conf.ApiSwaggerEnabled = isactive
+	case "arbitration-external ":
+		repman.Conf.Arbitration = isactive
+	case "graphite-embedded":
+		repman.Conf.GraphiteEmbedded = isactive
+	case "graphite-blacklist  ":
+		repman.Conf.GraphiteBlacklist = isactive
+	case "graphite-metrics ":
+		repman.Conf.GraphiteMetrics = isactive
+	case "http-server":
+		repman.Conf.HttpServ = isactive
+	case "http-use-react ":
+		repman.Conf.HttpUseReact = isactive
+	case "monitoring-save-config  ":
+		repman.Conf.ConfRewrite = isactive
+	case "sysbench-v1":
+		repman.Conf.SysbenchV1 = isactive
+	case "scheduler-db-servers-receiver-use-ssl":
+		repman.Conf.SchedulerReceiverUseSSL = isactive
+	case "mail-smtp-tls-skip-verify":
+		repman.Conf.MailSMTPTLSSkipVerify = isactive
+		repman.ReloadMailerConfig()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2959,15 +3427,30 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	return nil
 }
 
-func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string) error {
-	err := repman.switchRepmanSetting(name)
-	if err != nil {
-		return err
-	}
-	for cname, cl := range repman.Clusters {
-		//Don't print error with no valid ACL
-		if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
-			repman.switchClusterSettings(cl, name)
+func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string, value string) error {
+	if value == "" {
+
+		err := repman.switchRepmanSetting(name)
+		if err != nil {
+			return err
+		}
+		for cname, cl := range repman.Clusters {
+			//Don't print error with no valid ACL
+			if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
+				repman.switchClusterSettings(cl, name)
+			}
+		}
+	} else {
+		err := repman.setRepmanSetting(name, value)
+		if err != nil {
+			return err
+		}
+
+		for _, cl := range repman.Clusters {
+			//Don't print error with no valid ACL
+			if cl.IsURLPassACL(user, URL, false) {
+				repman.setClusterSetting(cl, name, value)
+			}
 		}
 	}
 

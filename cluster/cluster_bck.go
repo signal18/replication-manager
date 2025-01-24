@@ -38,6 +38,16 @@ type Backup struct {
 }
 */
 
+func (cluster *Cluster) CheckResticInstallation() {
+	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
+		if err := cluster.SetResticVersion(); err != nil {
+			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
+		}
+	}
+}
+
 func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
 		//This will prevent purging while restic is fetching and wait since it's only executed once after a while

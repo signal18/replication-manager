@@ -358,6 +358,12 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.Conf.Interactive = check
+	if cluster.Conf.Interactive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to interactive mode")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
+	}
+
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
@@ -1223,6 +1229,23 @@ func (cluster *Cluster) SetActiveStatus(status string) {
 		if cluster.Status == ConstMonitorActif {
 			cluster.scheduler.Start()
 		} else {
+			cluster.scheduler.Stop()
+		}
+	}
+}
+
+func (cluster *Cluster) SetMonitoringScheduler(isactive bool) {
+	if cluster.Conf.MonitorScheduler != isactive {
+		cluster.Conf.MonitorScheduler = isactive
+		if cluster.Conf.MonitorScheduler {
+			if cluster.Status == ConstMonitorActif {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting scheduler")
+				cluster.scheduler.Start()
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Scheduler enabled but monitoring is in standby mode. Scheduler will start when monitoring is in active mode")
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler")
 			cluster.scheduler.Stop()
 		}
 	}
@@ -2232,18 +2255,8 @@ func (cluster *Cluster) SetInRollingRestart(value bool) {
 
 func (cluster *Cluster) RenameCluster(newClusterName string) error {
 
-	// Unprovision cluster before rename
-	err := cluster.Unprovision()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision cluster fail: %s", err)
-		return err
-	}
-
-	// Wait for cluster stop
-	err = cluster.WaitClusterStop()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Wait for stop cluster fail: %s", err)
-		return err
+	if cluster.IsProvisioned() {
+		return errors.New("Cannot rename provisioned cluster")
 	}
 
 	cluster.Lock()
@@ -2255,7 +2268,7 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
 
 	// Rename cluster directory
-	err = os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	err := os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
 		return err

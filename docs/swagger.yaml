@@ -9033,6 +9033,50 @@ paths:
       summary: Switch settings for a specific cluster
       tags:
       - ClusterSettings
+  /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint switches the settings for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Setting Name
+        in: path
+        name: settingName
+        required: true
+        type: string
+      - description: Toggle state (on/off)
+        in: path
+        name: state
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully switched setting
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch settings for a specific cluster
+      tags:
+      - ClusterSettings
   /api/clusters/{clusterName}/shardclusters:
     get:
       description: This endpoint retrieves the shard clusters for the specified cluster.
@@ -10237,27 +10281,62 @@ paths:
             type: string
       summary: Set global settings for the server
       tags:
-      - ClusterSettings
+      - GlobalSetting
   /api/clusters/settings/actions/switch/{settingName}:
     post:
       consumes:
       - application/json
       description: This endpoint switches the global settings for the server.
       parameters:
-      - description: Setting Name
-        in: path
-        name: settingName
-        required: true
-        type: string
       - default: Bearer <Add access token here>
         description: Insert your access token
         in: header
         name: Authorization
         required: true
         type: string
-      - description: Cluster Name
+      - description: Setting Name
         in: path
-        name: clusterName
+        name: settingName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully switched setting
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch global settings for the server
+      tags:
+      - GlobalSetting
+  /api/clusters/settings/actions/switch/{settingName}/{state}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint switches the global settings for the server.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Setting Name
+        in: path
+        name: settingName
+        required: true
+        type: string
+      - description: Toggle state (on/off)
+        in: path
+        name: state
         type: string
       produces:
       - application/json

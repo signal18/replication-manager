@@ -335,7 +335,7 @@
                     "application/json"
                 ],
                 "tags": [
-                    "ClusterSettings"
+                    "GlobalSetting"
                 ],
                 "summary": "Set global settings for the server",
                 "parameters": [
@@ -406,11 +406,56 @@
                 "parameters": [
                     {
                         "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
                         "description": "Setting Name",
                         "name": "settingName",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully switched setting",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/settings/actions/switch/{settingName}/{state}": {
+            "post": {
+                "description": "This endpoint switches the global settings for the server.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GlobalSetting"
+                ],
+                "summary": "Switch global settings for the server",
+                "parameters": [
                     {
                         "type": "string",
                         "default": "Bearer \u003cAdd access token here\u003e",
@@ -421,8 +466,15 @@
                     },
                     {
                         "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
+                        "description": "Setting Name",
+                        "name": "settingName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Toggle state (on/off)",
+                        "name": "state",
                         "in": "path"
                     }
                 ],
@@ -9080,6 +9132,71 @@
                         "name": "settingName",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully switched setting",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}": {
+            "post": {
+                "description": "This endpoint switches the settings for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Switch settings for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Setting Name",
+                        "name": "settingName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Toggle state (on/off)",
+                        "name": "state",
+                        "in": "path"
                     }
                 ],
                 "responses": {
