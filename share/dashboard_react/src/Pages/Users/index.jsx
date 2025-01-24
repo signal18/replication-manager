@@ -44,7 +44,8 @@ function Users({ selectedCluster, user }) {
   }
 
   const isShowDropUser = (user, item) => {
-    let immutable = user.user == item.user || monitor?.config?.cloud18GitUser == item.user || item.user == "admin" || item.roles['sponsor']
+    // Prevent dropping self, cloud18 sysops user, admin user, sponsor user, external dbops user, external sysops user
+    let immutable = user.user == item.user || monitor?.config?.cloud18GitUser == item.user || item.user == "admin" || item.roles['sponsor'] || item.roles['extdbops'] || item.roles['extsysops']
     
     if (user.roles['sysops']) {
       return !immutable
