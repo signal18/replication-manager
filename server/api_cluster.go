@@ -1794,7 +1794,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 	if v, ok := vars["state"]; ok {
 		value = strings.ToLower(v)
 		if value != "on" && value != "off" {
-			http.Error(w, "Invalid state", 400)
+			http.Error(w, "Invalid state. Only accept on/off", 400)
 			return
 		}
 	}
@@ -1869,7 +1869,7 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	if v, ok := vars["state"]; ok {
 		value = strings.ToLower(v)
 		if value != "on" && value != "off" {
-			http.Error(w, "Invalid state", 400)
+			http.Error(w, "Invalid state. Only accept on/off", 400)
 			return
 		}
 	}
