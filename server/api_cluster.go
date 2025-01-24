@@ -5293,6 +5293,12 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 		return
 	}
 
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
@@ -5348,6 +5354,17 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 	}
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External activation email sent to %s", userform.Username)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending external ops activation email to sponsor %s", mycluster.GetSponsorEmail())
+
+	err = repman.SendSponsorExternalOpsActivationMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", mycluster.GetSponsorEmail(), err)
+		http.Error(w, "Error sending email :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External activation email sent to %s", mycluster.GetSponsorEmail())
 
 	if userform.Roles == "extdbops" {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending dba db credentials to user %s", userform.Username)

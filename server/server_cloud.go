@@ -296,6 +296,7 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 
 		extops = repman.CreateExtDBOpsForm(user)
 		auser.Roles[config.RolePendingExtDBOps] = false
+		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalActive
 	} else if userform.Roles == config.RoleExtSysOps {
 		if v, ok := auser.Roles[config.RolePendingExtSysOps]; !ok || !v {
 			return fmt.Errorf("User %s does not have '%s' role", user, config.RolePendingExtSysOps)
@@ -303,6 +304,7 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 
 		extops = repman.CreateExtSysopsForm(user)
 		auser.Roles[config.RolePendingExtSysOps] = false
+		cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalActive
 	} else {
 		return fmt.Errorf("Invalid role %s", userform.Roles)
 	}
@@ -310,7 +312,6 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 	extops.Grants = cl.AppendGrants(extops.Grants, &auser)
 	extops.Roles = cl.AppendRoles(extops.Roles, &auser)
 	cl.UpdateUser(extops, delegator, true)
-
 	return nil
 }
 
@@ -348,6 +349,14 @@ func (repman *ReplicationManager) CancelExternalOps(userform CloudUserForm, cl *
 		cl.DropUser(extops, true)
 	} else {
 		cl.UpdateUser(extops, "admin", true)
+	}
+
+	if cancelrole == config.RoleExtDBOps {
+		cl.Conf.Cloud18ExternalDbOps = ""
+		cl.Conf.Cloud18ExternalDbOpsStatus = ""
+	} else if cancelrole == config.RoleExtSysOps {
+		cl.Conf.Cloud18ExternalSysOps = ""
+		cl.Conf.Cloud18ExternalSysOpsStatus = ""
 	}
 
 	return nil
@@ -406,8 +415,10 @@ func (repman *ReplicationManager) EndExternalOps(userform CloudUserForm, cl *clu
 
 	if endrole == config.RoleExtDBOps {
 		cl.Conf.Cloud18ExternalDbOps = ""
+		cl.Conf.Cloud18ExternalDbOpsStatus = ""
 	} else if endrole == config.RoleExtSysOps {
 		cl.Conf.Cloud18ExternalSysOps = ""
+		cl.Conf.Cloud18ExternalSysOpsStatus = ""
 	}
 
 	return nil

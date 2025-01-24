@@ -11,9 +11,10 @@ import TextForm from '../../components/TextForm'
 import SetCredentialsModal from '../../components/Modals/SetCredentialsModal'
 import RMIconButton from '../../components/RMIconButton'
 import { HiKey } from 'react-icons/hi'
-import { TbUserCancel } from 'react-icons/tb'
-import { endExternalRole, subscribeExternalRole } from '../../redux/clusterSlice'
+import { TbDatabaseStar, TbDatabaseX, TbDeviceDesktopStar, TbDeviceDesktopX, TbUserCancel } from 'react-icons/tb'
+import { acceptExternalRole, endExternalRole, refuseExternalRole, subscribeExternalRole } from '../../redux/clusterSlice'
 import TextInputModal from '../../components/Modals/TextInputModal'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
 
 function CloudSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -22,29 +23,48 @@ function CloudSettings({ selectedCluster, user }) {
     globalClusters: { monitor }
   } = useSelector((state) => state)
 
+  const [action, setAction] = useState({ type: '', title: '', payload: '' })
   const [planOptions, setPlanOptions] = useState([])
   const [dbopsOptions, setDbopsOptions] = useState([])
   const [partnerOptions, setPartnerOptions] = useState([])
   const [credentialType, setCredentialType] = useState('')
-  const [roleType, setRoleType] = useState('')
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
   const [isTextModalOpen, setIsTextModalOpen] = useState(false)
+  const { type, title, payload } = action
 
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' }, ...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
   const getPartnerOptions = (plist = [], role) => [{ name: "No Partner", value: '' }, ...plist?.map((obj) => ({ name: obj.Name, value: role === 'extdbops' ? obj.DbopsEmail : obj.SysopsEmail }))]
 
-  const getExtRoleEmail = (role) => { 
-    if (role === 'extdbops') {
-      return selectedCluster?.config?.cloud18ExternalDbOps
-    }
-    
-    return selectedCluster?.config?.cloud18ExternalSysOps
+  const openConfirmModal = () => {
+    setIsConfirmModalOpen(true)
   }
 
-  const handleEndExternalRole = (value) => { 
-    dispatch(endExternalRole({ clusterName: selectedCluster?.name, username: getExtRoleEmail(roleType), roles: roleType, reason: value })) 
+  const closeConfirmModal = () => {
+    setIsConfirmModalOpen(false)
   }
-  
+
+  const openTextModal = () => {
+    setIsTextModalOpen(true)
+  }
+
+  const handleConfirm = (value) => {
+    if (type === 'accept-extdbops') {
+      dispatch(acceptExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extdbops' }))
+    } else if (type === 'reject-extdbops') {
+      dispatch(refuseExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extdbops', reason: value }))
+    } else if (type === 'end-extdbops') {
+      dispatch(endExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extdbops', reason: value }))
+    } else if (type === 'accept-extsysops') {
+      dispatch(acceptExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops' }))
+    } else if (type === 'reject-extsysops') {
+      dispatch(refuseExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops', reason: value }))
+    } else if (type === 'end-extsysops') {
+      dispatch(endExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops', reason: value }))
+    }
+    closeConfirmModal()
+  }
+
   useEffect(() => {
     if (monitor?.servicePlans) {
       setPlanOptions(getPlanOptions(monitor.servicePlans))
@@ -118,7 +138,7 @@ function CloudSettings({ selectedCluster, user }) {
         {
           key: 'Cloud18 Database Read-Write Srv Record',
           value: (
-            <TextForm 
+            <TextForm
               value={selectedCluster?.config?.cloud18DatabaseReadWriteSrvRecord}
               confirmTitle={`Confirm cloud18-database-read-write-srv-record to `}
               maxLength={1024}
@@ -159,53 +179,69 @@ function CloudSettings({ selectedCluster, user }) {
           key: 'Cloud18 External Sys Ops',
           value: (
             <HStack w='100%'>
-            <Flex className={styles.dropdownContainer}>
-              <Dropdown
-                options={partnerOptions}
-                id='plan'
-                className={styles.dropdownButton}
-                selectedValue={selectedCluster?.config?.cloud18ExternalSysOps}
-                confirmTitle={`Confirm external Sys Ops change to`}
-                onChange={(option) => {
-                  dispatch(
-                    subscribeExternalRole({
-                      clusterName: selectedCluster?.name,
-                      username: option,
-                      roles: 'extsysops'
-                    })
-                  )
-                }}
-              />
-            </Flex>
-            <RMIconButton tooltip={'End External Sysops Role'} icon={TbUserCancel} onClick={() => { setRoleType('extsysops'); setIsTextModalOpen(true) }} />
-          </HStack>
+              <Flex className={styles.dropdownContainer}>
+                <Dropdown
+                  options={partnerOptions}
+                  id='plan'
+                  className={styles.dropdownButton}
+                  selectedValue={selectedCluster?.config?.cloud18ExternalSysOps}
+                  confirmTitle={`Confirm external Sys Ops change to`}
+                  onChange={(option) => {
+                    dispatch(
+                      subscribeExternalRole({
+                        clusterName: selectedCluster?.name,
+                        username: option,
+                        roles: 'extsysops'
+                      })
+                    )
+                  }}
+                />
+              </Flex>
+              {selectedCluster?.config?.cloud18ExternalSysOps && selectedCluster?.config?.cloud18ExternalSysOpsStatus == "pending" ? (
+                <>
+                  <RMIconButton tooltip={"Accept external sysops"} icon={TbDeviceDesktopStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extsysops", title: "Are you sure to accept external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openConfirmModal() }} />
+                  <RMIconButton tooltip={"Reject external sysops"} icon={TbDeviceDesktopX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extsysops", title: "Are you sure to reject external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />
+                </>
+              ) : selectedCluster?.config?.cloud18ExternalDbOpsStatus == "active" ? (
+                <RMIconButton tooltip={'End External Sysops Role'} icon={TbUserCancel} onClick={() => { e.stopPropagation(); setAction({ type: "end-extsysops", title: "Are you sure to end external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />
+              ) : <></>
+              }
+            </HStack>
           )
         },
         {
           key: 'Cloud18 External DB Ops',
           value: (
             <HStack w='100%'>
-            <Flex className={styles.dropdownContainer}>
-              <Dropdown
-                options={dbopsOptions}
-                id='plan'
-                className={styles.dropdownButton}
-                selectedValue={selectedCluster?.config?.cloud18ExternalDbOps}
-                confirmTitle={`Confirm external DB Ops change to`}
-                onChange={(option) => {
-                  dispatch(
-                    subscribeExternalRole({
-                      clusterName: selectedCluster?.name,
-                      username: option,
-                      roles: 'extdbops'
-                    })
-                  )
-                }}
-              />
-            </Flex>
-            <RMIconButton tooltip={'End External Role'} icon={TbUserCancel} onClick={() => { setRoleType('extdbops'); setIsTextModalOpen(true) }} />
-            <RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-dba-user-credentials'); setIsCredentialModalOpen(true) }} />
-          </HStack>
+              <Flex className={styles.dropdownContainer}>
+                <Dropdown
+                  options={dbopsOptions}
+                  id='plan'
+                  className={styles.dropdownButton}
+                  selectedValue={selectedCluster?.config?.cloud18ExternalDbOps}
+                  confirmTitle={`Confirm external DB Ops change to`}
+                  onChange={(option) => {
+                    dispatch(
+                      subscribeExternalRole({
+                        clusterName: selectedCluster?.name,
+                        username: option,
+                        roles: 'extdbops'
+                      })
+                    )
+                  }}
+                />
+              </Flex>
+              {selectedCluster?.config?.cloud18ExternalDbOps && selectedCluster?.config?.cloud18ExternalDbOpsStatus == "pending" ? (
+                <>
+                  <RMIconButton tooltip={"Accept external dbops"} icon={TbDatabaseStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extdbops", title: "Are you sure to accept external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openConfirmModal() }} />
+                  <RMIconButton tooltip={"Reject external dbops"} icon={TbDatabaseX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extdbops", title: "Are you sure to reject external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />
+                </>
+              ) : selectedCluster?.config?.cloud18ExternalDbOpsStatus == "active" ? (
+                <RMIconButton tooltip={'End External Role'} icon={TbUserCancel} onClick={() => { e.stopPropagation(); setAction({ type: "end-extdbops", title: "Are you sure to end external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />
+              ) : <></>
+              }
+              <RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-dba-user-credentials'); setIsCredentialModalOpen(true) }} />
+            </HStack>
           )
         },
         {
@@ -232,20 +268,9 @@ function CloudSettings({ selectedCluster, user }) {
           }}
         />
       )}
-      {isTextModalOpen && (
-        <TextInputModal
-        key={roleType}
-          isOpen={isTextModalOpen}
-          title={'End External Role'}
-          fieldname={'Reason'}
-          onSave={handleEndExternalRole}
-          isRequired={true}
-          closeModal={() => {
-            setIsTextModalOpen(false)
-            setRoleType('')
-          }}
-        />
-      )}
+      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false); }} />}
+
     </Flex>
   )
 }
