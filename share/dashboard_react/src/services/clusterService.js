@@ -99,6 +99,7 @@ export const clusterService = {
   endSubscription,
 
   subscribeExternalRole,
+  quoteExternalRole,
   acceptExternalRole,
   refuseExternalRole,
   endExternalRole,
@@ -453,6 +454,10 @@ function endSubscription(clusterName, username, baseURL) {
 
 function subscribeExternalRole(clusterName, username, roles, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/ext-role/subscribe`, {username, roles})
+}
+
+function quoteExternalRole(clusterName, username, roles, cost, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/quote`, {username, roles, cost})
 }
 
 function acceptExternalRole(clusterName, username, roles, baseURL) {

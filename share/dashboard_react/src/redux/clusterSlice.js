@@ -1113,6 +1113,25 @@ export const subscribeExternalRole = createAsyncThunk(
   }
 )
 
+export const quoteExternalRole = createAsyncThunk(
+  'cluster/quoteExternalRole',
+  async ({ clusterName, username, roles, cost }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.quoteExternalRole(clusterName, username, roles, cost, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is quoteed successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed sending quotation to external role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const acceptExternalRole = createAsyncThunk(
   'cluster/acceptExternalRole',
   async ({ clusterName, username, roles }, thunkAPI) => {

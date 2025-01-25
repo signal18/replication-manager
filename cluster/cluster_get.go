@@ -1409,9 +1409,9 @@ func (cluster *Cluster) GetExecEnv() []string {
 
 func (cluster *Cluster) GetExternalCost(role string) float64 {
 	if role == config.RoleExtDBOps {
-		return cluster.Conf.Cloud18MonthlyDbopsCost
+		return cluster.Conf.Cloud18MonthlyExternalDbopsCost
 	} else if role == config.RoleExtSysOps {
-		return cluster.Conf.Cloud18MonthlySysopsCost
+		return cluster.Conf.Cloud18MonthlyExternalSysopsCost
 	}
 	return 0
 }

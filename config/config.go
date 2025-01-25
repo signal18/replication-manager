@@ -699,6 +699,8 @@ type Config struct {
 	Cloud18MonthlyLicenseCost                 float64                `mapstructure:"cloud18-monthly-license-cost"  toml:"cloud18-monthly-license-cost" json:"cloud18MonthlyLicenseCost"`
 	Cloud18MonthlySysopsCost                  float64                `mapstructure:"cloud18-monthly-sysops-cost"  toml:"cloud18-monthly-sysops-cost" json:"cloud18MonthlySysopsCost"`
 	Cloud18MonthlyDbopsCost                   float64                `mapstructure:"cloud18-monthly-dbops-cost"  toml:"cloud18-monthly-dbops-cost" json:"cloud18MonthlyDbopsCost"`
+	Cloud18MonthlyExternalSysopsCost          float64                `mapstructure:"cloud18-monthly-external-sysops-cost" toml:"cloud18-monthly-external-sysops-cost" json:"cloud18MonthlyExternalSysopsCost"`
+	Cloud18MonthlyExternalDbopsCost           float64                `mapstructure:"cloud18-monthly-external-dbops-cost" toml:"cloud18-monthly-external-dbops-cost" json:"cloud18MonthlyExternalDbopsCost"`
 	Cloud18PromotionPct                       float64                `mapstructure:"cloud18-promotion-pct"  toml:"cloud18-promotion-pct" json:"cloud18PromotionPct"`
 	Cloud18SlaResponseTime                    float64                `mapstructure:"cloud18-sla-response-time"  toml:"cloud18-sla-response-time" json:"cloud18SlaResponseTime"`
 	Cloud18SlaRepairTime                      float64                `mapstructure:"cloud18-sla-repair-time"  toml:"cloud18-sla-repair-time" json:"cloud18SlaRepairTime"`
@@ -1003,9 +1005,9 @@ type Role struct {
 }
 
 const (
-	ExternalPending string = "pending"
 	ExternalActive  string = "active"
-	ExternalExpired string = "expired"
+	ExternalPending string = "pending"
+	ExternalQuote   string = "quote"
 )
 
 const (
@@ -1020,6 +1022,8 @@ const (
 	RolePending               string = "pending"
 	RolePendingExtDBOps       string = "pending-extdbops"
 	RolePendingExtSysOps      string = "pending-extsysops"
+	RoleQuoteExtDBOps         string = "quote-extdbops"
+	RoleQuoteExtSysOps        string = "quote-extsysops"
 	RoleVisitor               string = "visitor"
 )
 

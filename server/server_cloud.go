@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/signal18/replication-manager/cluster"
@@ -11,11 +12,12 @@ import (
 )
 
 type CloudUserForm struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Roles    string `json:"roles"`
-	Grants   string `json:"grants"`
-	Reason   string `json:"reason"`
+	Username string  `json:"username"`
+	Password string  `json:"password"`
+	Roles    string  `json:"roles"`
+	Grants   string  `json:"grants"`
+	Cost     float64 `json:"cost"`
+	Reason   string  `json:"reason"`
 }
 
 func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, cl *cluster.Cluster) error {
@@ -281,6 +283,51 @@ func (repman *ReplicationManager) BashScriptExternalOpsEndPartnership(mycluster 
 	return nil
 }
 
+func (repman *ReplicationManager) QuoteExternalOps(userform CloudUserForm, cl *cluster.Cluster, delegator string) error {
+	var extops cluster.UserForm
+	extops.Username = userform.Username
+	auser, ok := cl.APIUsers[extops.Username]
+	if !ok {
+		return fmt.Errorf("User %s does not exist ", extops.Username)
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		return fmt.Errorf("Partner %s not found", userform.Username)
+	}
+
+	cl.LogModulePrintf(cl.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Update quotation for partner %s by user: %s", partner.Name, delegator)
+
+	if userform.Roles == config.RoleExtDBOps {
+		if v, ok := auser.Roles[config.RolePendingExtDBOps]; !ok || !v {
+			return fmt.Errorf("User %s does not have '%s' role", extops.Username, config.RolePendingExtDBOps)
+		}
+
+		extops.Roles = config.RoleQuoteExtDBOps
+		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalQuote
+		cl.Conf.Cloud18MonthlyExternalDbopsCost = userform.Cost
+
+		auser.Roles[config.RolePendingExtDBOps] = false
+	} else if userform.Roles == config.RoleExtSysOps {
+		if v, ok := auser.Roles[config.RolePendingExtSysOps]; !ok || !v {
+			return fmt.Errorf("User %s does not have '%s' role", extops.Username, config.RolePendingExtSysOps)
+		}
+
+		extops.Roles = config.RoleQuoteExtSysOps
+		cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalQuote
+		cl.Conf.Cloud18MonthlyExternalSysopsCost = userform.Cost
+
+		auser.Roles[config.RolePendingExtSysOps] = false
+	} else {
+		return fmt.Errorf("Invalid role %s", userform.Roles)
+	}
+
+	extops.Grants = cl.AppendGrants(extops.Grants, &auser)
+	extops.Roles = cl.AppendRoles(extops.Roles, &auser)
+	cl.UpdateUser(extops, delegator, true)
+	return nil
+}
+
 func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *cluster.Cluster, delegator string) error {
 	var extops cluster.UserForm
 	user := userform.Username
@@ -290,20 +337,20 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 	}
 
 	if userform.Roles == config.RoleExtDBOps {
-		if v, ok := auser.Roles[config.RolePendingExtDBOps]; !ok || !v {
-			return fmt.Errorf("User %s does not have '%s' role", user, config.RolePendingExtDBOps)
+		if v, ok := auser.Roles[config.RoleQuoteExtDBOps]; !ok || !v {
+			return fmt.Errorf("User %s does not have '%s' role", user, config.RoleQuoteExtSysOps)
 		}
 
 		extops = repman.CreateExtDBOpsForm(user)
-		auser.Roles[config.RolePendingExtDBOps] = false
+		auser.Roles[config.RoleQuoteExtSysOps] = false
 		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalActive
 	} else if userform.Roles == config.RoleExtSysOps {
-		if v, ok := auser.Roles[config.RolePendingExtSysOps]; !ok || !v {
-			return fmt.Errorf("User %s does not have '%s' role", user, config.RolePendingExtSysOps)
+		if v, ok := auser.Roles[config.RoleQuoteExtSysOps]; !ok || !v {
+			return fmt.Errorf("User %s does not have '%s' role", user, config.RoleQuoteExtSysOps)
 		}
 
 		extops = repman.CreateExtSysopsForm(user)
-		auser.Roles[config.RolePendingExtSysOps] = false
+		auser.Roles[config.RoleQuoteExtSysOps] = false
 		cl.Conf.Cloud18ExternalSysOpsStatus = config.ExternalActive
 	} else {
 		return fmt.Errorf("Invalid role %s", userform.Roles)
@@ -316,47 +363,57 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 }
 
 func (repman *ReplicationManager) CancelExternalOps(userform CloudUserForm, cl *cluster.Cluster) error {
-	var extops cluster.UserForm = cluster.UserForm{
+	extops := cluster.UserForm{
 		Username: userform.Username,
-		Roles:    userform.Roles,
-		Grants:   userform.Grants,
 	}
-	user := userform.Username
-	cancelrole := userform.Roles
+	cancelroles := make([]string, 0)
 
-	auser, ok := cl.APIUsers[user]
-	if !ok {
-		return fmt.Errorf("User %s does not exist ", user)
+	if userform.Roles == config.RoleExtDBOps {
+		cancelroles = append(cancelroles, config.RoleExtDBOps, config.RolePendingExtDBOps, config.RoleQuoteExtDBOps)
+	} else if userform.Roles == config.RoleExtSysOps {
+		cancelroles = append(cancelroles, config.RoleExtDBOps, config.RolePendingExtDBOps, config.RoleQuoteExtDBOps)
+	} else {
+		return fmt.Errorf("Invalid role %s", userform.Roles)
 	}
+
+	auser, ok := cl.APIUsers[extops.Username]
+	if !ok {
+		return fmt.Errorf("User %s does not exist ", extops.Username)
+	}
+
 	grants := make([]string, 0)
 	roles := make([]string, 0)
-	for grant, v := range auser.Grants {
-		if v {
-			grants = append(grants, grant)
+	for role, v := range auser.Roles {
+		if v && !slices.Contains(cancelroles, role) {
+			roles = append(roles, role)
+			defaultgrants := strings.Split(config.GetDefaultGrants(role), " ")
+			for _, grant := range defaultgrants {
+				if !slices.Contains(grants, grant) {
+					grants = append(grants, grant)
+				}
+			}
 		}
 	}
+	extops.Roles = strings.Join(roles, " ")
 	extops.Grants = strings.Join(grants, " ")
 
-	for role, v := range auser.Roles {
-		if v && role != cancelrole {
-			roles = append(roles, role)
-		}
+	if userform.Roles == config.RoleExtDBOps {
+		cl.Conf.Cloud18ExternalDbOps = ""
+		cl.Conf.Cloud18ExternalDbOpsStatus = ""
+	} else if userform.Roles == config.RoleExtSysOps {
+		cl.Conf.Cloud18ExternalSysOps = ""
+		cl.Conf.Cloud18ExternalSysOpsStatus = ""
 	}
 
-	extops.Roles = strings.Join(roles, " ")
+	// If use has no other roles, remove grants
+	if len(roles) == 0 {
+		extops.Grants = ""
+	}
 
 	if extops.Grants == "" {
 		cl.DropUser(extops, true)
 	} else {
 		cl.UpdateUser(extops, "admin", true)
-	}
-
-	if cancelrole == config.RoleExtDBOps {
-		cl.Conf.Cloud18ExternalDbOps = ""
-		cl.Conf.Cloud18ExternalDbOpsStatus = ""
-	} else if cancelrole == config.RoleExtSysOps {
-		cl.Conf.Cloud18ExternalSysOps = ""
-		cl.Conf.Cloud18ExternalSysOpsStatus = ""
 	}
 
 	return nil
@@ -365,58 +422,55 @@ func (repman *ReplicationManager) CancelExternalOps(userform CloudUserForm, cl *
 func (repman *ReplicationManager) EndExternalOps(userform CloudUserForm, cl *cluster.Cluster) error {
 	var extops cluster.UserForm = cluster.UserForm{
 		Username: userform.Username,
-		Roles:    userform.Roles,
-		Grants:   userform.Grants,
 	}
-	user := userform.Username
-	endrole := userform.Roles
 
-	auser, ok := cl.APIUsers[user]
+	auser, ok := cl.APIUsers[userform.Username]
 
 	if !ok {
-		return fmt.Errorf("User %s does not exist ", user)
+		return fmt.Errorf("User %s does not exist ", userform.Username)
 	}
 
-	if v, ok := auser.Roles[endrole]; !ok || !v {
-		return fmt.Errorf("User %s does not have '%s' role", user, endrole)
+	if v, ok := auser.Roles[userform.Roles]; !ok || !v {
+		return fmt.Errorf("User %s does not have '%s' role", userform.Username, userform.Roles)
 	}
 
 	grants := make([]string, 0)
 	roles := make([]string, 0)
-	for grant, v := range auser.Grants {
-		if v {
-			grants = append(grants, grant)
-		}
-	}
-	extops.Grants = strings.Join(grants, " ")
-
 	for role, v := range auser.Roles {
-		if v && role != endrole {
+		if v && role != userform.Roles {
 			roles = append(roles, role)
+			defaultgrants := strings.Split(config.GetDefaultGrants(role), " ")
+			for _, grant := range defaultgrants {
+				if !slices.Contains(grants, grant) {
+					grants = append(grants, grant)
+				}
+			}
 		}
 	}
+	extops.Roles = strings.Join(roles, " ")
+	extops.Grants = strings.Join(grants, " ")
 
 	// If use has no other roles, remove grants
 	if len(roles) == 0 {
 		extops.Grants = ""
 	}
 
-	if endrole == config.RoleExtDBOps {
+	if userform.Roles == config.RoleExtDBOps {
 		roles = append(roles, config.RoleUnsubscribedExtDBOps)
-	} else if endrole == config.RoleExtSysOps {
+	} else if userform.Roles == config.RoleExtSysOps {
 		roles = append(roles, config.RoleUnsubscribedExtSysOps)
 	} else {
-		return fmt.Errorf("Invalid role %s", endrole)
+		return fmt.Errorf("Invalid role %s", userform.Roles)
 	}
 
 	extops.Roles = strings.Join(roles, " ")
 
 	cl.UpdateUser(extops, "admin", true)
 
-	if endrole == config.RoleExtDBOps {
+	if userform.Roles == config.RoleExtDBOps {
 		cl.Conf.Cloud18ExternalDbOps = ""
 		cl.Conf.Cloud18ExternalDbOpsStatus = ""
-	} else if endrole == config.RoleExtSysOps {
+	} else if userform.Roles == config.RoleExtSysOps {
 		cl.Conf.Cloud18ExternalSysOps = ""
 		cl.Conf.Cloud18ExternalSysOpsStatus = ""
 	}

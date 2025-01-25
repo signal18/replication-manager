@@ -865,6 +865,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/subscribe") {
 			return true
 		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/accept") {
+			return true
+		}
 	}
 
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesValidate] {
@@ -872,7 +876,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/accept") {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/quote") {
 			return true
 		}
 	}

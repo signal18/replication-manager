@@ -1972,6 +1972,67 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/ext-role/quote": {
+            "post": {
+                "description": "This endpoint quotes external operations for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Quote external operations for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.CloudUserForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email sent to sponsor!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error accepting external operations",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/ext-role/refuse": {
             "post": {
                 "description": "This endpoint rejects external operations for the specified cluster.",
@@ -13400,6 +13461,12 @@ const docTemplate = `{
                 "cloud18MonthlyDbopsCost": {
                     "type": "number"
                 },
+                "cloud18MonthlyExternalDbopsCost": {
+                    "type": "number"
+                },
+                "cloud18MonthlyExternalSysopsCost": {
+                    "type": "number"
+                },
                 "cloud18MonthlyInfraCost": {
                     "type": "number"
                 },
@@ -15293,6 +15360,9 @@ const docTemplate = `{
         "server.CloudUserForm": {
             "type": "object",
             "properties": {
+                "cost": {
+                    "type": "number"
+                },
                 "grants": {
                     "type": "string"
                 },
