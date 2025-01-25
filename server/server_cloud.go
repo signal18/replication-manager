@@ -338,11 +338,11 @@ func (repman *ReplicationManager) AcceptExternalOps(userform CloudUserForm, cl *
 
 	if userform.Roles == config.RoleExtDBOps {
 		if v, ok := auser.Roles[config.RoleQuoteExtDBOps]; !ok || !v {
-			return fmt.Errorf("User %s does not have '%s' role", user, config.RoleQuoteExtSysOps)
+			return fmt.Errorf("User %s does not have '%s' role", user, config.RoleQuoteExtDBOps)
 		}
 
 		extops = repman.CreateExtDBOpsForm(user)
-		auser.Roles[config.RoleQuoteExtSysOps] = false
+		auser.Roles[config.RoleQuoteExtDBOps] = false
 		cl.Conf.Cloud18ExternalDbOpsStatus = config.ExternalActive
 	} else if userform.Roles == config.RoleExtSysOps {
 		if v, ok := auser.Roles[config.RoleQuoteExtSysOps]; !ok || !v {

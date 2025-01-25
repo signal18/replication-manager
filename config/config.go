@@ -2549,6 +2549,8 @@ func GetRoleType() map[string]string {
 		RolePending:               RolePending,
 		RolePendingExtDBOps:       RolePendingExtDBOps,
 		RolePendingExtSysOps:      RolePendingExtSysOps,
+		RoleQuoteExtDBOps:         RoleQuoteExtDBOps,
+		RoleQuoteExtSysOps:        RoleQuoteExtSysOps,
 		RoleUnsubscribed:          RoleUnsubscribed,
 		RoleUnsubscribedExtDBOps:  RoleUnsubscribedExtDBOps,
 		RoleUnsubscribedExtSysOps: RoleUnsubscribedExtSysOps,
