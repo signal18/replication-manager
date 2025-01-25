@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterPeers, getClusterForSale, getTermsData } from '../../redux/globalClustersSlice'
 import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
@@ -7,20 +7,19 @@ import { AiOutlineCluster } from 'react-icons/ai'
 import Card from '../../components/Card'
 import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
-import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
 import { HiCreditCard, HiTag } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
-import ClusterSubscribeModal from '../../components/Modals/ClusterSubscribeModal'
+import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
 
 function PeerClusterList({ onLogin, mode }) {
   const dispatch = useDispatch()
   const [clusters, setClusters] = useState([])
-  const [item, setItem] = useState({})
-  const [isClusterSubscribeModalOpen, setIsClusterSubscribeModalOpen] = useState(false)
+  const [finalTerms, setFinalTerms] = useState(``)
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
 
   const {
     globalClusters: { loading, clusterPeers, clusterForSale, monitor, terms },
@@ -32,11 +31,8 @@ function PeerClusterList({ onLogin, mode }) {
   useEffect(() => {
     dispatch(getClusterPeers({}))
     dispatch(getClusterForSale({}))
-  }, [])
-
-  useEffect(() => {
     dispatch(getTermsData({}))
-  }, [monitor?.termsDT])
+  }, [])
 
   useEffect(() => {
     if (clusterPeers?.length > 0 && mode !== 'shared') {
@@ -47,15 +43,34 @@ function PeerClusterList({ onLogin, mode }) {
     }
   }, [clusterPeers,clusterForSale])
 
-  const openClusterSubscribeModal = () => {
-    setIsClusterSubscribeModalOpen(true)
+  let header = `
+| Label | Value |
+| --- | --- |
+`
+
+  const parseTerms = useCallback((cluster, newterms = ``) => {
+      let servicePlan = Object.entries(cluster)
+        .filter(([key]) => !([].includes(key))) // fields to remove
+        .map(([key, value]) => `| ${key} | ${value} |`)
+        .join("\n");
+      let finalterm = newterms
+        .replace(`<<user>>`, user?.username)
+        .replace(`<<cluster>>`, cluster?.["cluster-name"])
+        .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
+        .replace(`<<date>>`, (new Date()).toLocaleDateString())
+      setFinalTerms(finalterm)
+      openTermsModal()
+    },[user?.username])
+
+  const openTermsModal = () => {
+    setIsTermsModalOpen(true)
   }
 
-  const closeClusterSubscribeModal = (keepBaseURL = false) => {
+  const closeTermsModal = (keepBaseURL = false) => {
     if (!keepBaseURL) {
       dispatch(setBaseURL({ baseURL: '' }))
     }
-    setIsClusterSubscribeModalOpen(false)
+    setIsTermsModalOpen(false)
   }
 
   const handleSubscribeModal = (clusterItem) => {
@@ -65,7 +80,7 @@ function PeerClusterList({ onLogin, mode }) {
     }
 
 
-    closeClusterSubscribeModal(true)
+    closeTermsModal(true)
     dispatch(clusterSubscribe({ clusterName: clusterItem['cluster-name'], baseURL: baseURL }))
   }
 
@@ -112,8 +127,10 @@ function PeerClusterList({ onLogin, mode }) {
       }
 
       if (mode === "shared") {
-        setItem(clusterItem);
-        openClusterSubscribeModal();
+        dispatch(getTermsData({})).then((action) => {
+          let newterms = action?.payload?.data || ``
+          parseTerms(clusterItem, newterms);
+        });
       } else {
         if (resp?.payload?.status === 200) {
           if (onLogin) return onLogin(resp.payload.data);
@@ -258,7 +275,7 @@ function PeerClusterList({ onLogin, mode }) {
           )
         })}
       </Flex>
-      {isClusterSubscribeModalOpen && <ClusterSubscribeModal terms={terms} cluster={item} user={user} isOpen={isClusterSubscribeModalOpen} closeModal={closeClusterSubscribeModal} onSaveModal={handleSubscribeModal} />}
+      {isTermsModalOpen && <TermsModal terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onSaveModal={handleSubscribeModal} />}
     </>
   )
 }

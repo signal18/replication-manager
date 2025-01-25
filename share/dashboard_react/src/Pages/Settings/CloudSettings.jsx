@@ -1,5 +1,5 @@
 import { Flex, HStack } from '@chakra-ui/react'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import styles from './styles.module.scss'
 import RMSwitch from '../../components/RMSwitch'
 import { useDispatch, useSelector } from 'react-redux'
@@ -13,36 +13,71 @@ import { HiKey } from 'react-icons/hi'
 import { TbDatabaseDollar, TbDatabaseOff, TbDatabaseStar, TbDatabaseX, TbDeviceDesktopDollar, TbDeviceDesktopOff, TbDeviceDesktopStar, TbDeviceDesktopX, TbUserCancel } from 'react-icons/tb'
 import { acceptExternalRole, endExternalRole, quoteExternalRole, refuseExternalRole, subscribeExternalRole } from '../../redux/clusterSlice'
 import TextInputModal from '../../components/Modals/TextInputModal'
-import ConfirmModal from '../../components/Modals/ConfirmModal'
+import TermsModal from '../../components/Modals/TermsModal'
 import NumberInputModal from '../../components/Modals/NumberInputModal'
+import { getTermsData } from '../../redux/globalClustersSlice'
 
 function CloudSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
 
   const {
-    globalClusters: { monitor }
+    globalClusters: { monitor, terms },
+    auth: { baseURL }
   } = useSelector((state) => state)
 
-  const [action, setAction] = useState({ type: '', title: '', payload: '' })
+  const [action, setAction] = useState({ type: '', title: '', roles: '', payload: '' })
   const [planOptions, setPlanOptions] = useState([])
   const [dbopsOptions, setDbopsOptions] = useState([])
   const [partnerOptions, setPartnerOptions] = useState([])
   const [credentialType, setCredentialType] = useState('')
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
+  const [isTermsModalOpen, setIsTermsModalOpen] = useState(null)
   const [isTextModalOpen, setIsTextModalOpen] = useState(false)
   const [isNumberModalOpen, setIsNumberModalOpen] = useState(false)
-  const { type, title, payload } = action
+  const { type, title, roles, payload } = action
 
   const getPlanOptions = (plist = []) => [{ name: "No Plan", value: '' }, ...plist?.map((obj) => ({ name: obj.plan, value: obj.plan }))]
   const getPartnerOptions = (plist = [], role) => [{ name: "No Partner", value: '' }, ...plist?.map((obj) => ({ name: obj.Name, value: role === 'extdbops' ? obj.DbopsEmail : obj.SysopsEmail }))]
 
-  const openConfirmModal = () => {
-    setIsConfirmModalOpen(true)
+  const sysPartner = monitor?.partners?.find((partner) => partner.SysopsEmail === payload)
+  const dbPartner = monitor?.partners?.find((partner) => partner.DbopsEmail === payload)
+  const sysCost = selectedCluster?.config?.cloud18MonthlyExternalSysopsCost
+  const dbCost = selectedCluster?.config?.cloud18MonthlyExternalDbopsCost
+
+  const header = `
+| Label | Value |
+| --- | --- |
+`
+
+  const sysdetails = `
+| Partner | ${sysPartner?.Name} |
+| Role | External SysOps |
+| Cost | ${sysCost} |
+| Cluster | ${selectedCluster?.name} |`
+
+  const dbdetails = `
+| Partner | ${dbPartner?.Name} |
+| Role | External DbOps |
+| Cost | ${dbCost} |
+| Cluster | ${selectedCluster?.name} |`
+
+  const finalterms = terms
+    .replace(`<<user>>`, user?.username || '')
+    .replace(`<<cluster>>`, selectedCluster?.name || '')
+    .replace(`<<ervice_plan_infos>>`, roles === 'extsysops' ? header.concat(sysdetails) : header.concat(dbdetails))
+    .replace(`<<date>>`, (new Date()).toLocaleDateString())
+
+  useEffect(() => {
+    dispatch(getTermsData({ baseURL }))
+  }, [selectedCluster?.name])
+  useEffect(() => { }, [selectedCluster?.config?.cloud18ExternalSysOpsStatus, selectedCluster?.config?.cloud18ExternalDbOpsStatus])
+
+  const openTermsModal = () => {
+    setIsTermsModalOpen(true)
   }
 
-  const closeConfirmModal = () => {
-    setIsConfirmModalOpen(false)
+  const closeTermsModal = () => {
+    setIsTermsModalOpen(false)
   }
 
   const openTextModal = () => {
@@ -71,7 +106,7 @@ function CloudSettings({ selectedCluster, user }) {
     } else if (type === 'end-extsysops') {
       dispatch(endExternalRole({ clusterName: selectedCluster.name, username: payload, roles: 'extsysops', reason: value }))
     }
-    closeConfirmModal()
+    closeTermsModal()
   }
 
   const hasDbops = selectedCluster?.config?.cloud18ExternalDbOps
@@ -216,10 +251,10 @@ function CloudSettings({ selectedCluster, user }) {
                   }}
                 />
               </Flex>
-              { hasSysops && sysopsPending && (<RMIconButton tooltip={"Quote external sysops"} icon={TbDeviceDesktopDollar} onClick={(e) => { e.stopPropagation(); setAction({ type: "quote-extsysops", title: "External Sys Ops quotation", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openNumberModal() }} />) }
-              { hasSysops && sysopsQuote && (<RMIconButton tooltip={"Accept external sysops"} icon={TbDeviceDesktopStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extsysops", title: "Are you sure to accept external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openConfirmModal() }} />) }
-              { hasSysops && !sysopsActive && (<RMIconButton tooltip={"Reject external sysops"} icon={TbDeviceDesktopX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extsysops", title: "Are you sure to reject external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />) }
-              { hasSysops && sysopsActive && (<RMIconButton tooltip={'End External Role'} icon={TbDeviceDesktopOff} onClick={() => { e.stopPropagation(); setAction({ type: "end-extsysops", title: "Are you sure to end external sysops?", payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />) }
+              {hasSysops && sysopsPending && (<RMIconButton tooltip={"Quote external sysops"} icon={TbDeviceDesktopDollar} onClick={(e) => { e.stopPropagation(); setAction({ type: "quote-extsysops", title: "External Sys Ops quotation", roles: 'extsysops', payload: selectedCluster?.config?.cloud18ExternalSysOps }); openNumberModal() }} />)}
+              {hasSysops && sysopsQuote && (<RMIconButton tooltip={"Accept external sysops"} icon={TbDeviceDesktopStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extsysops", title: "Are you sure to accept external sysops?", roles: 'extsysops', payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTermsModal() }} />)}
+              {hasSysops && !sysopsActive && (<RMIconButton tooltip={"Reject external sysops"} icon={TbDeviceDesktopX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extsysops", title: "Are you sure to reject external sysops?", roles: 'extsysops', payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />)}
+              {hasSysops && sysopsActive && (<RMIconButton tooltip={'End External Role'} icon={TbDeviceDesktopOff} onClick={(e) => { e.stopPropagation(); setAction({ type: "end-extsysops", title: "Are you sure to end external sysops?", roles: 'extsysops', payload: selectedCluster?.config?.cloud18ExternalSysOps }); openTextModal() }} />)}
             </HStack>
           )
         },
@@ -245,10 +280,10 @@ function CloudSettings({ selectedCluster, user }) {
                   }}
                 />
               </Flex>
-              { hasDbops && dbopsPending && (<RMIconButton tooltip={"Quote external dbops"} icon={TbDatabaseDollar} onClick={(e) => { e.stopPropagation(); setAction({ type: "quote-extdbops", title: "External DB Ops quotation", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openNumberModal() }} />) }
-              { hasDbops && dbopsQuote && (<RMIconButton tooltip={"Accept external dbops"} icon={TbDatabaseStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extdbops", title: "Are you sure to accept external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openConfirmModal() }} />) }
-              { hasDbops && !dbopsActive && (<RMIconButton tooltip={"Reject external dbops"} icon={TbDatabaseX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extdbops", title: "Are you sure to reject external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />) }
-              { hasDbops && dbopsActive && (<RMIconButton tooltip={'End External Role'} icon={TbDatabaseOff} onClick={() => { e.stopPropagation(); setAction({ type: "end-extdbops", title: "Are you sure to end external dbops?", payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />) }
+              {hasDbops && dbopsPending && (<RMIconButton tooltip={"Quote external dbops"} icon={TbDatabaseDollar} onClick={(e) => { e.stopPropagation(); setAction({ type: "quote-extdbops", title: "External DB Ops quotation", roles: 'extdbops', payload: selectedCluster?.config?.cloud18ExternalDbOps }); openNumberModal() }} />)}
+              {hasDbops && dbopsQuote && (<RMIconButton tooltip={"Accept external dbops"} icon={TbDatabaseStar} onClick={(e) => { e.stopPropagation(); setAction({ type: "accept-extdbops", title: "Are you sure to accept external dbops?", roles: 'extdbops', payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTermsModal() }} />)}
+              {hasDbops && !dbopsActive && (<RMIconButton tooltip={"Reject external dbops"} icon={TbDatabaseX} onClick={(e) => { e.stopPropagation(); setAction({ type: "reject-extdbops", title: "Are you sure to reject external dbops?", roles: 'extdbops', payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />)}
+              {hasDbops && dbopsActive && (<RMIconButton tooltip={'End External Role'} icon={TbDatabaseOff} onClick={(e) => { e.stopPropagation(); setAction({ type: "end-extdbops", title: "Are you sure to end external dbops?", roles: 'extdbops', payload: selectedCluster?.config?.cloud18ExternalDbOps }); openTextModal() }} />)}
               <RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-dba-user-credentials'); setIsCredentialModalOpen(true) }} />
             </HStack>
           )
@@ -277,7 +312,7 @@ function CloudSettings({ selectedCluster, user }) {
           }}
         />
       )}
-      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {isTermsModalOpen && <TermsModal terms={finalterms} title={title} isOpen={isTermsModalOpen} onConfirmClick={handleConfirm} closeModal={closeTermsModal} />}
       {isTextModalOpen && <TextInputModal isOpen={isTextModalOpen} title={title} fieldname={'Reason'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsTextModalOpen(false); }} />}
       {isNumberModalOpen && <NumberInputModal isOpen={isNumberModalOpen} title={title} fieldname={'Cost'} onSave={handleConfirm} isRequired={true} closeModal={() => { setIsNumberModalOpen(false); }} />}
     </Flex>

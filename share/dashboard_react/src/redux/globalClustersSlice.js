@@ -143,9 +143,9 @@ export const reloadClustersPlan = createAsyncThunk('globalClusters/reloadCluster
 }
 )
 
-export const getTermsData = createAsyncThunk('globalClusters/getTermsData', async ({ }, thunkAPI) => {
+export const getTermsData = createAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
-    const { data, status } = await globalClustersService.getTermsData()
+    const { data, status } = await globalClustersService.getTermsData(baseURL)
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
@@ -161,7 +161,7 @@ const initialState = {
   clusterPeers: null,
   clusterForSale: null,
   monitor: null,
-  terms: null
+  terms: ``
 }
 
 export const globalClustersSlice = createSlice({

@@ -2574,13 +2574,13 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleSysOps:
 		return "*", ""
 	case RoleExtSysOps:
-		return "*", "sales global"
+		return "*", "sales global extrole"
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
 		return "db show proxy grant extrole sales-unsubscribe", ""
 	case RoleExtDBOps:
-		return "db show proxy grant", ""
+		return "db show proxy grant", "extrole"
 	default:
 		return "show", ""
 	}
