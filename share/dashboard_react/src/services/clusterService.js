@@ -96,7 +96,13 @@ export const clusterService = {
   acceptSubscription,
   rejectSubscription,
   sendCredentials,
-  endSubscription
+  endSubscription,
+
+  subscribeExternalRole,
+  quoteExternalRole,
+  acceptExternalRole,
+  refuseExternalRole,
+  endExternalRole,
 }
 
 //#region Cluster data APIs
@@ -444,6 +450,26 @@ function rejectSubscription(clusterName, username, baseURL) {
 
 function endSubscription(clusterName, username, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/sales/end-subscription`,{username})
+}
+
+function subscribeExternalRole(clusterName, username, roles, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/subscribe`, {username, roles})
+}
+
+function quoteExternalRole(clusterName, username, roles, cost, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/quote`, {username, roles, cost})
+}
+
+function acceptExternalRole(clusterName, username, roles, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/accept`, {username, roles})
+}
+
+function refuseExternalRole(clusterName, username, roles, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/refuse`, {username, roles, reason})
+}
+
+function endExternalRole(clusterName, username, roles, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, {username, roles, reason})
 }
 
 //#endregion User management APIs

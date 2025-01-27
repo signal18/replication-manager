@@ -7,6 +7,14 @@ const GrantCheckList = ({ grantOptions, onChange, parentStyles, user }) => {
     const [grants, setGrants] = useState([]);
     const [searchTerm, setSearchTerm] = useState(""); // State to manage the search query
 
+    const isShowGrant =  function(user, grant) {
+        if (user?.roles?.['sysops']) {
+            return true;
+        }
+
+        return user?.grants?.[grant?.grant];
+    }
+
     // Group the grants by their prefix (category)
     const groupGrants = (grants) => {
         const groupMap = new Map();
@@ -39,7 +47,7 @@ const GrantCheckList = ({ grantOptions, onChange, parentStyles, user }) => {
     const filteredGrants = grants.map(group => ({
         ...group,
         grants: group.grants.filter(grant =>
-            user.grants[grant.grant] && grant.grant.toLowerCase().includes(searchTerm.toLowerCase()) // Case-insensitive search
+            isShowGrant(user,grant) && grant.grant.toLowerCase().includes(searchTerm.toLowerCase()) // Case-insensitive search
         ),
         show : group.group.toLowerCase().includes(searchTerm.toLowerCase())
     })).filter(group => group.grants.length > 0); // Only include groups that have matching grants

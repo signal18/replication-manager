@@ -47,27 +47,25 @@ function UserGrantModal({ clusterName, selectedUser, isOpen, closeModal }) {
   const { theme } = useTheme()
   const { serviceAcl = [], serviceRoles = [] } = monitor
 
-  useEffect(() => {
-    if (monitor === null) {
-      dispatch(getMonitoredData({}))
-    }
-  }, [monitor])
+  const loggedUser = localStorage.getItem('username')
 
   useEffect(() => {
-    if (clusterData) {
-      if (clusterData.apiUsers) {
-        const loggedUser = localStorage.getItem('username')
-        if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-          const apiUser = clusterData.apiUsers[loggedUser]
-          setUser(apiUser)
-        }
-      }
+    if (clusterData?.apiUsers?.[loggedUser]) {
+      const apiUser = clusterData.apiUsers[loggedUser]
+      setUser(apiUser)
     }
-  }, [clusterData])
+  }, [clusterData?.apiUsers?.[loggedUser]])
 
   useEffect(() => {
     setFirstLoad(true)
   }, [selectedUser])
+
+  const isAllowedGrant = (d, u, item) => {
+    if (d?.roles?.['sysops']) {
+      return true
+    }
+    return d?.grants?.[item.grant] || u?.grants?.[item.grant]
+  }
 
   const listRoles = (user) => {
     if (user.roles['sysops']) {
@@ -82,7 +80,7 @@ function UserGrantModal({ clusterName, selectedUser, isOpen, closeModal }) {
 
   useEffect(() => {
     if (serviceAcl?.length > 0 && user != null && firstLoad) {
-      const modifiedWithSelectedProp = serviceAcl.filter((item) => user.grants[item.grant] || selectedUser?.grants?.[item.grant]).map((item) => Object.assign({}, item, { selected: selectedUser?.grants?.[item.grant] ?? false }))
+      const modifiedWithSelectedProp = serviceAcl.filter((item) => isAllowedGrant(user, selectedUser, item)).map((item) => Object.assign({}, item, { selected: selectedUser?.grants?.[item.grant] ?? false }))
       const modifiedRolesWithSelectedProp = serviceRoles.filter((item) => selectedUser?.roles?.[item.role] || listRoles(user).includes(item.role)).map((item) => Object.assign({}, item, { selected: selectedUser?.roles?.[item.role] ?? false }))
       setAcls(modifiedWithSelectedProp)
       setAllAcls(modifiedWithSelectedProp)
@@ -164,7 +162,7 @@ function UserGrantModal({ clusterName, selectedUser, isOpen, closeModal }) {
               </List>
             </VStack>
             <Message message={grantsError} />
-            <GrantCheckList grantOptions={allAcls} onChange={setAcls} parentStyles={parentStyles} user={user}/>
+            <GrantCheckList grantOptions={allAcls} onChange={setAcls} parentStyles={parentStyles} user={user} />
           </Stack>
         </ModalBody>
         <ModalFooter gap={3} margin='auto'>
@@ -206,11 +204,11 @@ function UserGrantModal({ clusterName, selectedUser, isOpen, closeModal }) {
                 borderRadius: "8px",
               }}
             >
-              { acls.length > 0 ? acls.map((grant, index) => (
+              {acls?.length > 0 ? acls?.map((grant, index) => (
                 <Text key={index} fontSize="sm" mb={1}>
                   {grant}
                 </Text>
-              )) : <Text key={"nogrant"} fontSize="sm" mb={1}>N/A</Text> }
+              )) : <Text key={"nogrant"} fontSize="sm" mb={1}>N/A</Text>}
             </div>
             <Text>
               <strong>Roles:</strong> {roles.filter((x) => x.selected).map((x) => x.role).join(" ") || "N/A"}

@@ -203,7 +203,10 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
 
-		grants = cluster.FilterGrants(grants, &duser)
+		r := duser.Roles[config.RoleSysOps]
+		if !r {
+			grants = cluster.FilterGrants(grants, &duser)
+		}
 	}
 
 	if _, ok := cluster.APIUsers[user]; ok {
@@ -244,6 +247,7 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 
 func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadACL bool) error {
 	list := cluster.Conf.APIUsersACLAllowExternal
+	xlist := cluster.Conf.APIUsersACLDiscardExternal
 
 	user := userform.Username
 	roles := userform.Roles
@@ -255,10 +259,14 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
 
-		grants = cluster.FilterGrants(grants, &duser)
+		r := duser.Roles[config.RoleSysOps]
+		if !r {
+			grants = cluster.FilterGrants(grants, &duser)
+		}
 	}
 
-	if _, ok := cluster.APIUsers[user]; !ok {
+	auser, ok := cluster.APIUsers[user]
+	if !ok {
 		return fmt.Errorf("User %s is not exist in cluster. Unable to update roles and grants", user)
 		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "User %s is not exist in cluster. Unable to update roles and grants", user)
 	} else {
@@ -279,6 +287,21 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 		}
 
 		cluster.Conf.APIUsersACLAllowExternal = strings.Join(new_acls, ",")
+
+		new_acls = make([]string, 0)
+		acls = strings.Split(xlist, ",")
+		for _, xacl := range acls {
+			useracl, _, _, _ := misc.SplitAcls(xacl)
+			if useracl != user {
+				new_acls = append(new_acls, xacl)
+			}
+		}
+
+		cluster.Conf.APIUsersACLDiscardExternal = strings.Join(new_acls, ",")
+
+		cluster.SetUserGrants(&auser, grants)
+		cluster.SetUserRoles(&auser, roles)
+		cluster.APIUsers[user] = auser
 
 		if reloadACL {
 			cluster.LoadAPIUsers()
