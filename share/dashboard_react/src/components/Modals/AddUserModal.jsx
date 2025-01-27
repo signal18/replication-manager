@@ -71,6 +71,13 @@ function AddUserModal({ clusterName, isOpen, closeModal }) {
     }
   }, [clusterData])
 
+  const isAllowedGrant = (user, item) => {
+    if (user.roles['sysops']) {
+      return true
+    } 
+    return user.grants[item.grant]
+  }
+
   const listRoles = (user) => {
     if (user.roles['sysops']) {
       return ['dbops', 'extdbops', 'extsysops']
@@ -84,7 +91,7 @@ function AddUserModal({ clusterName, isOpen, closeModal }) {
 
   useEffect(() => {
     if (serviceAcl?.length > 0 && user != null && firstLoad) {
-      const modifiedWithSelectedProp = serviceAcl.filter((item) => user.grants[item.grant]).map((item) => Object.assign({}, item, { selected: false }))
+      const modifiedWithSelectedProp = serviceAcl.filter((item) => isAllowedGrant(user, item)).map((item) => Object.assign({}, item, { selected: false }))
       const modifiedRolesWithSelectedProp = serviceRoles.filter((item) => listRoles(user).includes(item.role)).map((item) => Object.assign({}, item, { selected: false }))
       setAcls(modifiedWithSelectedProp)
       setAllAcls(modifiedWithSelectedProp)
