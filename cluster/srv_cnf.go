@@ -87,6 +87,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_BINARY_LOG_NAME%%":                      server.GetBinaryLogName(),
 		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
 		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
+		"%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%":                         server.GetJobDatadir(),
 	}
 
 	//	size = ` + collector.ProvDisk + `
@@ -278,4 +279,12 @@ func (server *ServerMonitor) GetBinaryLogDir() string {
 	}
 
 	return server.GetDatabaseDatadir()
+}
+
+func (server *ServerMonitor) GetJobDatadir() string {
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return "/var/lib/replication-manager-jobs"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/jobs"
 }
