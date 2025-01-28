@@ -265,20 +265,30 @@ func (server *ServerMonitor) GetBinaryLogName() string {
 
 	binlogname := server.SensitiveVariables.Get("LOG_BIN_BASENAME")
 	if binlogname != "" {
-		return binlogname
+		parts := strings.Split(binlogname, "/")
+		return parts[len(parts)-1]
 	}
 
 	return cluster.Conf.ProvDBBinaryLogName
 }
 
 func (server *ServerMonitor) GetBinaryLogDir() string {
-	parts := strings.Split(server.GetBinaryLogName(), "/")
+	// If no variables loaded, load them from disk
+	if server.SensitiveVariables == nil {
+		server.ReloadSaveInfosVariables()
+	}
 
-	if len(parts) > 1 {
+	binlogname := server.SensitiveVariables.Get("LOG_BIN_BASENAME")
+	if binlogname != "" {
+		parts := strings.Split(binlogname, "/")
 		return strings.Join(parts[:len(parts)-1], "/")
 	}
 
-	return server.GetDatabaseDatadir()
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir()
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/repl"
 }
 
 func (server *ServerMonitor) GetJobDatadir() string {
