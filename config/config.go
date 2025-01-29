@@ -141,6 +141,7 @@ type Config struct {
 	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
 	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
+	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -650,6 +651,7 @@ type Config struct {
 	BackupResticRepository                    string                 `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
+	BackupResticTimeout                       int                    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
 	BackupStreamingDebug                      bool                   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
 	BackupStreamingAwsAccessKeyId             string                 `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
@@ -1161,6 +1163,7 @@ const (
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
 	ConstLogModTask           = 17
+	ConstLogModArchive        = 18
 )
 
 /*
@@ -3001,6 +3004,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogTask {
 				return conf.LogTaskLevel >= lvl
 			}
+		case module == ConstLogModArchive:
+			return conf.LogArchiveLevel >= lvl
 		}
 	}
 

@@ -7,93 +7,14 @@
 package cluster
 
 import (
-	"bytes"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/signal18/replication-manager/config"
-	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/sirupsen/logrus"
 )
-
-/* Replaced by v3.Backup
-type Backup struct {
-	Id       string   `json:"id"`
-	ShortId  string   `json:"short_id"`
-	Time     string   `json:"time"`
-	Tree     string   `json:"tree"`
-	Paths    []string `json:"paths"`
-	Hostname string   `json:"hostname"`
-	Username string   `json:"username"`
-	UID      int64    `json:"uid"`
-	GID      int64    `json:"gid"`
-}
-*/
-
-func (cluster *Cluster) CheckResticInstallation() {
-	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
-		if err := cluster.SetResticVersion(); err != nil {
-			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
-		}
-	}
-}
-
-func (cluster *Cluster) ResticPurgeRepo() error {
-	if cluster.Conf.BackupRestic {
-		//This will prevent purging while restic is fetching and wait since it's only executed once after a while
-		if !cluster.canResticFetchRepo {
-			time.Sleep(time.Second)
-			return cluster.ResticPurgeRepo()
-		}
-		cluster.canResticFetchRepo = false
-		defer func() { cluster.canResticFetchRepo = true }()
-		//		var stdout, stderr []byte
-		var stdoutBuf, stderrBuf bytes.Buffer
-		var errStdout, errStderr error
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "forget", "--prune", "--keep-last", "10", "--keep-hourly", strconv.Itoa(cluster.Conf.BackupKeepHourly), "--keep-daily", strconv.Itoa(cluster.Conf.BackupKeepDaily), "--keep-weekly", strconv.Itoa(cluster.Conf.BackupKeepWeekly), "--keep-monthly", strconv.Itoa(cluster.Conf.BackupKeepMonthly), "--keep-yearly", strconv.Itoa(cluster.Conf.BackupKeepYearly))
-		stdoutIn, _ := resticcmd.StdoutPipe()
-		stderrIn, _ := resticcmd.StderrPipe()
-		stdoutTee := io.TeeReader(stdoutIn, &stdoutBuf)
-		stderrTee := io.TeeReader(stderrIn, &stderrBuf)
-		resticcmd.Env = cluster.ResticGetEnv()
-		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
-			return err
-		}
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stdoutTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
-
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stderrTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
-		wg.Wait()
-
-		err := resticcmd.Wait()
-		if err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
-			return err
-		}
-		if errStdout != nil || errStderr != nil {
-			return errors.New("failed to capture stdout or stderr\n")
-		}
-	}
-	return nil
-}
 
 func (cluster *Cluster) ResticGetEnv() []string {
 	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
@@ -113,41 +34,60 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	return newEnv
 }
 
+func (cluster *Cluster) CheckResticInstallation() {
+	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
+		if err := cluster.SetResticVersion(); err != nil {
+			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
+		}
+	}
+}
+
+func (cluster *Cluster) StartResticRepo() error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	var loglevel logrus.Level
+	if cluster.Conf.LogArchiveLevel > 0 {
+		loglevel = config.ToLogrusLevel(cluster.Conf.LogArchiveLevel)
+	}
+
+	cluster.ResticRepo = archiver.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	return nil
+}
+
 func (cluster *Cluster) ResticInitRepo() error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	err := cluster.ResticRepo.ResticInitRepo()
+	if err != nil {
+		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
+	}
+
+	return err
+}
+
+func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
-		//		var stdout, stderr []byte
-		var stdoutBuf, stderrBuf bytes.Buffer
-		var errStdout, errStderr error
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "init")
-		stdoutIn, _ := resticcmd.StdoutPipe()
-		stderrIn, _ := resticcmd.StderrPipe()
-		stdoutTee := io.TeeReader(stdoutIn, &stdoutBuf)
-		stderrTee := io.TeeReader(stderrIn, &stderrBuf)
+		cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 
-		resticcmd.Env = cluster.ResticGetEnv()
-		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
-			return err
+		opt := archiver.ResticPurgeOption{
+			KeepHourly:  cluster.Conf.BackupKeepHourly,
+			KeepDaily:   cluster.Conf.BackupKeepDaily,
+			KeepWeekly:  cluster.Conf.BackupKeepWeekly,
+			KeepMonthly: cluster.Conf.BackupKeepMonthly,
+			KeepYearly:  cluster.Conf.BackupKeepYearly,
 		}
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stdoutTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
 
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stderrTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
-		wg.Wait()
-
-		err := resticcmd.Wait()
+		_, err := cluster.ResticRepo.AddPurgeTask(opt, true)
 		if err != nil {
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
-		}
-		if errStdout != nil || errStderr != nil {
-			return errors.New("failed to capture stdout or stderr\n")
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+			return err
 		}
 	}
 	return nil
@@ -155,112 +95,15 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 func (cluster *Cluster) ResticFetchRepo() error {
 	// No need to add wait since it will be checked each monitor loop
-	if cluster.Conf.BackupRestic && cluster.canResticFetchRepo {
-		cluster.canResticFetchRepo = false
-		defer func() { cluster.canResticFetchRepo = true }()
-		//		var stdout, stderr []byte
-		var stdoutBuf, stderrBuf bytes.Buffer
-		var errStdout, errStderr error
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "snapshots", "--json")
-		stdoutIn, _ := resticcmd.StdoutPipe()
-		stderrIn, _ := resticcmd.StderrPipe()
-		stdoutTee := io.TeeReader(stdoutIn, &stdoutBuf)
-		stderrTee := io.TeeReader(stderrIn, &stderrBuf)
-
-		resticcmd.Env = cluster.ResticGetEnv()
-		if err := resticcmd.Start(); err != nil {
-			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
-			return err
-		}
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stdoutTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
-
-		go func() {
-			defer wg.Done()
-			cluster.CopyLogs(stderrTee, config.ConstLogModSST, config.LvlDbg, "restic")
-		}()
-		wg.Wait()
-
-		err := resticcmd.Wait()
-		if err != nil {
-			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
-			cluster.ResticInitRepo()
-			return err
-		}
-		if errStdout != nil || errStderr != nil {
-			return errors.New("failed to capture stdout or stderr\n")
-		}
-
-		var repo []v3.Backup
-		err = json.Unmarshal(stdoutBuf.Bytes(), &repo)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error unmaeshal backups %s", err)
-			return err
-		}
-		var filterRepo []v3.Backup
-		for _, bck := range repo {
-			if strings.Contains(bck.Paths[0], cluster.Name) {
-				filterRepo = append(filterRepo, bck)
-			}
-		}
-		cluster.Backups = filterRepo
-
-		cluster.ResticFetchRepoStat()
+	if !cluster.Conf.BackupRestic {
+		return nil
 	}
 
-	return nil
-}
-
-func (cluster *Cluster) ResticFetchRepoStat() error {
-
-	var stdoutBuf, stderrBuf bytes.Buffer
-	var errStdout, errStderr error
-	resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, "stats", "--mode", "raw-data", "--json")
-	stdoutIn, _ := resticcmd.StdoutPipe()
-	stderrIn, _ := resticcmd.StderrPipe()
-	stdoutTee := io.TeeReader(stdoutIn, &stdoutBuf)
-	stderrTee := io.TeeReader(stderrIn, &stderrBuf)
-
-	resticcmd.Env = cluster.ResticGetEnv()
-	if err := resticcmd.Start(); err != nil {
-		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], resticcmd.Path, err, ""), ErrFrom: "BACKUP"})
-		return err
-	}
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		cluster.CopyLogs(stdoutTee, config.ConstLogModSST, config.LvlDbg, "restic")
-	}()
-
-	go func() {
-		defer wg.Done()
-		cluster.CopyLogs(stderrTee, config.ConstLogModSST, config.LvlDbg, "restic")
-	}()
-	wg.Wait()
-
-	err := resticcmd.Wait()
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	_, err := cluster.ResticRepo.AddFetchTask(true)
 	if err != nil {
-		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err, string(stdoutBuf.Bytes()), string(stderrBuf.Bytes())), ErrFrom: "CHECK"})
-		cluster.ResticInitRepo()
-		return err
-	}
-	if errStdout != nil || errStderr != nil {
-		return errors.New("failed to capture stdout or stderr\n")
+		cluster.SetState("WARN0091", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0091"], err), ErrFrom: "BACKUP"})
 	}
 
-	var repostat v3.BackupStat
-	err = json.Unmarshal(stdoutBuf.Bytes(), &repostat)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error unmarshal backups %s", err)
-		return err
-	}
-	cluster.BackupStat = repostat
-	// }
-
-	return nil
+	return err
 }

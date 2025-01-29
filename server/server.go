@@ -387,6 +387,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogTask, "log-task", true, "To log DB job process")
 	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
 
+	flags.IntVar(&conf.LogArchiveLevel, "log-archive-level", 2, "Log Level for backup archive (restic)")
+
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")

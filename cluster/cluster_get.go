@@ -23,7 +23,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
-	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -1023,8 +1023,12 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetBackups() []v3.Backup {
-	return cluster.Backups
+func (cluster *Cluster) GetBackups() []archiver.Backup {
+	if cluster.ResticRepo == nil {
+		return make([]archiver.Backup, 0)
+	}
+
+	return cluster.ResticRepo.Backups
 }
 
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
