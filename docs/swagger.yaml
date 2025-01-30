@@ -1,4 +1,13 @@
 definitions:
+  archiver.BackupStat:
+    properties:
+      total_blob_count:
+        type: integer
+      total_file_count:
+        type: integer
+      total_size:
+        type: integer
+    type: object
   cluster.APIUser:
     properties:
       grants:
@@ -1452,6 +1461,8 @@ definitions:
         type: string
       backupResticRepository:
         type: string
+      backupResticTimeout:
+        type: integer
       backupSaveScript:
         type: string
       backupStreaming:
@@ -1833,6 +1844,8 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logArchiveLevel:
+        type: integer
       logBackupStream:
         type: boolean
       logBackupStreamLevel:
@@ -2184,6 +2197,8 @@ definitions:
       provDbDiskType:
         type: string
       provDbDockerImg:
+        type: string
+      provDbDockerTmpfsSize:
         type: string
       provDbDomain:
         type: string
@@ -3990,6 +4005,41 @@ paths:
           schema:
             type: string
       summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/certificates:

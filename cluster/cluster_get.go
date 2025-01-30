@@ -1031,6 +1031,14 @@ func (cluster *Cluster) GetBackups() []archiver.Backup {
 	return cluster.ResticRepo.Backups
 }
 
+func (cluster *Cluster) GetBackupStat() archiver.BackupStat {
+	if cluster.ResticRepo == nil {
+		return archiver.BackupStat{}
+	}
+
+	return cluster.ResticRepo.BackupStat
+}
+
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
 	r := make([]config.QueryRule, 0, len(cluster.QueryRules))
 	for _, value := range cluster.QueryRules {

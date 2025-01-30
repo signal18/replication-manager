@@ -7,14 +7,12 @@ import styles from './styles.module.scss'
 import { Box, HStack, useDisclosure, VStack } from '@chakra-ui/react'
 import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
-import { getBackupSnapshot } from '../../redux/clusterSlice'
 import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import Logs from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 
 function Maintenance({ selectedCluster, user }) {
-  const dispatch = useDispatch()
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
   const columnHelper = createColumnHelper()
@@ -38,12 +36,8 @@ function Maintenance({ selectedCluster, user }) {
   })
 
   const {
-    cluster: { backupSnapshots }
+    cluster: { backups : { snapshots , stats} }
   } = useSelector((state) => state)
-
-  useEffect(() => {
-    dispatch(getBackupSnapshot({ clusterName: selectedCluster?.name }))
-  }, [])
 
   useEffect(() => {
     localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
@@ -71,13 +65,14 @@ function Maintenance({ selectedCluster, user }) {
       setData(arrData.reverse())
     }
   }, [selectedCluster?.backupList])
+
   useEffect(() => {
-    if (backupSnapshots?.length > 0) {
-      setSnapshotData(backupSnapshots)
+    if (snapshots?.length > 0) {
+      setSnapshotData(snapshots)
     } else {
       setSnapshotData([])
     }
-  }, [selectedCluster?.name,backupSnapshots])
+  }, [selectedCluster?.name,snapshots])
 
   const columns = useMemo(
     () => [
@@ -191,15 +186,15 @@ function Maintenance({ selectedCluster, user }) {
   const snapshotDataStats = [
     {
       key: 'Total Size',
-      value: selectedCluster?.backupStat?.total_size
+      value: stats?.total_size
     },
     {
       key: 'Total File Count',
-      value: selectedCluster?.backupStat?.total_file_count
+      value: stats?.total_file_count
     },
     {
       key: 'Total Blob Count',
-      value: selectedCluster?.backupStat?.total_blob_count
+      value: stats?.total_blob_count
     }
   ]
 

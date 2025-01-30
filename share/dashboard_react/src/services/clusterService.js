@@ -10,6 +10,7 @@ export const clusterService = {
   getClusterCertificates,
   getTopProcess,
   getBackupSnapshot,
+  getBackupStats,
   getJobs,
   getShardSchema,
   getQueryRules,
@@ -136,6 +137,10 @@ function getTopProcess(clusterName, baseURL) {
 
 function getBackupSnapshot(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups`)
+}
+
+function getBackupStats(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
 }
 
 function getJobs(clusterName, baseURL) {

@@ -1812,6 +1812,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/backups/stats": {
+            "get": {
+                "description": "This endpoint retrieves the backup stats for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backup stats for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.BackupStat"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/certificates": {
             "get": {
                 "description": "This endpoint retrieves the client certificates for the specified cluster.",
@@ -11186,6 +11238,20 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "archiver.BackupStat": {
+            "type": "object",
+            "properties": {
+                "total_blob_count": {
+                    "type": "integer"
+                },
+                "total_file_count": {
+                    "type": "integer"
+                },
+                "total_size": {
+                    "type": "integer"
+                }
+            }
+        },
         "cluster.APIUser": {
             "type": "object",
             "properties": {
@@ -13347,6 +13413,9 @@ const docTemplate = `{
                 "backupResticRepository": {
                     "type": "string"
                 },
+                "backupResticTimeout": {
+                    "type": "integer"
+                },
                 "backupSaveScript": {
                     "type": "string"
                 },
@@ -13918,6 +13987,9 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
+                "logArchiveLevel": {
+                    "type": "integer"
+                },
                 "logBackupStream": {
                     "type": "boolean"
                 },
@@ -14443,6 +14515,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbDockerImg": {
+                    "type": "string"
+                },
+                "provDbDockerTmpfsSize": {
                     "type": "string"
                 },
                 "provDbDomain": {
