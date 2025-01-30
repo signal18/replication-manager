@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -171,35 +172,37 @@ func (repo *ResticRepo) UpdateTaskFlagFile(status string) error {
 
 // ResticRepo manages the queue and execution
 type ResticRepo struct {
-	BinaryPath string
-	CookieDir  string
-	Env        []string
-	Backups    []Backup
-	BackupStat BackupStat
-	Logger     *logrus.Logger
-	LogFields  logrus.Fields
-	LogLevel   logrus.Level
-	TaskQueue  chan ResticTask
-	ResultChan chan ResticResult
-	Shutdown   chan struct{}
-	Mutex      sync.Mutex
-	CanFetch   bool
-	taskID     int
-	CurrentID  int
+	BinaryPath  string
+	CookieDir   string
+	Env         []string
+	Backups     []Backup
+	BackupStat  BackupStat
+	Logger      *logrus.Logger
+	LogFields   logrus.Fields
+	LogLevel    logrus.Level
+	TaskQueue   chan ResticTask
+	ResultChan  chan ResticResult
+	Shutdown    chan struct{}
+	Mutex       sync.Mutex
+	CanFetch    bool
+	CanInitRepo bool
+	taskID      int
+	CurrentID   int
 }
 
 // NewResticRepo initializes the repository manager
 func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fields, loglevel logrus.Level) *ResticRepo {
 	repo := &ResticRepo{
-		BinaryPath: binaryPath,
-		Backups:    make([]Backup, 0),
-		Logger:     logger,
-		LogFields:  logfields,
-		LogLevel:   loglevel,
-		TaskQueue:  make(chan ResticTask, 10),
-		ResultChan: make(chan ResticResult, 10),
-		Shutdown:   make(chan struct{}),
-		CanFetch:   true,
+		BinaryPath:  binaryPath,
+		Backups:     make([]Backup, 0),
+		Logger:      logger,
+		LogFields:   logfields,
+		LogLevel:    loglevel,
+		TaskQueue:   make(chan ResticTask, 10),
+		ResultChan:  make(chan ResticResult, 10),
+		Shutdown:    make(chan struct{}),
+		CanFetch:    true,
+		CanInitRepo: true,
 	}
 	go repo.worker() // Start the worker
 	go repo.WaitForResults()
@@ -252,7 +255,12 @@ func (repo *ResticRepo) worker() {
 	for {
 		select {
 		case task := <-repo.TaskQueue:
-			repo.Print(logrus.InfoLevel, "Worker processing task ID: %d", task.ID)
+			printLevel := logrus.InfoLevel
+			if task.ID == 0 {
+				printLevel = logrus.DebugLevel
+			}
+			// Prevent logging for fetching tasks
+			repo.Print(printLevel, "Worker processing task ID: %d", task.ID)
 
 			var result ResticResult
 			switch task.Type {
@@ -277,7 +285,8 @@ func (repo *ResticRepo) worker() {
 				repo.ResultChan <- result
 			}
 
-			repo.Print(logrus.InfoLevel, "Worker finished task ID: %d", task.ID)
+			// Log the completion of the task
+			repo.Print(printLevel, "Worker finished task ID: %d", task.ID)
 
 		case <-repo.Shutdown:
 			repo.Print(logrus.InfoLevel, "Worker shutting down.")
@@ -288,7 +297,6 @@ func (repo *ResticRepo) worker() {
 
 func (repo *ResticRepo) AddFetchTask(waitForResult bool) (*ResticResult, error) {
 	task := ResticTask{
-		ID:   repo.GenerateTaskID(),
 		Type: FetchTask,
 	}
 
@@ -299,7 +307,6 @@ func (repo *ResticRepo) AddFetchTask(waitForResult bool) (*ResticResult, error) 
 	}
 
 	repo.TaskQueue <- task // Add task to queue
-	repo.Print(logrus.InfoLevel, "Task %d submitted (Wait: %v)", task.ID, waitForResult)
 
 	if waitForResult {
 		result := <-resultChan // Wait for result
@@ -377,36 +384,45 @@ func (repo *ResticRepo) WaitForResults() {
 // RunCommand executes a command within the context of a Restic repository, capturing stdout and stderr.
 // It uses the ResticRepo's BinaryPath as the first parameter, along with any additional args.
 // Optionally, you can skip capturing the output to save memory.
-func (repo *ResticRepo) RunCommand(args []string, captureOutput bool) ([]byte, []byte, error) {
-	// Set up the command with BinaryPath as the first argument
+func (repo *ResticRepo) RunCommand(args []string, loglevel logrus.Level, captureOutput bool) ([]byte, []byte, error) {
+	// Set up the command
 	cmd := exec.Command(repo.BinaryPath, args...)
-	cmd.Env = append(os.Environ(), repo.Env...) // Add environment variables from the repo
+	cmd.Env = append(os.Environ(), repo.Env...)
 
-	// Buffers to store the final output and error (if capturing output)
+	// Buffers for stdout and stderr
 	var stdoutBuf, stderrBuf bytes.Buffer
 
-	// Create pipes for stdout and stderr
+	// Create pipes for command output
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
-
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	// Function to stream output and log it in real-time if stream is true
+	repo.Print(loglevel, "Starting command: %s %v", repo.BinaryPath, args)
+
+	// Start the command execution
+	if err := cmd.Start(); err != nil {
+		return nil, nil, fmt.Errorf("error starting command: %w", err)
+	}
+
+	// Use WaitGroup to ensure we read both stdout and stderr before cmd.Wait()
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	// Function to read output
 	streamOutput := func(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer) {
+		defer wg.Done() // Mark goroutine as done
+
 		scanner := bufio.NewScanner(pipe)
 		for scanner.Scan() {
 			line := scanner.Text()
-
-			// Log the output line if log level is set to Debug
 			repo.Print(logrus.DebugLevel, prefix+line)
-
 			if captureOutput {
-				buffer.WriteString(line + "\n") // Capture output if requested
+				buffer.WriteString(line + "\n")
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -414,29 +430,21 @@ func (repo *ResticRepo) RunCommand(args []string, captureOutput bool) ([]byte, [
 		}
 	}
 
-	// Start the command execution
-	repo.Print(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
-	if err := cmd.Start(); err != nil {
-		return nil, nil, fmt.Errorf("error starting command: %w", err)
-	}
+	// Start streaming stdout and stderr in separate goroutines
+	go streamOutput(stdoutPipe, "[OUT] ", &stdoutBuf)
+	go streamOutput(stderrPipe, "[ERR] ", &stderrBuf)
 
-	// Start goroutines to stream stdout and stderr if needed
-	if captureOutput {
-		go streamOutput(stdoutPipe, "[OUT] ", &stdoutBuf)
-		go streamOutput(stderrPipe, "[ERR] ", &stderrBuf)
-	} else {
-		go streamOutput(stdoutPipe, "[OUT] ", nil) // Don't capture output
-		go streamOutput(stderrPipe, "[ERR] ", nil) // Don't capture output
-	}
+	// Wait for both output goroutines to finish reading
+	wg.Wait()
 
-	// Wait for the command to finish
+	// Now that all output is read, we can wait for the process to finish
 	if err := cmd.Wait(); err != nil {
 		return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
 	}
 
-	repo.Print(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+	repo.Print(loglevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
 
-	// Return the captured stdout and stderr if output is captured, else return empty strings
+	// Return captured stdout and stderr if needed
 	if captureOutput {
 		return stdoutBuf.Bytes(), stderrBuf.Bytes(), nil
 	}
@@ -448,8 +456,11 @@ func (repo *ResticRepo) ResticInitRepo() error {
 	args := []string{"init"}
 
 	// Execute the Restic "forget" command using RunCommand
-	_, stderr, err := repo.RunCommand(args, false) // Don't capture output
+	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false) // Don't capture output
 	if err != nil {
+		// Update the repo flag to prevent further fetch attempts
+		repo.CanInitRepo = false
+
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to init repo: %v, stderr: %s", err, stderr)
 	}
@@ -463,7 +474,7 @@ func (repo *ResticRepo) ResticFetchRepoStat() error {
 	args := []string{"stats", "--mode", "raw-data", "--json"}
 
 	// Execute the Restic "stats" command using RunCommand
-	stdout, stderr, err := repo.RunCommand(args, true) // Capture output
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true) // Capture output
 	if err != nil {
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
@@ -484,15 +495,18 @@ func (repo *ResticRepo) ResticFetchRepoStat() error {
 
 // ResticFetchRepo performs the fetch
 func (repo *ResticRepo) ResticFetchRepo() error {
-	// Check if the repo is able to fetch
-	if !repo.GetCanFetch() {
+	// Check if the repo is able to fetch and initialized
+	if !repo.GetCanFetch() || !repo.CanInitRepo {
 		return nil
 	}
 
 	// Proceed with fetch
 	args := []string{"snapshots", "--json"}
-	stdout, stderr, err := repo.RunCommand(args, true)
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
+		if strings.Contains(string(stderr), "no such file or directory") {
+			_ = repo.ResticInitRepo()
+		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
@@ -542,7 +556,7 @@ func (repo *ResticRepo) ResticPurgeRepo(opt ResticPurgeOption) error {
 	}
 
 	// Execute the Restic "forget" command using RunCommand
-	_, stderr, err := repo.RunCommand(args, false)
+	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
 	if err != nil {
 		// Update the flag file to mark the task as completed
 		_ = repo.UpdateTaskFlagFile("failed")
@@ -588,7 +602,7 @@ func (repo *ResticRepo) ResticBackup(dirpath string, tags []string) error {
 	args = append(args, dirpath)
 
 	// Execute the Restic "forget" command using RunCommand
-	_, stderr, err := repo.RunCommand(args, false)
+	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
 	if err != nil {
 		_ = repo.UpdateTaskFlagFile("failed")
 		// Handle error (including stderr)

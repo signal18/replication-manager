@@ -650,10 +650,13 @@ func (cluster *Cluster) Run() {
 							cluster.InjectProxiesTraffic()
 						}
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+							// Check if restic repo is available
+							if cluster.CheckResticRepo() {
+								go cluster.ResticFetchRepo()
+							}
 							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
-							go cluster.ResticFetchRepo()
 							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()

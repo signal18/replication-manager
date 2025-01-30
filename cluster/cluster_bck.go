@@ -46,6 +46,24 @@ func (cluster *Cluster) CheckResticInstallation() {
 	}
 }
 
+func (cluster *Cluster) CheckResticRepo() bool {
+	if !cluster.Conf.BackupRestic {
+		return false
+	}
+
+	if cluster.ResticRepo == nil {
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], "restic repo is nil"), ErrFrom: "BACKUP"})
+		return false
+	}
+
+	if !cluster.ResticRepo.CanInitRepo {
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], "restic repo cannot be initialized"), ErrFrom: "BACKUP"})
+		return false
+	}
+
+	return true
+}
+
 func (cluster *Cluster) StartResticRepo() error {
 	if !cluster.Conf.BackupRestic {
 		return nil
@@ -57,6 +75,7 @@ func (cluster *Cluster) StartResticRepo() error {
 	}
 
 	cluster.ResticRepo = archiver.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	go cluster.ResticFetchRepo()
 	return nil
 }
 
@@ -101,10 +120,16 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		return nil
 	}
 
+	if cluster.ResticRepo == nil {
+		err := fmt.Errorf("restic repo is nil")
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 	_, err := cluster.ResticRepo.AddFetchTask(true)
 	if err != nil {
-		cluster.SetState("WARN0091", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0091"], err), ErrFrom: "BACKUP"})
+		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
 	}
 
 	return err
