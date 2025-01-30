@@ -24,6 +24,7 @@ const (
 	PurgeTask TaskType = iota
 	BackupTask
 	FetchTask
+	UnlockTask
 )
 
 func GetTaskName(TaskType TaskType) string {
@@ -287,6 +288,9 @@ func (repo *ResticRepo) worker() {
 			case FetchTask:
 				err := repo.ResticFetchRepo()
 				result = ResticResult{Error: err}
+			case UnlockTask:
+				err := repo.ResticUnlockRepo()
+				result = ResticResult{Error: err}
 			default:
 				result = ResticResult{TaskID: task.ID, Error: fmt.Errorf("unknown task type")}
 			}
@@ -368,6 +372,26 @@ func (repo *ResticRepo) AddBackupTask(taskType TaskType, dirpath string, tags []
 
 	repo.TaskQueue <- task // Add task to queue
 	repo.Print(logrus.InfoLevel, "Task %d submitted (Wait: %v)", task.ID, waitForResult)
+
+	if waitForResult {
+		result := <-resultChan // Wait for result
+		return &result, result.Error
+	}
+	return nil, nil
+}
+
+func (repo *ResticRepo) AddUnlockTask(waitForResult bool) (*ResticResult, error) {
+	task := ResticTask{
+		Type: UnlockTask,
+	}
+
+	var resultChan chan ResticResult
+	if waitForResult {
+		resultChan = make(chan ResticResult, 1) // If waiting, create result channel
+		task.Result = resultChan
+	}
+
+	repo.TaskQueue <- task // Add task to queue
 
 	if waitForResult {
 		result := <-resultChan // Wait for result
@@ -677,5 +701,36 @@ func (repo *ResticRepo) CheckLocks() error {
 		repo.HasLocks = haslock
 	}
 
+	return nil
+}
+
+// ResticBackup performs the backup (mock implementation for now)
+func (repo *ResticRepo) ResticUnlockRepo() error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.CheckLocks()
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Prepare the arguments for the "backup" command
+	args := []string{"unlock"}
+
+	// Execute the Restic "list locks" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	if err != nil {
+		if strings.Contains(string(stderr), "no such file or directory") {
+			_ = repo.ResticInitRepo()
+		}
+		// Handle error (including stderr)
+		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(string(stdout), "successfully removed locks") {
+		return fmt.Errorf("failed to unlock repo: %s. stderr: %s", stdout, stderr)
+	}
+
+	repo.HasLocks = false
 	return nil
 }

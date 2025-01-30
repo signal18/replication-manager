@@ -1759,6 +1759,258 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archives": {
+            "get": {
+                "description": "This endpoint retrieves the backups for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backups for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/fetch": {
+            "post": {
+                "description": "Fetches the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Fetch Archives",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives fetch queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/purge": {
+            "post": {
+                "description": "Purges the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Purge Restic Backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives purge queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/stats": {
+            "get": {
+                "description": "This endpoint retrieves the backup stats for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backup stats for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.BackupStat"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/unlock": {
+            "post": {
+                "description": "Unlocks the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Unlock Restic Backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives purge queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups": {
             "get": {
                 "description": "This endpoint retrieves the backups for the specified cluster.",

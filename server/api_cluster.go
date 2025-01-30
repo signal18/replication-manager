@@ -72,6 +72,31 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStats)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/archives", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/stats", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStats)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/fetch", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesFetch)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/purge", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesPurge)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/unlock", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesUnlock)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -1653,6 +1678,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/backups [get]
+// @Router /api/clusters/{clusterName}/archives [get]
 func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1686,6 +1712,7 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/backups/stats [get]
+// @Router /api/clusters/{clusterName}/archives/stats [get]
 func (repman *ReplicationManager) handlerMuxClusterBackupStats(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -5674,4 +5701,134 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Sponsor partnership removed!"))
+}
+
+// handlerMuxArchivesFetch handles the HTTP request to fetch the restic snapshots for a given cluster.
+// @Summary Fetch Archives
+// @Description Fetches the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives fetch queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/fetch [post]
+func (repman *ReplicationManager) handlerMuxArchivesFetch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		go mycluster.ResticFetchRepo()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives fetch queued"))
+}
+
+// handlerMuxArchivesPurge handles the HTTP request to purge the restic repo for a given cluster.
+// @Summary Purge Restic Backup
+// @Description Purges the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives purge queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/purge [post]
+func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		go mycluster.ResticPurgeRepo()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives purge queued"))
+}
+
+// handlerMuxArchivesUnlock handles the HTTP request to unlock restic repo for a given cluster.
+// @Summary Unlock Restic Backup
+// @Description Unlocks the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives purge queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/unlock [post]
+func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		err := mycluster.ResticUnlockRepo()
+		if err != nil {
+			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
+			return
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives unlock queued"))
 }

@@ -3971,6 +3971,176 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/archives:
+    get:
+      description: This endpoint retrieves the backups for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/fetch:
+    post:
+      description: Fetches the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives fetch queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Fetch Archives
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/purge:
+    post:
+      description: Purges the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Purge Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/unlock:
+    post:
+      description: Unlocks the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Unlock Restic Backup
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups:
     get:
       description: This endpoint retrieves the backups for the specified cluster.

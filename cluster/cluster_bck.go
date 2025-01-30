@@ -145,3 +145,24 @@ func (cluster *Cluster) ResticFetchRepo() error {
 
 	return err
 }
+
+func (cluster *Cluster) ResticUnlockRepo() error {
+	// No need to add wait since it will be checked each monitor loop
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	if cluster.ResticRepo == nil {
+		err := fmt.Errorf("restic repo is nil")
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	_, err := cluster.ResticRepo.AddUnlockTask(true)
+	if err != nil {
+		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
+	}
+
+	return err
+}
