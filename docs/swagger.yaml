@@ -1473,8 +1473,6 @@ definitions:
         type: integer
       backupKeepUntilValid:
         type: boolean
-      backupKeepUseBoth:
-        type: boolean
       backupKeepWeekly:
         type: integer
       backupKeepWithin:

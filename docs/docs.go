@@ -13782,9 +13782,6 @@ const docTemplate = `{
                 "backupKeepUntilValid": {
                     "type": "boolean"
                 },
-                "backupKeepUseBoth": {
-                    "type": "boolean"
-                },
                 "backupKeepWeekly": {
                     "type": "integer"
                 },
