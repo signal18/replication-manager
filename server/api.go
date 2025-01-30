@@ -1687,17 +1687,19 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 	meetClient := meethelper.CreateMeetClient()
 	info := struct {
-		UserID            string            `json:"user_id"`
-		ChannelIdsOpen    map[string]string `json:"channel_ids_open"`
-		ChannelIdsPrivate map[string]string `json:"channel_ids_private"`
-		ChannelIdsDirect  map[string]string `json:"channel_ids_direct"`
-		AllUsers          map[string]string `json:"all_users"`
+		UserID                  string            `json:"user_id"`
+		ChannelIdsOpen          map[string]string `json:"channel_ids_open"`
+		ChannelIdsPrivate       map[string]string `json:"channel_ids_private"`
+		ChannelIdsDirect        map[string]string `json:"channel_ids_direct"`
+		UnReadMessagesByChannel map[string]int    `json:"unread_messages_by_channel"`
+		AllUsers                map[string]string `json:"all_users"`
 	}{
-		UserID:            meetClient.UserID,
-		ChannelIdsOpen:    meetClient.ChannelIdsOpen,
-		ChannelIdsPrivate: meetClient.ChannelIdsPrivate,
-		ChannelIdsDirect:  meetClient.ChannelIdsDirect,
-		AllUsers:          meetClient.AllUser,
+		UserID:                  meetClient.UserID,
+		ChannelIdsOpen:          meetClient.ChannelIdsOpen,
+		ChannelIdsPrivate:       meetClient.ChannelIdsPrivate,
+		ChannelIdsDirect:        meetClient.ChannelIdsDirect,
+		UnReadMessagesByChannel: meetClient.UnReadMessagesByChannel,
+		AllUsers:                meetClient.AllUser,
 	}
 
 	err := json.NewEncoder(w).Encode(info)
@@ -1725,8 +1727,6 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	if str_page != "" {
 		page, _ = strconv.Atoi(str_page)
 	}
-
-	log.Printf("ReadMeetMessage handler page : %d, str_page : %s", page, str_page)
 
 	messages, err := meetClient.ReadMessages(channelID, page)
 	if messages == nil || err != nil {

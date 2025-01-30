@@ -109,7 +109,7 @@ function Navbar({ username }) {
               {username && isDesktop && (
                   <>
                       <Text>{`Welcome, ${username}`}</Text>
-                      <Button onClick={onOpen} className={styles.navButton}>Mattermost Chat</Button>
+                      <Button onClick={onOpen} className={styles.navButton}>Support</Button>
                   </>
               )}
               {isMobile ? (

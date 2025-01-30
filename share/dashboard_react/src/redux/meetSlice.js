@@ -29,7 +29,6 @@ export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({
     const { data, status } = await meetService.postMeetMessageOnChannel(channelId, message);
     return { data, status };
   } catch (error) {
-    showErrorBanner('Failed to post message!', error, thunkAPI);
     handleError(error, thunkAPI);
     throw error; // Ensure the error is thrown to trigger the rejected state
   }

@@ -35,21 +35,23 @@ var meetToken string = ""
 //meetClient.PostMessage(meetClient.ChannelIdsDirect["1iz5dy9i6j8iuf8b91bacj3zcw__ktzrdgfrmfdxxg7xkiqtgb17fr"], "Test from repman!")
 
 type MeetChatClient struct {
-	Client            *model.Client4
-	UserID            string
-	TeamIds           []string
-	ChannelIdsOpen    map[string]string //public channel
-	ChannelIdsPrivate map[string]string //private channel
-	ChannelIdsDirect  map[string]string //direct channel (to talk to other users)
-	URL               string
-	Token             string
-	AllUser           map[string]string //to store id and name of all users (for direct chat)
+	Client                  *model.Client4
+	UserID                  string
+	TeamIds                 []string
+	ChannelIdsOpen          map[string]string //public channel
+	ChannelIdsPrivate       map[string]string //private channel
+	ChannelIdsDirect        map[string]string //direct channel (to talk to other users)
+	URL                     string
+	Token                   string
+	AllUser                 map[string]string //to store id and name of all users (for direct chat)
+	UnReadMessagesByChannel map[string]int
 }
 
 type MeetChannelMessages struct {
-	ChannelId   string
-	ChannelType string // O:Open, P:Private, D:Direct
-	Messages    []MeetMessage
+	ChannelId      string
+	ChannelType    string // O:Open, P:Private, D:Direct
+	Messages       []MeetMessage
+	UnReadMessages int
 }
 
 type MeetMessage struct {
@@ -69,8 +71,8 @@ func CreateMeetClient() *MeetChatClient {
 	}
 	c.UserID = c.GetMeetUserInfo() //to get user info from mattermost serv
 	c.TeamIds = c.GetTeamIDs()
-	c.AllUser = c.GetAllUsers()                                                 //to get teamIDs
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect = c.GetChannels() //to get the channels for the user
+	c.AllUser = c.GetAllUsers()                                                                            //to get teamIDs
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels() //to get the channels for the user
 	return c
 }
 
@@ -174,20 +176,20 @@ func (c *MeetChatClient) GetTeamIDs() []string {
 	return teamIDs
 }
 
-func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string) {
-	channels, resp, err := c.Client.GetChannelsForTeamForUser(c.TeamIds[0], c.UserID, false, "")
-
+func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string, map[string]int) {
+	channels, resp, err := c.Client.GetChannelsForUserWithLastDeleteAt(c.UserID, 0)
 	channelsMapO := make(map[string]string)
 	channelsMapP := make(map[string]string)
 	channelsMapD := make(map[string]string)
+	unReadMessagesByChannel := make(map[string]int)
 
 	if err != nil {
 		fmt.Println("GetChannels Error:", err, resp.StatusCode)
-		return channelsMapO, channelsMapP, channelsMapD
+		return channelsMapO, channelsMapP, channelsMapD, unReadMessagesByChannel
 	}
 
 	for _, channel := range channels {
-		//fmt.Println("Channel:", channel)
+
 		if channel.Type == "O" {
 			channelsMapO[channel.Name] = channel.Id
 		}
@@ -198,9 +200,11 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 			directChannelName := strings.Replace(channel.Name, "__"+c.UserID, "", 1)
 			channelsMapD[c.AllUser[directChannelName]] = channel.Id
 		}
+		unReadMessages := c.GetUnReadMessages(channel.Id)
+		unReadMessagesByChannel[channel.Id] = unReadMessages
 	}
 
-	return channelsMapO, channelsMapP, channelsMapD
+	return channelsMapO, channelsMapP, channelsMapD, unReadMessagesByChannel
 }
 
 func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelMessages, error) {
@@ -236,6 +240,8 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 		ChannelType: channelType,
 		Messages:    messages,
 	}
+
+	c.ViewMessages(channelID)
 
 	return channelMessages, nil
 }
@@ -281,4 +287,29 @@ func (c *MeetChatClient) GetAllUsers() map[string]string {
 	}
 
 	return usersMap
+}
+
+func (c *MeetChatClient) GetUnReadMessages(channelID string) int {
+
+	channelUnread, _, err := c.Client.GetChannelUnread(channelID, c.UserID)
+	if err != nil {
+		fmt.Println("GetUnReadMessages Mattermost Error:", err)
+		return 0
+	}
+
+	return int(channelUnread.MsgCount)
+}
+
+// to update the channels to load unread messages
+func (c *MeetChatClient) UpdateChannels() {
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+}
+
+// to set message as read when a user see it, delete the channel from the map of unread messages
+func (c *MeetChatClient) ViewMessages(channelID string) {
+	c.Client.ViewChannel(c.UserID, &model.ChannelView{
+		ChannelId:                 channelID,
+		CollapsedThreadsSupported: true,
+	})
+	c.UnReadMessagesByChannel[channelID] = 0
 }

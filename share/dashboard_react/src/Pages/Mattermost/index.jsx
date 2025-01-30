@@ -88,12 +88,12 @@ function MattermostIntegration({ isOpen, onClose }) {
             <DrawerOverlay />
             <DrawerContent>
                 <DrawerCloseButton />
-                <DrawerHeader>Mattermost Chat</DrawerHeader>
+                <DrawerHeader>Support</DrawerHeader>
 
                 <DrawerBody>
                     <Box className={styles.flexContainer}>
                         <Box className={styles.treeViewWrapper}>
-                            <ChannelTreeView channels={channels} onSelectChannel={setSelectedChannel} />
+                            <ChannelTreeView channels={channels} onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} />
                         </Box>
                         <Box
                             ref={messagesContainerRef}

@@ -2,7 +2,7 @@ import React from 'react';
 import { Box, Text } from '@chakra-ui/react';
 import styles from './styles.module.scss';
 
-const ChannelTreeView = ({ channels, onSelectChannel }) => {
+const ChannelTreeView = ({ channels, onSelectChannel, unReadMessagesByChannel }) => {
     const getChannelColor = (type) => {
         switch (type) {
             case 'O':
@@ -38,7 +38,10 @@ const ChannelTreeView = ({ channels, onSelectChannel }) => {
                             onClick={() => onSelectChannel(channel.id)}
                             style={{ color: getChannelColor(type) }}
                         >
-                            <Text>{channel.name}</Text>
+                            <Text>
+                                {channel.name}
+                                {unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}
+                            </Text>
                         </Box>
                     ))}
                 </Box>
