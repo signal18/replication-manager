@@ -3017,6 +3017,9 @@ func (conf *Config) SetLogOutput(out io.Writer) {
 }
 
 func ToLogrusLevel(l int) log.Level {
+	if l > 4 {
+		l = 4
+	}
 	switch l {
 	case 2:
 		return log.WarnLevel

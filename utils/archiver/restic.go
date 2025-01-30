@@ -236,6 +236,7 @@ func (repo *ResticRepo) SetLogFields(fields logrus.Fields) {
 	repo.LogFields = fields
 }
 
+// SetLogLevel updates the log level for archive module. This is different with logrus.SetLevel which sets the global log level.
 func (repo *ResticRepo) SetLogLevel(level logrus.Level) {
 	repo.LogLevel = level
 }

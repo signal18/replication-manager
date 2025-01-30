@@ -2527,6 +2527,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-binlog-purge-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBinlogPurgeLevel(val)
+	case "log-archive-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogArchiveLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
 	case "topology-target":
