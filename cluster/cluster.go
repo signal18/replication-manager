@@ -34,6 +34,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
@@ -229,6 +230,7 @@ type Cluster struct {
 	InResticBackup            bool                        `json:"inResticBackup"`
 	InRollingRestart          bool                        `json:"inRollingRestart"`
 	Mailer                    *mailer.Mailer              `json:"-"`
+	ResticRepo                *archiver.ResticRepo        `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -513,6 +515,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.SetToolVersions()
+	cluster.StartResticRepo()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -647,16 +650,19 @@ func (cluster *Cluster) Run() {
 							cluster.InjectProxiesTraffic()
 						}
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+							// Check if restic repo is available
+							if cluster.CheckResticRepo() {
+								go cluster.ResticFetchRepo()
+							}
 							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
-							go cluster.ResticFetchRepo()
 							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
-
 						} else {
+							cluster.CheckResticRepo()
 							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
 						}
 						if !cluster.CanInitNodes {
@@ -854,7 +860,9 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
-	//	cluster.scheduler.Stop()
+	if cluster.ResticRepo != nil {
+		cluster.ResticRepo.ShutdownWorker()
+	}
 	cluster.Save()
 	cluster.exit = true
 }

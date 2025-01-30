@@ -16,7 +16,8 @@ function NumberInput({
   showEditButton = false,
   showConfirmModal = false,
   confirmTitle = 'Confirm change to:',
-  onConfirm
+  onConfirm,
+  containerClassName
 }) {
   const inputRef = useRef(null)
 
@@ -55,7 +56,7 @@ function NumberInput({
 
   return (
     <>
-      <HStack>
+      <HStack className={`${styles.container} ${containerClassName}`}>
         <HStack spacing='3' className={isReadOnly ? styles.readonly : ''}>
           <RMIconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
           <Input {...input} width='75px' size='sm' ref={inputRef} readOnly={isReadOnly} />

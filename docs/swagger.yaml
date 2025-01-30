@@ -1,4 +1,69 @@
 definitions:
+  archiver.BackupStat:
+    properties:
+      total_blob_count:
+        type: integer
+      total_file_count:
+        type: integer
+      total_size:
+        type: integer
+    type: object
+  archiver.ResticPurgeOption:
+    properties:
+      keepDaily:
+        type: integer
+      keepHourly:
+        type: integer
+      keepLast:
+        type: integer
+      keepMonthly:
+        type: integer
+      keepWeekly:
+        type: integer
+      keepWithin:
+        type: string
+      keepWithinDaily:
+        type: string
+      keepWithinHourly:
+        type: string
+      keepWithinMonthly:
+        type: string
+      keepWithinWeekly:
+        type: string
+      keepWithinYearly:
+        type: string
+      keepYearly:
+        type: integer
+    type: object
+  archiver.ResticTask:
+    properties:
+      dir_path:
+        type: string
+      error_state:
+        $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+      opt:
+        $ref: '#/definitions/archiver.ResticPurgeOption'
+      tags:
+        items:
+          type: string
+        type: array
+      task_id:
+        type: integer
+      task_type:
+        $ref: '#/definitions/archiver.TaskType'
+    type: object
+  archiver.TaskType:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - PurgeTask
+    - BackupTask
+    - FetchTask
+    - UnlockTask
   cluster.APIUser:
     properties:
       grants:
@@ -1402,12 +1467,26 @@ definitions:
         type: integer
       backupKeepHourly:
         type: integer
+      backupKeepLast:
+        type: integer
       backupKeepMonthly:
         type: integer
       backupKeepUntilValid:
         type: boolean
       backupKeepWeekly:
         type: integer
+      backupKeepWithin:
+        type: string
+      backupKeepWithinDaily:
+        type: string
+      backupKeepWithinHourly:
+        type: string
+      backupKeepWithinMonthly:
+        type: string
+      backupKeepWithinWeekly:
+        type: string
+      backupKeepWithinYearly:
+        type: string
       backupKeepYearly:
         type: integer
       backupLoadScript:
@@ -1452,6 +1531,8 @@ definitions:
         type: string
       backupResticRepository:
         type: string
+      backupResticTimeout:
+        type: integer
       backupSaveScript:
         type: string
       backupStreaming:
@@ -1833,6 +1914,8 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logArchiveLevel:
+        type: integer
       logBackupStream:
         type: boolean
       logBackupStreamLevel:
@@ -2184,6 +2267,8 @@ definitions:
       provDbDiskType:
         type: string
       provDbDockerImg:
+        type: string
+      provDbDockerTmpfsSize:
         type: string
       provDbDomain:
         type: string
@@ -2638,6 +2723,19 @@ definitions:
       withEmbed:
         type: string
       withTarball:
+        type: string
+    type: object
+  github_com_signal18_replication-manager_utils_state.State:
+    properties:
+      errDesc:
+        type: string
+      errFrom:
+        type: string
+      errKey:
+        type: string
+      errType:
+        type: string
+      serverUrl:
         type: string
     type: object
   gtid.Gtid:
@@ -3956,6 +4054,244 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/archives:
+    get:
+      description: This endpoint retrieves the backups for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/fetch:
+    post:
+      description: Fetches the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives fetch queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Fetch Archives
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/purge:
+    post:
+      description: Purges the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Purge Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue:
+    get:
+      description: Gets the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue fetched
+          schema:
+            items:
+              $ref: '#/definitions/archiver.ResticTask'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Archives Task Queue
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue/reset:
+    get:
+      description: Empty the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reset Archives Task Queue
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/unlock:
+    post:
+      description: Unlocks the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Unlock Restic Backup
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -3990,6 +4326,41 @@ paths:
           schema:
             type: string
       summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/certificates:

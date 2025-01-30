@@ -1759,6 +1759,359 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archives": {
+            "get": {
+                "description": "This endpoint retrieves the backups for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backups for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/fetch": {
+            "post": {
+                "description": "Fetches the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Fetch Archives",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives fetch queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/purge": {
+            "post": {
+                "description": "Purges the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Purge Restic Backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives purge queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/stats": {
+            "get": {
+                "description": "This endpoint retrieves the backup stats for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backup stats for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.BackupStat"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/task-queue": {
+            "get": {
+                "description": "Gets the restic task queue for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Get Archives Task Queue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.ResticTask"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/task-queue/reset": {
+            "get": {
+                "description": "Empty the restic task queue for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Reset Archives Task Queue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue reset",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/unlock": {
+            "post": {
+                "description": "Unlocks the restic backup for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Unlock Restic Backup",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives purge queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/backups": {
             "get": {
                 "description": "This endpoint retrieves the backups for the specified cluster.",
@@ -1794,6 +2147,58 @@ const docTemplate = `{
                             "items": {
                                 "type": "object",
                                 "additionalProperties": true
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/backups/stats": {
+            "get": {
+                "description": "This endpoint retrieves the backup stats for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Retrieve backup stats for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.BackupStat"
                             }
                         }
                     },
@@ -11186,6 +11591,102 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "archiver.BackupStat": {
+            "type": "object",
+            "properties": {
+                "total_blob_count": {
+                    "type": "integer"
+                },
+                "total_file_count": {
+                    "type": "integer"
+                },
+                "total_size": {
+                    "type": "integer"
+                }
+            }
+        },
+        "archiver.ResticPurgeOption": {
+            "type": "object",
+            "properties": {
+                "keepDaily": {
+                    "type": "integer"
+                },
+                "keepHourly": {
+                    "type": "integer"
+                },
+                "keepLast": {
+                    "type": "integer"
+                },
+                "keepMonthly": {
+                    "type": "integer"
+                },
+                "keepWeekly": {
+                    "type": "integer"
+                },
+                "keepWithin": {
+                    "type": "string"
+                },
+                "keepWithinDaily": {
+                    "type": "string"
+                },
+                "keepWithinHourly": {
+                    "type": "string"
+                },
+                "keepWithinMonthly": {
+                    "type": "string"
+                },
+                "keepWithinWeekly": {
+                    "type": "string"
+                },
+                "keepWithinYearly": {
+                    "type": "string"
+                },
+                "keepYearly": {
+                    "type": "integer"
+                }
+            }
+        },
+        "archiver.ResticTask": {
+            "type": "object",
+            "properties": {
+                "dir_path": {
+                    "type": "string"
+                },
+                "error_state": {
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
+                },
+                "opt": {
+                    "$ref": "#/definitions/archiver.ResticPurgeOption"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "task_id": {
+                    "type": "integer"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/archiver.TaskType"
+                }
+            }
+        },
+        "archiver.TaskType": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "PurgeTask",
+                "BackupTask",
+                "FetchTask",
+                "UnlockTask"
+            ]
+        },
         "cluster.APIUser": {
             "type": "object",
             "properties": {
@@ -13272,6 +13773,9 @@ const docTemplate = `{
                 "backupKeepHourly": {
                     "type": "integer"
                 },
+                "backupKeepLast": {
+                    "type": "integer"
+                },
                 "backupKeepMonthly": {
                     "type": "integer"
                 },
@@ -13280,6 +13784,24 @@ const docTemplate = `{
                 },
                 "backupKeepWeekly": {
                     "type": "integer"
+                },
+                "backupKeepWithin": {
+                    "type": "string"
+                },
+                "backupKeepWithinDaily": {
+                    "type": "string"
+                },
+                "backupKeepWithinHourly": {
+                    "type": "string"
+                },
+                "backupKeepWithinMonthly": {
+                    "type": "string"
+                },
+                "backupKeepWithinWeekly": {
+                    "type": "string"
+                },
+                "backupKeepWithinYearly": {
+                    "type": "string"
                 },
                 "backupKeepYearly": {
                     "type": "integer"
@@ -13346,6 +13868,9 @@ const docTemplate = `{
                 },
                 "backupResticRepository": {
                     "type": "string"
+                },
+                "backupResticTimeout": {
+                    "type": "integer"
                 },
                 "backupSaveScript": {
                     "type": "string"
@@ -13918,6 +14443,9 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
+                "logArchiveLevel": {
+                    "type": "integer"
+                },
                 "logBackupStream": {
                     "type": "boolean"
                 },
@@ -14443,6 +14971,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbDockerImg": {
+                    "type": "string"
+                },
+                "provDbDockerTmpfsSize": {
                     "type": "string"
                 },
                 "provDbDomain": {
@@ -15124,6 +15655,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "withTarball": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_utils_state.State": {
+            "type": "object",
+            "properties": {
+                "errDesc": {
+                    "type": "string"
+                },
+                "errFrom": {
+                    "type": "string"
+                },
+                "errKey": {
+                    "type": "string"
+                },
+                "errType": {
+                    "type": "string"
+                },
+                "serverUrl": {
                     "type": "string"
                 }
             }

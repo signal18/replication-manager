@@ -19,7 +19,8 @@ import {
   getTopProcess,
   setCluster,
   setRefreshInterval,
-  pauseAutoReload
+  pauseAutoReload,
+  getBackupStats
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -178,6 +179,7 @@ function Home() {
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
         dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
