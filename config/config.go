@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"regexp"
 	"slices"
 
 	"os"
@@ -639,11 +640,18 @@ type Config struct {
 	BackupLogicalDumpSystemTables             bool                   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
 	BackupPhysicalType                        string                 `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
 	BackupKeepUntilValid                      bool                   `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
+	BackupKeepLast                            int                    `mapstructure:"backup-keep-last" toml:"backup-keep-last" json:"backupKeepLast"`
 	BackupKeepHourly                          int                    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
 	BackupKeepDaily                           int                    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
 	BackupKeepWeekly                          int                    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
 	BackupKeepMonthly                         int                    `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
 	BackupKeepYearly                          int                    `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupKeepWithin                          string                 `mapstructure:"backup-keep-within" toml:"backup-keep-within" json:"backupKeepWithin"`
+	BackupKeepWithinHourly                    string                 `mapstructure:"backup-keep-within-hourly" toml:"backup-keep-within-hourly" json:"backupKeepWithinHourly"`
+	BackupKeepWithinDaily                     string                 `mapstructure:"backup-keep-within-daily" toml:"backup-keep-within-daily" json:"backupKeepWithinDaily"`
+	BackupKeepWithinWeekly                    string                 `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
+	BackupKeepWithinMonthly                   string                 `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
+	BackupKeepWithinYearly                    string                 `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
 	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticAwsAccessKeyId                string                 `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
@@ -3373,4 +3381,43 @@ func (conf *Config) SetMailTo(value string) {
 
 func (conf *Config) SwitchMailSmtpTlsSkipVerify() {
 	conf.MailSMTPTLSSkipVerify = !conf.MailSMTPTLSSkipVerify
+}
+
+// ResticDurationChecker checks if the duration string is valid for restic retention
+// The duration string should be in the format of "1y2m3d4h"
+func ResticDurationChecker(keep string) bool {
+	keep = strings.ToLower(keep)
+	r := regexp.MustCompile(`^(\d+y)?(\d+m)?(\d+d)?(\d+h)?$`)
+
+	return r.MatchString(keep)
+}
+
+// ResticDurationChecker checks if the duration string is valid for restic retention
+// The duration string should be in the format of "1y2m3d4h"
+func (conf *Config) CheckKeepWithin() error {
+	if !ResticDurationChecker(conf.BackupKeepWithin) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within': %s", conf.BackupKeepWithin)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinHourly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-hourly': %s", conf.BackupKeepWithinHourly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinDaily) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-daily': %s", conf.BackupKeepWithinDaily)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinWeekly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-weekly': %s", conf.BackupKeepWithinWeekly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinMonthly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-monthly': %s", conf.BackupKeepWithinMonthly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinYearly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-yearly': %s", conf.BackupKeepWithinYearly)
+	}
+
+	return nil
 }

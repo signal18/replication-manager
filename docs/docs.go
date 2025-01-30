@@ -11623,6 +11623,24 @@ const docTemplate = `{
                 "keepWeekly": {
                     "type": "integer"
                 },
+                "keepWithin": {
+                    "type": "string"
+                },
+                "keepWithinDaily": {
+                    "type": "string"
+                },
+                "keepWithinHourly": {
+                    "type": "string"
+                },
+                "keepWithinMonthly": {
+                    "type": "string"
+                },
+                "keepWithinWeekly": {
+                    "type": "string"
+                },
+                "keepWithinYearly": {
+                    "type": "string"
+                },
                 "keepYearly": {
                     "type": "integer"
                 }
@@ -13755,14 +13773,38 @@ const docTemplate = `{
                 "backupKeepHourly": {
                     "type": "integer"
                 },
+                "backupKeepLast": {
+                    "type": "integer"
+                },
                 "backupKeepMonthly": {
                     "type": "integer"
                 },
                 "backupKeepUntilValid": {
                     "type": "boolean"
                 },
+                "backupKeepUseBoth": {
+                    "type": "boolean"
+                },
                 "backupKeepWeekly": {
                     "type": "integer"
+                },
+                "backupKeepWithin": {
+                    "type": "string"
+                },
+                "backupKeepWithinDaily": {
+                    "type": "string"
+                },
+                "backupKeepWithinHourly": {
+                    "type": "string"
+                },
+                "backupKeepWithinMonthly": {
+                    "type": "string"
+                },
+                "backupKeepWithinWeekly": {
+                    "type": "string"
+                },
+                "backupKeepWithinYearly": {
+                    "type": "string"
                 },
                 "backupKeepYearly": {
                     "type": "integer"

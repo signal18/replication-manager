@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -60,12 +59,18 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	KeepLast    int
-	KeepHourly  int
-	KeepDaily   int
-	KeepWeekly  int
-	KeepMonthly int
-	KeepYearly  int
+	KeepLast          int
+	KeepHourly        int
+	KeepDaily         int
+	KeepWeekly        int
+	KeepMonthly       int
+	KeepYearly        int
+	KeepWithin        string
+	KeepWithinHourly  string
+	KeepWithinDaily   string
+	KeepWithinWeekly  string
+	KeepWithinMonthly string
+	KeepWithinYearly  string
 }
 
 // TaskStatus represents the task state information stored in the JSON flag file
@@ -76,104 +81,9 @@ type TaskStatus struct {
 	Completion string   `json:"completion_time,omitempty"` // Only present if completed
 }
 
-// CreateTaskFlagFile creates a JSON file that indicates the task status
-func (repo *ResticRepo) CreateTaskFlagFile(taskType TaskType) error {
-	// Define the directory and file path for the task status JSON file
-	if err := os.MkdirAll(repo.CookieDir, os.ModePerm); err != nil {
-		return fmt.Errorf("failed to create task directory: %v", err)
-	}
-
-	// Define the JSON filename for the task status
-	flagFile := filepath.Join(repo.CookieDir, "task-status.json")
-
-	// Create a TaskStatus struct to store the task's start time and status
-	taskStatus := TaskStatus{
-		TaskType:  taskType,
-		StartTime: time.Now().String(),
-		Status:    "in-progress",
-	}
-
-	// Open or create the task status file
-	file, err := os.Create(flagFile)
-	if err != nil {
-		return fmt.Errorf("failed to create flag file for task: %v", err)
-	}
-	defer file.Close()
-
-	// Write the task status as JSON into the file
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(taskStatus); err != nil {
-		return fmt.Errorf("failed to write task status to file: %v", err)
-	}
-
-	repo.Print(logrus.InfoLevel, "Task flag file created with status 'in-progress'")
-	return nil
-}
-
-// CheckTaskStatus reads the task status from the JSON flag file
-func (repo *ResticRepo) CheckTaskStatus() (*TaskStatus, error) {
-	// Define the directory and file path for the task status JSON file
-	taskDir := repo.CookieDir
-	flagFile := filepath.Join(taskDir, "task-status.json")
-
-	// Open the task status file
-	file, err := os.Open(flagFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open task status file: %v", err)
-	}
-	defer file.Close()
-
-	// Decode the task status from the JSON file
-	var taskStatus TaskStatus
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&taskStatus); err != nil {
-		return nil, fmt.Errorf("failed to decode task status: %v", err)
-	}
-
-	// Return the decoded task status
-	return &taskStatus, nil
-}
-
-// UpdateTaskFlagFile updates the status of the task in the JSON file
-func (repo *ResticRepo) UpdateTaskFlagFile(status string) error {
-	// Define the directory and file path for the task status JSON file
-	flagFile := filepath.Join(repo.CookieDir, "task-status.json")
-
-	// Open the existing task status file
-	file, err := os.OpenFile(flagFile, os.O_RDWR, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open flag file for updating: %v", err)
-	}
-	defer file.Close()
-
-	// Decode the current task status
-	var taskStatus TaskStatus
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&taskStatus); err != nil {
-		return fmt.Errorf("failed to decode task status: %v", err)
-	}
-
-	// Update the task status and optionally set a completion time
-	taskStatus.Status = status
-	if status == "completed" {
-		taskStatus.Completion = time.Now().String()
-	}
-
-	// Move the file pointer back to the start and overwrite the file with the updated status
-	file.Seek(0, 0)
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(taskStatus); err != nil {
-		return fmt.Errorf("failed to write updated task status: %v", err)
-	}
-
-	repo.Print(logrus.InfoLevel, "Task flag file updated to status '%s'", status)
-	return nil
-}
-
 // ResticRepo manages the queue and execution
 type ResticRepo struct {
 	BinaryPath  string
-	CookieDir   string
 	Env         []string
 	Backups     []Backup
 	BackupStat  BackupStat
@@ -642,6 +552,82 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 	return nil // Success
 }
 
+// GetKeepWithinTime returns the arguments to keep within
+func GetKeepWithinTime(keepWithin string, keepWithinHourly string, keepWithinDaily string, keepWithinWeekly string, keepWithinMonthly string, keepWithinYearly string) ([]string, bool) {
+	useWithin := false
+	var within []string
+
+	if keepWithin != "" {
+		useWithin = true
+		within = append(within, "--keep-within", keepWithin)
+	}
+
+	if keepWithinHourly != "" {
+		useWithin = true
+		within = append(within, "--keep-within-hourly", keepWithinHourly)
+	}
+
+	if keepWithinDaily != "" {
+		useWithin = true
+		within = append(within, "--keep-within-daily", keepWithinDaily)
+	}
+
+	if keepWithinWeekly != "" {
+		useWithin = true
+		within = append(within, "--keep-within-weekly", keepWithinWeekly)
+	}
+
+	if keepWithinMonthly != "" {
+		useWithin = true
+		within = append(within, "--keep-within-monthly", keepWithinMonthly)
+	}
+
+	if keepWithinYearly != "" {
+		useWithin = true
+		within = append(within, "--keep-within-yearly", keepWithinYearly)
+	}
+
+	return within, useWithin
+}
+
+// GetKeepN returns the numeric arguments to keep
+func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepMonthly int, keepYearly int) ([]string, bool) {
+	useKeep := false
+	var keep []string
+
+	if keepLast > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-last", fmt.Sprintf("%d", keepLast))
+	}
+
+	if keepHourly > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-hourly", fmt.Sprintf("%d", keepHourly))
+	}
+
+	if keepDaily > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-daily", fmt.Sprintf("%d", keepDaily))
+	}
+
+	if keepWeekly > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-weekly", fmt.Sprintf("%d", keepWeekly))
+	}
+
+	if keepMonthly > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-monthly", fmt.Sprintf("%d", keepMonthly))
+	}
+
+	if keepYearly > 0 {
+		useKeep = true
+		keep = append(keep, "--keep-yearly", fmt.Sprintf("%d", keepYearly))
+	}
+
+	return keep, useKeep
+}
+
 // ResticPurgeRepo performs the actual purging of the repository
 func (repo *ResticRepo) ResticPurgeRepo(opt ResticPurgeOption) error {
 	if !repo.GetCanFetch() {
@@ -651,37 +637,25 @@ func (repo *ResticRepo) ResticPurgeRepo(opt ResticPurgeOption) error {
 
 	repo.SetCanFetch(false)
 	defer repo.SetCanFetch(true)
+	// Prepare the arguments for the "forget" command
+	args := []string{"forget", "--prune"}
 
-	// Create the task flag file
-	err := repo.CreateTaskFlagFile(PurgeTask)
-	if err != nil {
-		return fmt.Errorf("failed to create flag file for purge task: %v", err)
+	// Get the arguments for the "keep" options
+	keepWithin, useWithin := GetKeepWithinTime(opt.KeepWithin, opt.KeepWithinHourly, opt.KeepWithinDaily, opt.KeepWithinWeekly, opt.KeepWithinMonthly, opt.KeepWithinYearly)
+	if useWithin {
+		args = append(args, keepWithin...)
 	}
 
-	// Prepare the arguments for the "forget" command
-	args := []string{
-		"forget", "--prune",
-		"--keep-last", fmt.Sprintf("%d", opt.KeepLast),
-		"--keep-hourly", fmt.Sprintf("%d", opt.KeepHourly),
-		"--keep-daily", fmt.Sprintf("%d", opt.KeepDaily),
-		"--keep-weekly", fmt.Sprintf("%d", opt.KeepWeekly),
-		"--keep-monthly", fmt.Sprintf("%d", opt.KeepMonthly),
-		"--keep-yearly", fmt.Sprintf("%d", opt.KeepYearly),
+	keep, useKeep := GetKeepN(opt.KeepLast, opt.KeepHourly, opt.KeepDaily, opt.KeepWeekly, opt.KeepMonthly, opt.KeepYearly)
+	if useKeep {
+		args = append(args, keep...)
 	}
 
 	// Execute the Restic "forget" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
 	if err != nil {
-		// Update the flag file to mark the task as completed
-		_ = repo.UpdateTaskFlagFile("failed")
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to purge repo: %v, stderr: %s", err, stderr)
-	}
-
-	// Update the flag file to mark the task as completed
-	err = repo.UpdateTaskFlagFile("completed")
-	if err != nil {
-		return fmt.Errorf("failed to update flag file for completed backup task: %v", err)
 	}
 
 	return nil
@@ -696,12 +670,6 @@ func (repo *ResticRepo) ResticBackup(dirpath string, tags []string) error {
 
 	repo.SetCanFetch(false)
 	defer repo.SetCanFetch(true)
-
-	// Create the task flag file
-	err := repo.CreateTaskFlagFile(BackupTask)
-	if err != nil {
-		return fmt.Errorf("failed to create flag file for backup task: %v", err)
-	}
 
 	// Prepare the arguments for the "backup" command
 	args := []string{"backup"}
@@ -718,15 +686,8 @@ func (repo *ResticRepo) ResticBackup(dirpath string, tags []string) error {
 	// Execute the Restic "forget" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
 	if err != nil {
-		_ = repo.UpdateTaskFlagFile("failed")
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to backup repo: %v, stderr: %s", err, stderr)
-	}
-
-	// Update the flag file to mark the task as completed
-	err = repo.UpdateTaskFlagFile("completed")
-	if err != nil {
-		return fmt.Errorf("failed to update flag file for completed backup task: %v", err)
 	}
 
 	return nil

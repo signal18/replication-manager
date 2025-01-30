@@ -980,15 +980,19 @@ func (cluster *Cluster) SetAgentsMaxCpuFreq() {
 	}
 }
 
-func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
+// SetBackupKeepLastN set the number of backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepLastN(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
 		return err
 	}
-	cluster.Conf.BackupKeepYearly = numkeep
+	cluster.Conf.BackupKeepLast = numkeep
 	return nil
 }
 
+// SetBackupKeepHourly set the number of hourly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepHourly(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
@@ -998,14 +1002,8 @@ func (cluster *Cluster) SetBackupKeepHourly(keep string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetBackupKeepMonthly(keep string) error {
-	numkeep, err := strconv.Atoi(keep)
-	if err != nil {
-		return err
-	}
-	cluster.Conf.BackupKeepMonthly = numkeep
-	return nil
-}
+// SetBackupKeepDaily set the number of daily backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepDaily(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
@@ -1015,12 +1013,102 @@ func (cluster *Cluster) SetBackupKeepDaily(keep string) error {
 	return nil
 }
 
+// SetBackupKeepWeekly set the number of weekly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
 		return err
 	}
 	cluster.Conf.BackupKeepWeekly = numkeep
+	return nil
+}
+
+// SetBackupKeepMonthly set the number of monthly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepMonthly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepMonthly = numkeep
+	return nil
+}
+
+// SetBackupKeepYearly set the number of yearly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepYearly = numkeep
+	return nil
+}
+
+// SetBackupKeepWithin set the duration of backups to keep.
+// If the value is empty, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithin(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithin = keep
+	return nil
+}
+
+// SetBackupKeepWithinHourly set the number of hourly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinHourly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinHourly = keep
+	return nil
+}
+
+// SetBackupKeepWithinDaily set the number of daily backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinDaily(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinDaily = keep
+	return nil
+}
+
+// SetBackupKeepWithinWeekly set the number of weekly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinWeekly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinWeekly = keep
+	return nil
+}
+
+// SetBackupKeepWithinMonthly set the number of monthly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinMonthly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinMonthly = keep
+	return nil
+}
+
+// SetBackupKeepWithinYearly set the number of yearly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinYearly = keep
 	return nil
 }
 

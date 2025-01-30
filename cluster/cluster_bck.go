@@ -106,17 +106,30 @@ func (cluster *Cluster) ResticInitRepo() error {
 
 func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
+		err := cluster.Conf.CheckKeepWithin() // Check if backup-keep-within is valid
+		if err != nil {
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+			return err
+		}
+
 		cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 
 		opt := archiver.ResticPurgeOption{
-			KeepHourly:  cluster.Conf.BackupKeepHourly,
-			KeepDaily:   cluster.Conf.BackupKeepDaily,
-			KeepWeekly:  cluster.Conf.BackupKeepWeekly,
-			KeepMonthly: cluster.Conf.BackupKeepMonthly,
-			KeepYearly:  cluster.Conf.BackupKeepYearly,
+			KeepLast:          cluster.Conf.BackupKeepLast,
+			KeepHourly:        cluster.Conf.BackupKeepHourly,
+			KeepDaily:         cluster.Conf.BackupKeepDaily,
+			KeepWeekly:        cluster.Conf.BackupKeepWeekly,
+			KeepMonthly:       cluster.Conf.BackupKeepMonthly,
+			KeepYearly:        cluster.Conf.BackupKeepYearly,
+			KeepWithin:        cluster.Conf.BackupKeepWithin,
+			KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
+			KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
+			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
+			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
+			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
 		}
 
-		_, err := cluster.ResticRepo.AddPurgeTask(opt, true)
+		_, err = cluster.ResticRepo.AddPurgeTask(opt, true)
 		if err != nil {
 			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
 			return err

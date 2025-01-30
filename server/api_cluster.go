@@ -2416,16 +2416,66 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "failover-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetFailLimit(val)
+	case "backup-keep-last":
+		err = mycluster.SetBackupKeepLastN(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-hourly":
-		mycluster.SetBackupKeepHourly(value)
+		err = mycluster.SetBackupKeepHourly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-daily":
-		mycluster.SetBackupKeepDaily(value)
+		err = mycluster.SetBackupKeepDaily(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-monthly":
-		mycluster.SetBackupKeepMonthly(value)
+		err = mycluster.SetBackupKeepMonthly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-weekly":
-		mycluster.SetBackupKeepWeekly(value)
+		err = mycluster.SetBackupKeepWeekly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-yearly":
-		mycluster.SetBackupKeepYearly(value)
+		err = mycluster.SetBackupKeepYearly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within":
+		err = mycluster.SetBackupKeepWithin(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-hourly":
+		err = mycluster.SetBackupKeepWithinHourly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-daily":
+		err = mycluster.SetBackupKeepWithinDaily(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-monthly":
+		err = mycluster.SetBackupKeepWithinMonthly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-weekly":
+		err = mycluster.SetBackupKeepWithinWeekly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-yearly":
+		err = mycluster.SetBackupKeepWithinYearly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
