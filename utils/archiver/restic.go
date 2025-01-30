@@ -186,6 +186,7 @@ type ResticRepo struct {
 	Mutex       sync.Mutex
 	CanFetch    bool
 	CanInitRepo bool
+	HasLocks    bool
 	taskID      int
 	CurrentID   int
 }
@@ -211,6 +212,19 @@ func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fi
 
 func (repo *ResticRepo) SetEnv(env []string) {
 	repo.Env = env
+}
+
+func (repo *ResticRepo) GetRepoPath() string {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	for _, env := range repo.Env {
+		if strings.HasPrefix(env, "RESTIC_REPOSITORY") {
+			return strings.Split(env, "=")[1]
+		}
+	}
+
+	return ""
 }
 
 // GenerateTaskID ensures unique task IDs
@@ -500,6 +514,17 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 		return nil
 	}
 
+	// Check latest lock in repository
+	err := repo.CheckLocks()
+	if err != nil {
+		return fmt.Errorf("failed to check locks: %w", err)
+	}
+
+	// Prevent fetching if there are locks
+	if repo.HasLocks {
+		return nil
+	}
+
 	// Proceed with fetch
 	args := []string{"snapshots", "--json"}
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
@@ -613,6 +638,43 @@ func (repo *ResticRepo) ResticBackup(dirpath string, tags []string) error {
 	err = repo.UpdateTaskFlagFile("completed")
 	if err != nil {
 		return fmt.Errorf("failed to update flag file for completed backup task: %v", err)
+	}
+
+	return nil
+}
+
+// ResticBackup performs the backup (mock implementation for now)
+func (repo *ResticRepo) CheckLocks() error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.CheckLocks()
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Prepare the arguments for the "backup" command
+	args := []string{"list", "locks", "--no-lock", "-q"}
+
+	// Execute the Restic "list locks" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
+	if err != nil {
+		if strings.Contains(string(stderr), "no such file or directory") {
+			_ = repo.ResticInitRepo()
+		}
+		// Handle error (including stderr)
+		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
+	}
+
+	haslock := len(stdout) > 0
+
+	if repo.HasLocks != haslock {
+		if haslock {
+			repo.Print(logrus.InfoLevel, "Repository has locks")
+		} else {
+			repo.Print(logrus.InfoLevel, "Repository locks has unlocked")
+		}
+		repo.HasLocks = haslock
 	}
 
 	return nil

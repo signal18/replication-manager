@@ -51,13 +51,24 @@ func (cluster *Cluster) CheckResticRepo() bool {
 		return false
 	}
 
+	hasAlert := false
+
 	if cluster.ResticRepo == nil {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], "restic repo is nil"), ErrFrom: "BACKUP"})
-		return false
+		hasAlert = true
 	}
 
 	if !cluster.ResticRepo.CanInitRepo {
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], "restic repo cannot be initialized"), ErrFrom: "BACKUP"})
+		hasAlert = true
+	}
+
+	if cluster.ResticRepo.CanFetch && cluster.ResticRepo.HasLocks {
+		cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticRepo.GetRepoPath()), ErrFrom: "BACKUP"})
+		hasAlert = true
+	}
+
+	if hasAlert {
 		return false
 	}
 

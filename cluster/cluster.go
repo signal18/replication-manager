@@ -661,8 +661,8 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
-
 						} else {
+							cluster.CheckResticRepo()
 							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
 						}
 						if !cluster.CanInitNodes {
