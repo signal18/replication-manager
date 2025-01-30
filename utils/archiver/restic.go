@@ -181,9 +181,10 @@ type ResticRepo struct {
 	Logger      *logrus.Logger
 	LogFields   logrus.Fields
 	LogLevel    logrus.Level
-	TaskQueue   chan ResticTask
+	TaskQueue   []*ResticTask
 	ResultChan  chan ResticResult
-	Shutdown    chan struct{}
+	Shutdown    bool
+	WorkerWG    sync.WaitGroup
 	Mutex       sync.Mutex
 	CanFetch    bool
 	CanInitRepo bool
@@ -200,9 +201,8 @@ func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fi
 		Logger:      logger,
 		LogFields:   logfields,
 		LogLevel:    loglevel,
-		TaskQueue:   make(chan ResticTask, 10),
+		TaskQueue:   make([]*ResticTask, 0),
 		ResultChan:  make(chan ResticResult, 10),
-		Shutdown:    make(chan struct{}),
 		CanFetch:    true,
 		CanInitRepo: true,
 	}
@@ -265,51 +265,68 @@ func (repo *ResticRepo) Print(level logrus.Level, message string, args ...interf
 	}
 }
 
-// worker processes the task queue FIFO
 func (repo *ResticRepo) worker() {
+	repo.WorkerWG.Add(1)
+	defer repo.WorkerWG.Done()
+
 	for {
-		select {
-		case task := <-repo.TaskQueue:
-			printLevel := logrus.InfoLevel
-			if task.ID == 0 {
-				printLevel = logrus.DebugLevel
-			}
-			// Prevent logging for fetching tasks
-			repo.Print(printLevel, "Worker processing task ID: %d", task.ID)
-
-			var result ResticResult
-			switch task.Type {
-			case PurgeTask:
-				err := repo.ResticPurgeRepo(task.Opt)
-				result = ResticResult{Error: err}
-			case BackupTask:
-				err := repo.ResticBackup(task.DirPath, task.Tags)
-				result = ResticResult{Error: err}
-			case FetchTask:
-				err := repo.ResticFetchRepo()
-				result = ResticResult{Error: err}
-			case UnlockTask:
-				err := repo.ResticUnlockRepo()
-				result = ResticResult{Error: err}
-			default:
-				result = ResticResult{TaskID: task.ID, Error: fmt.Errorf("unknown task type")}
-			}
-
-			// Send result to per-task channel (if waiting)
-			if task.Result != nil {
-				task.Result <- result
-			} else {
-				// Otherwise, send result to global log
-				repo.ResultChan <- result
-			}
-
-			// Log the completion of the task
-			repo.Print(printLevel, "Worker finished task ID: %d", task.ID)
-
-		case <-repo.Shutdown:
-			repo.Print(logrus.InfoLevel, "Worker shutting down.")
-			return
+		repo.Mutex.Lock()
+		// Check if shutdown flag is set
+		if repo.Shutdown {
+			repo.Mutex.Unlock()
+			return // Exit worker
 		}
+
+		// If TaskQueue is empty, unlock and wait for a while
+		if len(repo.TaskQueue) == 0 {
+			repo.Mutex.Unlock()
+			time.Sleep(500 * time.Millisecond) // Prevent busy-waiting
+			continue
+		}
+
+		// Get the task from TaskQueue
+		task := repo.TaskQueue[0]
+		repo.TaskQueue = repo.TaskQueue[1:]
+		repo.Mutex.Unlock()
+
+		if task == nil {
+			continue
+		}
+
+		// Process the task
+		loglevel := logrus.InfoLevel
+		if task.Type == FetchTask {
+			loglevel = logrus.DebugLevel
+		}
+
+		repo.Print(loglevel, "Worker processing task ID: %d", task.ID)
+
+		var result ResticResult
+		switch task.Type {
+		case PurgeTask:
+			err := repo.ResticPurgeRepo(task.Opt)
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case BackupTask:
+			err := repo.ResticBackup(task.DirPath, task.Tags)
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case FetchTask:
+			err := repo.ResticFetchRepo()
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case UnlockTask:
+			err := repo.ResticUnlockRepo()
+			result = ResticResult{TaskID: task.ID, Error: err}
+		default:
+			result = ResticResult{TaskID: task.ID, Error: fmt.Errorf("unknown task type")}
+		}
+
+		// Send result to per-task channel (if waiting)
+		if task.Result != nil {
+			task.Result <- result
+		} else {
+			repo.ResultChan <- result
+		}
+
+		repo.Print(loglevel, "Worker finished task ID: %d", task.ID)
 	}
 }
 
@@ -320,14 +337,17 @@ func (repo *ResticRepo) AddFetchTask(waitForResult bool) (*ResticResult, error) 
 
 	var resultChan chan ResticResult
 	if waitForResult {
-		resultChan = make(chan ResticResult, 1) // If waiting, create result channel
+		resultChan = make(chan ResticResult, 1)
 		task.Result = resultChan
 	}
 
-	repo.TaskQueue <- task // Add task to queue
+	// Add task to slice
+	repo.Mutex.Lock()
+	repo.TaskQueue = append(repo.TaskQueue, &task)
+	repo.Mutex.Unlock()
 
 	if waitForResult {
-		result := <-resultChan // Wait for result
+		result := <-resultChan
 		return &result, result.Error
 	}
 	return nil, nil
@@ -346,7 +366,11 @@ func (repo *ResticRepo) AddPurgeTask(opt ResticPurgeOption, waitForResult bool) 
 		task.Result = resultChan
 	}
 
-	repo.TaskQueue <- task // Add task to queue
+	// Add task to slice
+	repo.Mutex.Lock()
+	repo.TaskQueue = append(repo.TaskQueue, &task)
+	repo.Mutex.Unlock()
+
 	repo.Print(logrus.InfoLevel, "Task %d submitted (Wait: %v)", task.ID, waitForResult)
 
 	if waitForResult {
@@ -370,7 +394,10 @@ func (repo *ResticRepo) AddBackupTask(taskType TaskType, dirpath string, tags []
 		task.Result = resultChan
 	}
 
-	repo.TaskQueue <- task // Add task to queue
+	// Add task to slice
+	repo.Mutex.Lock()
+	repo.TaskQueue = append(repo.TaskQueue, &task)
+	repo.Mutex.Unlock()
 	repo.Print(logrus.InfoLevel, "Task %d submitted (Wait: %v)", task.ID, waitForResult)
 
 	if waitForResult {
@@ -391,7 +418,10 @@ func (repo *ResticRepo) AddUnlockTask(waitForResult bool) (*ResticResult, error)
 		task.Result = resultChan
 	}
 
-	repo.TaskQueue <- task // Add task to queue
+	// Add task to slice
+	repo.Mutex.Lock()
+	repo.TaskQueue = append(repo.TaskQueue, &task)
+	repo.Mutex.Unlock()
 
 	if waitForResult {
 		result := <-resultChan // Wait for result
@@ -400,11 +430,41 @@ func (repo *ResticRepo) AddUnlockTask(waitForResult bool) (*ResticResult, error)
 	return nil, nil
 }
 
-// ShutdownWorker stops the worker gracefully
+func (repo *ResticRepo) HasFetchQueue() bool {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	if len(repo.TaskQueue) > 0 {
+		for _, task := range repo.TaskQueue {
+			if task.Type == FetchTask {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (repo *ResticRepo) EmptyQueue() {
+	// Clear the task queue
+	repo.Print(logrus.InfoLevel, "Emptying task queue...")
+
+	repo.Mutex.Lock()
+	repo.TaskQueue = make([]*ResticTask, 0)
+	repo.Mutex.Unlock()
+
+	repo.Print(logrus.InfoLevel, "Task queue emptied.")
+}
+
 func (repo *ResticRepo) ShutdownWorker() {
-	close(repo.Shutdown)
-	close(repo.TaskQueue)
-	close(repo.ResultChan)
+	repo.Mutex.Lock()
+	repo.Shutdown = true // Signal workers to stop
+	repo.Mutex.Unlock()
+
+	repo.Print(logrus.InfoLevel, "Shutting down workers...")
+
+	// Wait for all workers to finish
+	repo.WorkerWG.Wait()
+	repo.Print(logrus.InfoLevel, "All workers stopped.")
 }
 
 // WaitForResults waits for the task results

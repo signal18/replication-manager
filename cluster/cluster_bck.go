@@ -137,6 +137,11 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		return err
 	}
 
+	// Check if no other fetch task queued
+	if cluster.ResticRepo.HasFetchQueue() {
+		return nil
+	}
+
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 	_, err := cluster.ResticRepo.AddFetchTask(true)
 	if err != nil {
@@ -165,4 +170,37 @@ func (cluster *Cluster) ResticUnlockRepo() error {
 	}
 
 	return err
+}
+
+func (cluster *Cluster) ResticGetQueue() ([]*archiver.ResticTask, error) {
+	// No need to add wait since it will be checked each monitor loop
+	if !cluster.Conf.BackupRestic {
+		return nil, nil
+	}
+
+	if cluster.ResticRepo == nil {
+		err := fmt.Errorf("restic repo is nil")
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		return nil, err
+	}
+
+	return cluster.ResticRepo.TaskQueue, nil
+}
+
+func (cluster *Cluster) ResticResetQueue() error {
+	// No need to add wait since it will be checked each monitor loop
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	if cluster.ResticRepo == nil {
+		err := fmt.Errorf("restic repo is nil")
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	cluster.ResticRepo.EmptyQueue()
+
+	return nil
 }
