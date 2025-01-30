@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strings"
 
 	"github.com/mattermost/mattermost-server/v6/model"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -66,10 +67,10 @@ func CreateMeetClient() *MeetChatClient {
 		URL:    meetUrl,
 		Token:  meetToken,
 	}
-	c.UserID = c.GetMeetUserInfo()                                              //to get user info from mattermost serv
-	c.TeamIds = c.GetTeamIDs()                                                  //to get teamIDs
+	c.UserID = c.GetMeetUserInfo() //to get user info from mattermost serv
+	c.TeamIds = c.GetTeamIDs()
+	c.AllUser = c.GetAllUsers()                                                 //to get teamIDs
 	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect = c.GetChannels() //to get the channels for the user
-	c.AllUser = c.GetAllUsers()
 	return c
 }
 
@@ -129,7 +130,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 	meetAuthURL := html.UnescapeString(decodedValue)
 
 	// 2.3 Forward Oauth code to meet
-	body, err = misc.GetRequest(client, meetAuthURL)
+	_, err = misc.GetRequest(client, meetAuthURL)
 	if err != nil {
 		fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
 		return
@@ -194,21 +195,20 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 			channelsMapP[channel.Name] = channel.Id
 		}
 		if channel.Type == "D" {
-			channelsMapD[channel.Name] = channel.Id
+			directChannelName := strings.Replace(channel.Name, "__"+c.UserID, "", 1)
+			channelsMapD[c.AllUser[directChannelName]] = channel.Id
 		}
 	}
 
 	return channelsMapO, channelsMapP, channelsMapD
 }
 
-func (c *MeetChatClient) ReadMessages(channelID string) (*MeetChannelMessages, error) {
-	posts, resp, err := c.Client.GetPostsForChannel(channelID, 0, 50, "", true)
+func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelMessages, error) {
+	posts, resp, err := c.Client.GetPostsForChannel(channelID, page, 30, "", true)
 	if err != nil {
 		fmt.Println("ReadMessages Mattermost Error:", err, resp.StatusCode)
 		return nil, err
 	}
-
-	fmt.Println("Message:", posts)
 
 	messages := make([]MeetMessage, 0)
 	for _, post := range posts.ToSlice() {

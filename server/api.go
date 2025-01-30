@@ -26,6 +26,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -210,7 +211,7 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/info", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.MeetInfoHandler)),
 	))
-	router.Handle("/meet/read/{channelId}", negroni.New(
+	router.Handle("/meet/read/{channelId}/{page}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.ReadMeetMessageHandler)),
 	))
 	router.Handle("/meet/post/{channelId}", negroni.New(
@@ -1713,12 +1714,21 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	meetClient := meethelper.CreateMeetClient()
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
+	str_page := vars["page"]
+	page := 0
+
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		return
 	}
 
-	messages, err := meetClient.ReadMessages(channelID)
+	if str_page != "" {
+		page, _ = strconv.Atoi(str_page)
+	}
+
+	log.Printf("ReadMeetMessage handler page : %d, str_page : %s", page, str_page)
+
+	messages, err := meetClient.ReadMessages(channelID, page)
 	if messages == nil || err != nil {
 		http.Error(w, "Error reading messages", http.StatusInternalServerError)
 		return

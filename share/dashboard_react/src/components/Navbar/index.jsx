@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, Button, useDisclosure } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -16,9 +16,11 @@ import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
+import MattermostIntegration from '../../Pages/Mattermost';
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
+  const { isOpen, onOpen, onClose } = useDisclosure()
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
@@ -78,8 +80,12 @@ function Navbar({ username }) {
 
         {isAuthorized() && isDesktop && <RefreshCounter clusterName={clusterData?.name} />}
 
+
         <Spacer />
         <HStack spacing='4'>
+          
+
+
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
               <AlertBadge
@@ -100,7 +106,12 @@ function Navbar({ username }) {
 
           {isAuthorized() && (
             <>
-              {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}
+              {username && isDesktop && (
+                  <>
+                      <Text>{`Welcome, ${username}`}</Text>
+                      <Button onClick={onOpen} className={styles.navButton}>Mattermost Chat</Button>
+                  </>
+              )}
               {isMobile ? (
                 <RMIconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
               ) : (
@@ -119,8 +130,12 @@ function Navbar({ username }) {
           )}
 
           <ThemeIcon />
+
         </HStack>
       </Flex>
+
+      <MattermostIntegration isOpen={isOpen} onClose={onClose} />
+
       {isAuthorized() && !isDesktop && (
         <Box mx='auto' p='8px' marginTop='60px'>
           <RefreshCounter clusterName={clusterData?.name} />

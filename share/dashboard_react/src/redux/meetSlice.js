@@ -5,7 +5,6 @@ import { meetService } from '../services/meetService';
 export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkAPI) => {
   try {
     const { data, status } = await meetService.getMeetInfo();
-    showSuccessBanner('Meet info retrieved successfully!', status, thunkAPI);
     return { data, status };
   } catch (error) {
     showErrorBanner('Failed to retrieve meet info!', error, thunkAPI);
@@ -14,11 +13,10 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
   }
 });
 
-export const readMeetMessages = createAsyncThunk('meet/readMeetMessages', async ({ channelId }, thunkAPI) => {
+export const readMeetMessages = createAsyncThunk('meet/readMeetMessages', async ({ channelId, page = 0 }, thunkAPI) => {
   try {
-    const { data, status } = await meetService.getMeetMessageFromChannel(channelId);
-    showSuccessBanner('Messages retrieved successfully!', data, status, thunkAPI);
-    return { data, status };
+    const messages = await meetService.getMeetMessageFromChannel(channelId,page);
+    return { channelId, messages };
   } catch (error) {
     showErrorBanner('Failed to retrieve messages!', error, thunkAPI);
     handleError(error, thunkAPI);
@@ -29,7 +27,6 @@ export const readMeetMessages = createAsyncThunk('meet/readMeetMessages', async 
 export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({ channelId, message }, thunkAPI) => {
   try {
     const { data, status } = await meetService.postMeetMessageOnChannel(channelId, message);
-    showSuccessBanner('Message posted successfully!', status, thunkAPI);
     return { data, status };
   } catch (error) {
     showErrorBanner('Failed to post message!', error, thunkAPI);
@@ -42,53 +39,45 @@ const initialState = {
   loading: false,
   error: null,
   meetInfo: null,
-  messages: [],
+  messages: {},
 };
 
-export const meetSlice = createSlice({
+const meetSlice = createSlice({
   name: 'meet',
-  initialState,
-  reducers: {
-    clearMeetInfo: (state) => {
-      state.meetInfo = null;
-    },
-    clearMessages: (state) => {
-      state.messages = [];
-    },
+  initialState: {
+    meetInfo: null,
+    messages: {},  // Stocke les messages par channelId
+    loading: false,
+    error: null,
   },
+  reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(getMeetInfo.pending, (state) => {
-        state.loading = true;
-      })
       .addCase(getMeetInfo.fulfilled, (state, action) => {
-        state.loading = false;
         state.meetInfo = action.payload.data;
-      })
-      .addCase(getMeetInfo.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error;
       })
       .addCase(readMeetMessages.pending, (state) => {
         state.loading = true;
       })
       .addCase(readMeetMessages.fulfilled, (state, action) => {
         state.loading = false;
-        state.messages = action.payload.data;
+        const { channelId, messages, page } = action.payload;
+
+        if (!state.messages[channelId]) {
+          state.messages[channelId] = [];
+        }
+
+        if (page === 0) {
+          // Premier chargement, remplacer les messages existants
+          state.messages[channelId] = messages;
+        } else {
+          // Ajouter les nouveaux messages en haut lors du scroll
+          state.messages[channelId] = [ ...state.messages[channelId], ...messages];
+        }
       })
       .addCase(readMeetMessages.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.error;
-      })
-      .addCase(postMeetMessage.pending, (state) => {
-        state.loading = true;
-      })
-      .addCase(postMeetMessage.fulfilled, (state, action) => {
-        state.loading = false;
-      })
-      .addCase(postMeetMessage.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.error;
+        state.error = action.error.message;
       });
   },
 });

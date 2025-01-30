@@ -1,15 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button } from '@chakra-ui/react';
-import { getMeetInfo, readMeetMessages, postMeetMessage } from '../../redux/meetSlice';
 import styles from './styles.module.scss';
+import React, { useEffect, useState, useRef } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
+import { getMeetInfo, readMeetMessages, postMeetMessage } from '../../redux/meetSlice';
+import ChannelTreeView from '../../components/ChannelTreeView';
 
-function MattermostIntegration() {
+
+function MattermostIntegration({ isOpen, onClose }) {
+    if (!isOpen) return null;
     const dispatch = useDispatch();
     const { meetInfo, messages, loading, error } = useSelector((state) => state.meet);
     const [channels, setChannels] = useState([]);
     const [message, setMessage] = useState('');
     const [selectedChannel, setSelectedChannel] = useState('');
+    const [page, setPage] = useState(0);
+    const messagesContainerRef = useRef(null);
+    const [scrollPosition, setScrollPosition] = useState(null);
 
     useEffect(() => {
         dispatch(getMeetInfo());
@@ -18,45 +24,91 @@ function MattermostIntegration() {
     useEffect(() => {
         if (meetInfo) {
             const allChannels = [
-                ...Object.entries(meetInfo.channel_ids_open).map(([name, id]) => ({ name, id })),
-                ...Object.entries(meetInfo.channel_ids_private).map(([name, id]) => ({ name, id })),
-                ...Object.entries(meetInfo.channel_ids_direct).map(([name, id]) => ({ name, id })),
+                ...Object.entries(meetInfo.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
+                ...Object.entries(meetInfo.channel_ids_private).map(([name, id]) => ({ name, id, type: 'P' })),
+                ...Object.entries(meetInfo.channel_ids_direct).map(([name, id]) => ({ name, id, type: 'D' })),
             ];
             setChannels(allChannels);
         }
     }, [meetInfo]);
 
-    const handleTabChange = (index) => {
-        const channel = channels[index];
-        setSelectedChannel(channel.id);
-        dispatch(readMeetMessages({ channelId: channel.id }));
+
+    useEffect(() => {
+        if (selectedChannel) {
+            setPage(0); 
+            dispatch(readMeetMessages({ channelId: selectedChannel, page: 0 }));
+        }
+    }, [dispatch, selectedChannel]);
+
+    useEffect(() => {
+        if (messagesContainerRef.current) {
+            if (page === 0) {
+                // Premier chargement → on scrolle tout en bas
+                messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            } else if (scrollPosition !== null) {
+                // Scroll vers l'ancienne position après ajout de messages
+                messagesContainerRef.current.scrollTop = 
+                    messagesContainerRef.current.scrollHeight - scrollPosition;
+            }
+        }
+    }, [messages, page]);
+
+    const handleScroll = () => {
+        const container = messagesContainerRef.current;
+        if (!container) return;
+    
+        console.log('Scroll position:', container.scrollTop, 'Page:', page);
+        
+        if (container.scrollTop === 0 && !loading) {
+            console.log('Reached top, loading more messages (page', page + 1, ')');
+    
+            setScrollPosition(container.scrollHeight); // Sauvegarder la position actuelle
+            
+            setPage((prevPage) => {
+                const nextPage = prevPage + 1;
+                dispatch(readMeetMessages({ channelId: selectedChannel, page: nextPage }));
+                return nextPage;
+            });
+        }
     };
 
     const sendMessage = async () => {
         if (selectedChannel && message) {
             await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
             setMessage('');
-            alert('Message sent!');
         }
     };
 
-    return (
-        <Box className={styles.mattermostContainer}>
-            <h2>Mattermost</h2>
-            <Tabs onChange={handleTabChange}>
-                <TabList>
-                    {channels.map((channel) => (
-                        <Tab key={channel.id}>{channel.name}</Tab>
-                    ))}
-                </TabList>
+    const getUserName = (userId) => {
+        return meetInfo.all_users[userId] || userId;
+    };
 
-                <TabPanels>
-                    {channels.map((channel) => (
-                        <TabPanel key={channel.id}>
+    return (
+        <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="lg">
+            <DrawerOverlay />
+            <DrawerContent>
+                <DrawerCloseButton />
+                <DrawerHeader>Mattermost Chat</DrawerHeader>
+
+                <DrawerBody>
+                    <Box className={styles.flexContainer}>
+                        <Box className={styles.treeViewWrapper}>
+                            <ChannelTreeView channels={channels} onSelectChannel={setSelectedChannel} />
+                        </Box>
+                        <Box
+                            ref={messagesContainerRef}
+                            onScroll={handleScroll}
+                            //className={styles.messagesWrapper}
+                            style={{
+                                overflowY: 'auto',
+                                maxHeight: '400px', // Remplace par une valeur adaptée
+                                border: '2px solid red', // Pour bien visualiser le conteneur
+                            }}
+                        >
                             <Box className={styles.messagesContainer}>
-                                {messages && messages.Messages && messages.Messages.map((msg, index) => (
+                                {messages[selectedChannel] && messages[selectedChannel].slice().reverse().map((msg, index) => (
                                     <Box key={index} className={styles.message}>
-                                        <strong>{msg.UserId}</strong>: {msg.Message}
+                                        <strong>{getUserName(msg.UserId)}</strong>: {msg.Message}
                                     </Box>
                                 ))}
                             </Box>
@@ -66,12 +118,18 @@ function MattermostIntegration() {
                                 placeholder="Write a message..."
                                 className={styles.messageInput}
                             />
-                            <Button onClick={sendMessage} className={styles.sendButton}>Send</Button>
-                        </TabPanel>
-                    ))}
-                </TabPanels>
-            </Tabs>
-        </Box>
+                        </Box>
+                    </Box>
+                </DrawerBody>
+
+                <DrawerFooter>
+                    <Button variant="outline" mr={3} onClick={onClose}>
+                        Close
+                    </Button>
+                    <Button onClick={sendMessage} className={styles.sendButton}>Send</Button>
+                </DrawerFooter>
+            </DrawerContent>
+        </Drawer>
     );
 }
 

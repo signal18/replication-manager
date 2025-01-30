@@ -37,6 +37,12 @@
   box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
 }
 
+.messagesWrapper {
+  overflow-y: 'auto';
+  max-height: '400px'; // Remplace par une valeur adaptée
+  border: '2px solid red'; // Pour bien visualiser le conteneur
+}
+
 .message {
   padding: 5px;
   border-bottom: 1px solid #eee;

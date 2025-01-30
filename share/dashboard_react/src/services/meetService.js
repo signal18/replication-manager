@@ -27,10 +27,11 @@ async function postMeetMessageOnChannel(channelId, message) {
     }
 }
 
-async function getMeetMessageFromChannel(channelId) {
+async function getMeetMessageFromChannel(channelId, page = 0) {
     try {
-        const response = await meetApi.get(`read/${channelId}`);
-        return response.data;
+        const response = await meetApi.get(`read/${channelId}/${page}`);
+        console.log('Messages from meetService:', response.data.Messages, page);
+        return response.data.Messages;
     } catch (error) {
         console.error('Error fetching messages:', error);
         throw error;

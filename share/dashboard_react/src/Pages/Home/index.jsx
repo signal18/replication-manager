@@ -75,7 +75,7 @@ function Home() {
   useEffect(() => {
     const loggedUser = localStorage.getItem('username')
     if (monitor?.config?.cloud18) {
-      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale','Settings', 'Support', 'Mattermost Chat']
+      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale','Settings']
 
     } else {
       globalTabsRef.current = ['Clusters Local']
@@ -168,8 +168,7 @@ function Home() {
       }
       if (
         globalTabsRef.current[selectedTabRef.current] === 'Clusters Peer' ||
-        globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale' ||
-        globalTabsRef.current[selectedTabRef.current] === 'Mattermost Chat'
+        globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale'
       ) {
         dispatch(getClusterPeers({}))
       }
