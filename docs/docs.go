@@ -1962,6 +1962,107 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/archives/task-queue": {
+            "get": {
+                "description": "Gets the restic task queue for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Get Archives Task Queue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/archiver.ResticTask"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/task-queue/reset": {
+            "get": {
+                "description": "Empty the restic task queue for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Reset Archives Task Queue",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue reset",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/archives/unlock": {
             "post": {
                 "description": "Unlocks the restic backup for the specified cluster.",
@@ -11504,6 +11605,70 @@ const docTemplate = `{
                 }
             }
         },
+        "archiver.ResticPurgeOption": {
+            "type": "object",
+            "properties": {
+                "keepDaily": {
+                    "type": "integer"
+                },
+                "keepHourly": {
+                    "type": "integer"
+                },
+                "keepLast": {
+                    "type": "integer"
+                },
+                "keepMonthly": {
+                    "type": "integer"
+                },
+                "keepWeekly": {
+                    "type": "integer"
+                },
+                "keepYearly": {
+                    "type": "integer"
+                }
+            }
+        },
+        "archiver.ResticTask": {
+            "type": "object",
+            "properties": {
+                "dir_path": {
+                    "type": "string"
+                },
+                "error_state": {
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
+                },
+                "opt": {
+                    "$ref": "#/definitions/archiver.ResticPurgeOption"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "task_id": {
+                    "type": "integer"
+                },
+                "task_type": {
+                    "$ref": "#/definitions/archiver.TaskType"
+                }
+            }
+        },
+        "archiver.TaskType": {
+            "type": "integer",
+            "enum": [
+                0,
+                1,
+                2,
+                3
+            ],
+            "x-enum-varnames": [
+                "PurgeTask",
+                "BackupTask",
+                "FetchTask",
+                "UnlockTask"
+            ]
+        },
         "cluster.APIUser": {
             "type": "object",
             "properties": {
@@ -15451,6 +15616,26 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "withTarball": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_utils_state.State": {
+            "type": "object",
+            "properties": {
+                "errDesc": {
+                    "type": "string"
+                },
+                "errFrom": {
+                    "type": "string"
+                },
+                "errKey": {
+                    "type": "string"
+                },
+                "errType": {
+                    "type": "string"
+                },
+                "serverUrl": {
                     "type": "string"
                 }
             }

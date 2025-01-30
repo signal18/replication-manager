@@ -42,14 +42,13 @@ func GetTaskName(TaskType TaskType) string {
 
 // Task represents a queue task
 type ResticTask struct {
-	ID         int
-	DirPath    string
-	Tags       []string
-	Type       TaskType
-	Opt        ResticPurgeOption
-	ErrorState state.State
-	Stream     bool
-	Result     chan ResticResult // Only used if caller needs the result
+	ID         int               `json:"task_id"`
+	DirPath    string            `json:"dir_path"`
+	Tags       []string          `json:"tags"`
+	Type       TaskType          `json:"task_type"`
+	Opt        ResticPurgeOption `json:"opt"`
+	ErrorState state.State       `json:"error_state"`
+	Result     chan ResticResult `json:"-"` // Only used if caller needs the result
 }
 
 // ResticResult holds the output or error of a task
@@ -447,6 +446,12 @@ func (repo *ResticRepo) HasFetchQueue() bool {
 func (repo *ResticRepo) EmptyQueue() {
 	// Clear the task queue
 	repo.Print(logrus.InfoLevel, "Emptying task queue...")
+
+	for _, task := range repo.TaskQueue {
+		if task.Result != nil {
+			task.Result <- ResticResult{TaskID: task.ID, Error: fmt.Errorf("task cancelled due to queue emptying")}
+		}
+	}
 
 	repo.Mutex.Lock()
 	repo.TaskQueue = make([]*ResticTask, 0)

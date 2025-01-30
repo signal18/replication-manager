@@ -97,6 +97,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesUnlock)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetArchivesTaskQueue)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue/reset", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetArchivesTaskQueue)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -5831,4 +5841,104 @@ func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Archives unlock queued"))
+}
+
+// handlerMuxGetArchivesTaskQueue handles the HTTP request to get the restic task queue for a given cluster.
+// @Summary Get Archives Task Queue
+// @Description Gets the restic task queue for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} archiver.ResticTask "Task queue fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/task-queue [get]
+func (repman *ReplicationManager) handlerMuxGetArchivesTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		taskqueue, err := mycluster.ResticGetQueue()
+		if err != nil {
+			http.Error(w, "Error getting task queue :"+err.Error(), 500)
+			return
+		}
+
+		// Marshal provided interface into JSON structure
+		taskqueueJSON, err := json.Marshal(taskqueue)
+		if err != nil {
+			http.Error(w, "Error marshalling task queue :"+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(taskqueueJSON)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxResetArchivesTaskQueue handles the HTTP request to reset the restic task queue for a given cluster.
+// @Summary Reset Archives Task Queue
+// @Description	Empty the restic task queue for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Task queue reset"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/task-queue/reset [get]
+func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		err := mycluster.ResticResetQueue()
+		if err != nil {
+			http.Error(w, "Error resetting task queue :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue reset"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }

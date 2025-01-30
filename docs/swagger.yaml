@@ -8,6 +8,50 @@ definitions:
       total_size:
         type: integer
     type: object
+  archiver.ResticPurgeOption:
+    properties:
+      keepDaily:
+        type: integer
+      keepHourly:
+        type: integer
+      keepLast:
+        type: integer
+      keepMonthly:
+        type: integer
+      keepWeekly:
+        type: integer
+      keepYearly:
+        type: integer
+    type: object
+  archiver.ResticTask:
+    properties:
+      dir_path:
+        type: string
+      error_state:
+        $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+      opt:
+        $ref: '#/definitions/archiver.ResticPurgeOption'
+      tags:
+        items:
+          type: string
+        type: array
+      task_id:
+        type: integer
+      task_type:
+        $ref: '#/definitions/archiver.TaskType'
+    type: object
+  archiver.TaskType:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - PurgeTask
+    - BackupTask
+    - FetchTask
+    - UnlockTask
   cluster.APIUser:
     properties:
       grants:
@@ -2655,6 +2699,19 @@ definitions:
       withTarball:
         type: string
     type: object
+  github_com_signal18_replication-manager_utils_state.State:
+    properties:
+      errDesc:
+        type: string
+      errFrom:
+        type: string
+      errKey:
+        type: string
+      errType:
+        type: string
+      serverUrl:
+        type: string
+    type: object
   gtid.Gtid:
     properties:
       domainId:
@@ -4106,6 +4163,74 @@ paths:
           schema:
             type: string
       summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue:
+    get:
+      description: Gets the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue fetched
+          schema:
+            items:
+              $ref: '#/definitions/archiver.ResticTask'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Archives Task Queue
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue/reset:
+    get:
+      description: Empty the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reset Archives Task Queue
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/archives/unlock:

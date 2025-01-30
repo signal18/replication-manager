@@ -199,6 +199,8 @@ func (cluster *Cluster) ResticResetQueue() error {
 		return err
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Resetting restic queue. This will not affect the current running task.")
+
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 	cluster.ResticRepo.EmptyQueue()
 
