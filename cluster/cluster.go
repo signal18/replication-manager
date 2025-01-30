@@ -857,7 +857,9 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
-	//	cluster.scheduler.Stop()
+	if cluster.ResticRepo != nil {
+		cluster.ResticRepo.ShutdownWorker()
+	}
 	cluster.Save()
 	cluster.exit = true
 }
