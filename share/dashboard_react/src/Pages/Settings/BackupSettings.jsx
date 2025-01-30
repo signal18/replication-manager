@@ -15,6 +15,8 @@ import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
+import { DataTable } from '../../components/DataTable'
+import ResticPurgeStrategy from './ResticPurgeStrategy'
 
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -670,7 +672,14 @@ The script will be executed with the following parameters:
                     />
                   )
                 }
-              ] : [])
+              ] : []),
+              {
+                key: 'Restic Purge Strategy',
+                value: (
+                  <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
+                )
+              },
+
           ]
           : [])
       ]

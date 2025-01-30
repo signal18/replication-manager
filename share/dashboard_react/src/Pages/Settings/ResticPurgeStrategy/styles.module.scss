@@ -1,0 +1,47 @@
+.container {
+  font-size: rem(15);
+  gap: 0;
+  padding: 0;
+  margin-top: rem(4);
+  width: 100%;
+  .row {
+    height: 100%;
+  }
+  .label,
+  .value {
+    padding: rem(4);
+    height: 100%;
+    display: flex;
+    align-items: center;
+    border-width: thin;
+    border-color: var(--tertiary-color);
+    text-align: center;
+  }
+  .label {
+    text-align: center;
+    background-color: var(--tertiary-color);
+  }
+  .subLabel {
+    background-color: var(--quaternary-color);
+  }
+  .value {
+    text-align: center;
+    border-radius: rem(6);
+    min-height: rem(24);
+    background-color: transparent;
+    padding-left: rem(16);
+  }
+  .dividerRow {
+    display: none;
+    @include breakpoint('md') {
+      display: block;
+    }
+  }
+  .divider {
+    height: rem(1);
+    background-color: var(--darkgray-color);
+  }
+  .marginCenter {
+    margin: 0 auto;
+  }
+}
