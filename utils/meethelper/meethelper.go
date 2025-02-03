@@ -58,6 +58,7 @@ type MeetMessage struct {
 	UserId    string
 	ChannelID string
 	Message   string
+	ID        string
 }
 
 // create a client for mattermost and set user info
@@ -220,6 +221,7 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 			UserId:    post.UserId,
 			ChannelID: post.ChannelId,
 			Message:   post.Message,
+			ID:        post.Id,
 		})
 	}
 
@@ -255,21 +257,21 @@ func containsValue(m map[string]string, value string) bool {
 	return false
 }
 
-func (c *MeetChatClient) PostMessage(channelID, message string) error {
+func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) {
 
 	post := &model.Post{
 		ChannelId: channelID,
 		Message:   message,
 	}
 
-	_, resp, err := c.Client.CreatePost(post)
+	post_mod, resp, err := c.Client.CreatePost(post)
 	if err != nil {
 		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
-		return err
+		return "", err
 	}
 
-	fmt.Println("Message posted successfully on Mattermost")
-	return nil
+	fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
+	return post_mod.Id, nil
 }
 
 func (c *MeetChatClient) GetAllUsers() map[string]string {

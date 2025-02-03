@@ -2,7 +2,7 @@ import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
-import { getMeetInfo, readMeetMessages, postMeetMessage } from '../../redux/meetSlice';
+import { getMeetInfo, readMeetMessages, postMeetMessage, fetchNewMessages, loadMoreMessages } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 
 
@@ -35,38 +35,66 @@ function MattermostIntegration({ isOpen, onClose }) {
 
     useEffect(() => {
         if (selectedChannel) {
-            setPage(0); 
-            dispatch(readMeetMessages({ channelId: selectedChannel, page: 0 }));
+            setPage(0);
+            dispatch(fetchNewMessages({ channelId: selectedChannel, page: 0 }));
         }
     }, [dispatch, selectedChannel]);
 
     useEffect(() => {
+        if (!messagesContainerRef.current) return;
+    
+        if (scrollPosition !== null) {
+            // Rétablir la position du scroll après chargement des messages
+            messagesContainerRef.current.scrollTop =
+                messagesContainerRef.current.scrollHeight - scrollPosition;
+        } else if (page === 0) {
+            // Si c'est le premier chargement, scroll en bas
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+    }, [messages]);
+
+    /*useEffect(() => {
         if (messagesContainerRef.current) {
             if (page === 0) {
                 // Premier chargement → on scrolle tout en bas
                 messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
             } else if (scrollPosition !== null) {
                 // Scroll vers l'ancienne position après ajout de messages
-                messagesContainerRef.current.scrollTop = 
+                messagesContainerRef.current.scrollTop =
                     messagesContainerRef.current.scrollHeight - scrollPosition;
             }
         }
-    }, [messages, page]);
+    }, [messages, page]);*/
+
+    //to update messages every 5 seconds
+    /*useEffect(() => {
+        const interval = setInterval(() => {
+            if (selectedChannel) {
+                //
+                setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
+                //setPage(0);
+                //
+                dispatch(fetchNewMessages({ channelId: selectedChannel }));
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [dispatch, selectedChannel]);*/
 
     const handleScroll = () => {
         const container = messagesContainerRef.current;
         if (!container) return;
-    
+
         console.log('Scroll position:', container.scrollTop, 'Page:', page);
-        
+
         if (container.scrollTop === 0 && !loading) {
             console.log('Reached top, loading more messages (page', page + 1, ')');
-    
+
             setScrollPosition(container.scrollHeight); // Sauvegarder la position actuelle
-            
+
             setPage((prevPage) => {
                 const nextPage = prevPage + 1;
-                dispatch(readMeetMessages({ channelId: selectedChannel, page: nextPage }));
+                dispatch(loadMoreMessages({ channelId: selectedChannel, page: nextPage }));
                 return nextPage;
             });
         }
@@ -76,6 +104,10 @@ function MattermostIntegration({ isOpen, onClose }) {
         if (selectedChannel && message) {
             await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
             setMessage('');
+            // Scroller vers le bas après l'envoi du message
+            if (messagesContainerRef.current) {
+                messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
         }
     };
 

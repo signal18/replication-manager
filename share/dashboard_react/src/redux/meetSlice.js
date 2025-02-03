@@ -26,13 +26,36 @@ export const readMeetMessages = createAsyncThunk('meet/readMeetMessages', async 
 
 export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({ channelId, message }, thunkAPI) => {
   try {
-    const { data, status } = await meetService.postMeetMessageOnChannel(channelId, message);
-    return { data, status };
+    const response = await meetService.postMeetMessageOnChannel(channelId, message);
+    return {
+      channelId: response.channel,
+      message: {
+        UserId: response.user,
+        ChannelID: response.channel,
+        Message: response.message,
+      },
+    };
   } catch (error) {
     handleError(error, thunkAPI);
     throw error; // Ensure the error is thrown to trigger the rejected state
   }
 });
+
+export const fetchNewMessages = createAsyncThunk(
+  'meet/fetchNewMessages',
+  async ({ channelId }, thunkAPI) => {
+    const messages = await meetService.getMeetMessageFromChannel(channelId, 0);
+    return { channelId, messages };
+  }
+);
+
+export const loadMoreMessages = createAsyncThunk(
+  'meet/loadMoreMessages',
+  async ({ channelId, page }, thunkAPI) => {
+    const messages = await meetService.getMeetMessageFromChannel(channelId,page);
+    return { channelId, messages };
+  }
+);
 
 const initialState = {
   loading: false,
@@ -66,17 +89,69 @@ const meetSlice = createSlice({
           state.messages[channelId] = [];
         }
 
+        const existingMessages = state.messages[channelId];
+        const newMessages = messages.filter(msg =>
+          !existingMessages.some(existingMsg => existingMsg.MessageId === msg.MessageId)
+        );
+
         if (page === 0) {
           // Premier chargement, remplacer les messages existants
-          state.messages[channelId] = messages;
+          //state.messages[channelId] = messages;
+
+          // Mettre à jour l'état des messages avec les nouveaux messages
+          state.messages[channelId] = [...newMessages, ...existingMessages];
+          //state.unreadMessagesByChannel[channelId] = unreadCount;
         } else {
           // Ajouter les nouveaux messages en haut lors du scroll
-          state.messages[channelId] = [ ...state.messages[channelId], ...messages];
+          //state.messages[channelId] = [ ...existingMessages, ...newMessages];
+          state.messages[channelId] = [ ...state.messages[channelId], ...newMessages];
         }
       })
       .addCase(readMeetMessages.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message;
+      })
+      .addCase(postMeetMessage.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(postMeetMessage.fulfilled, (state, action) => {
+        state.loading = false;
+        const { channelId, message } = action.payload;
+        if (!state.messages[channelId]) {
+          state.messages[channelId] = [];
+        }
+        state.messages[channelId] = [message, ...state.messages[channelId]];
+      })
+      .addCase(postMeetMessage.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message;
+      })
+      .addCase(fetchNewMessages.fulfilled, (state, action) => {
+        state.loading = false;
+        const { channelId, messages } = action.payload;
+        if (!state.messages[channelId]) {
+          state.messages[channelId] = [];
+        }
+    
+        // Comparer les messages existants avec les nouveaux messages
+        const existingMessages = state.messages[channelId];
+        const newMessages = messages.filter(msg =>
+          !existingMessages.some(existingMsg => existingMsg.MessageId === msg.MessageId)
+        );
+    
+        // Mettre à jour l'état des messages avec les nouveaux messages
+        state.messages[channelId] = [...newMessages, ...state.messages[channelId]];
+        //state.unreadMessagesByChannel[channelId] = unreadCount;
+      })
+      .addCase(loadMoreMessages.fulfilled, (state, action) => {
+        state.loading = false;
+        const { channelId, messages } = action.payload;
+        if (!state.messages[channelId]) {
+          state.messages[channelId] = [];
+        }
+    
+        // Ajouter les messages chargés à l'historique
+        state.messages[channelId] = [ ...state.messages[channelId], ...messages];
       });
   },
 });

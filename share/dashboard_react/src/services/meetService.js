@@ -20,7 +20,14 @@ async function getMeetInfo() {
 async function postMeetMessageOnChannel(channelId, message) {
     try {
         const response = await meetApi.post(`post/${channelId}`, { message });
-        return response;
+        // Vérifier si la réponse est valide
+        if (!response.data || !response.data.message || !response.data.user || !response.data.channel) {
+            throw new Error('Invalid response from API');
+        }
+
+        console.log('Response from API:', response.data);
+        return response.data;
+        //return response;
     } catch (error) {
         console.error('Error posting message:', error);
         throw error;

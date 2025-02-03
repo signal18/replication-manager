@@ -1763,11 +1763,18 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	err = meetClient.PostMessage(channelID, request.Message)
+	message_id, err := meetClient.PostMessage(channelID, request.Message)
 	if err != nil {
-		http.Error(w, "Error posting message", http.StatusInternalServerError)
+		http.Error(w, "Error posting message API", http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	response := map[string]string{
+		"status":     "success",
+		"message":    request.Message,
+		"channel":    channelID,
+		"user":       meetClient.UserID,
+		"message_id": message_id,
+	}
+	json.NewEncoder(w).Encode(response)
 }
