@@ -13,17 +13,6 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
   }
 });
 
-export const readMeetMessages = createAsyncThunk('meet/readMeetMessages', async ({ channelId, page = 0 }, thunkAPI) => {
-  try {
-    const messages = await meetService.getMeetMessageFromChannel(channelId,page);
-    return { channelId, messages };
-  } catch (error) {
-    showErrorBanner('Failed to retrieve messages!', error, thunkAPI);
-    handleError(error, thunkAPI);
-    throw error; // Ensure the error is thrown to trigger the rejected state
-  }
-});
-
 export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({ channelId, message }, thunkAPI) => {
   try {
     const response = await meetService.postMeetMessageOnChannel(channelId, message);
@@ -50,7 +39,7 @@ export const fetchMessages = createAsyncThunk(
   }
 );
 
-//to monitor the appearance of new messages
+//to monitor the appearance of new messages in the selected channel
 export const fetchNewMessages = createAsyncThunk(
   'meet/fetchNewMessages',
   async ({ channelId }, thunkAPI) => {
@@ -67,13 +56,6 @@ export const loadHistoryMessages = createAsyncThunk(
     return { channelId, messages };
   }
 );
-
-const initialState = {
-  loading: false,
-  error: null,
-  meetInfo: null,
-  messages: {},
-};
 
 const meetSlice = createSlice({
   name: 'meet',
@@ -98,7 +80,6 @@ const meetSlice = createSlice({
         if (!state.messages[channelId]) {
           state.messages[channelId] = [];
         }
-        state.messages[channelId] = [message, ...state.messages[channelId]];
       })
       .addCase(postMeetMessage.rejected, (state, action) => {
         state.loading = false;
@@ -122,7 +103,7 @@ const meetSlice = createSlice({
         // Comparer les messages existants avec les nouveaux messages
         const existingMessages = state.messages[channelId];
         const newMessages = messages.filter(msg =>
-          !existingMessages.some(existingMsg => existingMsg.MessageId === msg.MessageId)
+          !existingMessages.some(existingMsg => existingMsg.ID === msg.ID)
         );
     
         // Mettre à jour l'état des messages avec les nouveaux messages

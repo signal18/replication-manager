@@ -48,40 +48,34 @@ function MattermostIntegration({ isOpen, onClose }) {
     
         if (scrollPosition !== null) {
             // Rétablir la position du scroll après chargement des messages
-            messagesContainerRef.current.scrollTop =
-                messagesContainerRef.current.scrollHeight - scrollPosition;
+            messagesContainerRef.current?.scrollTop =
+                messagesContainerRef.current?.scrollHeight - scrollPosition;
         } else if (page === 0) {
             // Si c'est le premier chargement, scroll en bas
-            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            messagesContainerRef.current?.scrollTop = messagesContainerRef.current?.scrollHeight;
         }
     }, [messages]);
 
     //to update messages every 5 seconds
-    /*useEffect(() => {
+    useEffect(() => {
         const interval = setInterval(() => {
             if (selectedChannel) {
-                //
                 setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
-                //setPage(0);
-                //
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
             }
         }, 5000);
 
         return () => clearInterval(interval);
-    }, [dispatch, selectedChannel]);*/
+    }, [dispatch, selectedChannel]);
 
     //to handle the scroll event when user reaches the top 
     const handleScroll = () => {
         const container = messagesContainerRef.current;
         if (!container) return;
 
-        console.log('Scroll position:', container.scrollTop, 'Page:', page);
-
         if (container.scrollTop === 0 && !loading) {
-            console.log('Reached top, loading more messages (page', page + 1, ')');
 
-            setScrollPosition(container.scrollHeight); // Sauvegarder la position actuelle
+            setScrollPosition(container.scrollHeight); // to save the scroll position
 
             setPage((prevPage) => {
                 const nextPage = prevPage + 1;
