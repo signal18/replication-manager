@@ -517,9 +517,16 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 	// Check if the repo is initialized
 	repopath := repo.GetRepoPath()
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
-		err = repo.ResticInitRepo()
-		if err != nil {
-			return fmt.Errorf("failed to init repo: %w", err)
+
+		// Check the repo data
+		_, err := os.Stat(filepath.Join(repopath, "data"))
+		if os.IsNotExist(err) {
+			err = repo.ResticInitRepo()
+			if err != nil {
+				return fmt.Errorf("failed to init repo: %w", err)
+			}
+		} else {
+			return fmt.Errorf("failed to check repo path: %w", err)
 		}
 	} else if err != nil {
 		return fmt.Errorf("failed to check repo path: %w", err)
