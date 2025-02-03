@@ -1507,11 +1507,12 @@ func (repman *ReplicationManager) RecoveryMiddleware(next http.Handler) http.Han
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logrus.WithFields(logrus.Fields{
+				// Capture error and stack trace
+				repman.Logrus.WithFields(logrus.Fields{
 					"error":      err,
 					"stacktrace": string(debug.Stack()),
 					"url":        r.URL.String(),
-				}).Error("Recovered from panic")
+				}).Print("Recovered from panic")
 
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}

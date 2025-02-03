@@ -40,6 +40,8 @@ import (
 	"os"
 	"strconv"
 
+	basiclog "log"
+
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -241,12 +243,18 @@ func (repman *ReplicationManager) httpserver() {
 
 	repman.IsHttpListenerReady = true
 
-	log.Fatal(http.ListenAndServe(repman.Conf.BindAddr+":"+repman.Conf.HttpPort, handlers.CORS(
-		handlers.AllowCredentials(),
-		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
-		handlers.AllowedOriginValidator(repman.handleOriginValidator),
-	)(router)))
+	server := &http.Server{
+		Addr: repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
+		Handler: handlers.CORS(
+			handlers.AllowCredentials(),
+			handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+			handlers.AllowedOriginValidator(repman.handleOriginValidator),
+		)(router),
+		ErrorLog: basiclog.New(repman.ApiLogAdapter, "", 0),
+	}
+
+	log.Fatal(server.ListenAndServe())
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {
