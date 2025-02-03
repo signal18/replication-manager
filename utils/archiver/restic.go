@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -511,6 +512,17 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 	// Check if the repo is able to fetch and initialized
 	if !repo.GetCanFetch() || !repo.CanInitRepo {
 		return nil
+	}
+
+	// Check if the repo is initialized
+	repopath := repo.GetRepoPath()
+	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
+		err = repo.ResticInitRepo()
+		if err != nil {
+			return fmt.Errorf("failed to init repo: %w", err)
+		}
+	} else if err != nil {
+		return fmt.Errorf("failed to check repo path: %w", err)
 	}
 
 	// Check latest lock in repository
