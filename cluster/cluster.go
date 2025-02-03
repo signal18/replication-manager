@@ -652,6 +652,7 @@ func (cluster *Cluster) Run() {
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 							// Check if restic repo is available
 							cluster.ResticFetchRepo()
+							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
 							cluster.IsValidBackup = cluster.HasValidBackup()
