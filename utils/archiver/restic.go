@@ -465,7 +465,17 @@ func (repo *ResticRepo) RunCommand(args []string, loglevel logrus.Level, capture
 	return nil, nil, nil
 }
 
-func (repo *ResticRepo) ResticInitRepo() error {
+func (repo *ResticRepo) ResticInitRepo(force bool) error {
+	repopath := repo.GetRepoPath()
+	if force {
+		err := os.RemoveAll(repopath)
+		if err != nil {
+			return fmt.Errorf("failed to remove repo: %w", err)
+		}
+
+		os.MkdirAll(repopath, 0755)
+	}
+
 	// Prepare the arguments for the "forget" command
 	args := []string{"init"}
 
@@ -510,30 +520,35 @@ func (repo *ResticRepo) ResticFetchRepoStat() error {
 // ResticFetchRepo performs the fetch
 func (repo *ResticRepo) ResticFetchRepo() error {
 	// Check if the repo is able to fetch and initialized
-	if !repo.GetCanFetch() || !repo.CanInitRepo {
+	if !repo.GetCanFetch() {
 		return nil
 	}
 
 	// Check if the repo is initialized
 	repopath := repo.GetRepoPath()
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
-
 		// Check the repo data
 		_, err := os.Stat(filepath.Join(repopath, "data"))
 		if os.IsNotExist(err) {
-			err = repo.ResticInitRepo()
+			err = repo.ResticInitRepo(false)
 			if err != nil {
+				repo.CanInitRepo = false
 				return fmt.Errorf("failed to init repo: %w", err)
 			}
 		} else if err != nil {
+			repo.CanInitRepo = false
 			return fmt.Errorf("failed to check repo path: %w", err)
 		} else {
+			repo.CanInitRepo = false
 			// Repo data exists, but config does not
 			return fmt.Errorf("repo config is missing but data exists")
 		}
 	} else if err != nil {
+		repo.CanInitRepo = false
 		return fmt.Errorf("failed to check repo path: %w", err)
 	}
+
+	repo.CanInitRepo = true
 
 	// Check latest lock in repository
 	err := repo.CheckLocks()
@@ -551,7 +566,7 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
 		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.ResticInitRepo()
+			_ = repo.ResticInitRepo(false)
 		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
@@ -732,7 +747,7 @@ func (repo *ResticRepo) CheckLocks() error {
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
 	if err != nil {
 		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.ResticInitRepo()
+			_ = repo.ResticInitRepo(false)
 		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
@@ -769,7 +784,7 @@ func (repo *ResticRepo) ResticUnlockRepo() error {
 	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
 	if err != nil {
 		if strings.Contains(string(stderr), "no such file or directory") {
-			_ = repo.ResticInitRepo()
+			_ = repo.ResticInitRepo(false)
 		}
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to check repo locks: %v, stderr: %s", err, stderr)
