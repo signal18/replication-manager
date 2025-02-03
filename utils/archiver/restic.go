@@ -519,8 +519,10 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
 		err = repo.ResticInitRepo()
 		if err != nil {
-			return fmt.Errorf("failed to check repo locks: %w", err)
+			return fmt.Errorf("failed to init repo: %w", err)
 		}
+	} else if err != nil {
+		return fmt.Errorf("failed to check repo path: %w", err)
 	}
 
 	// Check latest lock in repository
