@@ -46,35 +46,6 @@ func (cluster *Cluster) CheckResticInstallation() {
 	}
 }
 
-func (cluster *Cluster) CheckResticRepo() bool {
-	if !cluster.Conf.BackupRestic {
-		return false
-	}
-
-	hasAlert := false
-
-	if cluster.ResticRepo == nil {
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], "restic repo is nil"), ErrFrom: "BACKUP"})
-		hasAlert = true
-	}
-
-	if !cluster.ResticRepo.CanInitRepo {
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], "restic repo cannot be initialized"), ErrFrom: "BACKUP"})
-		hasAlert = true
-	}
-
-	if cluster.ResticRepo.CanFetch && cluster.ResticRepo.HasLocks {
-		cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticRepo.GetRepoPath()), ErrFrom: "BACKUP"})
-		hasAlert = true
-	}
-
-	if hasAlert {
-		return false
-	}
-
-	return true
-}
-
 func (cluster *Cluster) StartResticRepo() error {
 	if !cluster.Conf.BackupRestic {
 		return nil
@@ -90,13 +61,13 @@ func (cluster *Cluster) StartResticRepo() error {
 	return nil
 }
 
-func (cluster *Cluster) ResticInitRepo() error {
+func (cluster *Cluster) ResticInitRepo(force bool) error {
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
 
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
-	err := cluster.ResticRepo.ResticInitRepo()
+	err := cluster.ResticRepo.ResticInitRepo(force)
 	if err != nil {
 		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
 	}
@@ -158,7 +129,13 @@ func (cluster *Cluster) ResticFetchRepo() error {
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 	_, err := cluster.ResticRepo.AddFetchTask(true)
 	if err != nil {
-		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
+		if !cluster.ResticRepo.CanInitRepo {
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], "restic repo cannot be initialized"), ErrFrom: "BACKUP"})
+		} else if cluster.ResticRepo.CanFetch && cluster.ResticRepo.HasLocks {
+			cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticRepo.GetRepoPath()), ErrFrom: "BACKUP"})
+		} else {
+			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
+		}
 	}
 
 	return err

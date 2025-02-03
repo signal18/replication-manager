@@ -4123,6 +4123,78 @@ paths:
       summary: Fetch Archives
       tags:
       - ClusterBackups
+  /api/clusters/{clusterName}/archives/init:
+    post:
+      description: Inits the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/init/{force}:
+    post:
+      description: Inits the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Force init
+        enum:
+        - force
+        in: path
+        name: force
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Backup
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/archives/purge:
     post:
       description: Purges the restic backup for the specified cluster.

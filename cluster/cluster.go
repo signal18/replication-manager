@@ -651,10 +651,7 @@ func (cluster *Cluster) Run() {
 						}
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 							// Check if restic repo is available
-							if cluster.CheckResticRepo() {
-								go cluster.ResticFetchRepo()
-							}
-							go cluster.initOrchetratorNodes()
+							cluster.ResticFetchRepo()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
 							cluster.IsValidBackup = cluster.HasValidBackup()
@@ -662,8 +659,7 @@ func (cluster *Cluster) Run() {
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
 						} else {
-							cluster.CheckResticRepo()
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
