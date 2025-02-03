@@ -7,7 +7,6 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
     const { data, status } = await meetService.getMeetInfo();
     return { data, status };
   } catch (error) {
-    showErrorBanner('Failed to retrieve meet info!', error, thunkAPI);
     handleError(error, thunkAPI);
     throw error; // Ensure the error is thrown to trigger the rejected state
   }
@@ -22,6 +21,7 @@ export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({
         UserId: response.user,
         ChannelID: response.channel,
         Message: response.message,
+        ID: response.id,
       },
     };
   } catch (error) {
@@ -57,6 +57,15 @@ export const loadHistoryMessages = createAsyncThunk(
   }
 );
 
+//to set messages view on the selected channel
+export const viewMessagesOnChannel = createAsyncThunk(
+  'meet/viewMessagesOnChannel',
+  async ({ channelId }, thunkAPI) => {
+    const response = await meetService.setMessageViewOnChannel(channelId);
+    return { response };
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {
@@ -64,12 +73,14 @@ const meetSlice = createSlice({
     messages: {},  // Stocke les messages par channelId
     loading: false,
     error: null,
+    unreadMessagesByChannel: {},
   },
   reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.meetInfo = action.payload.data;
+        state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
       })
       .addCase(postMeetMessage.pending, (state) => {
         state.loading = true;
@@ -108,7 +119,7 @@ const meetSlice = createSlice({
     
         // Mettre à jour l'état des messages avec les nouveaux messages
         state.messages[channelId] = [...newMessages, ...state.messages[channelId]];
-        //state.unreadMessagesByChannel[channelId] = unreadCount;
+        
       })
       .addCase(loadHistoryMessages.fulfilled, (state, action) => {
         state.loading = false;

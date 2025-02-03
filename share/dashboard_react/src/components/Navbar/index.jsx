@@ -1,5 +1,5 @@
 import { Box, Flex, Image, Spacer, Text, HStack, Button, useDisclosure } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
 import ThemeIcon from '../Icons/ThemeIcon'
@@ -17,6 +17,7 @@ import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
+import { getMeetInfo } from '../../redux/meetSlice';
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -25,6 +26,7 @@ function Navbar({ username }) {
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const {
     common: { isMobile, isDesktop },
     globalClusters: { monitor },
@@ -56,6 +58,20 @@ function Navbar({ username }) {
   const closeAddUserModal = () => {
     setIsAddUserModalOpen(false)
   }
+
+  //ajout pour le compteur de messages non lus
+  const { unreadMessagesByChannel } = useSelector((state) => state?.meet)
+
+  //to get the meet info
+  useEffect(() => {
+    dispatch(getMeetInfo());
+  }, [dispatch]);
+
+  useEffect(() => {
+    const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
+    setUnreadMessagesCount(totalUnreadMessages)
+  }, [unreadMessagesByChannel])
+  //
 
   return (
     <>
@@ -109,7 +125,22 @@ function Navbar({ username }) {
               {username && isDesktop && (
                   <>
                       <Text>{`Welcome, ${username}`}</Text>
-                      <Button onClick={onOpen} className={styles.navButton}>Support</Button>
+                      <Button onClick={onOpen} className={styles.navButton}>
+                        Support
+                        {unreadMessagesCount > 0 && (
+                          <Box
+                            as="span"
+                            bg="red.500"
+                            color="white"
+                            borderRadius="full"
+                            px="2"
+                            py="1"
+                            ml="2"
+                          >
+                            {unreadMessagesCount}
+                          </Box>
+                        )}
+                      </Button>
                   </>
               )}
               {isMobile ? (

@@ -217,6 +217,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/post/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.PostMeetHandler)),
 	))
+	router.Handle("/meet/view/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.ViewMeetHandler)),
+	))
 	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
@@ -1730,7 +1733,7 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 
 	messages, err := meetClient.ReadMessages(channelID, page)
 	if messages == nil || err != nil {
-		http.Error(w, "Error reading messages", http.StatusInternalServerError)
+		http.Error(w, "Error reading messages API", http.StatusInternalServerError)
 		return
 	}
 
@@ -1777,4 +1780,34 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		"message_id": message_id,
 	}
 	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.CreateMeetClient()
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err := meetClient.ViewMessages(channelID)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":  "success",
+		"channel": channelID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+
 }

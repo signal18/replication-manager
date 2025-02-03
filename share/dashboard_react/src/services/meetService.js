@@ -4,6 +4,7 @@ export const meetService = {
     getMeetInfo,
     postMeetMessageOnChannel,
     getMeetMessageFromChannel,
+    setMessageViewOnChannel
 }
 
 
@@ -29,7 +30,7 @@ async function postMeetMessageOnChannel(channelId, message) {
         return response.data;
         //return response;
     } catch (error) {
-        console.error('Error posting message:', error);
+        console.error('Error posting meet message:', error);
         throw error;
     }
 }
@@ -40,7 +41,17 @@ async function getMeetMessageFromChannel(channelId, page = 0) {
         console.log('Messages from meetService:', response.data.Messages, page);
         return response.data.Messages;
     } catch (error) {
-        console.error('Error fetching messages:', error);
+        console.error('Error fetching meet messages:', error);
+        throw error;
+    }
+}
+
+async function setMessageViewOnChannel(channelId) {
+    try {
+        const response = await meetApi.get(`view/${channelId}`);
+        return response;
+    } catch (error) {
+        console.error('Error view meet messages:', error);
         throw error;
     }
 }

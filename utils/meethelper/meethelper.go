@@ -243,8 +243,6 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 		Messages:    messages,
 	}
 
-	c.ViewMessages(channelID)
-
 	return channelMessages, nil
 }
 
@@ -270,7 +268,11 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 		return "", err
 	}
 
-	fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
+	//fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
+
+	//if a user post a message, it means he read the channel
+	c.ViewMessages(channelID)
+
 	return post_mod.Id, nil
 }
 
@@ -308,10 +310,17 @@ func (c *MeetChatClient) UpdateChannels() {
 }
 
 // to set message as read when a user see it, delete the channel from the map of unread messages
-func (c *MeetChatClient) ViewMessages(channelID string) {
-	c.Client.ViewChannel(c.UserID, &model.ChannelView{
+func (c *MeetChatClient) ViewMessages(channelID string) error {
+	_, _, err := c.Client.ViewChannel(c.UserID, &model.ChannelView{
 		ChannelId:                 channelID,
 		CollapsedThreadsSupported: true,
 	})
+
+	if err != nil {
+		fmt.Println("ViewMessages Mattermost Error:", err)
+		return err
+	}
+
 	c.UnReadMessagesByChannel[channelID] = 0
+	return nil
 }

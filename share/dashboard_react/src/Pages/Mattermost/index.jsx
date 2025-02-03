@@ -2,7 +2,7 @@ import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
-import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages } from '../../redux/meetSlice';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 
 
@@ -39,6 +39,7 @@ function MattermostIntegration({ isOpen, onClose }) {
         if (selectedChannel) {
             setPage(0);
             dispatch(fetchMessages({ channelId: selectedChannel, page: 0 }));
+            dispatch(viewMessagesOnChannel({ channelId: selectedChannel }));
         }
     }, [dispatch, selectedChannel]);
 
