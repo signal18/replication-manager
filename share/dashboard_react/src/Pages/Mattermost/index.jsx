@@ -48,11 +48,11 @@ function MattermostIntegration({ isOpen, onClose }) {
     
         if (scrollPosition !== null) {
             // Rétablir la position du scroll après chargement des messages
-            messagesContainerRef.current?.scrollTop =
-                messagesContainerRef.current?.scrollHeight - scrollPosition;
+            messagesContainerRef.current.scrollTop =
+                messagesContainerRef.current.scrollHeight - scrollPosition;
         } else if (page === 0) {
             // Si c'est le premier chargement, scroll en bas
-            messagesContainerRef.current?.scrollTop = messagesContainerRef.current?.scrollHeight;
+            messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
         }
     }, [messages]);
 
@@ -62,6 +62,7 @@ function MattermostIntegration({ isOpen, onClose }) {
             if (selectedChannel) {
                 setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
+                dispatch(getMeetInfo());
             }
         }, 5000);
 
