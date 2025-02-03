@@ -134,6 +134,7 @@ type ReplicationManager struct {
 	clog                                             *clog.Logger                      `json:"-"`
 	cApiLog                                          *clog.Logger                      `json:"-"`
 	Logrus                                           *log.Logger                       `json:"-"`
+	ApiLogAdapter                                    *ApiLogAdapter                    `json:"-"`
 	IsSavingConfig                                   bool                              `json:"isSavingConfig"`
 	HasSavingConfigQueue                             bool                              `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                              `json:"isGitPull"`
@@ -526,6 +527,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	flags.StringVar(&conf.OAuthClientID, "api-oauth-client-id", "", "API OAuth Client ID")
 	flags.StringVar(&conf.OAuthClientSecret, "api-oauth-client-secret", "", "API OAuth Client Secret")
+
+	// To prevent flooding of same error message in stderr
+	flags.BoolVar(&conf.APIErrorSuppress, "api-error-suppress", false, "Suppress same error message in API response beyond limit")
+	flags.IntVar(&conf.APIErrorLimit, "api-error-limit", 5, "Limit of same error message in API response")
+	flags.IntVar(&conf.APIErrorLimitDuration, "api-error-limit-duration", 1, "Time in minutes before reseting error limit")
+	flags.BoolVar(&conf.APIErrorDisregardPort, "api-error-disregard-port", true, "Use same hash for error message with or without port")
 
 	//vault
 	flags.StringVar(&conf.VaultServerAddr, "vault-server-addr", "", "Vault server address")
@@ -1809,6 +1816,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.clog = clog.New()
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.PeerBooked = make(map[string]string)
+	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()

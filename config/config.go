@@ -599,6 +599,10 @@ type Config struct {
 	APIBind                                   string                 `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string                 `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
 	APIHttpsBind                              bool                   `scope:"server" mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
+	APIErrorSuppress                          bool                   `scope:"server" mapstructure:"api-error-suppress" toml:"api-error-suppress" json:"apiErrorSuppress"`
+	APIErrorLimit                             int                    `scope:"server" mapstructure:"api-error-limit" toml:"api-error-limit" json:"apiErrorLimit"`
+	APIErrorLimitDuration                     int                    `scope:"server" mapstructure:"api-error-limit-duration" toml:"api-error-limit-duration" json:"apiErrorLimitDuration"`
+	APIErrorDisregardPort                     bool                   `scope:"server" mapstructure:"api-error-disregard-port" toml:"api-error-disregard-port" json:"apiErrorDisregardPort"`
 	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
 	MonitorScheduler                          bool                   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
