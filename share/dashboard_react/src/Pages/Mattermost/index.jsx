@@ -2,7 +2,7 @@ import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
-import { getMeetInfo, readMeetMessages, postMeetMessage, fetchNewMessages, loadMoreMessages } from '../../redux/meetSlice';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 
 
@@ -17,10 +17,12 @@ function MattermostIntegration({ isOpen, onClose }) {
     const messagesContainerRef = useRef(null);
     const [scrollPosition, setScrollPosition] = useState(null);
 
+    //to get the meet info
     useEffect(() => {
         dispatch(getMeetInfo());
     }, [dispatch]);
 
+    //to get the channels from meet info
     useEffect(() => {
         if (meetInfo) {
             const allChannels = [
@@ -32,14 +34,15 @@ function MattermostIntegration({ isOpen, onClose }) {
         }
     }, [meetInfo]);
 
-
+    //to set messages for selected channel for the fist time
     useEffect(() => {
         if (selectedChannel) {
             setPage(0);
-            dispatch(fetchNewMessages({ channelId: selectedChannel, page: 0 }));
+            dispatch(fetchMessages({ channelId: selectedChannel, page: 0 }));
         }
     }, [dispatch, selectedChannel]);
 
+    //to handle the scroll position
     useEffect(() => {
         if (!messagesContainerRef.current) return;
     
@@ -52,19 +55,6 @@ function MattermostIntegration({ isOpen, onClose }) {
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
         }
     }, [messages]);
-
-    /*useEffect(() => {
-        if (messagesContainerRef.current) {
-            if (page === 0) {
-                // Premier chargement → on scrolle tout en bas
-                messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-            } else if (scrollPosition !== null) {
-                // Scroll vers l'ancienne position après ajout de messages
-                messagesContainerRef.current.scrollTop =
-                    messagesContainerRef.current.scrollHeight - scrollPosition;
-            }
-        }
-    }, [messages, page]);*/
 
     //to update messages every 5 seconds
     /*useEffect(() => {
@@ -81,6 +71,7 @@ function MattermostIntegration({ isOpen, onClose }) {
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);*/
 
+    //to handle the scroll event when user reaches the top 
     const handleScroll = () => {
         const container = messagesContainerRef.current;
         if (!container) return;
@@ -94,12 +85,13 @@ function MattermostIntegration({ isOpen, onClose }) {
 
             setPage((prevPage) => {
                 const nextPage = prevPage + 1;
-                dispatch(loadMoreMessages({ channelId: selectedChannel, page: nextPage }));
+                dispatch(loadHistoryMessages({ channelId: selectedChannel, page: nextPage }));
                 return nextPage;
             });
         }
     };
 
+    //to send the message to the selected channel
     const sendMessage = async () => {
         if (selectedChannel && message) {
             await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
