@@ -525,8 +525,11 @@ func (repo *ResticRepo) ResticFetchRepo() error {
 			if err != nil {
 				return fmt.Errorf("failed to init repo: %w", err)
 			}
-		} else {
+		} else if err != nil {
 			return fmt.Errorf("failed to check repo path: %w", err)
+		} else {
+			// Repo data exists, but config does not
+			return fmt.Errorf("repo config is missing but data exists")
 		}
 	} else if err != nil {
 		return fmt.Errorf("failed to check repo path: %w", err)
