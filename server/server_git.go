@@ -188,6 +188,7 @@ func (repman *ReplicationManager) PushAllConfigsToGit() {
 		return
 	}
 	repman.AddPullToGitignore()
+	repman.AddTempDirToGitignore()
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
 	err := repman.PushConfigToGit()
 	if err != nil && err == transport.ErrRepositoryNotFound {
