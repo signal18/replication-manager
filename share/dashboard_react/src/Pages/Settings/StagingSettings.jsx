@@ -7,8 +7,8 @@ import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
 import RMIconButton from '../../components/RMIconButton'
-import { TbDatabaseExport } from 'react-icons/tb'
-import { refreshStaging } from '../../redux/clusterSlice'
+import { TbDatabaseExport, TbReload } from 'react-icons/tb'
+import { refreshStaging, reloadStagingScript } from '../../redux/clusterSlice'
 
 function StagingSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -51,18 +51,32 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
-    ...(selectedCluster?.config?.topologyStaging ? [{
-      key: 'Refresh Staging',
-      value: (
-        <RMIconButton icon={TbDatabaseExport} onClick={() => {
-          openConfirmModal(`Confirm refresh-staging? This action can not be undone!`, () => () => {
-            dispatch(
-              refreshStaging({ clusterName: selectedCluster?.name })
-            )
-          })
-        }} />
-      )
-    }] : []),
+    ...(selectedCluster?.config?.topologyStaging ? [
+      {
+        key: 'Refresh Staging',
+        value: (
+          <RMIconButton icon={TbDatabaseExport} onClick={() => {
+            openConfirmModal(`Confirm refresh-staging? This action can not be undone!`, () => () => {
+              dispatch(
+                refreshStaging({ clusterName: selectedCluster?.name })
+              )
+            })
+          }} />
+        )
+      },
+      {
+        key: 'Reload Staging Script Template',
+        value: (
+          <RMIconButton icon={TbReload} onClick={() => {
+            openConfirmModal(`Confirm reload staging script template? Current template will be overwritten!`, () => () => {
+              dispatch(
+                reloadStagingScript({ clusterName: selectedCluster?.name })
+              )
+            })
+          }} />
+        )
+      },
+    ] : []),
   ]
   return (
     <Flex justify='space-between' gap='0'>

@@ -242,9 +242,13 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplicationCleanup)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/refresh-staging", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/staging-refresh", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRefreshStagingCluster)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reload-script", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadStagingScript)),
 	))
 	router.Handle("/api/clusters/{clusterName}/services/actions/provision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -5302,7 +5306,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 // @Success 200 {string} string "Staging cluster refresh initiated"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/actions/refresh-staging [post]
+// @Router /api/clusters/{clusterName}/actions/staging-refresh [post]
 func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -5314,6 +5318,43 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 			return
 		}
 		go mycluster.RefreshStaging()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+// handlerMuxReloadStagingScript handles the HTTP request to reload the staging script.
+// @Summary Reload Staging Script
+// @Description Reloads the staging script specified by the cluster name in the URL.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Staging script reloaded"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/staging-reload-script [post]
+func (repman *ReplicationManager) handlerMuxReloadStagingScript(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		err := mycluster.ReloadStagingScript()
+		if err != nil {
+			http.Error(w, "Error reloading staging script :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Staging script reloaded"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

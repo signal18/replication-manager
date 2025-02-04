@@ -1104,6 +1104,21 @@ export const refreshStaging = createAsyncThunk(
   }
 )
 
+export const reloadStagingScript = createAsyncThunk(
+  'cluster/reloadStagingScript',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.reloadStagingScript(clusterName, baseURL)
+      showSuccessBanner(`Staging script reloaded successfully!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Failed to reload staging script!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const subscribeExternalRole = createAsyncThunk(
   'cluster/subscribeExternalRole',
   async ({ clusterName, username, roles }, thunkAPI) => {

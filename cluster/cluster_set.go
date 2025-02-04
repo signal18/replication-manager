@@ -1115,14 +1115,20 @@ func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
 	if cluster.Conf.BackupLogicalType != backup {
 		cluster.Conf.BackupLogicalType = backup
-		cluster.GetBackupServer().DelBackupLogicalCookie()
+		bcksrv := cluster.GetBackupServer()
+		if bcksrv != nil {
+			bcksrv.DelBackupLogicalCookie()
+		}
 	}
 }
 
 func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	if cluster.Conf.BackupPhysicalType != backup {
 		cluster.Conf.BackupPhysicalType = backup
-		cluster.GetBackupServer().DelBackupPhysicalCookie()
+		bcksrv := cluster.GetBackupServer()
+		if bcksrv != nil {
+			bcksrv.DelBackupLogicalCookie()
+		}
 	}
 }
 
