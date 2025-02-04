@@ -1395,6 +1395,14 @@ definitions:
         type: string
       apiCredentialsSecureConfig:
         type: boolean
+      apiErrorDisregardPort:
+        type: boolean
+      apiErrorLimit:
+        type: integer
+      apiErrorLimitDuration:
+        type: integer
+      apiErrorSuppress:
+        type: boolean
       apiHttpsBind:
         type: boolean
       apiOAuthClientID:
@@ -3619,40 +3627,6 @@ paths:
       summary: Optimize a specific cluster
       tags:
       - ClusterActions
-  /api/clusters/{clusterName}/actions/refresh-staging:
-    post:
-      description: Refreshes the staging cluster specified by the cluster name in
-        the URL.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Staging cluster refresh initiated
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Refresh Staging Cluster
-      tags:
-      - ClusterActions
   /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}:
     post:
       consumes:
@@ -3864,6 +3838,74 @@ paths:
           schema:
             type: string
       summary: Rotate passwords for a specific cluster
+      tags:
+      - ClusterActions
+  /api/clusters/{clusterName}/actions/staging-refresh:
+    post:
+      description: Refreshes the staging cluster specified by the cluster name in
+        the URL.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staging cluster refresh initiated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Refresh Staging Cluster
+      tags:
+      - ClusterActions
+  /api/clusters/{clusterName}/actions/staging-reload-script:
+    post:
+      description: Reloads the staging script specified by the cluster name in the
+        URL.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staging script reloaded
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload Staging Script
       tags:
       - ClusterActions
   /api/clusters/{clusterName}/actions/start-traffic:

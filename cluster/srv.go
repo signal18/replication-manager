@@ -653,6 +653,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			}
 		} else if server.State != stateMaster && server.PrevState == stateSlaveErr { // if not master and was slave error
 			server.SetState(stateUnconn)
+		} else if server.GetCluster().GetTopology() == config.TopoMasterSlave && server.GetCluster().GetMaster() != nil && server.GetCluster().GetMaster().Id != server.Id && server.PrevState == stateSuspect && !server.HaveWsrep && !cluster.IsInFailover() {
+			server.SetState(stateUnconn)
 		}
 	} else if cluster.IsActive() && errss == nil && (server.PrevState == stateFailed) {
 		// Is Slave
