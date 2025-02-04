@@ -73,8 +73,9 @@ fi
 
 # Scenario 2 : 1 slave, then we will stop the replication on one that will be the "staging"
 if [ "$NB_SLAVES" -eq 1 ]; then
-  echo "picking last slave and founding standalone \n"
+  echo "picking last slave and standalone id \n"
   ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/standalone/index/0/attr/id | sed 's/"//g')
+  ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/slave/index/0/attr/id | sed 's/"//g')
 
   if [ -z "$ID" ]; then
     echo "No standalone found \n"
@@ -120,7 +121,6 @@ if [ "$NB_SLAVES" -eq 1 ]; then
 ###### Now set last slave as standalone
 
 # Get the last available slave
-ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/slave/index/0/attr/id | sed 's/"//g')
   echo "last slave found for staging $ID_SLAVE \n"
   echo "Stopping replication on last slave \n"
   
