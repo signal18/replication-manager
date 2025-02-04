@@ -50,8 +50,16 @@ func (cluster *Cluster) RefreshStaging() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Run refresh staging script %s", script)
 	cmd := exec.Command(script)
 	cmd.Env = cluster.GetExecEnv()
-	stdoutIn, _ := cmd.StdoutPipe()
-	stderrIn, _ := cmd.StderrPipe()
+	stdoutIn, err := cmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+		return err
+	}
+	stderrIn, err := cmd.StderrPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+		return err
+	}
 
 	if err := cmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
@@ -72,11 +80,13 @@ func (cluster *Cluster) RefreshStaging() error {
 
 	wg.Wait()
 
-	err := cmd.Wait()
+	err = cmd.Wait()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s\n", err)
 		return err
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging completed")
 
 	err = cluster.PostDetachStaging()
 	if err != nil {
