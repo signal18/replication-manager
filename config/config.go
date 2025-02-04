@@ -793,10 +793,10 @@ type PeerCluster struct {
 	ApiPublicUrl                           string   `json:"api-public-url"`
 	ApiCredentialsAclAllow                 string   `json:"api-credentials-acl-allow"`
 	ApiCredentialsAclAllowExternal         string   `json:"api-credentials-acl-allow-external"`
-	ProvDbMemory                           string   `json:"prov-db-memory"`
-	ProvDbCpuCores                         string   `json:"prov-db-cpu-cores"`
-	ProvDbDiskIops                         string   `json:"prov-db-disk-iops"`
-	ProvDbDiskSize                         string   `json:"prov-db-disk-size"`
+	ProvDbMemory                           int      `json:"prov-db-memory,string"`
+	ProvDbCpuCores                         int      `json:"prov-db-cpu-cores,string"`
+	ProvDbDiskIops                         int64    `json:"prov-db-disk-iops,string"`
+	ProvDbDiskSize                         int64    `json:"prov-db-disk-size,string"`
 	ProvServicePlan                        string   `json:"prov-service-plan"`
 	ProvOrchestrator                       string   `json:"prov-orchestrator"`
 	Cloud18Domain                          string   `json:"cloud18-domain"`
