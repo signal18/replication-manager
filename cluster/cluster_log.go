@@ -570,7 +570,7 @@ func (cluster *Cluster) CopyLogs(r io.Reader, module int, level string, name str
 	for {
 		if !s.Scan() {
 			break
-		} else {
+		} else if s.Text() != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", name, s.Text())
 		}
 	}
