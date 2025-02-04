@@ -1449,9 +1449,17 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//add config from cluster to the config map
 	for _, cluster := range repman.ClusterList {
 		//vipersave := backupvipersave
-		confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
-		cfgGroupIndex++
+		clustercnf := repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
 
+		err := clustercnf.ParseConfigMeasurement()
+		if err != nil {
+			repman.Logrus.WithField("cluster", cluster).Fatalf("Error parsing config measurement. %s", err)
+			// Exit if the config is not valid
+			os.Exit(1)
+		}
+
+		confs[cluster] = clustercnf
+		cfgGroupIndex++
 	}
 
 	cfgGroupIndex--

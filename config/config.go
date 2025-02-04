@@ -3425,3 +3425,130 @@ func (conf *Config) CheckKeepWithin() error {
 
 	return nil
 }
+
+var mUnits []string = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
+
+func (conf *Config) ParseConfigMeasurement() error {
+
+	to := reflect.TypeOf(conf).Elem()
+	vo := reflect.ValueOf(conf).Elem()
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		v := vo.Field(i).Interface()
+		tag, ok := f.Tag.Lookup("measurement")
+		if !ok {
+			continue
+		}
+
+		if v == nil {
+			continue
+		}
+
+		val, err := ParseUnitMeasurement(tag, v.(string))
+		if err != nil {
+			return fmt.Errorf("Error %s: %s", f.Name, err)
+		}
+
+		vo.Field(i).SetString(val)
+	}
+
+	return nil
+}
+
+func ParseUnitMeasurement(tag, vstr string) (string, error) {
+	var base, unit, result string
+	var isBytes, isRequired bool
+	var idx, vidx int
+	var step int = 1000
+
+	result = vstr
+
+	if tag != "" {
+		parts := strings.Split(tag, ",")
+		base = parts[0]
+		if len(parts) > 1 {
+			if parts[1] == "bytes" {
+				isBytes = true
+			}
+
+			if parts[1] == "required" {
+				isRequired = true
+			}
+		}
+
+		if len(parts) > 2 {
+			if parts[2] == "bytes" {
+				isBytes = true
+			}
+
+			if parts[2] == "required" {
+				isRequired = true
+			}
+
+		}
+
+		if base != "" {
+			// Get the index of the unit
+			if base == "B" {
+				idx = 0
+			} else if slices.Contains(mUnits, base) {
+				idx = slices.Index(mUnits, base)
+			} else {
+				return result, fmt.Errorf("Invalid unit: %s", base)
+			}
+		}
+	}
+
+	// check if string has optional suffix for unit with regex, if exists, extract unit and value. if not, set unit to default
+	r := regexp.MustCompile(`^(\d+)([a-zA-Z]+)?$`)
+	matches := r.FindStringSubmatch(vstr)
+	if len(matches) == 3 {
+		vstr = matches[1]
+		unit = matches[2]
+	} else {
+		unit = ""
+	}
+
+	// check if value is empty
+	if vstr == "" && isRequired {
+		return result, fmt.Errorf("Invalid value: %s", vstr)
+	}
+
+	if unit == "" {
+		vidx = idx
+	} else {
+		unit = strings.ToUpper(unit)
+		if unit == "B" {
+			vidx = 0
+		} else if slices.Contains(mUnits, unit) {
+			vidx = slices.Index(mUnits, unit)
+		} else {
+			return result, fmt.Errorf("Invalid unit: %s", unit)
+		}
+	}
+
+	// convert value to bytes
+	if isBytes {
+		step = 1024
+	}
+
+	// unit should bigger than base
+	if vidx < idx {
+		return result, fmt.Errorf("Unit should bigger than base '%s': %s", base, unit)
+	}
+
+	val, err := strconv.Atoi(vstr)
+	if err != nil {
+		return result, fmt.Errorf("Invalid value: %s", vstr)
+	}
+
+	if vidx > idx {
+		for i := 0; i < vidx-idx; i++ {
+			val *= step
+		}
+
+		result = strconv.Itoa(val)
+	}
+
+	return result, nil
+}
