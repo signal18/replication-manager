@@ -378,20 +378,20 @@ function cancelServerJob(clusterName, serverId, baseURL) {
 //#endregion Server management APIs
 
 //#region Proxy management APIs
-function provisionProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/provision`)
+function provisionProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/provision`)
 }
 
-function unprovisionProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/unprovision`)
+function unprovisionProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
 }
 
-function startProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/start`)
+function startProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
 }
 
-function stopProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/stop`)
+function stopProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
 }
 //#endregion Proxy management APIs
 
