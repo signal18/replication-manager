@@ -9,9 +9,11 @@ package meethelper
 import (
 	"fmt"
 	"html"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -62,12 +64,13 @@ type MeetMessage struct {
 	ChannelID string
 	Message   string
 	ID        string
+	CreateAt  int64
 }
 
 // create a client for mattermost and set user info
 func GetMeetClient() *MeetChatClient {
 	//to recreate the client if undefined or if the user session is expired
-	if meetClient == nil || meetClient.Client == nil {
+	if meetClient == nil || meetClient.Client == nil || meetClient.UserID == "" {
 		meetClient = CreateMeetClient()
 	}
 	meetClient.UserID = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
@@ -237,6 +240,7 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 			ChannelID: post.ChannelId,
 			Message:   post.Message,
 			ID:        post.Id,
+			CreateAt:  post.CreateAt,
 		})
 	}
 
@@ -405,4 +409,29 @@ func (c *MeetChatClient) GetStatusUsers() map[string]string {
 
 func ClearMeetClient() {
 	meetClient = nil
+}
+
+// to upload a file on a channel
+func (c *MeetChatClient) UploadFileToChannel(channelID string, filePath string, fileName string) error {
+	file, err := os.Open(filePath)
+	if err != nil {
+		fmt.Println("Error opening file : UploadFile Mattermost Error:", err)
+		return err
+	}
+	defer file.Close()
+
+	// Lire le contenu du fichier en bytes
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		fmt.Println("Error reading file : UploadFile Mattermost Error:", err)
+		return err
+	}
+
+	_, _, err = c.Client.UploadFile(fileBytes, channelID, fileName)
+	if err != nil {
+		fmt.Println("UploadFile Mattermost Error:", err)
+		return err
+	}
+
+	return nil
 }

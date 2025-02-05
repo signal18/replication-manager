@@ -36,7 +36,7 @@ function Navbar({ username }) {
   }, [dispatch]);
 
   useEffect(() => {
-    if (meetInfo) {
+    if (meetInfo && isAuthorized()) {
       const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
       setUnreadMessagesCount(totalUnreadMessages)
     }

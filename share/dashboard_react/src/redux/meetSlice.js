@@ -96,6 +96,7 @@ const meetSlice = createSlice({
       })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;
+        state.meetInfo = null;
         // Handle successful logout if needed
       })
       .addCase(logoutFromMeet.rejected, (state, action) => {

@@ -1,7 +1,7 @@
 import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Tabs, TabList, TabPanels, Tab, TabPanel, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
+import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
 import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 
@@ -57,7 +57,7 @@ function MattermostIntegration({ isOpen, onClose }) {
         }
     }, [messages]);
 
-    //to update messages every 5 seconds
+    //to update messages every 3 seconds
     useEffect(() => {
         const interval = setInterval(() => {
             if (selectedChannel) {
@@ -65,7 +65,7 @@ function MattermostIntegration({ isOpen, onClose }) {
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
                 dispatch(getMeetInfo());
             }
-        }, 5000);
+        }, 2000);
 
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);
@@ -99,57 +99,122 @@ function MattermostIntegration({ isOpen, onClose }) {
         }
     };
 
+    //////////////////////////////////////
+    //Messages Render Functions//////////
     const getUserName = (userId) => {
         return meetInfo.all_users[userId] || userId;
     };
 
+    const formatTime = (timestamp) => {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString(); // Format the time as a readable string
+    };
+
+    const formatDate = (timestamp) => {
+        const date = new Date(timestamp);
+        return date.toLocaleDateString(); // Format the date as a readable string
+    };
+
+    const renderMessages = () => {
+        if (!messages[selectedChannel]) return null;
+
+        let lastDate = '';
+
+        return messages[selectedChannel].slice().reverse().map((msg, index) => {
+            const messageDate = formatDate(msg.CreateAt);
+            const shouldShowDate = messageDate !== lastDate;
+
+            if (shouldShowDate) {
+                lastDate = messageDate;
+            }
+
+            return (
+                <React.Fragment key={index}>
+                    {shouldShowDate && (
+                        <Box className={styles.dateSeparator}>
+                            {messageDate}
+                        </Box>
+                    )}
+                    <Box key={index} className={styles.post}>
+                        <div className={styles.postUser}>{getUserName(msg.UserId)} {formatTime(msg.CreateAt)}</div>
+                        <div className={styles.postContent}>{msg.Message}</div>
+                    </Box>
+                </React.Fragment>
+            );
+        });
+    };
+    //////////////////////////////////
+
+    /////////////////////////////////
+    //File Upload Button Component//
+    const FileUploadButton = ({ onFileSelected }) => {
+        const fileInputRef = useRef(null);
+      
+        const handleButtonClick = () => {
+          fileInputRef.current.click();
+        };
+      
+        const handleFileChange = (event) => {
+          const file = event.target.files[0];
+          if (file) {
+            onFileSelected(file);
+          }
+        };
+      
+        return (
+          <>
+            <Input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
+            />
+            <Button onClick={handleButtonClick}>
+              Upload File
+            </Button>
+          </>
+        );
+    };
+    /////////////////////////////////
+
     return (
         <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="lg">
             <DrawerOverlay />
-            <DrawerContent>
+            <DrawerContent className={styles.mattermostDrawerContent}> 
                 <DrawerCloseButton />
-                <DrawerHeader>Support</DrawerHeader>
+                <DrawerHeader className={styles.mattermostChatHeader}>Support</DrawerHeader>
 
-                <DrawerBody>
-                    <Box className={styles.flexContainer}>
+                <DrawerBody className={styles.mattermostContainer} >
+                    <Box className={styles.accordionPanel}>
                         <Box className={styles.treeViewWrapper}>
                             <ChannelTreeView channels={channels} onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} />
                         </Box>
                         <Box
-                            ref={messagesContainerRef}
-                            onScroll={handleScroll}
-                            //className={styles.messagesWrapper}
-                            style={{
-                                overflowY: 'auto',
-                                maxHeight: '400px', // Remplace par une valeur adaptée
-                                border: '2px solid red', // Pour bien visualiser le conteneur
-                            }}
+                            className={styles.messagesWrapper}
                         >
-                            <Box className={styles.messagesContainer}>
-                                {messages[selectedChannel] && messages[selectedChannel].slice().reverse().map((msg, index) => (
-                                    <Box key={index} className={styles.message}>
-                                        <strong>{getUserName(msg.UserId)}</strong>: {msg.Message}
-                                    </Box>
-                                ))}
+                            <Box className={styles.messagesContainer} ref={messagesContainerRef} onScroll={handleScroll}>
+                                {renderMessages()}
                             </Box>
-                            <Textarea
-                                value={message}
-                                onChange={(e) => setMessage(e.target.value)}
-                                placeholder="Write a message..."
-                                className={styles.messageInput}
-                            />
+
+                            <Box className={styles.newPost}>
+                                <Textarea
+                                    value={message}
+                                    onChange={(e) => setMessage(e.target.value)}
+                                    placeholder="Write a message..."
+                                    className={styles.newPostInput}
+                                />
+                                <Button onClick={sendMessage} className={styles.newPostSendButton}>
+                                    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
+                                    </svg>
+                                </Button>
+                            </Box>
                         </Box>
                     </Box>
                 </DrawerBody>
-
-                <DrawerFooter>
-                    <Button variant="outline" mr={3} onClick={onClose}>
-                        Close
-                    </Button>
-                    <Button onClick={sendMessage} className={styles.sendButton}>Send</Button>
-                </DrawerFooter>
             </DrawerContent>
         </Drawer>
+    
     );
 }
 

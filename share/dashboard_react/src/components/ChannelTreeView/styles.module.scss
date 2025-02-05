@@ -1,26 +1,38 @@
-.treeViewContainer {
+.channelsContainer {
     max-height: 400px;
     overflow-y: auto;
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 5px;
-}
+    background-color:var(--body-bg-color);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
 
-.channelGroup {
-    margin-bottom: 10px;
-}
+    .channelsTreeView{
+        .channelsTreeViewTitle {
+            font-weight: 700;
+        }
 
-.channelType {
-    font-weight: bold;
-    margin-bottom: 5px;
-}
+        .channelsGroup {
+            .channelsType {
+                font-weight: bold;
+            }
+            .channelsOfAGroup {
+                .channel {
+                    display: flex;
+                    justify-content: row;
+                    margin-bottom: 2px;
 
-.treeViewItem {
-    padding: 5px;
-    cursor: pointer;
-    transition: background-color 0.3s;
-}
+                    .channelName {
+                        display: flex;
+                        justify-content: space-around;
+                    }
 
-.treeViewItem:hover {
-    background-color: #f0f0f0;
+                    .channelUnreadMessages {
+                        display: flex;
+                        justify-content: space-around;
+                    }
+                }
+            }
+        }
+    }
 }
