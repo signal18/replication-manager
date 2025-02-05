@@ -231,6 +231,7 @@ type Cluster struct {
 	InRollingRestart          bool                        `json:"inRollingRestart"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticRepo                *archiver.ResticRepo        `json:"-"`
+	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -590,6 +591,10 @@ func (cluster *Cluster) Run() {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			go cluster.CheckDefaultUser(false)
+
+			if cluster.HasBadConfigMeasurement() {
+				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigMap), ErrFrom: "OPENSVC"})
+			}
 
 			select {
 			case sig := <-cluster.switchoverChan:

@@ -1447,18 +1447,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	//add config from cluster to the config map
-	for _, cluster := range repman.ClusterList {
+	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
-		clustercnf := repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
-
-		err := clustercnf.ParseConfigMeasurement()
-		if err != nil {
-			repman.Logrus.WithField("cluster", cluster).Fatalf("Error parsing config measurement. %s", err)
-			// Exit if the config is not valid
-			os.Exit(1)
-		}
-
-		confs[cluster] = clustercnf
+		confs[cl] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cl, conf)
 		cfgGroupIndex++
 	}
 
@@ -2181,6 +2172,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	}
 
 	repman.currentCluster.OsUser = repman.OsUser
+	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)

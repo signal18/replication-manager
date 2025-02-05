@@ -497,7 +497,7 @@ type Config struct {
 	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
-	ProvMem                                   string                 `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
+	ProvMem                                   string                 `measurement:"M,bytes,required" mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
 	ProvMemSharedPct                          string                 `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
 	ProvMemThreadedPct                        string                 `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
 	ProvIops                                  string                 `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
@@ -526,16 +526,16 @@ type Config struct {
 	ProvNetmask                               string                 `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                 `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
-	ProvDBDockerTmpfsSize                     string                 `mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
+	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes,required" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
 	ProvDBLoadCSV                             string                 `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
 	ProvProxType                              string                 `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
 	ProvProxAgents                            string                 `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
 	ProvProxAgentsFailover                    string                 `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
-	ProvProxMem                               string                 `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
-	ProvProxCores                             string                 `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
-	ProvProxDisk                              string                 `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
+	ProvProxMem                               string                 `measurement:"M,bytes,required" mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
+	ProvProxCores                             string                 `measurement:"0,required" mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
+	ProvProxDisk                              string                 `measurement:"G,bytes,required" mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
 	ProvProxDiskFS                            string                 `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
 	ProvProxDiskPool                          string                 `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
 	ProvProxDiskDevice                        string                 `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
@@ -556,9 +556,9 @@ type Config struct {
 	ProvProxTags                              string                 `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
 	ProvSphinxAgents                          string                 `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
 	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
-	ProvSphinxMem                             string                 `mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
-	ProvSphinxDisk                            string                 `mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
-	ProvSphinxCores                           string                 `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
+	ProvSphinxMem                             string                 `measurement:"M,bytes,required" mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
+	ProvSphinxDisk                            string                 `measurement:"G,bytes,required" mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
+	ProvSphinxCores                           string                 `measurement:"0,required" mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
 	ProvSphinxMaxChildren                     string                 `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
 	ProvSphinxDiskPool                        string                 `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
 	ProvSphinxDiskFS                          string                 `mapstructure:"prov-sphinx-disk-fs" toml:"prov-sphinx-disk-fs" json:"provSphinxDiskFs"`
@@ -3428,60 +3428,96 @@ func (conf *Config) CheckKeepWithin() error {
 
 var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 
-func (conf *Config) ParseConfigMeasurement() error {
+type ErrorMeasurement struct {
+	Old     string
+	New     string
+	Message string
+}
+
+type ErrorConfigMap map[string]ErrorMeasurement
+
+func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) ErrorConfigMap {
+	errormap := make(ErrorConfigMap)
 	to := reflect.TypeOf(conf).Elem()
 	vo := reflect.ValueOf(conf).Elem()
 
 	for i := 0; i < to.NumField(); i++ {
 		f := to.Field(i)
-		if !vo.Field(i).CanSet() {
-			continue
-		}
-
-		v, ok := vo.Field(i).Interface().(string)
-		if !ok {
-			return fmt.Errorf("field %s is not a string", f.Name)
-		}
-
+		// Not measured field
 		tag, ok := f.Tag.Lookup("measurement")
 		if !ok {
 			continue
 		}
 
+		// Not string field, no need to parse
+		v, ok := vo.Field(i).Interface().(string)
+		if !ok {
+			continue
+		}
+
+		// Parse unit measurement
 		val, err := ParseUnitMeasurement(tag, v)
 		if err != nil {
-			return fmt.Errorf("error parsing %s: %s", f.Name, err)
+			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
+			if !ok {
+				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprint("error parsing %s with no default: %s", f.Name, err)}
+				continue
+			}
+
+			// fallback to default value
+			val = dvalue.(string)
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: val, Message: fmt.Sprintf("error parsing %s: %s", f.Name, err)}
+		}
+
+		if !vo.Field(i).CanSet() {
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("field %s is not settable", f.Name)}
+			continue
 		}
 
 		vo.Field(i).SetString(val)
 	}
 
-	return nil
+	return errormap
 }
 
 // GetMeasurementTag returns the measurement tag of the field by the toml key
 // The measurement tag is defined in the struct tag with the key "measurement"
 // The measurement tag is used to convert the value to the base unit
 // The format of the measurement tag is "base, [required, bytes]"
-func GetMeasurementTag(s interface{}, name, tag string) string {
+func GetMeasurementTag(s interface{}, tag string, list ...string) (map[string]string, error) {
+	m := make(map[string]string)
+
 	to := reflect.TypeOf(s)
 	if to.Kind() == reflect.Ptr {
 		to = to.Elem()
 	}
 
-	for i := 0; i < to.NumField(); i++ {
-		f := to.Field(i)
-		if tag == "name" && f.Name == name {
-			return f.Tag.Get("measurement")
-		} else {
-			fieldtag := strings.Split(f.Tag.Get(tag), ",")[0]
-			if fieldtag == name {
-				return f.Tag.Get("measurement")
+	if tag == "name" {
+		for _, fname := range list {
+			f, ok := to.FieldByName(fname)
+			if ok {
+				m[fname] = f.Tag.Get("measurement")
+			} else {
+				return m, fmt.Errorf("field %s not found", fname)
+			}
+		}
+	} else {
+		for i := 0; i < to.NumField(); i++ {
+			f := to.Field(i)
+			ftag := strings.Split(f.Tag.Get(tag), ",")[0]
+			if slices.Contains(list, ftag) {
+				m[ftag] = f.Tag.Get("measurement")
+			}
+		}
+
+		for _, fname := range list {
+			if _, ok := m[fname]; !ok {
+				return m, fmt.Errorf("field %s not found", fname)
 			}
 		}
 	}
 
-	return ""
+	return m, nil
 }
 
 func ParseUnitMeasurement(tag, vstr string) (string, error) {
