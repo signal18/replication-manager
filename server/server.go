@@ -970,6 +970,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
+		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 
 		if WithOpenSVC == "ON" {
 
@@ -1447,11 +1448,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	//add config from cluster to the config map
-	for _, cluster := range repman.ClusterList {
+	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
-		confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
+		confs[cl] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cl, conf)
 		cfgGroupIndex++
-
 	}
 
 	cfgGroupIndex--
@@ -2173,6 +2173,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	}
 
 	repman.currentCluster.OsUser = repman.OsUser
+	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)

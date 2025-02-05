@@ -497,7 +497,7 @@ type Config struct {
 	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
-	ProvMem                                   string                 `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
+	ProvMem                                   string                 `measurement:"M,bytes,required" mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
 	ProvMemSharedPct                          string                 `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
 	ProvMemThreadedPct                        string                 `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
 	ProvIops                                  string                 `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
@@ -509,10 +509,10 @@ type Config struct {
 	ProvBinaryInTarball                       bool                   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
 	ProvBinaryTarballName                     string                 `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
 	ProvDomain                                string                 `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
-	ProvDisk                                  string                 `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
-	ProvDiskSystemSize                        string                 `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
-	ProvDiskTempSize                          string                 `mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
-	ProvDiskDockerSize                        string                 `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
+	ProvDisk                                  string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
+	ProvDiskSystemSize                        string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
+	ProvDiskTempSize                          string                 `measurement:"M,bytes,required" mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
+	ProvDiskDockerSize                        string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string                 `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string                 `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
 	ProvDiskFS                                string                 `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
@@ -526,16 +526,16 @@ type Config struct {
 	ProvNetmask                               string                 `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                 `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
-	ProvDBDockerTmpfsSize                     string                 `mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
+	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes,required" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
 	ProvDBLoadCSV                             string                 `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
 	ProvProxType                              string                 `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
 	ProvProxAgents                            string                 `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
 	ProvProxAgentsFailover                    string                 `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
-	ProvProxMem                               string                 `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
+	ProvProxMem                               string                 `measurement:"M,bytes,required" mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
 	ProvProxCores                             string                 `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
-	ProvProxDisk                              string                 `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
+	ProvProxDisk                              string                 `measurement:"G,bytes,required" mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
 	ProvProxDiskFS                            string                 `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
 	ProvProxDiskPool                          string                 `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
 	ProvProxDiskDevice                        string                 `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
@@ -556,8 +556,8 @@ type Config struct {
 	ProvProxTags                              string                 `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
 	ProvSphinxAgents                          string                 `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
 	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
-	ProvSphinxMem                             string                 `mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
-	ProvSphinxDisk                            string                 `mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
+	ProvSphinxMem                             string                 `measurement:"M,bytes,required" mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
+	ProvSphinxDisk                            string                 `measurement:"G,bytes,required" mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
 	ProvSphinxCores                           string                 `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
 	ProvSphinxMaxChildren                     string                 `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
 	ProvSphinxDiskPool                        string                 `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
@@ -746,6 +746,7 @@ type Config struct {
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
 	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
 	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
@@ -3424,4 +3425,234 @@ func (conf *Config) CheckKeepWithin() error {
 	}
 
 	return nil
+}
+
+var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
+
+type ErrorMeasurement struct {
+	Old     string
+	New     string
+	Message string
+}
+
+type ErrorConfigMap map[string]ErrorMeasurement
+
+func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) ErrorConfigMap {
+	errormap := make(ErrorConfigMap)
+	to := reflect.TypeOf(conf).Elem()
+	vo := reflect.ValueOf(conf).Elem()
+
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		// Not measured field
+		tag, ok := f.Tag.Lookup("measurement")
+		if !ok {
+			continue
+		}
+
+		// Not string field, no need to parse
+		v, ok := vo.Field(i).Interface().(string)
+		if !ok {
+			continue
+		}
+
+		// Parse unit measurement
+		val, err := ParseUnitMeasurement(tag, v, conf.MeasurementAutoClampLimit)
+		if err != nil {
+			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
+			if !ok {
+				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprint("error parsing %s with no default: %s", f.Name, err)}
+				continue
+			}
+
+			// fallback to default value
+			val = dvalue.(string)
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: val, Message: fmt.Sprintf("error parsing %s: %s", f.Name, err)}
+		}
+
+		if !vo.Field(i).CanSet() {
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("field %s is not settable", f.Name)}
+			continue
+		}
+
+		vo.Field(i).SetString(val)
+	}
+
+	return errormap
+}
+
+// GetMeasurementTag returns the measurement tag of the field by the toml key
+// The measurement tag is defined in the struct tag with the key "measurement"
+// The measurement tag is used to convert the value to the base unit
+// The format of the measurement tag is "base, [required, bytes]"
+func GetMeasurementTag(s interface{}, tag string, list ...string) (map[string]string, error) {
+	m := make(map[string]string)
+
+	to := reflect.TypeOf(s)
+	if to.Kind() == reflect.Ptr {
+		to = to.Elem()
+	}
+
+	if tag == "name" {
+		for _, fname := range list {
+			f, ok := to.FieldByName(fname)
+			if ok {
+				m[fname] = f.Tag.Get("measurement")
+			} else {
+				return m, fmt.Errorf("field %s not found", fname)
+			}
+		}
+	} else {
+		for i := 0; i < to.NumField(); i++ {
+			f := to.Field(i)
+			ftag := strings.Split(f.Tag.Get(tag), ",")[0]
+			if slices.Contains(list, ftag) {
+				m[ftag] = f.Tag.Get("measurement")
+			}
+		}
+
+		for _, fname := range list {
+			if _, ok := m[fname]; !ok {
+				return m, fmt.Errorf("field %s not found", fname)
+			}
+		}
+	}
+
+	return m, nil
+}
+
+func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
+	var base, unit string
+	var isBytes, isRequired bool
+	var idx, vidx, min, max int
+	var step int = 1000
+	var result string = vstr
+
+	/* Tag format: base, [required, bytes, min:, max:] */
+	// measurement tag should have value
+	if tag == "" {
+		return result, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
+	}
+
+	// split tag into base and optional parts
+	parts := strings.Split(tag, ",")
+	if parts[0] == "" {
+		return result, fmt.Errorf("base cannot be empty, use 0 for default")
+	}
+
+	// get base unit
+	base = strings.ToUpper(strings.TrimSpace(parts[0]))
+	if slices.Contains(mUnits, base) {
+		idx = slices.Index(mUnits, base)
+	} else {
+		return result, fmt.Errorf("invalid unit: %s", base)
+	}
+
+	if len(parts) > 1 {
+		for _, p := range parts[1:] {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "bytes" {
+				isBytes = true
+			}
+			if trimmed == "required" {
+				isRequired = true
+			}
+			if strings.HasPrefix(trimmed, "min:") {
+				min, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if min < 0 {
+					return result, fmt.Errorf("min value should be bigger than 0")
+				}
+			}
+			if strings.HasPrefix(trimmed, "max:") {
+				max, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if max < 0 {
+					return result, fmt.Errorf("max value should be bigger than 0")
+				}
+			}
+		}
+	}
+
+	// check if value is empty
+	if vstr == "" {
+		if isRequired {
+			return result, fmt.Errorf("value is required")
+		} else {
+			return result, nil
+		}
+	}
+
+	// convert value to upper case
+	vstr = strings.ToUpper(strings.TrimSpace(vstr))
+
+	/* Value format: <number>[<unit>] */
+	// split value into number and unit
+	// 1. (\d+) : number (required)
+	// 2. ([K|M|G|T|P|E|Z|Y])? : unit (optional)
+	// 3. (B)? : bytes (optional)
+	r := regexp.MustCompile(`^(\d+)([K|M|G|T|P|E|Z|Y])?(B)?$`)
+	matches := r.FindStringSubmatch(vstr)
+	if len(matches) < 2 {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get value
+	vstr = matches[1]
+	// convert value to integer
+	val, err := strconv.Atoi(vstr)
+	if err != nil {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get unit
+	unit = matches[2]
+
+	// check if unit is empty
+	if unit == "" {
+		return vstr, nil
+	}
+
+	// check if unit is valid
+	if !slices.Contains(mUnits, unit) {
+		return result, fmt.Errorf("invalid unit: %s", unit)
+	}
+
+	// get unit index
+	vidx = slices.Index(mUnits, unit)
+
+	// unit should bigger than base
+	if vidx < idx {
+		return result, fmt.Errorf("invalid minimum unit '%s': %s", base, unit)
+	}
+
+	// convert step to 1024 if bytes
+	if isBytes {
+		step = 1024
+	}
+
+	// convert value to base unit
+	if vidx > idx {
+		for i := 0; i < vidx-idx; i++ {
+			val *= step
+		}
+	}
+
+	if val < min {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be bigger than %d", min)
+		}
+
+		val = min
+	}
+
+	if max > 0 && val > max {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be smaller than %d", max)
+		}
+
+		val = max
+	}
+
+	result = strconv.Itoa(val)
+
+	return result, nil
 }

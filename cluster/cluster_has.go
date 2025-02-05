@@ -223,6 +223,10 @@ func (cluster *Cluster) HasAllDbUp() bool {
 	return true
 }
 
+func (cluster *Cluster) HasBadConfigMeasurement() bool {
+	return len(cluster.ErrorConfigMap) > 0
+}
+
 func (cluster *Cluster) HasAllDbDown() bool {
 	if cluster.Servers == nil {
 		return true
