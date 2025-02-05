@@ -3426,27 +3426,31 @@ func (conf *Config) CheckKeepWithin() error {
 	return nil
 }
 
-var mUnits []string = []string{"", "K", "M", "G", "T", "P", "E", "Z", "Y"}
+var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 func (conf *Config) ParseConfigMeasurement() error {
-
 	to := reflect.TypeOf(conf).Elem()
 	vo := reflect.ValueOf(conf).Elem()
+
 	for i := 0; i < to.NumField(); i++ {
 		f := to.Field(i)
-		v := vo.Field(i).Interface()
+		if !vo.Field(i).CanSet() {
+			continue
+		}
+
+		v, ok := vo.Field(i).Interface().(string)
+		if !ok {
+			return fmt.Errorf("field %s is not a string", f.Name)
+		}
+
 		tag, ok := f.Tag.Lookup("measurement")
 		if !ok {
 			continue
 		}
 
-		if v == nil {
-			continue
-		}
-
-		val, err := ParseUnitMeasurement(tag, v.(string))
+		val, err := ParseUnitMeasurement(tag, v)
 		if err != nil {
-			return fmt.Errorf("Error %s: %s", f.Name, err)
+			return fmt.Errorf("error parsing %s: %s", f.Name, err)
 		}
 
 		vo.Field(i).SetString(val)
@@ -3455,93 +3459,128 @@ func (conf *Config) ParseConfigMeasurement() error {
 	return nil
 }
 
+// GetMeasurementTag returns the measurement tag of the field by the toml key
+// The measurement tag is defined in the struct tag with the key "measurement"
+// The measurement tag is used to convert the value to the base unit
+// The format of the measurement tag is "base, [required, bytes]"
+func GetMeasurementTag(s interface{}, name, tag string) string {
+	to := reflect.TypeOf(s)
+	if to.Kind() == reflect.Ptr {
+		to = to.Elem()
+	}
+
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		if tag == "name" && f.Name == name {
+			return f.Tag.Get("measurement")
+		} else {
+			fieldtag := strings.Split(f.Tag.Get(tag), ",")[0]
+			if fieldtag == name {
+				return f.Tag.Get("measurement")
+			}
+		}
+	}
+
+	return ""
+}
+
 func ParseUnitMeasurement(tag, vstr string) (string, error) {
-	var base, unit, result string
+	var base, unit string
 	var isBytes, isRequired bool
 	var idx, vidx int
 	var step int = 1000
+	var result string = vstr
 
-	result = vstr
-
-	if tag != "" {
-		parts := strings.Split(tag, ",")
-		base = parts[0]
-		if len(parts) > 1 {
-			if parts[1] == "bytes" {
-				isBytes = true
-			}
-
-			if parts[1] == "required" {
-				isRequired = true
-			}
-		}
-
-		if len(parts) > 2 {
-			if parts[2] == "bytes" {
-				isBytes = true
-			}
-
-			if parts[2] == "required" {
-				isRequired = true
-			}
-
-		}
-
-		if base != "" {
-			// Get the index of the unit
-			if base == "B" {
-				idx = 0
-			} else if slices.Contains(mUnits, base) {
-				idx = slices.Index(mUnits, base)
-			} else {
-				return result, fmt.Errorf("Invalid unit: %s", base)
-			}
-		}
+	/* Tag format: base, [required, bytes] */
+	// measurement tag should have value
+	if tag == "" {
+		return result, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
 	}
 
-	// check if string has optional suffix for unit with regex, if exists, extract unit and value. if not, set unit to default
-	r := regexp.MustCompile(`^(\d+)([a-zA-Z]+)?$`)
-	matches := r.FindStringSubmatch(vstr)
-	if len(matches) == 3 {
-		vstr = matches[1]
-		unit = matches[2]
+	// split tag into base and optional parts
+	parts := strings.Split(tag, ",")
+	if parts[0] == "" {
+		return result, fmt.Errorf("base cannot be empty, use 0 for default")
+	}
+
+	// get base unit
+	base = strings.ToUpper(strings.TrimSpace(parts[0]))
+	if slices.Contains(mUnits, base) {
+		idx = slices.Index(mUnits, base)
 	} else {
-		unit = ""
+		return result, fmt.Errorf("invalid unit: %s", base)
+	}
+
+	if len(parts) > 1 {
+		for _, p := range parts[1:] {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "bytes" {
+				isBytes = true
+			}
+			if trimmed == "required" {
+				isRequired = true
+			}
+		}
 	}
 
 	// check if value is empty
-	if vstr == "" && isRequired {
-		return result, fmt.Errorf("Invalid value: %s", vstr)
-	}
-
-	if unit == "" {
-		vidx = idx
-	} else {
-		unit = strings.ToUpper(unit)
-		if unit == "B" {
-			vidx = 0
-		} else if slices.Contains(mUnits, unit) {
-			vidx = slices.Index(mUnits, unit)
+	if vstr == "" {
+		if isRequired {
+			return result, fmt.Errorf("value is required")
 		} else {
-			return result, fmt.Errorf("Invalid unit: %s", unit)
+			return result, nil
 		}
 	}
 
-	// convert value to bytes
+	// convert value to upper case
+	vstr = strings.ToUpper(strings.TrimSpace(vstr))
+
+	/* Value format: <number>[<unit>] */
+	// split value into number and unit
+	// 1. (\d+) : number (required)
+	// 2. ([K|M|G|T|P|E|Z|Y])? : unit (optional)
+	// 3. (B)? : bytes (optional)
+	r := regexp.MustCompile(`^(\d+)([K|M|G|T|P|E|Z|Y])?(B)?$`)
+	matches := r.FindStringSubmatch(vstr)
+	if len(matches) < 2 {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get value
+	vstr = matches[1]
+	// convert value to integer
+	val, err := strconv.Atoi(vstr)
+	if err != nil {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get unit
+	unit = matches[2]
+
+	// check if unit is empty
+	if unit == "" {
+		return vstr, nil
+	}
+
+	// check if unit is valid
+	if !slices.Contains(mUnits, unit) {
+		return result, fmt.Errorf("invalid unit: %s", unit)
+	}
+
+	// get unit index
+	vidx = slices.Index(mUnits, unit)
+
+	// unit should bigger than base
+	if vidx < idx {
+		return result, fmt.Errorf("invalid minimum unit '%s': %s", base, unit)
+	}
+
+	// convert step to 1024 if bytes
 	if isBytes {
 		step = 1024
 	}
 
-	// unit should bigger than base
-	if vidx < idx {
-		return result, fmt.Errorf("Unit should bigger than base '%s': %s", base, unit)
-	}
-
-	val, err := strconv.Atoi(vstr)
-	if err != nil {
-		return result, fmt.Errorf("Invalid value: %s", vstr)
-	}
-
+	// convert value to base unit
 	if vidx > idx {
 		for i := 0; i < vidx-idx; i++ {
 			val *= step
