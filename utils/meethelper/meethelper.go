@@ -22,6 +22,8 @@ const meetUrl string = "https://meet.signal18.io"
 
 var meetToken string = ""
 
+var meetClient *MeetChatClient = nil
+
 // Test Channel Id : ranzunsjkfrftnregi789br13e
 
 //to create a mattermost client
@@ -63,21 +65,30 @@ type MeetMessage struct {
 }
 
 // create a client for mattermost and set user info
+func GetMeetClient() *MeetChatClient {
+	//to recreate the client if undefined or if the user session is expired
+	if meetClient == nil || meetClient.Client == nil {
+		meetClient = CreateMeetClient()
+	}
+	meetClient.UserID = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
+	meetClient.TeamIds = meetClient.GetTeamIDs()
+	meetClient.AllUser = meetClient.GetAllUsers()                                                                                                       //to get teamIDs
+	meetClient.ChannelIdsOpen, meetClient.ChannelIdsPrivate, meetClient.ChannelIdsDirect, meetClient.UnReadMessagesByChannel = meetClient.GetChannels() //to get the channels for the user
+	meetClient.StatusUsers = meetClient.GetStatusUsers()
+	meetClient.SetUserStatusOnline()
+	return meetClient
+}
+
 func CreateMeetClient() *MeetChatClient {
+	//to recreate the client if undefined or if the user session is expired
 	client := model.NewAPIv4Client(meetUrl)
 	client.SetOAuthToken(meetToken)
-	c := &MeetChatClient{
+	meetClient = &MeetChatClient{
 		Client: client,
 		URL:    meetUrl,
 		Token:  meetToken,
 	}
-	c.UserID = c.GetMeetUserInfo() //to get user info from mattermost serv
-	c.TeamIds = c.GetTeamIDs()
-	c.AllUser = c.GetAllUsers()                                                                            //to get teamIDs
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels() //to get the channels for the user
-	c.StatusUsers = c.GetStatusUsers()
-	//c.SetUserStatusOnline()
-	return c
+	return meetClient
 }
 
 // Follow the flow of the browser: log to mm using your gitlab account
@@ -158,7 +169,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 func (c *MeetChatClient) GetMeetUserInfo() string {
 	user, resp, err := c.Client.GetMe("")
 	if err != nil {
-		fmt.Println("Meet Error:", err, resp.StatusCode)
+		fmt.Println("Meet Error:", err, resp.StatusCode, c.Client, c.UserID)
 		return ""
 	}
 
@@ -259,6 +270,15 @@ func containsValue(m map[string]string, value string) bool {
 	return false
 }
 
+func getValue(m map[string]string, value string) string {
+	for k, v := range m {
+		if v == value {
+			return k
+		}
+	}
+	return ""
+}
+
 func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) {
 
 	post := &model.Post{
@@ -344,28 +364,45 @@ func (c *MeetChatClient) CreateDirectChannel(userID string) (string, error) {
 }
 
 // to set user as online
-func (c *MeetChatClient) SetUserStatusOnline() {
-	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
+func (c *MeetChatClient) SetUserStatusOnline() error {
+	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
+	if err != nil {
+		fmt.Println("SetUserStatusOnline Mattermost Error:", err)
+	}
+	return err
 }
 
 // to set user as offline
-func (c *MeetChatClient) SetUserStatusOffline() {
-	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
+func (c *MeetChatClient) SetUserStatusOffline() error {
+	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
+	if err != nil {
+		fmt.Println("SetUserStatusOffLine Mattermost Error:", err)
+	}
+	return err
 }
 
 // to set user as away
-func (c *MeetChatClient) SetUserStatusAway() {
-	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
+func (c *MeetChatClient) SetUserStatusAway() error {
+	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
+	if err != nil {
+		fmt.Println("SetUserStatusAway Mattermost Error:", err)
+	}
+	return err
 }
 
 // to get status of users from direct channel
 func (c *MeetChatClient) GetStatusUsers() map[string]string {
 	statusUsers := make(map[string]string)
-	for _, userId := range c.ChannelIdsDirect {
+	for userName, _ := range c.ChannelIdsDirect {
+		userId := getValue(c.AllUser, userName)
 		status, _, _ := c.Client.GetUserStatus(userId, "")
 		if status != nil {
 			statusUsers[userId] = status.Status
 		}
 	}
 	return statusUsers
+}
+
+func ClearMeetClient() {
+	meetClient = nil
 }

@@ -17,7 +17,7 @@ import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
-import { getMeetInfo } from '../../redux/meetSlice';
+import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -27,6 +27,21 @@ function Navbar({ username }) {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
+  //ajout pour le compteur de messages non lus
+  const { meetInfo, unreadMessagesByChannel } = useSelector((state) => state?.meet)
+
+  //to get the meet info
+  useEffect(() => {
+    if (isAuthorized()) dispatch(getMeetInfo());
+  }, [dispatch]);
+
+  useEffect(() => {
+    if (meetInfo) {
+      const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
+      setUnreadMessagesCount(totalUnreadMessages)
+    }
+  }, [unreadMessagesByChannel]);
+  //
   const {
     common: { isMobile, isDesktop },
     globalClusters: { monitor },
@@ -48,6 +63,7 @@ function Navbar({ username }) {
   }
 
   const handleLogout = () => {
+    dispatch(logoutFromMeet())
     dispatch(logout())
     dispatch(clearCluster())
   }
@@ -58,20 +74,6 @@ function Navbar({ username }) {
   const closeAddUserModal = () => {
     setIsAddUserModalOpen(false)
   }
-
-  //ajout pour le compteur de messages non lus
-  const { unreadMessagesByChannel } = useSelector((state) => state?.meet)
-
-  //to get the meet info
-  useEffect(() => {
-    dispatch(getMeetInfo());
-  }, [dispatch]);
-
-  useEffect(() => {
-    const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
-    setUnreadMessagesCount(totalUnreadMessages)
-  }, [unreadMessagesByChannel])
-  //
 
   return (
     <>

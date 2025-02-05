@@ -223,6 +223,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/create/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.CreateDirectChannelMeetHandler)),
 	))
+	router.Handle("/meet/logout", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.LogoutMeetHandler)),
+	))
 	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
@@ -1691,7 +1694,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.CreateMeetClient()
+	meetClient := meethelper.GetMeetClient()
 	info := struct {
 		UserID                  string            `json:"user_id"`
 		ChannelIdsOpen          map[string]string `json:"channel_ids_open"`
@@ -1721,7 +1724,7 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.CreateMeetClient()
+	meetClient := meethelper.GetMeetClient()
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
 	str_page := vars["page"]
@@ -1753,7 +1756,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.CreateMeetClient()
+	meetClient := meethelper.GetMeetClient()
 	var request struct {
 		Message string `json:"message"`
 	}
@@ -1792,7 +1795,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.CreateMeetClient()
+	meetClient := meethelper.GetMeetClient()
 
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
@@ -1821,7 +1824,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.CreateMeetClient()
+	meetClient := meethelper.GetMeetClient()
 
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
@@ -1840,6 +1843,28 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	response := map[string]string{
 		"status":  "success",
 		"channel": newChannelId,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.GetMeetClient()
+
+	err := meetClient.SetUserStatusOffline()
+
+	meethelper.ClearMeetClient()
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status": "success",
 	}
 
 	json.NewEncoder(w).Encode(response)

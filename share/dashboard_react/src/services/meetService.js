@@ -4,7 +4,8 @@ export const meetService = {
     getMeetInfo,
     postMeetMessageOnChannel,
     getMeetMessageFromChannel,
-    setMessageViewOnChannel
+    setMessageViewOnChannel,
+    logoutFromMeet
 }
 
 
@@ -49,6 +50,16 @@ async function getMeetMessageFromChannel(channelId, page = 0) {
 async function setMessageViewOnChannel(channelId) {
     try {
         const response = await meetApi.get(`view/${channelId}`);
+        return response;
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function logoutFromMeet() {
+    try {
+        const response = await meetApi.get(`logout`);
         return response;
     } catch (error) {
         console.error('Error view meet messages:', error);

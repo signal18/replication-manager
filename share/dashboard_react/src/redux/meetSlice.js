@@ -66,6 +66,15 @@ export const viewMessagesOnChannel = createAsyncThunk(
   }
 );
 
+export const logoutFromMeet = createAsyncThunk(
+  'meet/logout',
+  async ( thunkAPI) => {
+    console.log("logoutFromMeet call");
+    const response = await meetService.logoutFromMeet();
+    return { response };
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {
@@ -81,6 +90,17 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.meetInfo = action.payload.data;
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
+      })
+      .addCase(logoutFromMeet.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(logoutFromMeet.fulfilled, (state, action) => {
+        state.loading = false;
+        // Handle successful logout if needed
+      })
+      .addCase(logoutFromMeet.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message;
       })
       .addCase(postMeetMessage.pending, (state) => {
         state.loading = true;
