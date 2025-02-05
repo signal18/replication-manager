@@ -220,6 +220,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/view/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.ViewMeetHandler)),
 	))
+	router.Handle("/meet/create/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.CreateDirectChannelMeetHandler)),
+	))
 	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
@@ -1696,6 +1699,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		ChannelIdsDirect        map[string]string `json:"channel_ids_direct"`
 		UnReadMessagesByChannel map[string]int    `json:"unread_messages_by_channel"`
 		AllUsers                map[string]string `json:"all_users"`
+		StatusUsers             map[string]string `json:"status_users"`
 	}{
 		UserID:                  meetClient.UserID,
 		ChannelIdsOpen:          meetClient.ChannelIdsOpen,
@@ -1703,6 +1707,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		ChannelIdsDirect:        meetClient.ChannelIdsDirect,
 		UnReadMessagesByChannel: meetClient.UnReadMessagesByChannel,
 		AllUsers:                meetClient.AllUser,
+		StatusUsers:             meetClient.StatusUsers,
 	}
 
 	err := json.NewEncoder(w).Encode(info)
@@ -1810,4 +1815,32 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 
 	json.NewEncoder(w).Encode(response)
 
+}
+
+func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient := meethelper.CreateMeetClient()
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	newChannelId, err := meetClient.CreateDirectChannel(channelID)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":  "success",
+		"channel": newChannelId,
+	}
+
+	json.NewEncoder(w).Encode(response)
 }

@@ -44,6 +44,7 @@ type MeetChatClient struct {
 	URL                     string
 	Token                   string
 	AllUser                 map[string]string //to store id and name of all users (for direct chat)
+	StatusUsers             map[string]string //to store status of users in direct chat
 	UnReadMessagesByChannel map[string]int
 }
 
@@ -74,6 +75,8 @@ func CreateMeetClient() *MeetChatClient {
 	c.TeamIds = c.GetTeamIDs()
 	c.AllUser = c.GetAllUsers()                                                                            //to get teamIDs
 	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels() //to get the channels for the user
+	c.StatusUsers = c.GetStatusUsers()
+	//c.SetUserStatusOnline()
 	return c
 }
 
@@ -190,7 +193,6 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 	}
 
 	for _, channel := range channels {
-		fmt.Println("Meet Channel", channel)
 
 		if channel.Type == "O" {
 			channelsMapO[channel.Name] = channel.Id
@@ -325,4 +327,45 @@ func (c *MeetChatClient) ViewMessages(channelID string) error {
 
 	c.UnReadMessagesByChannel[channelID] = 0
 	return nil
+}
+
+// to create direct channel with a user
+func (c *MeetChatClient) CreateDirectChannel(userID string) (string, error) {
+	channel, resp, err := c.Client.CreateDirectChannel(c.UserID, userID)
+	if err != nil {
+		fmt.Println("CreateDirectChannel Mattermost Error:", err, resp.StatusCode)
+		return "", err
+	}
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return channel.Id, nil
+}
+
+// to set user as online
+func (c *MeetChatClient) SetUserStatusOnline() {
+	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
+}
+
+// to set user as offline
+func (c *MeetChatClient) SetUserStatusOffline() {
+	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
+}
+
+// to set user as away
+func (c *MeetChatClient) SetUserStatusAway() {
+	c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
+}
+
+// to get status of users from direct channel
+func (c *MeetChatClient) GetStatusUsers() map[string]string {
+	statusUsers := make(map[string]string)
+	for _, userId := range c.ChannelIdsDirect {
+		status, _, _ := c.Client.GetUserStatus(userId, "")
+		if status != nil {
+			statusUsers[userId] = status.Status
+		}
+	}
+	return statusUsers
 }
