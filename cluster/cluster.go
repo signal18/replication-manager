@@ -593,7 +593,7 @@ func (cluster *Cluster) Run() {
 			go cluster.CheckDefaultUser(false)
 
 			if cluster.HasBadConfigMeasurement() {
-				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigMap), ErrFrom: "OPENSVC"})
+				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigMap), ErrFrom: "CONFIG"})
 			}
 
 			select {
