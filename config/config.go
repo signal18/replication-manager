@@ -534,7 +534,7 @@ type Config struct {
 	ProvProxAgents                            string                 `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
 	ProvProxAgentsFailover                    string                 `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
 	ProvProxMem                               string                 `measurement:"M,bytes,required" mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
-	ProvProxCores                             string                 `measurement:"0,required" mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
+	ProvProxCores                             string                 `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
 	ProvProxDisk                              string                 `measurement:"G,bytes,required" mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
 	ProvProxDiskFS                            string                 `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
 	ProvProxDiskPool                          string                 `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
@@ -558,7 +558,7 @@ type Config struct {
 	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
 	ProvSphinxMem                             string                 `measurement:"M,bytes,required" mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
 	ProvSphinxDisk                            string                 `measurement:"G,bytes,required" mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
-	ProvSphinxCores                           string                 `measurement:"0,required" mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
+	ProvSphinxCores                           string                 `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
 	ProvSphinxMaxChildren                     string                 `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
 	ProvSphinxDiskPool                        string                 `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
 	ProvSphinxDiskFS                          string                 `mapstructure:"prov-sphinx-disk-fs" toml:"prov-sphinx-disk-fs" json:"provSphinxDiskFs"`
@@ -746,6 +746,7 @@ type Config struct {
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
 	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
 	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
@@ -3456,7 +3457,7 @@ func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) Er
 		}
 
 		// Parse unit measurement
-		val, err := ParseUnitMeasurement(tag, v)
+		val, err := ParseUnitMeasurement(tag, v, conf.MeasurementAutoClampLimit)
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
@@ -3520,14 +3521,14 @@ func GetMeasurementTag(s interface{}, tag string, list ...string) (map[string]st
 	return m, nil
 }
 
-func ParseUnitMeasurement(tag, vstr string) (string, error) {
+func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	var base, unit string
 	var isBytes, isRequired bool
-	var idx, vidx int
+	var idx, vidx, min, max int
 	var step int = 1000
 	var result string = vstr
 
-	/* Tag format: base, [required, bytes] */
+	/* Tag format: base, [required, bytes, min:, max:] */
 	// measurement tag should have value
 	if tag == "" {
 		return result, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
@@ -3555,6 +3556,18 @@ func ParseUnitMeasurement(tag, vstr string) (string, error) {
 			}
 			if trimmed == "required" {
 				isRequired = true
+			}
+			if strings.HasPrefix(trimmed, "min:") {
+				min, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if min < 0 {
+					return result, fmt.Errorf("min value should be bigger than 0")
+				}
+			}
+			if strings.HasPrefix(trimmed, "max:") {
+				max, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if max < 0 {
+					return result, fmt.Errorf("max value should be bigger than 0")
+				}
 			}
 		}
 	}
@@ -3621,9 +3634,25 @@ func ParseUnitMeasurement(tag, vstr string) (string, error) {
 		for i := 0; i < vidx-idx; i++ {
 			val *= step
 		}
-
-		result = strconv.Itoa(val)
 	}
+
+	if val < min {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be bigger than %d", min)
+		}
+
+		val = min
+	}
+
+	if max > 0 && val > max {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be smaller than %d", max)
+		}
+
+		val = max
+	}
+
+	result = strconv.Itoa(val)
 
 	return result, nil
 }
