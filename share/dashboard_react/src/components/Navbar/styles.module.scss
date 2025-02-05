@@ -9,16 +9,64 @@
   display: flex;
   align-items: center;
   gap: rem(24);
+
   &.lightBackground {
     background: var(--body-bg-color);
   }
+
   &.darkBackground {
     background: var(--quaternary-color);
   }
 }
+
 .logo {
   border-radius: 4px;
 }
+
+/* Style for the rest of the text */
+.line1, 
+.line2 {
+  line-height: 1;
+}
+
+.lightTextLogo {
+  /* Style for the first letters of each line */
+  .line1::first-letter,
+  .line2::first-letter,
+  .singleWord::first-letter {
+    color: #1E40AF !important;
+    /* Blue shade */
+    font-weight: bold;
+  }
+
+  /* Style for the rest of the text */
+  .line1 {
+    color: #4B5563 !important;
+    /* Slightly grayish text color */
+  }
+
+  .line2 {
+    color: #6B7280 !important;
+    /* Lighter grayish color for the second line */
+  }
+
+  /* Single word handling */
+  .singleWord {
+    display: inline-block;
+    font-size: 3xl;
+    font-weight: bold;
+  }
+
+  .singleWord {
+    color: #4B5563 !important;
+    /* Neutral gray for the rest of the word */
+  }
+}
+
+.darkTextLogo {
+  color: var(--quaternary-color);
+}
+
 .alerts {
   gap: rem(16);
 }

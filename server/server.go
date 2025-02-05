@@ -2142,6 +2142,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.Mailer = repman.Mailer
+	repman.currentCluster.Partner = &repman.Partner
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {

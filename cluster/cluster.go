@@ -232,6 +232,7 @@ type Cluster struct {
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticRepo                *archiver.ResticRepo        `json:"-"`
 	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
+	Partner                   *config.Partner             `json:"partner"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
