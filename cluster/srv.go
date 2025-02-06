@@ -36,7 +36,6 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
-	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/signal18/replication-manager/utils/version"
 )
 
@@ -212,7 +211,6 @@ type ServerMonitor struct {
 	BinaryLogName               string
 	DBDataDir                   string
 	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
-	WebTTYSessions              tty.SessionMap   `json:"-"`
 }
 
 type ServerBackupMeta struct {
@@ -279,7 +277,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.LastBackupMeta.Logical = new(config.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
-	server.WebTTYSessions = make(tty.SessionMap)
 	server.NeedRefreshJobs = true
 
 	// Set source cluster name, set cluster name as source if not specified

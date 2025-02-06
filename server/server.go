@@ -153,7 +153,7 @@ type ReplicationManager struct {
 	Terms                                            []byte                            `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
 	TermsDT                                          time.Time                         `json:"termsDT"`
 	ModTimes                                         map[string]time.Time              `json:"termsDT"`
-	WebTTYSessions                                   tty.SessionMap                    `json:"-"`
+	SessionManager                                   *tty.SessionManager               `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -1002,6 +1002,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
+	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
+	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -1819,7 +1822,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.PeerBooked = make(map[string]string)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
-	repman.WebTTYSessions = make(tty.SessionMap)
+	repman.InitWebTTY()
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
@@ -2177,6 +2180,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	}
 
 	repman.currentCluster.OsUser = repman.OsUser
+	repman.currentCluster.SessionManager = repman.SessionManager
 	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster

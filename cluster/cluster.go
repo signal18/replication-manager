@@ -242,7 +242,7 @@ type Cluster struct {
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
 	VersionsMap    *config.VersionsMap
-	WebTTYSessions tty.SessionMap `json:"-"`
+	SessionManager *tty.SessionManager `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -332,7 +332,6 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
-	cluster.WebTTYSessions = make(tty.SessionMap)
 
 	cluster.Conf = confs.ConfInit
 

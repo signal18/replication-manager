@@ -19,17 +19,14 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
-	"github.com/google/uuid"
 	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
-	"github.com/signal18/replication-manager/utils/tty"
 )
 
 func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Router) {
@@ -6100,48 +6097,4 @@ func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.Respon
 		http.Error(w, "No cluster", 500)
 		return
 	}
-}
-
-// handlerTerminal handles the WebSocket connection for a terminal session.
-// @Summary Terminal
-// @Description	Establishes a WebSocket connection for a terminal session.
-
-func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	upgrader := websocket.Upgrader{}
-	// Upgrade HTTP connection to WebSocket
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Println("Failed to upgrade WebSocket:", err)
-		return
-	}
-	defer conn.Close()
-
-	if vars["clusterName"] == "" {
-		log.Println("No cluster name provided")
-		return
-	}
-
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster == nil {
-		log.Println("No cluster found")
-		return
-	}
-
-	// Generate a session ID and start a new shell session
-	sessionID := uuid.New().String()
-	session, err := tty.NewSession(sessionID, conn)
-	if err != nil {
-		log.Println("Error starting shell:", err)
-		return
-	}
-
-	repman.WebTTYSessions[sessionID] = session
-
-	// Handle WebSocket input and output
-	go session.HandleWebSocketInput()
-	session.HandleOutput()
-
-	// Clean up the session when it's closed
-	defer session.CloseSession()
 }

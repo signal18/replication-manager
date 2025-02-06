@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"context"
+	"crypto/md5"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -42,6 +43,7 @@ import (
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/golang-jwt/jwt/request"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -241,6 +243,10 @@ func (repman *ReplicationManager) apiserver() {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
 	})
+
+	router.Handle("/api/terminal/monitor", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.Handle("/api/terms", negroni.New(
@@ -1722,4 +1728,87 @@ func logResponse(resp *http.Response) {
 		log.Printf("Response Body: %s", string(body))
 		resp.Body = io.NopCloser(bytes.NewReader(body)) // Reset the body for further use
 	}
+}
+
+// handlerTerminal handles the WebSocket connection for a terminal session.
+// @Summary Terminal
+// @Description	Establishes a WebSocket connection for a terminal session.
+// @Tags Terminal
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clustername path string false "Cluster Name"
+// @Param serverName path string false "Server Name"
+// @Success 200 {string} string "Connected successfully"
+// @Failure 400 {string} string "No user provided"
+// @Failure 500 {string} string "No valid node" or "No valid cluster"
+// @Router /api/terminal/monitor [get]
+// @Router /api/terminal/clusters/{clustername}/servers/{serverName} [get]
+// @Router /api/terminal/clusters/{clustername}/proxies/{serverName} [get]
+func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	if !repman.Conf.TerminalSessionEnabled {
+		http.Error(w, "Terminal session is disabled", 403)
+		return
+	}
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error getting JWT claims", 500)
+		return
+	}
+
+	scope := "global"
+	sessionID := claims["User"]
+
+	if vars["clustername"] != "" {
+		mycluster := repman.getClusterByName(vars["clustername"])
+		if mycluster != nil {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
+				node := mycluster.GetServerFromName(vars["serverName"])
+				if node != nil {
+					scope = mycluster.Name
+					sessionID = node.Name + "-" + claims["User"]
+				} else {
+					http.Error(w, "No valid node", 500)
+					return
+				}
+			} else {
+				http.Error(w, "No Valid ACL", 403)
+				return
+			}
+		} else {
+			http.Error(w, "No valid cluster", 500)
+			return
+		}
+	}
+
+	md5h := md5.New()
+	md5h.Write([]byte(sessionID))
+	sessionID = string(md5h.Sum(nil))
+
+	upgrader := websocket.Upgrader{}
+
+	// Upgrade the HTTP connection to a WebSocket.
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("Error upgrading WebSocket:", err)
+		return
+	}
+	defer conn.Close()
+
+	// Create a new session or resume the existing session by ID
+	session, err := repman.SessionManager.NewSession(scope, sessionID, conn)
+	if err != nil {
+		log.Println("Error creating or resuming session:", err)
+		return
+	}
+
+	// Handle WebSocket input and output as normal
+	go session.HandleWebSocketInput()
+	go session.HandleOutput()
+
+	// Wait for the session to finish (or be closed).
+	session.WG.Wait()
 }
