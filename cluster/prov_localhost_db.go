@@ -264,8 +264,12 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 				haveerror = true
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", "flush privileges", err)
 			}
+			query := "RESET MASTER"
+			if server.DBVersion.IsMySQLOrPerconaGreater84() {
+				query = "RESET BINARY LOGS AND GTIDS"
+			}
 
-			_, err = conn.Exec("reset master")
+			_, err = conn.Exec(query)
 			if err != nil {
 				haveerror = true
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s %s ", "reset master", err)

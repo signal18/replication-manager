@@ -204,8 +204,12 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.SetState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
-		dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
+		if sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("8") {
+			cluster.SetState("WARN0136", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0136"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
+		} else {
+			dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
+		}
 	} else if sl.IsIgnored() == false && sl.GetReplicationUsingGtid() == "No" && cluster.GetTopology() != config.TopoMultiMasterWsrep && server.IsMariaDB() {
 		cluster.SetState("WARN0051", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0051"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
