@@ -188,10 +188,11 @@ type SlaveHosts struct {
 }
 
 type MasterStatus struct {
-	File             string `json:"file"`
-	Position         uint   `json:"position"`
-	Binlog_Do_DB     string `json:"binlogDoDB"`
-	Binlog_Ignore_DB string `json:"binlogIgnoreDB"`
+	File              string `json:"file"`
+	Position          uint   `json:"position"`
+	Binlog_Do_DB      string `json:"binlogDoDB"`
+	Binlog_Ignore_DB  string `json:"binlogIgnoreDB"`
+	Executed_Gtid_Set string `json:"executedGtidSet"`
 }
 
 type SlaveStatus struct {
