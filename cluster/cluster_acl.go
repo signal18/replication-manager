@@ -547,6 +547,11 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantDBTerminal] {
+		if strings.Contains(URL, "/terminal") {
+			return true
+		}
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
 	return false
 }
@@ -573,6 +578,11 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantProxyTerminal] {
+		if strings.Contains(URL, "/terminal") {
+			return true
+		}
+	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
 
 	return false
@@ -596,6 +606,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
+	if strings.Contains(URL, "/api/terminal") {
+		return cluster.APIUsers[strUser].Grants[config.GrantGlobalTerminal]
+	}
 	if strings.Contains(URL, "/api/clusters/settings/actions/switch") {
 		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
 	}

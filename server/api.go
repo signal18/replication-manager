@@ -244,7 +244,7 @@ func (repman *ReplicationManager) apiserver() {
 		}
 	})
 
-	router.Handle("/api/terminal/monitor", negroni.New(
+	router.Handle("/api/terminal", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
 
@@ -1742,9 +1742,9 @@ func logResponse(resp *http.Response) {
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
 // @Failure 500 {string} string "No valid node" or "No valid cluster"
-// @Router /api/terminal/monitor [get]
-// @Router /api/terminal/clusters/{clustername}/servers/{serverName} [get]
-// @Router /api/terminal/clusters/{clustername}/proxies/{serverName} [get]
+// @Router /api/terminal [get]
+// @Router /api/clusters/{clustername}/servers/{serverName}/terminal [get]
+// @Router /api/clusters/{clustername}/proxies/{serverName}/terminal [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 

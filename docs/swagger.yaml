@@ -281,6 +281,8 @@ definitions:
         type: object
       name:
         type: string
+      partner:
+        $ref: '#/definitions/config.Partner'
       proxyServers:
         items:
           type: string
@@ -2044,6 +2046,8 @@ definitions:
         type: integer
       maxscalemBinaryPath:
         type: string
+      measurementAutoClampLimit:
+        type: boolean
       monitoringAddress:
         type: string
       monitoringAlertTrigger:
@@ -2697,6 +2701,12 @@ definitions:
       sysbenchTime:
         type: integer
       sysbenchV1:
+        type: boolean
+      terminalSessionEnabled:
+        type: boolean
+      terminalSessionManager:
+        type: string
+      terminalSessionResume:
         type: boolean
       test:
         type: boolean
@@ -10581,6 +10591,82 @@ paths:
       summary: Update a cluster user
       tags:
       - User
+  /api/clusters/{clustername}/proxies/{serverName}/terminal:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clustername
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/clusters/{clustername}/servers/{serverName}/terminal:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clustername
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
   /api/clusters/actions/add/{clusterName}:
     post:
       consumes:
@@ -11044,6 +11130,36 @@ paths:
       summary: Get Replication Manager Status
       tags:
       - Public
+  /api/terminal:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
   /api/terms:
     get:
       description: This endpoint returns the terms managed by the replication manager.

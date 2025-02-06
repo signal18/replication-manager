@@ -11284,6 +11284,120 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clustername}/proxies/{serverName}/terminal": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clustername",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clustername}/servers/{serverName}/terminal": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clustername",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/configs/grafana": {
             "get": {
                 "description": "Returns a list of Grafana files from the specified directory.",
@@ -11511,6 +11625,51 @@ const docTemplate = `{
                             "additionalProperties": {
                                 "type": "string"
                             }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
                         }
                     }
                 }
@@ -12168,6 +12327,9 @@ const docTemplate = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "partner": {
+                    "$ref": "#/definitions/config.Partner"
                 },
                 "proxyServers": {
                     "type": "array",
@@ -14793,6 +14955,9 @@ const docTemplate = `{
                 "maxscalemBinaryPath": {
                     "type": "string"
                 },
+                "measurementAutoClampLimit": {
+                    "type": "boolean"
+                },
                 "monitoringAddress": {
                     "type": "string"
                 },
@@ -15772,6 +15937,15 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "sysbenchV1": {
+                    "type": "boolean"
+                },
+                "terminalSessionEnabled": {
+                    "type": "boolean"
+                },
+                "terminalSessionManager": {
+                    "type": "string"
+                },
+                "terminalSessionResume": {
                     "type": "boolean"
                 },
                 "test": {
