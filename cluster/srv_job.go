@@ -1134,7 +1134,12 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;set long_query_time=10;"), &buf)
+
+	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
+	}
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
 	clientCmd.Stderr = clientCmd.Stdout
@@ -1670,6 +1675,13 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		binlogRegex = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
+	}
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
+		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=(\/\*!.+\*\/)?\s*'(.+)'`)
+	}
+
 	var bfile, bgtid string
 	var bpos uint64
 
@@ -1943,7 +1955,8 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	cfg.MyHost = server.URL
 	cfg.MyUser = server.User
 	cfg.MyPassword = server.Pass
-	cfg.MyFlavor = "mariadb"
+	cfg.MyFlavor = server.DBVersion.Flavor
+	cfg.MyVersion = server.DBVersion
 
 	//	cfg.ESAddr = *es_addr
 	cfg.StatAddr = "127.0.0.1:12800"
@@ -2596,7 +2609,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 
 	iodumpreader, _ := dumpCmd.StdoutPipe()
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;set long_query_time=10;"), iodumpreader)
+
+	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
+	if dest.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
+	}
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), iodumpreader)
 
 	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))

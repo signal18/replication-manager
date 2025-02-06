@@ -5,6 +5,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/juju/errors"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 type SourceConfig struct {
@@ -26,7 +27,8 @@ type Config struct {
 	SlaveUser     string `toml:"slave_user"`
 	SlavePassword string `toml:"slave_password"`
 
-	MyFlavor string `toml:"master_flavor"`
+	MyFlavor  string           `toml:"master_flavor"`
+	MyVersion *version.Version `toml:"master_version"`
 
 	DumpPath     string         `toml:"dump_path"`
 	DumpServerID uint32         `toml:"dump_server_id"`
