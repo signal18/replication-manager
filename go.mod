@@ -41,6 +41,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.3.0
 	github.com/gorilla/mux v1.8.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
 	github.com/gwenn/yacr v0.0.0-20180209192453-77093bdc7e72
@@ -77,6 +78,8 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.4.0
 	github.com/stretchr/testify v1.9.0
+	github.com/swaggo/http-swagger v1.3.4
+	github.com/swaggo/swag v1.16.4
 	github.com/tebeka/strftime v0.1.5
 	github.com/urfave/cli v1.22.3
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
@@ -186,8 +189,6 @@ require (
 	github.com/spf13/cast v1.3.0 // indirect
 	github.com/spf13/jwalterweatherman v1.0.0 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
-	github.com/swaggo/http-swagger v1.3.4 // indirect
-	github.com/swaggo/swag v1.16.4 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/yoheimuta/go-protoparser/v4 v4.3.0 // indirect
