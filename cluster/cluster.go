@@ -42,6 +42,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
@@ -240,7 +241,8 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	VersionsMap *config.VersionsMap
+	VersionsMap    *config.VersionsMap
+	WebTTYSessions tty.SessionMap `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -330,6 +332,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
+	cluster.WebTTYSessions = make(tty.SessionMap)
 
 	cluster.Conf = confs.ConfInit
 

@@ -64,6 +64,7 @@ import (
 	"github.com/signal18/replication-manager/utils/peerclient"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/spf13/pflag"
 )
 
@@ -152,6 +153,7 @@ type ReplicationManager struct {
 	Terms                                            []byte                            `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
 	TermsDT                                          time.Time                         `json:"termsDT"`
 	ModTimes                                         map[string]time.Time              `json:"termsDT"`
+	WebTTYSessions                                   tty.SessionMap                    `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -1817,6 +1819,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.PeerBooked = make(map[string]string)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
+	repman.WebTTYSessions = make(tty.SessionMap)
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
