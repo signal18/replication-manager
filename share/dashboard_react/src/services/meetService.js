@@ -5,7 +5,8 @@ export const meetService = {
     postMeetMessageOnChannel,
     getMeetMessageFromChannel,
     setMessageViewOnChannel,
-    logoutFromMeet
+    logoutFromMeet,
+    postFileOnChannel
 }
 
 
@@ -63,6 +64,21 @@ async function logoutFromMeet() {
         return response;
     } catch (error) {
         console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function postFileOnChannel(channelId, formData) {
+    try {
+        const response = await meetApi.post(`upload/${channelId}`, formData);
+        if (response.status === 200) {
+            console.log('File uploaded successfully');
+        } else {
+            console.error('Error uploading file');
+        }
+        return response;
+    } catch (error) {
+        console.error('Error uploading file:', error);
         throw error;
     }
 }

@@ -75,6 +75,20 @@
             color: var(--text-color);
             background-color: (--body-bg-color);
           }
+
+          .attachButton {
+            color: var(--text-color);
+            background-color: (--body-bg-color);
+          }
+          
+          .fileInput {
+            display: none;  // Masque l'input de type file
+          }
+
+          .uploadButton {
+            margin-top: 0.5rem;  // 8px / 16 = 0.5rem
+          }
+          
         }
       }
     }

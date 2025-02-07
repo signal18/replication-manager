@@ -1,26 +1,25 @@
 import styles from './styles.module.scss';
-import React, { useEffect, useState, useRef } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerFooter, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton } from '@chakra-ui/react';
-import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel } from '../../redux/meetSlice';
+import React, { useEffect, useState, useRef, memo } from 'react';
+import { useDispatch, useSelector, shallowEqual } from 'react-redux';
+import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
+import FileUploadButton from '../../components/FileUploadButton';
 
 
-function MattermostIntegration({ isOpen, onClose }) {
+
+const MattermostIntegration = memo(({ isOpen, onClose }) => {
     if (!isOpen) return null;
     const dispatch = useDispatch();
-    const { meetInfo, messages, loading, error } = useSelector((state) => state.meet);
+    const { meetInfo, messages, loading, error } = useSelector((state) => state.meet, shallowEqual);
     const [channels, setChannels] = useState([]);
     const [message, setMessage] = useState('');
     const [selectedChannel, setSelectedChannel] = useState('');
     const [page, setPage] = useState(0);
     const messagesContainerRef = useRef(null);
     const [scrollPosition, setScrollPosition] = useState(null);
-
-    //to get the meet info
-    useEffect(() => {
-        dispatch(getMeetInfo());
-    }, [dispatch]);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [isUploading, setIsUploading] = useState(false);
 
     //to get the channels from meet info
     useEffect(() => {
@@ -60,7 +59,7 @@ function MattermostIntegration({ isOpen, onClose }) {
     //to update messages every 3 seconds
     useEffect(() => {
         const interval = setInterval(() => {
-            if (selectedChannel) {
+            if (selectedChannel && !isUploading) {
                 setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
                 dispatch(getMeetInfo());
@@ -88,11 +87,27 @@ function MattermostIntegration({ isOpen, onClose }) {
     };
 
     //to send the message to the selected channel
-    const sendMessage = async () => {
-        if (selectedChannel && message) {
-            await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
+    const handleSendMessage = async () => {
+        if (selectedChannel) {
+            if (selectedFile) {
+                // If a file is selected, upload the file and send a message with it
+                const formData = new FormData();
+                formData.append('file', selectedFile);
+                formData.append('fileName', selectedFile.name);
+
+                if (message.trim()) {
+                    await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
+                }
+
+                await dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
+
+                setSelectedFile(null);
+            } else if (message.trim()) {
+                // If no file is selected, just send the message
+                await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
+            }
+
             setMessage('');
-            // Scroller vers le bas après l'envoi du message
             if (messagesContainerRef.current) {
                 messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
             }
@@ -147,33 +162,23 @@ function MattermostIntegration({ isOpen, onClose }) {
 
     /////////////////////////////////
     //File Upload Button Component//
-    const FileUploadButton = ({ onFileSelected }) => {
-        const fileInputRef = useRef(null);
-      
-        const handleButtonClick = () => {
-          fileInputRef.current.click();
-        };
-      
-        const handleFileChange = (event) => {
-          const file = event.target.files[0];
-          if (file) {
-            onFileSelected(file);
-          }
-        };
-      
-        return (
-          <>
-            <Input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              style={{ display: 'none' }}
-            />
-            <Button onClick={handleButtonClick}>
-              Upload File
-            </Button>
-          </>
-        );
+
+    /*const handleUpload = async () => {
+        if (!selectedFile) return;
+
+        setIsUploading(true);
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('fileName', selectedFile.name);
+        console.log('Uploading file:', selectedFile);
+        await dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
+        setIsUploading(false);
+    };*/
+
+    const handleFileSelected = (file) => {
+        console.log('File selected in parent:', file);
+        setSelectedFile(file);
     };
     /////////////////////////////////
 
@@ -203,11 +208,19 @@ function MattermostIntegration({ isOpen, onClose }) {
                                     placeholder="Write a message..."
                                     className={styles.newPostInput}
                                 />
-                                <Button onClick={sendMessage} className={styles.newPostSendButton}>
+                                <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
                                     <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
                                         <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
                                     </svg>
                                 </Button>
+                                <Box>
+                                    <FileUploadButton onFileSelected={handleFileSelected} />
+                                    {selectedFile && (
+                                        <>
+                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
+                                        </>
+                                    )}
+                                </Box>
                             </Box>
                         </Box>
                     </Box>
@@ -216,6 +229,6 @@ function MattermostIntegration({ isOpen, onClose }) {
         </Drawer>
     
     );
-}
+});
 
 export default MattermostIntegration;

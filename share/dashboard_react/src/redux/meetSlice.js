@@ -75,6 +75,14 @@ export const logoutFromMeet = createAsyncThunk(
   }
 );
 
+export const uploadFileOnChannel = createAsyncThunk(
+  'meet/uploadFileOnChannel',
+  async ({ channelId, formData }, thunkAPI) => {
+    const response = await meetService.postFileOnChannel(channelId, formData);
+    return { response };
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {

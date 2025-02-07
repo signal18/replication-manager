@@ -226,6 +226,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/logout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.LogoutMeetHandler)),
 	))
+	router.Handle("/meet/upload/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.UploadFileMeetHandler)),
+	))
 	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
@@ -1865,6 +1868,54 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 
 	response := map[string]string{
 		"status": "success",
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err := r.ParseMultipartForm(10 << 20) // Limite la taille du fichier à 10MB
+	if err != nil {
+		http.Error(w, "Error parsing multipart form", http.StatusBadRequest)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Error retrieving the file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	fileBytes, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Error reading the file", http.StatusInternalServerError)
+		return
+	}
+
+	meetClient := meethelper.GetMeetClient()
+
+	err = meetClient.UploadFileOnChannel(channelID, fileBytes, handler.Filename)
+
+	if err != nil {
+		http.Error(w, "Error sending the file to mattermost serv", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":   "success",
+		"fileName": handler.Filename,
+		"channel":  channelID,
 	}
 
 	json.NewEncoder(w).Encode(response)

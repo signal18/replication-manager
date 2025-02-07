@@ -9,11 +9,9 @@ package meethelper
 import (
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
 	"strings"
 
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -412,24 +410,24 @@ func ClearMeetClient() {
 }
 
 // to upload a file on a channel
-func (c *MeetChatClient) UploadFileToChannel(channelID string, filePath string, fileName string) error {
-	file, err := os.Open(filePath)
-	if err != nil {
-		fmt.Println("Error opening file : UploadFile Mattermost Error:", err)
-		return err
-	}
-	defer file.Close()
+func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte, fileName string) error {
+	fileRes, _, err := c.Client.UploadFile(fileBytes, channelID, fileName)
 
-	// Lire le contenu du fichier en bytes
-	fileBytes, err := io.ReadAll(file)
-	if err != nil {
-		fmt.Println("Error reading file : UploadFile Mattermost Error:", err)
-		return err
-	}
-
-	_, _, err = c.Client.UploadFile(fileBytes, channelID, fileName)
-	if err != nil {
+	if fileRes == nil || err != nil {
 		fmt.Println("UploadFile Mattermost Error:", err)
+		return err
+	}
+
+	// Create a post with the file attached
+	post := &model.Post{
+		ChannelId: channelID,
+		Message:   "",
+		FileIds:   []string{fileRes.FileInfos[0].Id}, // Attach the uploaded file to the post
+	}
+
+	// Post the message with the file attachment
+	if _, _, err := c.Client.CreatePost(post); err != nil {
+		fmt.Println("CreatePost Mattermost Error:", err)
 		return err
 	}
 

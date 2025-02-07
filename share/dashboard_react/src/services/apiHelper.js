@@ -66,13 +66,19 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
     headerURL = ''
   }
   const url = resolveUrl(apiUrl, authValue, baseUrl);
-  const headers = buildHeaders(authValue, 'json', headerURL);
+  const headers = {
+    ...buildHeaders(authValue, params instanceof FormData ? '' : 'json', headerURL),
+  };
+
+  if (params instanceof FormData) {
+    delete headers['Content-Type'];
+  }
 
   const options = {
     method,
     headers,
     credentials: 'include',
-    ...(params ? { body: JSON.stringify(params) } : {})
+    ...(params ? { body: params instanceof FormData ? params : JSON.stringify(params) } : {})
   };
 
   try {
