@@ -1905,7 +1905,9 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 
 	meetClient := meethelper.GetMeetClient()
 
-	err = meetClient.UploadFileOnChannel(channelID, fileBytes, handler.Filename)
+	message := r.FormValue("message")
+
+	err = meetClient.UploadFileOnChannel(channelID, fileBytes, handler.Filename, message)
 
 	if err != nil {
 		http.Error(w, "Error sending the file to mattermost serv", http.StatusInternalServerError)

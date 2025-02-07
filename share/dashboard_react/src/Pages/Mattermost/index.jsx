@@ -5,6 +5,7 @@ import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerO
 import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
+import { FaFile, FaDownload } from 'react-icons/fa';
 
 
 
@@ -19,7 +20,6 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     const messagesContainerRef = useRef(null);
     const [scrollPosition, setScrollPosition] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
-    const [isUploading, setIsUploading] = useState(false);
 
     //to get the channels from meet info
     useEffect(() => {
@@ -59,7 +59,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     //to update messages every 3 seconds
     useEffect(() => {
         const interval = setInterval(() => {
-            if (selectedChannel && !isUploading) {
+            if (selectedChannel) {
                 setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
                 dispatch(getMeetInfo());
@@ -94,10 +94,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 const formData = new FormData();
                 formData.append('file', selectedFile);
                 formData.append('fileName', selectedFile.name);
-
-                if (message.trim()) {
-                    await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
-                }
+                formData.append('message', message);
 
                 await dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
 
@@ -130,6 +127,17 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         return date.toLocaleDateString(); // Format the date as a readable string
     };
 
+    const formatFileSize = (sizeInBytes) => {
+        const units = ['Bytes', 'KB', 'MB', 'GB'];
+        let size = sizeInBytes;
+        let unitIndex = 0;
+        while (size >= 1024 && unitIndex < units.length - 1) {
+            size /= 1024;
+            unitIndex++;
+        }
+        return `${size.toFixed(1)} ${units[unitIndex]}`;
+    };
+
     const renderMessages = () => {
         if (!messages[selectedChannel]) return null;
 
@@ -153,6 +161,23 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                     <Box key={index} className={styles.post}>
                         <div className={styles.postUser}>{getUserName(msg.UserId)} {formatTime(msg.CreateAt)}</div>
                         <div className={styles.postContent}>{msg.Message}</div>
+                        {msg?.Metadata && msg?.Metadata.length > 0 && (
+                            <Box className={styles.fileAttachments}>
+                            {msg.Metadata.map((fileInfo, fileIndex) => (
+                                <Box key={fileIndex} className={styles.fileAttachment}>
+                                    <Box className={styles.fileDetails}>
+                                            <Text className={styles.fileName}>{fileInfo.Name || 'File'}</Text>
+                                            <Text className={styles.fileSize}>{formatFileSize(fileInfo.Size)}</Text>
+                                    </Box>
+                                    <Box className={styles.fileDownload}>
+                                        <a href={fileInfo.FileLink} download={fileInfo.Name} className={styles.fileLink}>
+                                            <FaDownload />
+                                        </a>
+                                    </Box>
+                                </Box>
+                                ))}
+                            </Box>
+                        )}
                     </Box>
                 </React.Fragment>
             );
@@ -162,19 +187,6 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
 
     /////////////////////////////////
     //File Upload Button Component//
-
-    /*const handleUpload = async () => {
-        if (!selectedFile) return;
-
-        setIsUploading(true);
-
-        const formData = new FormData();
-        formData.append('file', selectedFile);
-        formData.append('fileName', selectedFile.name);
-        console.log('Uploading file:', selectedFile);
-        await dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
-        setIsUploading(false);
-    };*/
 
     const handleFileSelected = (file) => {
         console.log('File selected in parent:', file);

@@ -30,9 +30,15 @@ function Navbar({ username }) {
   //ajout pour le compteur de messages non lus
   const { meetInfo, unreadMessagesByChannel } = useSelector((state) => state?.meet)
 
+  const {
+    common: { isMobile, isDesktop },
+    globalClusters: { monitor },
+    cluster: { clusterAlerts, clusterData }
+  } = useSelector((state) => state)
+
   //to get the meet info
   useEffect(() => {
-    if (isAuthorized()) dispatch(getMeetInfo());
+    if (isAuthorized() && isDesktop) dispatch(getMeetInfo());
   }, [dispatch]);
 
   useEffect(() => {
@@ -42,11 +48,6 @@ function Navbar({ username }) {
     }
   }, [unreadMessagesByChannel]);
   //
-  const {
-    common: { isMobile, isDesktop },
-    globalClusters: { monitor },
-    cluster: { clusterAlerts, clusterData }
-  } = useSelector((state) => state)
 
   const openAlertModal = (type) => {
     setAlertModalType(type)

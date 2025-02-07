@@ -58,11 +58,25 @@ type MeetChannelMessages struct {
 }
 
 type MeetMessage struct {
+	ID        string
 	UserId    string
 	ChannelID string
 	Message   string
-	ID        string
 	CreateAt  int64
+	FileIds   []string
+	Metadata  []MeetFile
+}
+
+type MeetFile struct {
+	ID        string
+	UserId    string
+	ChannelID string
+	Name      string
+	CreateAt  int64
+	Extension string
+	Size      int
+	MimeType  string
+	FileLink  string
 }
 
 // create a client for mattermost and set user info
@@ -224,6 +238,30 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 	return channelsMapO, channelsMapP, channelsMapD, unReadMessagesByChannel
 }
 
+// to set file and meta data
+func (c *MeetChatClient) GetFilesMessagesMetadata(metadata []MeetFile, fileId string) []MeetFile {
+	fileInfo, _, err := c.Client.GetFileInfo(fileId)
+
+	if err == nil {
+		fileInfo := MeetFile{
+			ID:        fileInfo.Id,
+			UserId:    fileInfo.CreatorId,
+			ChannelID: fileInfo.ChannelId,
+			Name:      fileInfo.Name,
+			CreateAt:  fileInfo.CreateAt,
+			Extension: fileInfo.Extension,
+			MimeType:  fileInfo.MimeType,
+			Size:      int(fileInfo.Size),
+		}
+		fileLink, _, err := c.Client.GetFileLink(fileId)
+		if err == nil {
+			fileInfo.FileLink = fileLink
+		}
+		metadata = append(metadata, fileInfo)
+	}
+	return metadata
+}
+
 func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelMessages, error) {
 	posts, resp, err := c.Client.GetPostsForChannel(channelID, page, 30, "", true)
 	if err != nil {
@@ -233,13 +271,20 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 
 	messages := make([]MeetMessage, 0)
 	for _, post := range posts.ToSlice() {
-		messages = append(messages, MeetMessage{
+		message := MeetMessage{
 			UserId:    post.UserId,
 			ChannelID: post.ChannelId,
 			Message:   post.Message,
 			ID:        post.Id,
 			CreateAt:  post.CreateAt,
-		})
+		}
+		if len(post.FileIds) > 0 {
+			for _, fileId := range post.FileIds {
+				message.Metadata = c.GetFilesMessagesMetadata(message.Metadata, fileId)
+			}
+		}
+		messages = append(messages, message)
+
 	}
 
 	//A modifier, peut être inverser key et value dans les map des channels ???
@@ -410,7 +455,7 @@ func ClearMeetClient() {
 }
 
 // to upload a file on a channel
-func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte, fileName string) error {
+func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte, fileName string, message string) error {
 	fileRes, _, err := c.Client.UploadFile(fileBytes, channelID, fileName)
 
 	if fileRes == nil || err != nil {
@@ -421,7 +466,7 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 	// Create a post with the file attached
 	post := &model.Post{
 		ChannelId: channelID,
-		Message:   "",
+		Message:   message,
 		FileIds:   []string{fileRes.FileInfos[0].Id}, // Attach the uploaded file to the post
 	}
 
