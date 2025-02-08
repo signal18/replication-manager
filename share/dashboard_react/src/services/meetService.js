@@ -6,7 +6,8 @@ export const meetService = {
     getMeetMessageFromChannel,
     setMessageViewOnChannel,
     logoutFromMeet,
-    postFileOnChannel
+    postFileOnChannel,
+    downloadFileFromChannel
 }
 
 
@@ -79,6 +80,16 @@ async function postFileOnChannel(channelId, formData) {
         return response;
     } catch (error) {
         console.error('Error uploading file:', error);
+        throw error;
+    }
+}
+
+async function downloadFileFromChannel(fileId) {
+    try {
+        const response = await meetApi.get(`download/${fileId}`);
+        return response;
+    } catch (error) {
+        console.error('Error view meet messages:', error);
         throw error;
     }
 }

@@ -83,6 +83,14 @@ export const uploadFileOnChannel = createAsyncThunk(
   }
 );
 
+export const downloadFileFromChannel = createAsyncThunk(
+  'meet/dowloadFileFromChannel',
+  async ({ fileId }, thunkAPI) => {
+    const response = await meetService.downloadFileFromChannel(fileId);
+    return { response };
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {

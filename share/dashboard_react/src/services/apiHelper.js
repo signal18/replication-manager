@@ -57,6 +57,12 @@ const handleResponse = async (response) => {
       }
     }
   }
+  else if (contentType && contentType.includes('application/octet-stream')) {
+    data = await response.blob();
+  } else {
+    data = await response.text();
+  }
+
   return { data, status: response.status };
 };
 

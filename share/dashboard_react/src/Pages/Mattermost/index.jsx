@@ -2,7 +2,7 @@ import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef, memo } from 'react';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
-import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel, downloadFileFromChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
 import { FaFile, FaDownload } from 'react-icons/fa';
@@ -138,6 +138,33 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         return `${size.toFixed(1)} ${units[unitIndex]}`;
     };
 
+    const handleFileDownload = async (selectedfileId, selectedFileName) => {
+        try {
+            const response = await dispatch(downloadFileFromChannel({fileId : selectedfileId}));
+            if (response.payload.response.status === 200) {
+                //const blob = new Blob([response.data], { type: 'application/octet-stream' });
+                const blob = response.payload.response.data;  
+                
+                if (!(blob instanceof Blob)) {
+                    console.error("Le fichier téléchargé n'est pas un Blob !");
+                    return;
+                }
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = selectedFileName; // Remplacez par le nom réel du fichier
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+            } else {
+                console.error('Error downloading file');
+            }
+        } catch (error) {
+            console.error('Error downloading file:', error);
+        }
+    };
+
     const renderMessages = () => {
         if (!messages[selectedChannel]) return null;
 
@@ -170,7 +197,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                                             <Text className={styles.fileSize}>{formatFileSize(fileInfo.Size)}</Text>
                                     </Box>
                                     <Box className={styles.fileDownload}>
-                                        <a href={fileInfo.FileLink} download={fileInfo.Name} className={styles.fileLink}>
+                                        <a href="#" onClick={() => handleFileDownload(fileInfo.ID, fileInfo.Name)} className={styles.fileLink}>
                                             <FaDownload />
                                         </a>
                                     </Box>

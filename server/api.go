@@ -229,6 +229,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/upload/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.UploadFileMeetHandler)),
 	))
+	router.Handle("/meet/download/{fileId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.DownloadFileMeetHandler)),
+	))
 	///////////////////////////
 
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
@@ -1921,4 +1924,37 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 	}
 
 	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	vars := mux.Vars(r)
+	fileId := vars["fileId"]
+	if fileId == "" {
+		http.Error(w, "File ID is required", http.StatusBadRequest)
+		return
+	}
+
+	meetClient := meethelper.GetMeetClient()
+
+	fileBytes, fileName, err := meetClient.DownloadFileFromChannel(fileId)
+
+	if err != nil {
+		http.Error(w, "Error sending the file to mattermost serv", http.StatusInternalServerError)
+		return
+	}
+
+	// Set the headers for the file download
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName)) // Remplacez par le nom réel du fichier
+	w.Header().Set("Content-Type", "application/octet-stream")
+
+	// Write the file bytes to the response
+	_, err = w.Write(fileBytes)
+
+	if err != nil {
+		http.Error(w, "Error sending download file data to front", http.StatusBadRequest)
+		return
+	}
 }

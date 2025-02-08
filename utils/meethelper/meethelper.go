@@ -478,3 +478,22 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 
 	return nil
 }
+
+// to download a file with the fileId
+func (c *MeetChatClient) DownloadFileFromChannel(fileId string) ([]byte, string, error) {
+	fileBytes, _, err := c.Client.GetFile(fileId)
+
+	if err != nil {
+		fmt.Println("Download file Mattermost Error:", err)
+		return nil, "", err
+	}
+
+	fileInfo, _, err := c.Client.GetFileInfo(fileId)
+
+	if err != nil {
+		fmt.Println("Download file Mattermost Error:", err)
+		return nil, "", err
+	}
+
+	return fileBytes, fileInfo.Name, nil
+}
