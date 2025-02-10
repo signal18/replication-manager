@@ -404,7 +404,7 @@ func (s *Session) Close() {
 func (s *Session) safeWriteMessage(messageType int, data []byte) error {
 	// add \r after \n for xterm compatibility
 	n := len(data)
-	if data[n-1] == '\n' {
+	if n > 0 && data[n-1] == '\n' {
 		data = append(data, '\r')
 	}
 
