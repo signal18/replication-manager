@@ -606,7 +606,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
-	if URL == "/api/terminal" {
+	if URL == "/api/terminal/connect" || URL == "/api/terminal/list" {
 		return cluster.APIUsers[strUser].Grants[config.GrantGlobalTerminal]
 	}
 	if strings.Contains(URL, "/api/clusters/settings/actions/switch") {

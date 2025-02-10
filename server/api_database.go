@@ -397,7 +397,8 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/terminal", negroni.New(
+
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
 }

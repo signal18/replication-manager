@@ -52,6 +52,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -213,6 +214,7 @@ func (repman *ReplicationManager) apiserver() {
 
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 
@@ -221,6 +223,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -244,9 +247,11 @@ func (repman *ReplicationManager) apiserver() {
 		}
 	})
 
-	router.Handle("/api/terminal", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	router.Handle("/api/terminal/list", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
 	))
+
+	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.Handle("/api/terms", negroni.New(
@@ -1742,10 +1747,19 @@ func logResponse(resp *http.Response) {
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
 // @Failure 500 {string} string "No valid node" or "No valid cluster"
-// @Router /api/terminal [get]
-// @Router /api/clusters/{clustername}/servers/{serverName}/terminal [get]
-// @Router /api/clusters/{clustername}/proxies/{serverName}/terminal [get]
+// @Router /api/terminal/connect [get]
+// @Router /api/terminal/connect/clusters/{clustername}/servers/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clustername}/proxies/{serverName} [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
+	defer repman.LogPanicToFile()
+
+	var session *tty.Session
+	var err error
+	var mycluster *cluster.Cluster
+	var node *cluster.ServerMonitor
+	var proxy cluster.DatabaseProxy
+	var host, port string
+
 	vars := mux.Vars(r)
 
 	if !repman.Conf.TerminalSessionEnabled {
@@ -1753,27 +1767,30 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		return
 	}
 
-	claims, err := repman.GetJWTClaims(r)
-	if err != nil {
-		http.Error(w, "Error getting JWT claims", 500)
-		return
-	}
+	plainuser := "admin"
+	username := plainuser
+	md5h := md5.New()
+	md5h.Write([]byte(username))
+	username = string(md5h.Sum(nil))
 
-	scope := "global"
-	sessionID := claims["User"]
+	sessionID := "global"
 
 	if vars["clustername"] != "" {
-		mycluster := repman.getClusterByName(vars["clustername"])
+		mycluster = repman.getClusterByName(vars["clustername"])
 		if mycluster != nil {
 			if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-				node := mycluster.GetServerFromName(vars["serverName"])
+				node = mycluster.GetServerFromName(vars["serverName"])
+				proxy = mycluster.GetProxyFromName(vars["serverName"])
 				if node != nil {
-					scope = mycluster.Name
-					sessionID = node.Name + "-" + claims["User"]
+					sessionID = mycluster.Name + "-" + node.Name
+				} else if proxy != nil {
+					sessionID = mycluster.Name + "-" + proxy.GetName()
 				} else {
-					http.Error(w, "No valid node", 500)
+
 					return
 				}
+
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
 			} else {
 				http.Error(w, "No Valid ACL", 403)
 				return
@@ -1782,33 +1799,105 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			http.Error(w, "No valid cluster", 500)
 			return
 		}
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
 	}
 
-	md5h := md5.New()
-	md5h.Write([]byte(sessionID))
-	sessionID = string(md5h.Sum(nil))
-
-	upgrader := websocket.Upgrader{}
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
 
 	// Upgrade the HTTP connection to a WebSocket.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("Error upgrading WebSocket:", err)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error upgrading connection: %v", err)
+		http.Error(w, "Failed to upgrade connection", 500)
 		return
 	}
 	defer conn.Close()
 
-	// Create a new session or resume the existing session by ID
-	session, err := repman.SessionManager.NewSession(scope, sessionID, conn)
-	if err != nil {
-		log.Println("Error creating or resuming session:", err)
-		return
-	}
+	// Upgrade successful, create a new session
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
 
-	// Handle WebSocket input and output as normal
-	go session.HandleWebSocketInput()
-	go session.HandleOutput()
+	finalID := username + "-" + sessionID
+
+	if sessionID == "global" {
+		// Create a new session or resume the existing session by ID
+		session, err = repman.SessionManager.NewSession(username, finalID, conn)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
+			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume session"))
+			return
+		}
+	} else {
+		if node != nil {
+			host = node.Host
+		} else if proxy != nil {
+			host = proxy.GetHost()
+		}
+		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, port, mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey())
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
+			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session"))
+			return
+		}
+	}
 
 	// Wait for the session to finish (or be closed).
 	session.WG.Wait()
+}
+
+// handlerGetTerminalSessionList handles the HTTP request to retrieve a list of terminal sessions.
+// @Summary Get Terminal Session List
+// @Description Returns a list of terminal sessions for a user.
+// @Tags Terminal
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clustername path string false "Cluster Name"
+// @Success 200 {array} string "List of terminal sessions"
+// @Failure 403 {string} string "Terminal session is disabled"
+// @Failure 500 {string} string "Error getting JWT claims" or "Error encoding JSON"
+// @Router /api/terminal/list [get]
+// @Router /api/terminal/list/clusters/{clustername} [get]
+func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error getting JWT claims", 500)
+		return
+	}
+
+	if !repman.Conf.TerminalSessionEnabled {
+		http.Error(w, "Terminal session is disabled", 403)
+		return
+	}
+
+	username := claims["User"]
+	md5h := md5.New()
+	md5h.Write([]byte(username))
+	username = string(md5h.Sum(nil))
+
+	sessionID := "global"
+
+	if vars["clustername"] != "" {
+		sessionID = vars["clustername"]
+	}
+
+	finalID := username + "-" + sessionID
+
+	sessions := repman.SessionManager.GetSessions(finalID)
+
+	// Return the list of sessions as JSON
+	jsonSessions, err := json.Marshal(sessions)
+	if err != nil {
+		http.Error(w, "Error encoding JSON", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonSessions)
 }

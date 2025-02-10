@@ -106,6 +106,7 @@ func (repman *ReplicationManager) httpserver() {
 			return
 		}
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -113,6 +114,7 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/images/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
@@ -136,6 +138,8 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))
+
+	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),

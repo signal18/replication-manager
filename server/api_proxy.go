@@ -47,7 +47,7 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyNeedReprov)),
 	))
-	router.Handle("/api/clusters/{clusterName}/proxies/{serverName}/terminal", negroni.New(
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
 }

@@ -18,7 +18,7 @@ export default configureStore({
     common: commonReducer,
     toast: toastReducer,
     meet: meetReducer,
-    globalClusters: globalClustersReducer
+    globalClusters: globalClustersReducer,
   },
   middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger)
 })

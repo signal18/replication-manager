@@ -17,5 +17,5 @@ func (repman *ReplicationManager) InitWebTTY() {
 		terminalManager = &tty.ScreenManager{}
 	}
 
-	repman.SessionManager = tty.NewSessionManager(stateFile, repman.Conf.TerminalSessionResume, terminalManager)
+	repman.SessionManager = tty.NewSessionManager(stateFile, repman.Conf.TerminalSessionResume, terminalManager, repman.Logrus)
 }

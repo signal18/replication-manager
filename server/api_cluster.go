@@ -67,6 +67,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/backups/stats", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStats)),

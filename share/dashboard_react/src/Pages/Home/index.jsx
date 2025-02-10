@@ -256,6 +256,7 @@ function Home() {
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
+                
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
                 ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList onLogin={setDashboardTab} mode='shared' />, <ClustersGlobalSettings />]
