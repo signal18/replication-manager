@@ -27,6 +27,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -429,30 +430,36 @@ func (repman *ReplicationManager) DecryptJWTPassword(r *http.Request) (string, e
 	return "", err
 }
 
-func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
+func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]string, error) {
+	claims := token.Claims.(jwt.MapClaims)
+	userinfo := claims["CustomUserInfo"]
+	mycutinfo := userinfo.(map[string]interface{})
+
 	UserInfoMap := make(map[string]string)
+	UserInfoMap["Password"] = mycutinfo["Password"].(string)
+	UserInfoMap["Role"] = mycutinfo["Role"].(string)
+	_, ok := mycutinfo["profile"]
+	if ok {
+		profile := mycutinfo["profile"].(string)
+		if strings.Contains(profile, repman.Conf.OAuthProvider) {
+			UserInfoMap["User"] = mycutinfo["email"].(string)
+			UserInfoMap["profile"] = profile
+			return UserInfoMap, nil
+		}
+		return nil, fmt.Errorf("invalid oauth provider")
+	}
+	UserInfoMap["User"] = mycutinfo["Name"].(string)
+	return UserInfoMap, nil
+}
+
+func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
+
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
 	})
 	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
-		UserInfoMap["Password"] = mycutinfo["Password"].(string)
-		UserInfoMap["Role"] = mycutinfo["Role"].(string)
-		_, ok := mycutinfo["profile"]
-		if ok {
-			profile := mycutinfo["profile"].(string)
-			if strings.Contains(profile, repman.Conf.OAuthProvider) {
-				UserInfoMap["User"] = mycutinfo["email"].(string)
-				UserInfoMap["profile"] = profile
-				return UserInfoMap, nil
-			}
-			return nil, fmt.Errorf("invalid oauth provider")
-		}
-		UserInfoMap["User"] = mycutinfo["Name"].(string)
-		return UserInfoMap, nil
+		return repman.GetUserInfoMap(token)
 	}
 	return nil, err
 }
@@ -1742,65 +1749,30 @@ func logResponse(resp *http.Response) {
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clustername path string false "Cluster Name"
+// @Param clusterName path string false "Cluster Name"
 // @Param serverName path string false "Server Name"
 // @Success 200 {string} string "Connected successfully"
 // @Failure 400 {string} string "No user provided"
 // @Failure 500 {string} string "No valid node" or "No valid cluster"
 // @Router /api/terminal/connect [get]
-// @Router /api/terminal/connect/clusters/{clustername}/servers/{serverName} [get]
-// @Router /api/terminal/connect/clusters/{clustername}/proxies/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
 	defer repman.LogPanicToFile()
 
-	var session *tty.Session
+	session := new(tty.Session)
 	var err error
 	var mycluster *cluster.Cluster
 	var node *cluster.ServerMonitor
 	var proxy cluster.DatabaseProxy
-	var host, port string
+	var host string
 
 	vars := mux.Vars(r)
+	path := r.URL.Path
 
 	if !repman.Conf.TerminalSessionEnabled {
 		http.Error(w, "Terminal session is disabled", 403)
 		return
-	}
-
-	plainuser := "admin"
-	username := plainuser
-	md5h := md5.New()
-	md5h.Write([]byte(username))
-	username = string(md5h.Sum(nil))
-
-	sessionID := "global"
-
-	if vars["clustername"] != "" {
-		mycluster = repman.getClusterByName(vars["clustername"])
-		if mycluster != nil {
-			if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-				node = mycluster.GetServerFromName(vars["serverName"])
-				proxy = mycluster.GetProxyFromName(vars["serverName"])
-				if node != nil {
-					sessionID = mycluster.Name + "-" + node.Name
-				} else if proxy != nil {
-					sessionID = mycluster.Name + "-" + proxy.GetName()
-				} else {
-
-					return
-				}
-
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
-			} else {
-				http.Error(w, "No Valid ACL", 403)
-				return
-			}
-		} else {
-			http.Error(w, "No valid cluster", 500)
-			return
-		}
-	} else {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
 	}
 
 	upgrader := websocket.Upgrader{
@@ -1821,6 +1793,82 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	// Upgrade successful, create a new session
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
 
+	session.Conn = conn
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+
+	// Handle the message
+	token := session.HandleWebToken(ctx)
+	if ctx.Err() == context.DeadlineExceeded {
+		session.Conn.WriteMessage(websocket.TextMessage, []byte("Timeout waiting for token"))
+		return
+	}
+
+	if token == "" {
+		session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid token received"))
+		return
+	}
+
+	// Validate the token
+	uinfomap, err := repman.ParseWebSocketJWT(token)
+	if err != nil {
+		session.Conn.WriteMessage(websocket.TextMessage, []byte("Invalid token"))
+		return
+	}
+
+	// uinfo, err := json.Marshal(uinfomap)
+	// if err != nil {
+	// 	session.Conn.WriteMessage(websocket.TextMessage, []byte("Error encoding JSON"))
+	// 	return
+	// }
+
+	// Send uinfomap to the client
+	// session.Conn.WriteMessage(websocket.TextMessage, bytes.Join([][]byte{[]byte("User info:"), uinfo}, []byte(" ")))
+
+	plainuser := uinfomap["User"]
+	username := plainuser
+	md5h := md5.New()
+	md5h.Write([]byte(username))
+	username = string(md5h.Sum(nil))
+
+	sessionID := "global"
+
+	if vars["clusterName"] == "" {
+		// Check if the user is allowed to access the terminal
+		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
+			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid ACL"))
+			return
+		}
+	} else {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
+		mycluster = repman.getClusterByName(vars["clusterName"])
+		if mycluster == nil {
+			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid cluster"))
+			return
+		}
+
+		method := "password"
+		if _, ok := uinfomap["profile"]; ok {
+			method = "oidc"
+		}
+
+		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
+			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid ACL"))
+			return
+		}
+
+		node = mycluster.GetServerFromName(vars["serverName"])
+		proxy = mycluster.GetProxyFromName(vars["serverName"])
+		if node != nil {
+			sessionID = mycluster.Name + "-" + node.Name
+		} else if proxy != nil {
+			sessionID = mycluster.Name + "-" + proxy.GetName()
+		} else {
+			return
+		}
+
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
+	}
+
 	finalID := username + "-" + sessionID
 
 	if sessionID == "global" {
@@ -1837,7 +1885,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		} else if proxy != nil {
 			host = proxy.GetHost()
 		}
-		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, port, mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey())
+		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, strconv.Itoa(mycluster.Conf.OnPremiseSSHPort), mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey())
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
 			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session"))
@@ -1856,12 +1904,12 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clustername path string false "Cluster Name"
+// @Param clusterName path string false "Cluster Name"
 // @Success 200 {array} string "List of terminal sessions"
 // @Failure 403 {string} string "Terminal session is disabled"
 // @Failure 500 {string} string "Error getting JWT claims" or "Error encoding JSON"
 // @Router /api/terminal/list [get]
-// @Router /api/terminal/list/clusters/{clustername} [get]
+// @Router /api/terminal/list/clusters/{clusterName} [get]
 func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
@@ -1883,8 +1931,8 @@ func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseW
 
 	sessionID := "global"
 
-	if vars["clustername"] != "" {
-		sessionID = vars["clustername"]
+	if vars["clusterName"] != "" {
+		sessionID = vars["clusterName"]
 	}
 
 	finalID := username + "-" + sessionID

@@ -11,6 +11,7 @@ import styles from './styles.module.scss';
 import { useDispatch, useSelector } from 'react-redux';
 import { getClusterData } from '../../redux/clusterSlice';
 import RMButton from '../../components/RMButton';
+import { getTokenByBaseURL } from '../../services/apiHelper';
 
 const TerminalComponent = () => {
   const [status, setStatus] = useState('disconnected');
@@ -22,7 +23,8 @@ const TerminalComponent = () => {
   const navigate = useNavigate();
   
   const {
-    cluster: { clusterData }
+    cluster: { clusterData },
+    auth: { baseURL },
   } = useSelector((state) => state);
   const dispatch = useDispatch();
   
@@ -111,7 +113,7 @@ const TerminalComponent = () => {
   const handleConnect = () => {
     let websocketUrl = '';
     if (clusterName && serverName) {
-      websocketUrl = `/api/terminal/connect/${clusterName}/servers/${serverName}`;
+      websocketUrl = `/api/terminal/connect/clusters/${clusterName}/servers/${serverName}`;
     } else if (clusterName && proxyName) {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/proxies/${proxyName}`;
     } else {
@@ -146,7 +148,7 @@ const TerminalComponent = () => {
 
       socketRef.current.onopen = () => {
         setStatus('connected');
-        window.resizeBy(1, 1); // Trigger resize event to fit terminal
+        socketRef.current.send(JSON.stringify({ type: 'auth', token: getTokenByBaseURL(baseURL) }));
       };
 
       socketRef.current.onclose = () => {

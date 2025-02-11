@@ -8,7 +8,7 @@ const authConfig = {
   2: { // Peer calls
     resolveUrl: (apiUrl, baseUrl) => `/peer/${baseUrl}/api/${apiUrl}`,
     getToken: (baseUrl) => {
-      if (baseUrl == ""){
+      if (baseUrl == "") {
         return localStorage.getItem(`user_token`);
       } else {
         return localStorage.getItem(`user_token_${baseUrl}`);
@@ -62,7 +62,7 @@ const handleResponse = async (response) => {
 
 const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') => {
   let headerURL = baseUrl
-  if(apiUrl == "login"){
+  if (apiUrl == "login") {
     headerURL = ''
   }
   const url = resolveUrl(apiUrl, authValue, baseUrl);
@@ -127,9 +127,17 @@ export const getApi = (baseURL = '') => {
 // Utility function to clear localStorage keys with a specific prefix
 export const clearLocalStorageByPrefix = (prefix) => {
   for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-          localStorage.removeItem(key);
-      }
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      localStorage.removeItem(key);
+    }
+  }
+}
+
+export const getTokenByBaseURL = (baseURL) => {
+  if (baseURL == "") {
+    return localStorage.getItem(`user_token`);
+  } else {
+    return localStorage.getItem(`user_token_${baseURL}`);
   }
 }

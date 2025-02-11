@@ -2,6 +2,7 @@ package tty
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -280,7 +281,7 @@ func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *
 	}()
 	go func() {
 		defer session.WG.Done()
-		session.HandleOutput()
+		session.HandleOutput(false)
 	}()
 	go func() {
 		defer session.WG.Done()
@@ -294,6 +295,37 @@ type ResizeMessage struct {
 	Type_ string `json:"type"`
 	Rows  int    `json:"rows"`
 	Cols  int    `json:"cols"`
+}
+
+type AuthToken struct {
+	Type_ string `json:"type"`
+	Token string `json:"token"`
+}
+
+func (s *Session) HandleWebToken(ctx context.Context) string {
+	for {
+		_, msg, err := s.Conn.ReadMessage()
+		if err != nil {
+			s.Logger.Println("Error reading from WebSocket:", err)
+			break
+		}
+
+		var token AuthToken
+		if err := json.Unmarshal(msg, &token); err == nil {
+			if token.Type_ == "auth" {
+				return token.Token
+			}
+		}
+
+		// Check if the context has been cancelled or timed out
+		select {
+		case <-ctx.Done():
+			return ""
+		default:
+		}
+	}
+
+	return ""
 }
 
 // HandleWebSocketInput manages input from the WebSocket client and writes it to stdin.
@@ -331,7 +363,7 @@ func (s *Session) HandleWebSocketInput() {
 }
 
 // HandleOutput manages the shell's stdout and stderr and sends it to the WebSocket.
-func (s *Session) HandleOutput() {
+func (s *Session) HandleOutput(stderr bool) {
 	go func() {
 		buffer := make([]byte, 1024)
 		for {
@@ -349,6 +381,26 @@ func (s *Session) HandleOutput() {
 			}
 		}
 	}()
+
+	if stderr {
+		go func() {
+			buffer := make([]byte, 1024)
+			for {
+				n, err := s.Stderr.Read(buffer)
+				if err != nil && err != io.EOF {
+					s.Logger.Println("Error reading from stderr:", err)
+					break
+				}
+				if n > 0 {
+					err := s.safeWriteMessage(websocket.TextMessage, buffer[:n])
+					if err != nil {
+						s.Logger.Println("Error sending output to WebSocket:", err)
+						break
+					}
+				}
+			}
+		}()
+	}
 }
 
 // keepAliveWebSocket sends a ping to the WebSocket client to keep the connection alive.
@@ -404,14 +456,6 @@ func (s *Session) safeWriteMessage(messageType int, data []byte) error {
 
 // NewSSHSession creates a new SSH session and WebSocket connection, with resumption logic.
 func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websocket.Conn, host, port, sshuser, sshpass, sshkey string) (*Session, error) {
-	// Check if session already exists
-	existingSession, err := sm.GetSession(sessionID)
-	if err == nil && sm.AllowResume {
-		// Session found and resume is allowed
-		sm.Logger.Println("Resuming session:", sessionID)
-		return existingSession, nil
-	}
-
 	// Create a new session if it doesn't exist
 	session := &Session{
 		ID:       sessionID,
@@ -423,34 +467,66 @@ func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websoc
 		Password: sshpass,
 	}
 
+	// Check if session already exists
+	existingSession, err := sm.GetSession(sessionID)
+	if err == nil {
+		if sm.AllowResume {
+			// Session found and resume is allowed
+			sm.Logger.Println("Resuming session:", sessionID)
+			existingSession.safeWriteMessage(websocket.TextMessage, []byte("Session resumed successfully\n"))
+			return existingSession, nil
+		} else {
+			existingSession.Close()
+		}
+	}
+
+	session.safeWriteMessage(websocket.TextMessage, []byte("Starting new SSH session...\n"))
+
 	session.AppendKey(sshkey)
 
 	client, err := session.connectSSH()
 	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error connecting to SSH server: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.SSHClient = client
 
 	sshSession, err := client.NewSession()
 	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error creating SSH session: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.SSHSession = sshSession
 
 	stdin, err := sshSession.StdinPipe()
 	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdin: "+err.Error()+"\n"))
 		return nil, err
 	}
+	session.Stdin = stdin
+
 	stdout, err := sshSession.StdoutPipe()
 	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdout: "+err.Error()+"\n"))
+		return nil, err
+	}
+	session.Stdout = stdout
+
+	stderr, err := sshSession.StderrPipe()
+	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stderr: "+err.Error()+"\n"))
+		return nil, err
+	}
+	session.Stderr = stderr
+
+	err = sshSession.RequestPty("xterm-256color", 25, 120, ssh.TerminalModes{})
+	if err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error requesting PTY: "+err.Error()+"\n"))
 		return nil, err
 	}
 
-	session.Stdin = stdin
-	session.Stdout = stdout
-	session.Stderr = session.Stdout
-
-	if err := sshSession.Start("/bin/bash"); err != nil {
+	if err := sshSession.Shell(); err != nil {
+		session.safeWriteMessage(websocket.TextMessage, []byte("Error starting shell: "+err.Error()+"\n"))
 		return nil, err
 	}
 
@@ -470,7 +546,7 @@ func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websoc
 	}()
 	go func() {
 		defer session.WG.Done()
-		session.HandleOutput()
+		session.HandleOutput(true)
 	}()
 	go func() {
 		defer session.WG.Done()
