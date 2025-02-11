@@ -77,14 +77,13 @@ func (u *APIUser) Granted(grant string) error {
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	if user, ok := cluster.APIUsers[strUser]; ok {
 		if user.Password == cluster.Conf.GetDecryptedPassword("api-credentials", strPassword) || AuthMethod == "oidc" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL URL check for user %s ", strUser)
+			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL URL check for user %s ", strUser)
 			return cluster.IsURLPassACL(strUser, URL, true)
 		}
 		return false
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL failed, user not found %s ", strUser)
-
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL failed, user not found %s ", strUser)
 	return false
 }
 
