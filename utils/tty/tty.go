@@ -26,7 +26,7 @@ type TerminalManager interface {
 type TmuxManager struct{}
 
 func (tm *TmuxManager) LaunchTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionID, "bash")
+	cmd := exec.Command("tmux", "new-session", "-A", "-s", sessionID, "bash")
 	return cmd, nil
 }
 
@@ -39,7 +39,7 @@ func (tm *TmuxManager) LaunchSSHTerminal(sessionID string) (*exec.Cmd, error) {
 type ScreenManager struct{}
 
 func (sm *ScreenManager) LaunchTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("screen", "-dmS", sessionID, "bash")
+	cmd := exec.Command("screen", "-D", "-RR", "-S", sessionID, "bash")
 	return cmd, nil
 }
 
