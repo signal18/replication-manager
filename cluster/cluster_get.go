@@ -28,6 +28,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 )
 
 func (cluster *Cluster) GetCrcTable() *crc64.Table {
@@ -1426,4 +1427,15 @@ func (cluster *Cluster) GetExternalCost(role string) float64 {
 		return cluster.Conf.Cloud18MonthlyExternalSysopsCost
 	}
 	return 0
+}
+
+func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
+	var terminalMgr tty.TerminalManager
+	if cluster.Conf.TerminalSessionManager == "tmux" {
+		terminalMgr = &tty.TmuxManager{}
+	} else if cluster.Conf.TerminalSessionManager == "screen" {
+		terminalMgr = &tty.ScreenManager{}
+	}
+
+	return terminalMgr
 }

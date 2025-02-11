@@ -10,16 +10,19 @@ import (
 
 func (repman *ReplicationManager) InitWebTTY() {
 	// Initialize the session manager
-	var terminalManager tty.TerminalManager
 	stateFile := filepath.Join(repman.Conf.WorkingDir, "tty.state.json")
+	repman.SessionManager = tty.NewSessionManager(stateFile, repman.Logrus)
+}
 
+func (repman *ReplicationManager) GetTerminalManager() tty.TerminalManager {
+	var terminalMgr tty.TerminalManager
 	if repman.Conf.TerminalSessionManager == "tmux" {
-		terminalManager = &tty.TmuxManager{}
+		terminalMgr = &tty.TmuxManager{}
 	} else if repman.Conf.TerminalSessionManager == "screen" {
-		terminalManager = &tty.ScreenManager{}
+		terminalMgr = &tty.ScreenManager{}
 	}
 
-	repman.SessionManager = tty.NewSessionManager(stateFile, repman.Conf.TerminalSessionResume, terminalManager, repman.Logrus)
+	return terminalMgr
 }
 
 // ParseJWT is a reusable function that parses a JWT token and returns the claims

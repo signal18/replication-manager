@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -20,84 +19,75 @@ import (
 // TerminalManager interface defines the methods for terminal management.
 type TerminalManager interface {
 	LaunchTerminal(sessionID string) (*exec.Cmd, error)
-	LaunchSSHTerminal(sessionID string) (*exec.Cmd, error)
+	LaunchSSHTerminal(sessionID string) []byte
 }
 
 // TmuxManager handles tmux-based terminal sessions.
 type TmuxManager struct{}
 
 func (tm *TmuxManager) LaunchTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("tmux", "new-session", "-A", "-s", sessionID, "bash")
+	cmd := exec.Command("tmux", "new-session", "-A", "-s", sessionID)
 	return cmd, nil
 }
 
-func (tm *TmuxManager) LaunchSSHTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", sessionID, "bash")
-	return cmd, nil
+func (tm *TmuxManager) LaunchSSHTerminal(sessionID string) []byte {
+	return []byte("tmux new-session -A -s " + sessionID + "\n")
 }
 
 // ScreenManager handles screen-based terminal sessions.
 type ScreenManager struct{}
 
 func (sm *ScreenManager) LaunchTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("screen", "-D", "-RR", "-S", sessionID, "bash")
+	cmd := exec.Command("screen", "-D", "-RR", "-S", sessionID)
 	return cmd, nil
 }
 
-func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) (*exec.Cmd, error) {
-	cmd := exec.Command("screen", "-dmS", sessionID, "bash")
-	return cmd, nil
+func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) []byte {
+	return []byte("screen -D -RR -S " + sessionID + "\n")
 }
 
 // Session represents a single terminal session (SSH or local shell).
 type Session struct {
-	ID         string          `json:"id"`
-	Owner      string          `json:"owner"`
-	Conn       *websocket.Conn `json:"-"`
-	SSHClient  *ssh.Client     `json:"-"`
-	SSHSession *ssh.Session    `json:"-"`
-	Cmd        *exec.Cmd       `json:"-"`
-	PTY        *os.File        `json:"-"`
-	Stdin      io.WriteCloser  `json:"-"`
-	Stdout     io.Reader       `json:"-"`
-	Stderr     io.Reader       `json:"-"`
-	Host       string          `json:"host"`
-	Port       string          `json:"port"`
-	Username   string          `json:"-"`
-	Password   string          `json:"-"`
-	Keys       []ssh.Signer    `json:"-"`
-	WG         sync.WaitGroup  `json:"-"`
-	Logger     *logrus.Logger  `json:"-"`
-	Manager    *SessionManager `json:"-"`
-	writeMu    sync.Mutex      `json:"-"`
-	Line       string          `json:"-"`
+	ID          string          `json:"id"`
+	Owner       string          `json:"owner"`
+	AllowResume bool            `json:"-"`
+	TerminalMgr TerminalManager `json:"-"`
+	Conn        *websocket.Conn `json:"-"`
+	SSHClient   *ssh.Client     `json:"-"`
+	SSHSession  *ssh.Session    `json:"-"`
+	Cmd         *exec.Cmd       `json:"-"`
+	PTY         *os.File        `json:"-"`
+	Stdin       io.WriteCloser  `json:"-"`
+	Stdout      io.Reader       `json:"-"`
+	Stderr      io.Reader       `json:"-"`
+	Host        string          `json:"host"`
+	Port        string          `json:"port"`
+	Username    string          `json:"-"`
+	Password    string          `json:"-"`
+	Keys        []ssh.Signer    `json:"-"`
+	WG          sync.WaitGroup  `json:"-"`
+	Logger      *logrus.Logger  `json:"-"`
+	Manager     *SessionManager `json:"-"`
+	writeMu     sync.Mutex      `json:"-"`
+	Line        string          `json:"-"`
 }
 
 type SignerList []ssh.Signer
 
 // SessionManager handles session persistence and resumption.
 type SessionManager struct {
-	mu          sync.Mutex
-	sshKeys     map[string]SignerList
-	sessions    map[string]*Session
-	stateFile   string
-	AllowResume bool
-	TerminalMgr TerminalManager
-	Logger      *logrus.Logger
+	mu        sync.Mutex
+	sessions  map[string]*Session
+	stateFile string
+	Logger    *logrus.Logger
 }
 
 // NewSessionManager creates a new SessionManager.
-func NewSessionManager(stateFile string, allowResume bool, terminalMgr TerminalManager, logger *logrus.Logger) *SessionManager {
-	if terminalMgr == nil {
-		allowResume = false
-	}
-
+func NewSessionManager(stateFile string, logger *logrus.Logger) *SessionManager {
 	manager := &SessionManager{
-		sessions:    make(map[string]*Session),
-		stateFile:   stateFile,
-		AllowResume: allowResume,
-		TerminalMgr: terminalMgr,
-		Logger:      logger,
+		sessions:  make(map[string]*Session),
+		stateFile: stateFile,
+		Logger:    logger,
 	}
 
 	// Load sessions from the state file on initialization
@@ -138,18 +128,8 @@ func (sm *SessionManager) SaveState() error {
 	defer file.Close()
 
 	// Save the session metadata (exclude active WebSocket connection and SSH session)
-	sessionMetadata := make(map[string]interface{})
-	for id, session := range sm.sessions {
-		sessionMetadata[id] = map[string]string{
-			"host":     session.Host,
-			"port":     session.Port,
-			"username": session.Username,
-			"password": session.Password,
-		}
-	}
-
 	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(sessionMetadata); err != nil {
+	if err := encoder.Encode(sm.sessions); err != nil {
 		return err
 	}
 
@@ -176,11 +156,10 @@ func (sm *SessionManager) loadState() error {
 	// Restore sessions from the metadata
 	for id, metadata := range sessionMetadata {
 		session := &Session{
-			ID:       id,
-			Host:     metadata["host"],
-			Port:     metadata["port"],
-			Username: metadata["username"],
-			Password: metadata["password"],
+			ID:    id,
+			Owner: metadata["owner"],
+			Host:  metadata["host"],
+			Port:  metadata["port"],
 		}
 		sm.sessions[id] = session
 	}
@@ -189,16 +168,16 @@ func (sm *SessionManager) loadState() error {
 }
 
 // GetSession retrieves a session by ID.
-func (sm *SessionManager) GetSession(id string) (*Session, error) {
+func (sm *SessionManager) GetSession(id string) (*Session, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
 	session, found := sm.sessions[id]
 	if !found {
-		return nil, fmt.Errorf("session not found")
+		return nil, false
 	}
 
-	return session, nil
+	return session, true
 }
 
 // AddSession adds a new session to the manager.
@@ -218,36 +197,25 @@ func (sm *SessionManager) RemoveSession(id string) {
 }
 
 // NewSession creates a new session, resuming if allowed.
-func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *websocket.Conn) (*Session, error) {
-	// Check if session already exists
-	existingSession, err := sm.GetSession(sessionID)
-	if err == nil {
-		if sm.AllowResume {
-			// Session found and resume is allowed
-			sm.Logger.Println("Resuming session:", sessionID)
-			existingSession.safeWriteMessage(websocket.TextMessage, []byte("Session resumed successfully\n"))
-			return existingSession, nil
-		} else {
-			existingSession.Close()
-		}
-	}
-
+func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *websocket.Conn, allowResume bool, terminalMgr TerminalManager) (*Session, error) {
+	var err error
 	session := &Session{
-		ID:      sessionID,
-		Owner:   username,
-		Conn:    conn,
-		Logger:  sm.Logger,
-		Manager: sm,
+		ID:          sessionID,
+		Owner:       username,
+		Conn:        conn,
+		Logger:      sm.Logger,
+		Manager:     sm,
+		TerminalMgr: terminalMgr,
+		AllowResume: allowResume,
 	}
 
 	session.safeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
 
-	// If session not found or resumption is not allowed, start a new session
+	// If allowed, resume the session using the terminal manager
 	var cmd *exec.Cmd
-	if sm.AllowResume {
-		cmd, err = sm.TerminalMgr.LaunchTerminal(sessionID)
+	if session.AllowResume && session.TerminalMgr != nil {
+		cmd, err = session.TerminalMgr.LaunchTerminal(sessionID)
 		if err != nil {
-
 			return nil, err
 		}
 	} else {
@@ -455,32 +423,21 @@ func (s *Session) safeWriteMessage(messageType int, data []byte) error {
 }
 
 // NewSSHSession creates a new SSH session and WebSocket connection, with resumption logic.
-func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websocket.Conn, host, port, sshuser, sshpass, sshkey string) (*Session, error) {
+func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websocket.Conn, host, port, sshuser, sshpass, sshkey string, allowResume bool, terminalMgr TerminalManager) (*Session, error) {
 	// Create a new session if it doesn't exist
 	session := &Session{
-		ID:       sessionID,
-		Owner:    username,
-		Conn:     conn,
-		Host:     host,
-		Port:     port,
-		Username: sshuser,
-		Password: sshpass,
+		ID:          sessionID,
+		Owner:       username,
+		Conn:        conn,
+		Host:        host,
+		Port:        port,
+		Username:    sshuser,
+		Password:    sshpass,
+		AllowResume: allowResume,
+		TerminalMgr: terminalMgr,
 	}
 
-	// Check if session already exists
-	existingSession, err := sm.GetSession(sessionID)
-	if err == nil {
-		if sm.AllowResume {
-			// Session found and resume is allowed
-			sm.Logger.Println("Resuming session:", sessionID)
-			existingSession.safeWriteMessage(websocket.TextMessage, []byte("Session resumed successfully\n"))
-			return existingSession, nil
-		} else {
-			existingSession.Close()
-		}
-	}
-
-	session.safeWriteMessage(websocket.TextMessage, []byte("Starting new SSH session...\n"))
+	session.safeWriteMessage(websocket.TextMessage, []byte("Starting SSH session...\n"))
 
 	session.AppendKey(sshkey)
 
@@ -519,7 +476,11 @@ func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websoc
 	}
 	session.Stderr = stderr
 
-	err = sshSession.RequestPty("xterm-256color", 25, 120, ssh.TerminalModes{})
+	err = sshSession.RequestPty("xterm-256color", 25, 120, ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	})
 	if err != nil {
 		session.safeWriteMessage(websocket.TextMessage, []byte("Error requesting PTY: "+err.Error()+"\n"))
 		return nil, err
@@ -528,6 +489,11 @@ func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websoc
 	if err := sshSession.Shell(); err != nil {
 		session.safeWriteMessage(websocket.TextMessage, []byte("Error starting shell: "+err.Error()+"\n"))
 		return nil, err
+	}
+
+	// Send the terminal command to the SSH session
+	if session.AllowResume && session.TerminalMgr != nil {
+		session.Stdin.Write(session.TerminalMgr.LaunchSSHTerminal(sessionID))
 	}
 
 	// Add session to manager to keep track of it

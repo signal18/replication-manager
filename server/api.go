@@ -1793,6 +1793,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	// Upgrade successful, create a new session
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
 
+	session.Conn.WriteMessage(websocket.TextMessage, []byte("Connected. Waiting for token..."))
 	session.Conn = conn
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
@@ -1807,6 +1808,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid token received"))
 		return
 	}
+
+	session.Conn.WriteMessage(websocket.TextMessage, []byte("Token received. Validating..."))
 
 	// Validate the token
 	uinfomap, err := repman.ParseWebSocketJWT(token)
@@ -1873,7 +1876,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	if sessionID == "global" {
 		// Create a new session or resume the existing session by ID
-		session, err = repman.SessionManager.NewSession(username, finalID, repman.OsUser.HomeDir, conn)
+		session, err = repman.SessionManager.NewSession(username, finalID, repman.OsUser.HomeDir, conn, repman.Conf.TerminalSessionResume, repman.GetTerminalManager())
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
 			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume session"))
@@ -1885,7 +1888,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		} else if proxy != nil {
 			host = proxy.GetHost()
 		}
-		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, strconv.Itoa(mycluster.Conf.OnPremiseSSHPort), mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey())
+		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, strconv.Itoa(mycluster.Conf.OnPremiseSSHPort), mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey(), mycluster.Conf.TerminalSessionResume, mycluster.GetTerminalManager())
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
 			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session"))
