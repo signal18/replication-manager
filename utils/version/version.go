@@ -297,3 +297,11 @@ func (mv *Version) IsMySQLOrPerconaGreater57() bool {
 
 	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 5 && mv.Minor > 6) || mv.Major > 5)
 }
+
+func (mv *Version) IsMySQLOrPerconaGreater84() bool {
+	if mv == nil {
+		return false
+	}
+
+	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 8 && mv.Minor > 4) || mv.Major > 8)
+}
