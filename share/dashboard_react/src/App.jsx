@@ -7,6 +7,7 @@ import Login from './Pages/Login'
 // const Home = lazy(() => import('./Pages/Home'))
 import Home from './Pages/Home'
 import ClusterDB from './Pages/ClusterDB'
+import TerminalComponent from './Pages/Terminal'
 
 function App() {
   return (
@@ -37,7 +38,21 @@ function App() {
             </PrivateRoute>
           }
         />
-
+        <Route path={"/terminal/clusters/:clusterName/servers/:serverName"} element={
+          <PrivateRoute>
+            <TerminalComponent />
+          </PrivateRoute>
+        } />
+        <Route path={"/terminal/clusters/:clusterName/proxies/:proxyName"} element={
+          <PrivateRoute>
+            <TerminalComponent />
+          </PrivateRoute>
+        } />
+        <Route path={"/terminal"} element={
+          <PrivateRoute>
+            <TerminalComponent />
+          </PrivateRoute>
+        } />
         <Route path='/login' element={<Login />} />
       </Routes>
     </BrowserRouter>

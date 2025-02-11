@@ -4,8 +4,13 @@
 
 .tabNormal {
   padding: rem(8) rem(24);
+  display: flex;
+  align-items: center;
+  font-size : var(--chakra-fontSizes-lg);
   border-top-left-radius: $border-radius-sm;
   border-top-right-radius: $border-radius-sm;
+  outline: 2px solid var(--chakra-colors-transparent);
+  border: 1px solid var(--chakra-colors-transparent);
   color: var(--text-color);
   &:hover {
     border: rem(1) solid var(--text-color) !important;
@@ -14,6 +19,10 @@
 }
 
 .tabSelected {
+  display: flex;
+  align-items: center;
+  outline: 2px solid var(--chakra-colors-transparent);
+  font-size : var(--chakra-fontSizes-lg);
   padding-bottom: rem(6);
   padding-top: rem(10);
   padding-left: rem(16);

@@ -760,6 +760,9 @@ type Config struct {
 	TokenTimeout                              int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
 	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	ApiSwaggerEnabled                         bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
+	TerminalSessionEnabled                    bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
+	TerminalSessionResume                     bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
+	TerminalSessionManager                    string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
@@ -1065,7 +1068,7 @@ const (
 	GrantDBConfigRessource         string = "db-config-ressource"
 	GrantDBConfigFlag              string = "db-config-flag"
 	GrantDBConfigGet               string = "db-config-get"
-	GrantDBDebug                   string = "db-debug"
+	GrantDBTerminal                string = "db-terminal"
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
 	GrantClusterCreateMonitor      string = "cluster-create-monitor"
@@ -1101,6 +1104,7 @@ const (
 	GrantProxyConfigFlag        string = "proxy-config-flag"
 	GrantProxyStart             string = "proxy-start"
 	GrantProxyStop              string = "proxy-stop"
+	GrantProxyTerminal          string = "proxy-terminal"
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
 	GrantProvProxyProvision     string = "prov-proxy-provision"
@@ -1112,6 +1116,7 @@ const (
 
 	GrantGlobalSettings string = "global-settings" // Can update global settings
 	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
+	GrantGlobalTerminal string = "global-terminal" // Can use global terminal
 
 	GrantGrantShow   string = "grant-show"   // Can show users settings
 	GrantGrantAdd    string = "grant-add"    // Can add new user
@@ -2160,7 +2165,7 @@ func GetGrantType() map[string]string {
 		GrantDBShowSchema:              GrantDBShowSchema,
 		GrantDBShowProcess:             GrantDBShowProcess,
 		GrantDBShowLogs:                GrantDBShowLogs,
-		GrantDBDebug:                   GrantDBDebug,
+		GrantDBTerminal:                GrantDBTerminal,
 		GrantClusterCreate:             GrantClusterCreate,
 		GrantClusterDelete:             GrantClusterDelete,
 		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
@@ -2195,6 +2200,7 @@ func GetGrantType() map[string]string {
 		GrantProxyConfigFlag:           GrantProxyConfigFlag,
 		GrantProxyStart:                GrantProxyStart,
 		GrantProxyStop:                 GrantProxyStop,
+		GrantProxyTerminal:             GrantProxyTerminal,
 		GrantProvSettings:              GrantProvSettings,
 		GrantProvCluster:               GrantProvCluster,
 		GrantProvClusterProvision:      GrantProvClusterProvision,
@@ -2205,6 +2211,7 @@ func GetGrantType() map[string]string {
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
+		GrantGlobalTerminal:            GrantGlobalTerminal,
 		GrantSalesValidate:             GrantSalesValidate,
 		GrantSalesRefuse:               GrantSalesRefuse,
 		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
@@ -2241,7 +2248,7 @@ func GetGrantDB() []string {
 		GrantDBShowSchema,
 		GrantDBShowProcess,
 		GrantDBShowLogs,
-		GrantDBDebug,
+		GrantDBTerminal,
 	}
 }
 
@@ -2304,6 +2311,7 @@ func GetGrantProxy() []string {
 		GrantProxyConfigFlag,
 		GrantProxyStart,
 		GrantProxyStop,
+		GrantProxyTerminal,
 	}
 }
 
@@ -2342,6 +2350,7 @@ func GetGrantGlobal() []string {
 	return []string{
 		GrantGlobalGrant,
 		GrantGlobalSettings,
+		GrantGlobalTerminal,
 	}
 }
 

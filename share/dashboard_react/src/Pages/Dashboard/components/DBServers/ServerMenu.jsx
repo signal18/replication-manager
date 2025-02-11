@@ -30,6 +30,7 @@ import {
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 function ServerMenu({
   clusterName,
@@ -50,6 +51,7 @@ function ServerMenu({
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [serverName, setServerName] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (row?.id) {
@@ -90,6 +92,10 @@ function ServerMenu({
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
+          ...(user?.grants['db-terminal'] ? [
+            { name: 'Web Terminal', 
+              onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}`) }
+            ] : []),
           ...(user?.grants['cluster-switchover'] && row.isSlave
             ? [
                 {

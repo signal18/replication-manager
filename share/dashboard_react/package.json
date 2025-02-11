@@ -15,6 +15,9 @@
     "@emotion/styled": "^11.11.5",
     "@reduxjs/toolkit": "^2.2.6",
     "@tanstack/react-table": "^8.19.2",
+    "@xterm/addon-attach": "^0.11.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
     "framer-motion": "^11.2.13",
     "lodash": "^4.17.21",
     "react": "^18.3.1",
@@ -29,7 +32,8 @@
     "recharts": "^2.12.7",
     "redux-logger": "^3.0.6",
     "remark-gfm": "^4.0.0",
-    "sass": "^1.77.8"
+    "sass": "^1.77.8",
+    "typeface-fira-code": "^1.1.13"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
