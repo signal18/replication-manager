@@ -1,9 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
-import { AttachAddon } from 'xterm-addon-attach';
-import 'xterm/css/xterm.css';
-import { useParams } from 'react-router-dom';
+import { Box, Text } from '@chakra-ui/react';
+import { useNavigate, useParams } from 'react-router-dom';
+import 'typeface-fira-code';
+import PageContainer from '../PageContainer';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { AttachAddon } from '@xterm/addon-attach';
+import '@xterm/xterm/css/xterm.css';
+import styles from './styles.module.scss';
+import { useDispatch, useSelector } from 'react-redux';
+import { getClusterData } from '../../redux/clusterSlice';
+import RMButton from '../../components/RMButton';
 
 const TerminalComponent = () => {
   const [status, setStatus] = useState('disconnected');
@@ -11,17 +18,60 @@ const TerminalComponent = () => {
   const terminalRef = useRef(null);
   const terminalInstanceRef = useRef(null); // Store the terminal instance
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
-  const { clustername, serverName, proxyName } = useParams();
+  const { clusterName, serverName, proxyName } = useParams();
+  const navigate = useNavigate();
+  
+  const {
+    cluster: { clusterData }
+  } = useSelector((state) => state);
+  const dispatch = useDispatch();
+  
+  useEffect(() => {
+    if (clusterName) {
+      dispatch(getClusterData({ clusterName: clusterName }))
+    }
+  }, [clusterName])
 
   useEffect(() => {
-    // Create a new terminal instance
+    if (clusterData) {
+      const servers = clusterData.dbServers || [];
+      const proxies = clusterData.proxyServers || [];
+  
+      if (serverName) {
+        if (!servers.find(srv => srv === serverName)) {
+          navigate(`/`);
+        }
+      } else if (proxyName) {
+        if (!proxies.find(prx => prx === proxyName)) {
+          navigate(`/`);
+        }
+      }
+    }
+  }, [clusterData?.name,serverName,proxyName])
+
+  const sendMessage = (message) => {
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+      socketRef.current.send(message);
+    } else {
+      console.error('WebSocket is not open.');
+    }
+  };
+
+
+  useEffect(() => {
+    // Create a new terminal instance with transparent background
     const terminal = new Terminal({
+      allowTransparency: true,
+      theme: {
+        background: '#0000', // Transparent background
+      },
       cursorBlink: true,
-      cols: 80,
-      rows: 24,
+      cols: 120,
+      rows: 25,
+      fontFamily: 'Fira Code, monospace',
+      fontWeight: 'normal',
     });
 
-    // Attach the terminal to the DOM
     terminal.open(terminalRef.current);
 
     // Store the terminal instance
@@ -31,14 +81,21 @@ const TerminalComponent = () => {
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
 
-    // Resize the terminal to fit the container
-    fitAddon.fit();
-
     terminal.writeln('Welcome to the Web Terminal!');
 
     // Automatically resize the terminal on window resize
-    const resizeListener = () => fitAddon.fit();
+    const resizeListener = () => {
+        fitAddon.fit(); // Resize terminal to fit container
+        let dim = fitAddon.proposeDimensions(); // Propose dimensions to terminal
+    
+        // Send updated cols and rows to backend if connected
+        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+          sendMessage(`{"type":"resize","cols":${dim.cols},"rows":${dim.rows}}`);
+        }
+    }
     window.addEventListener("resize", resizeListener);
+
+    resizeListener(); // Call resizeListener once to set initial size
 
     // Clean up on unmount
     return () => {
@@ -53,10 +110,10 @@ const TerminalComponent = () => {
 
   const handleConnect = () => {
     let websocketUrl = '';
-    if (clustername && serverName) {
-      websocketUrl = `/api/terminal/connect/${clustername}/servers/${serverName}`;
-    } else if (clustername && proxyName) {
-      websocketUrl = `/api/terminal/connect/clusters/${clustername}/proxies/${proxyName}`;
+    if (clusterName && serverName) {
+      websocketUrl = `/api/terminal/connect/${clusterName}/servers/${serverName}`;
+    } else if (clusterName && proxyName) {
+      websocketUrl = `/api/terminal/connect/clusters/${clusterName}/proxies/${proxyName}`;
     } else {
       websocketUrl = '/api/terminal/connect';
     }
@@ -89,6 +146,7 @@ const TerminalComponent = () => {
 
       socketRef.current.onopen = () => {
         setStatus('connected');
+        window.resizeBy(1, 1); // Trigger resize event to fit terminal
       };
 
       socketRef.current.onclose = () => {
@@ -99,15 +157,22 @@ const TerminalComponent = () => {
   }, [status, url]);
 
   return (
-    <div>
-      <h3>Web Terminal</h3>
-      <div ref={terminalRef} style={{ height: '80vh', width: '100%', border: '1px solid #000' }}></div>
-
+    <PageContainer>
+      <Box className={styles.container}>
+      { clusterName ? serverName ? (
+        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Server Terminal {clusterName} - {serverName}</Text>
+      ) : (
+        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Proxy Terminal {clusterName} - {serverName}</Text>
+      ) : (
+        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Web Terminal</Text>
+      )
+      }
+      <div ref={terminalRef} style={{ height: '75vh', width: '100%', border: '1px solid #000' }}></div>
       <div style={{ marginTop: '10px' }}>
         {status === 'connected' ? (
-          <button onClick={handleDisconnect}>Disconnect</button>
+          <RMButton onClick={handleDisconnect}>Disconnect</RMButton>
         ) : (
-          <button onClick={handleConnect}>Connect</button>
+          <RMButton onClick={handleConnect}>Connect</RMButton>
         )}
       </div>
 
@@ -116,7 +181,8 @@ const TerminalComponent = () => {
       {status === 'connecting' && <p>Connecting...</p>}
       {status === 'disconnected' && <p>Disconnected. Try reconnecting.</p>}
       {status === 'error' && <p>Error occurred while connecting.</p>}
-    </div>
+      </Box>
+    </PageContainer>
   );
 };
 

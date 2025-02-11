@@ -1825,7 +1825,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	if sessionID == "global" {
 		// Create a new session or resume the existing session by ID
-		session, err = repman.SessionManager.NewSession(username, finalID, conn)
+		session, err = repman.SessionManager.NewSession(username, finalID, repman.OsUser.HomeDir, conn)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
 			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume session"))

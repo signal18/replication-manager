@@ -38,12 +38,12 @@ function App() {
             </PrivateRoute>
           }
         />
-        <Route path={"/clusters/:clustername/servers/:serverName/terminal"} element={
+        <Route path={"/terminal/clusters/:clusterName/servers/:serverName"} element={
           <PrivateRoute>
             <TerminalComponent />
           </PrivateRoute>
         } />
-        <Route path={"/clusters/:clustername/proxies/:proxyName/terminal"} element={
+        <Route path={"/terminal/clusters/:clusterName/proxies/:proxyName"} element={
           <PrivateRoute>
             <TerminalComponent />
           </PrivateRoute>
