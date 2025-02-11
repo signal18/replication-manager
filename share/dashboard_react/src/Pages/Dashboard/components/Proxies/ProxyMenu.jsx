@@ -3,6 +3,7 @@ import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
 import { provisionProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
+import { useNavigate } from 'react-router-dom'
 
 function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user }) {
   const dispatch = useDispatch()
@@ -10,6 +11,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [proxyName, setProxyName] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (row?.proxyId) {
@@ -80,7 +82,11 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                   }
                 }
               ]
-            : [])
+            : []),
+            ...(user?.grants['proxy-terminal'] ? [
+              { name: 'Web Terminal', 
+                onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.id}`) }
+              ] : []),
         ]}
       />
       {isConfirmModalOpen && (
