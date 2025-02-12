@@ -1005,6 +1005,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
+
+	flags.StringVar(&conf.FrontendTheme, "frontend-theme", "light", "Default frontend theme for first load: light|dark")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters

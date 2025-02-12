@@ -93,8 +93,24 @@ function ServerMenu({
             }
           },
           ...(user?.grants['db-terminal'] ? [
-            { name: 'Web Terminal', 
-              onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}`) }
+            { 
+              name: 'Web Terminal', 
+              subMenu: [
+                  { 
+                    name: 'MySQL Terminal', 
+                    onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mysql`) 
+                  },
+                  {
+                    name: 'MyTop Terminal',
+                    onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mytop`)
+                  },
+                  ...(user?.grants['global-terminal'] ? [
+                    { 
+                      name: 'Shell Terminal', 
+                      onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}`) 
+                    }
+                    ] : []),
+              ]}
             ] : []),
           ...(user?.grants['cluster-switchover'] && row.isSlave
             ? [

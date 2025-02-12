@@ -401,6 +401,9 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	))
 }
 
 // handlerMuxServer handles the HTTP request to get the server details within a cluster.

@@ -50,6 +50,9 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
+	router.Handle("/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	))
 }
 
 // @Summary Shows the proxies for that specific named cluster

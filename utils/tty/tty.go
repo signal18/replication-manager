@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -16,6 +17,31 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/crypto/ssh"
+)
+
+type TerminalCommandType int
+
+func (t TerminalCommandType) String() string {
+	return [...]string{"bash", "mysql", "mytop"}[t]
+}
+
+func GetTerminalCommandType(str string) (TerminalCommandType, error) {
+	str = strings.ToLower(str)
+	switch str {
+	case "", "bash":
+		return TerminalBash, nil
+	case "mysql":
+		return TerminalMySQL, nil
+	case "mytop":
+		return TerminalMyTop, nil
+	}
+	return TerminalBash, errors.New("Invalid terminal command type")
+}
+
+const (
+	TerminalBash TerminalCommandType = iota
+	TerminalMySQL
+	TerminalMyTop
 )
 
 // TerminalManager interface defines the methods for terminal management.
@@ -50,30 +76,31 @@ func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) []byte {
 
 // Session represents a single terminal session (SSH or local shell).
 type Session struct {
-	ID          string          `json:"id"`
-	Owner       string          `json:"owner"`
-	WorkingDir  string          `json:"working_dir"`
-	AllowResume bool            `json:"-"`
-	TerminalMgr TerminalManager `json:"-"`
-	Conn        *websocket.Conn `json:"-"`
-	SSHClient   *ssh.Client     `json:"-"`
-	SSHSession  *ssh.Session    `json:"-"`
-	Cmd         *exec.Cmd       `json:"-"`
-	PTY         *os.File        `json:"-"`
-	Stdin       io.WriteCloser  `json:"-"`
-	Stdout      io.Reader       `json:"-"`
-	Stderr      io.Reader       `json:"-"`
-	Host        string          `json:"host"`
-	Port        string          `json:"port"`
-	Username    string          `json:"-"`
-	Password    string          `json:"-"`
-	Keys        []ssh.Signer    `json:"-"`
-	WG          sync.WaitGroup  `json:"-"`
-	Logger      *logrus.Logger  `json:"-"`
-	Manager     *SessionManager `json:"-"`
-	writeMu     sync.Mutex      `json:"-"`
-	Line        string          `json:"-"`
-	closeOnce   sync.Once       `json:"-"`
+	ID          string              `json:"id"`
+	Owner       string              `json:"owner"`
+	WorkingDir  string              `json:"working_dir"`
+	AllowResume bool                `json:"-"`
+	TerminalMgr TerminalManager     `json:"-"`
+	Conn        *websocket.Conn     `json:"-"`
+	SSHClient   *ssh.Client         `json:"-"`
+	SSHSession  *ssh.Session        `json:"-"`
+	Cmd         *exec.Cmd           `json:"-"`
+	CmdType     TerminalCommandType `json:"-"`
+	PTY         *os.File            `json:"-"`
+	Stdin       io.WriteCloser      `json:"-"`
+	Stdout      io.Reader           `json:"-"`
+	Stderr      io.Reader           `json:"-"`
+	Host        string              `json:"host"`
+	Port        string              `json:"port"`
+	Username    string              `json:"-"`
+	Password    string              `json:"-"`
+	Keys        []ssh.Signer        `json:"-"`
+	WG          sync.WaitGroup      `json:"-"`
+	Logger      *logrus.Logger      `json:"-"`
+	Manager     *SessionManager     `json:"-"`
+	writeMu     sync.Mutex          `json:"-"`
+	Line        string              `json:"-"`
+	closeOnce   sync.Once           `json:"-"`
 }
 
 type SignerList []ssh.Signer
@@ -222,15 +249,20 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 
 	session.SafeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
 
-	// If allowed, resume the session using the terminal manager
 	var cmd *exec.Cmd
-	if session.AllowResume && session.TerminalMgr != nil {
-		cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
-		if err != nil {
-			return nil, err
-		}
+	if session.CmdType == TerminalMySQL {
+		cmd = exec.Command("mysql", "-h", session.Host, "-P", session.Port, "-u", session.Username, "-p")
+	} else if session.CmdType == TerminalMyTop {
+		cmd = exec.Command("mytop", "-h", session.Host, "-P", session.Port, "-u", session.Username, "--prompt")
 	} else {
-		cmd = exec.Command("bash")
+		if session.AllowResume && session.TerminalMgr != nil {
+			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			cmd = exec.Command("bash")
+		}
 	}
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	session.Cmd = cmd
@@ -245,15 +277,32 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	session.Stdin = ptyFile
 	session.Stdout = ptyFile
 
-	pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
+	if session.CmdType == TerminalMySQL {
+		for {
+			buf := make([]byte, 1)
+			_, err := session.Stdout.Read(buf)
+			if err != nil {
+				break
+			}
 
-	session.Stdin.Write([]byte("cd " + session.WorkingDir + " \n"))
+			if buf[0] == ':' {
+				break
+			}
+		}
+		session.Stdin.Write([]byte(session.Password + "\n"))
+	} else if session.CmdType == TerminalMyTop {
+		session.Stdin.Write([]byte(session.Password + "\n"))
+	} else {
+		session.Stdin.Write([]byte("cd " + session.WorkingDir + "\n"))
+	}
+
+	pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
 
 	// Add session to manager to keep track of it
 	sm.AddSession(session)
 
 	// Start WebSocket and SSH keep-alive mechanisms
-	session.WG.Add(3)
+	session.WG.Add(4)
 	go func() {
 		defer session.WG.Done()
 		session.HandleWebSocketInput()
@@ -265,6 +314,19 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	go func() {
 		defer session.WG.Done()
 		session.keepAliveWebSocket()
+	}()
+	go func() {
+		defer session.WG.Done()
+		err := cmd.Wait()
+		if err != nil {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Session exited with error: "+err.Error()+"\n"))
+		} else {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Session exited successfully.\n"))
+		}
+
+		// Clean up session after the process exits
+		sm.RemoveSession(session.ID)
+		session.Close()
 	}()
 
 	return session, nil
