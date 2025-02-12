@@ -22,7 +22,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func (repman *ReplicationManager) GetIsGitPush() bool {
+	repman.GitPushLock.Lock()
+	defer repman.GitPushLock.Unlock()
+	return repman.IsGitPush
+}
+
 func (repman *ReplicationManager) SetIsGitPush(val bool) {
+	repman.GitPushLock.Lock()
+	defer repman.GitPushLock.Unlock()
 	repman.IsGitPush = val
 	for _, cl := range repman.Clusters {
 		cl.IsGitPush = val
@@ -41,7 +49,7 @@ func (repman *ReplicationManager) SetIsGitPull(val bool) {
 }
 
 func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
-	if repman.IsGitPush {
+	if repman.GetIsGitPush() {
 		return nil
 	}
 
@@ -168,7 +176,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 }
 
 func (repman *ReplicationManager) PushAllConfigsToGit() {
-	if repman.IsGitPush {
+	if repman.GetIsGitPush() {
 		return
 	}
 
@@ -194,6 +202,18 @@ func (repman *ReplicationManager) PushAllConfigsToGit() {
 	if err != nil && err == transport.ErrRepositoryNotFound {
 		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
 		repman.PushConfigToGit()
+	}
+
+	// Count the commits
+	commits, err := repman.CountAllCommits()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Error counting commits: %v", err)
+		return
+	}
+
+	if commits >= 10 {
+		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
+		repman.ShallowClone()
 	}
 }
 
@@ -640,24 +660,36 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 	path := repman.Conf.WorkingDir
 	clusterList := repman.ClusterList
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Push to git : tok %s, dir %s, user %s, clustersList : %v\n", repman.Conf.PrintSecret(tok), path, user, clusterList)
+	// Log basic information
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+		"Push to git: user=%s, dir=%s, clusters=%v", user, path, clusterList)
 
 	auth := &git_https.BasicAuth{
-		Username: user, // yes, this can be anything except an empty string
+		Username: user, // Can be any non-empty string
 		Password: tok,
 	}
 
 	var r *git.Repository
-	if _, err := os.Stat(path + "/.git"); os.IsNotExist(err) {
+	start := time.Now()
+
+	// Check if .git directory exists
+	if _, err := os.Stat(filepath.Join(path, ".git")); os.IsNotExist(err) {
 		if !repman.Conf.ConfRestoreOnStart {
 			repman.MoveConfigsToTmpDir(path)
 		}
-		// Clone the given repository to the given directory
+
+		// Perform shallow clone for better performance
 		r, err = git.PlainClone(path, false, &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
+			Depth:             1, // Shallow clone
 		})
+
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+			"Clone took: %s", time.Since(start))
+
+		// Handle repository not found
 		if err != nil {
 			if err == transport.ErrRepositoryNotFound {
 				repman.Conf.CreateGitlabProjects()
@@ -665,93 +697,169 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 					URL:               url,
 					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 					Auth:              auth,
+					Depth:             1,
 				})
-				repman.RestoreConfigsFromTmpDir(path)
-				if err != nil {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Git error : cannot Clone %s repository : %s", url, err)
-					return err
-				}
-			} else {
-				repman.RestoreConfigsFromTmpDir(path)
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg, "Git error : cannot Clone %s repository : %s", url, err)
+			}
+			repman.RestoreConfigsFromTmpDir(path)
+			if err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+					"Git error: cannot clone %s: %s", url, err)
 				return err
 			}
 		}
-
-		w, err := r.Worktree()
-		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
-			return err
-		}
-
-		// checkout and keep files
-		w.Checkout(&git.CheckoutOptions{Keep: true})
-
-		if !repman.Conf.ConfRestoreOnStart {
-			repman.RestoreConfigsFromTmpDir(path)
-		}
 	} else {
+		// Open existing repository
 		r, err = git.PlainOpen(path)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot PlainOpen : %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+				"Git error: cannot open repo: %s", err)
 			return err
 		}
 	}
 
+	// Open the worktree
 	w, err := r.Worktree()
 	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Worktree : %s", err)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+			"Git error: cannot get worktree: %s", err)
 		return err
 	}
 
-	if len(clusterList) != 0 {
-		for _, name := range clusterList {
-			// Adds the new file to the staging area.
-			err = w.AddGlob(name + "/*.toml")
-			if err != nil {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/*.toml", err)
-			}
+	var changedFiles []string
 
-			if _, err := os.Stat(repman.Conf.WorkingDir + "/" + name + "/agents.json"); !os.IsNotExist(err) {
-				_, err = w.Add(name + "/agents.json")
-				if err != nil {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/agents.json", err)
-				}
-				_, err = w.Add(name + "/queryrules.json")
-				if err != nil {
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add %s : %s", name+"/queryrules.json", err)
-				}
-			}
-		}
-	}
-
-	if _, err := os.Stat(repman.Conf.WorkingDir + "/default.toml"); !os.IsNotExist(err) {
-		_, err = w.Add("default.toml")
+	// Add specific files without using AddGlob
+	for _, name := range clusterList {
+		dirPath := filepath.Join(path, name)
+		files, err := os.ReadDir(dirPath)
 		if err != nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Add default.toml : %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+				"Error reading directory %s: %s", dirPath, err)
+			continue
+		}
+
+		// Add .toml files
+		for _, file := range files {
+			if filepath.Ext(file.Name()) == ".toml" {
+				filePath := filepath.Join(name, file.Name())
+				if _, err := w.Add(filePath); err == nil {
+					changedFiles = append(changedFiles, filePath)
+				} else {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+						"Git error: cannot add %s: %s", filePath, err)
+				}
+			}
+		}
+
+		// Add agents.json and queryrules.json if they exist
+		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
+			jsonPath := filepath.Join(name, jsonFile)
+			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
+				if _, err := w.Add(jsonPath); err == nil {
+					changedFiles = append(changedFiles, jsonPath)
+				} else {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+						"Git error: cannot add %s: %s", jsonPath, err)
+				}
+			}
 		}
 	}
 
-	msg := "Update file"
+	// Add default.toml if it exists
+	defaultToml := "default.toml"
+	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
+		if _, err := w.Add(defaultToml); err == nil {
+			changedFiles = append(changedFiles, defaultToml)
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+				"Git error: cannot add %s: %s", defaultToml, err)
+		}
+	}
 
-	_, err = w.Commit(msg, &git.CommitOptions{
+	// Skip commit if no files were changed
+	if len(changedFiles) == 0 {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+			"No changes detected, skipping commit.")
+		return nil
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+		"Files changed: %v", changedFiles)
+
+	// Commit the changes
+	commitStart := time.Now()
+	_, err = w.Commit("Update configuration", &git.CommitOptions{
 		Author: &git_obj.Signature{
-			Name: "Replication-manager",
+			Name: "Replication Manager",
 			When: time.Now(),
 		},
-		All: true,
 	})
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+		"Commit took: %s", time.Since(commitStart))
 
 	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Commit : %s", err)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+			"Git error: cannot commit: %s", err)
 		return err
 	}
 
-	// push using default options
-	err = r.Push(&git.PushOptions{Auth: auth, RemoteURL: url})
+	// Push changes
+	pushStart := time.Now()
+	err = r.Push(&git.PushOptions{Auth: auth})
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
+		"Push took: %s", time.Since(pushStart))
+
 	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git error : cannot Push : %s", err)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
+			"Git error: cannot push: %s", err)
 	}
+
+	return err
+}
+
+func (repman *ReplicationManager) CountAllCommits() (int, error) {
+	mainPath := repman.Conf.WorkingDir
+
+	// Open the repository
+	r, err := git.PlainOpen(mainPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open repository at %s: %w", mainPath, err)
+	}
+
+	r.Fetch(&git.FetchOptions{Force: true, Auth: &git_https.BasicAuth{Username: repman.Conf.GitUsername, Password: repman.Conf.GetDecryptedValue("git-acces-token")}})
+
+	commitIter, err := r.Log(&git.LogOptions{All: true})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get commit iterator: %w", err)
+	}
+
+	commitCount := 0
+	// Count commits for this branch/tag
+	err = commitIter.ForEach(func(c *git_obj.Commit) error {
+		commitCount++
+		return nil
+	})
+
+	return commitCount, nil
+}
+
+func (repman *ReplicationManager) ShallowClone() error {
+	url := repman.Conf.GitUrl
+	tok := repman.Conf.GetDecryptedValue("git-acces-token")
+	user := repman.Conf.GitUsername
+	path := repman.Conf.WorkingDir
+
+	auth := &git_https.BasicAuth{
+		Username: user, // Can be any non-empty string
+		Password: tok,
+	}
+
+	// Perform shallow clone for better performance
+	_, err := git.PlainClone(path, false, &git.CloneOptions{
+		URL:               url,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Auth:              auth,
+		Depth:             1, // Shallow clone
+	})
 
 	return err
 }
