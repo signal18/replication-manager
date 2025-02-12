@@ -140,6 +140,7 @@ type ReplicationManager struct {
 	HasSavingConfigQueue                             bool                              `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                              `json:"isGitPull"`
 	IsGitPush                                        bool                              `json:"isGitPush"`
+	GitPushLock                                      sync.Mutex                        `json:"-"`
 	IsNeedGitPush                                    bool                              `json:"-"`
 	CanConnectVault                                  bool                              `json:"canConnectVault"`
 	IsExportPush                                     bool                              `json:"-"`
