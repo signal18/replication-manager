@@ -1789,43 +1789,43 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		return
 	}
 	defer conn.Close()
+	session.Conn = conn
 
 	// Upgrade successful, create a new session
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Connected. Waiting for token..."))
 
-	session.Conn.WriteMessage(websocket.TextMessage, []byte("Connected. Waiting for token..."))
-	session.Conn = conn
 	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
 
 	// Handle the message
 	token := session.HandleWebToken(ctx)
 	if ctx.Err() == context.DeadlineExceeded {
-		session.Conn.WriteMessage(websocket.TextMessage, []byte("Timeout waiting for token"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Timeout waiting for token"))
 		return
 	}
 
 	if token == "" {
-		session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid token received"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("No valid token received"))
 		return
 	}
 
-	session.Conn.WriteMessage(websocket.TextMessage, []byte("Token received. Validating..."))
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Token received. Validating..."))
 
 	// Validate the token
 	uinfomap, err := repman.ParseWebSocketJWT(token)
 	if err != nil {
-		session.Conn.WriteMessage(websocket.TextMessage, []byte("Invalid token"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid token"))
 		return
 	}
 
 	// uinfo, err := json.Marshal(uinfomap)
 	// if err != nil {
-	// 	session.Conn.WriteMessage(websocket.TextMessage, []byte("Error encoding JSON"))
+	// 	session.SafeWriteMessage(websocket.TextMessage, []byte("Error encoding JSON"))
 	// 	return
 	// }
 
 	// Send uinfomap to the client
-	// session.Conn.WriteMessage(websocket.TextMessage, bytes.Join([][]byte{[]byte("User info:"), uinfo}, []byte(" ")))
+	// session.SafeWriteMessage(websocket.TextMessage, bytes.Join([][]byte{[]byte("User info:"), uinfo}, []byte(" ")))
 
 	plainuser := uinfomap["User"]
 	username := plainuser
@@ -1838,14 +1838,14 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	if vars["clusterName"] == "" {
 		// Check if the user is allowed to access the terminal
 		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
-			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid ACL"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL"))
 			return
 		}
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
 		mycluster = repman.getClusterByName(vars["clusterName"])
 		if mycluster == nil {
-			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid cluster"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid cluster"))
 			return
 		}
 
@@ -1855,7 +1855,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		}
 
 		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
-			session.Conn.WriteMessage(websocket.TextMessage, []byte("No valid ACL"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL"))
 			return
 		}
 
@@ -1866,6 +1866,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		} else if proxy != nil {
 			sessionID = mycluster.Name + "-" + proxy.GetName()
 		} else {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid node"))
 			return
 		}
 
@@ -1874,12 +1875,18 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	finalID := username + "-" + sessionID
 
+	session.Owner = username
+	session.ID = finalID
+	session.AllowResume = repman.Conf.TerminalSessionResume
+	session.TerminalMgr = repman.GetTerminalManager()
+
 	if sessionID == "global" {
+		session.WorkingDir = repman.OsUser.HomeDir
 		// Create a new session or resume the existing session by ID
-		session, err = repman.SessionManager.NewSession(username, finalID, repman.OsUser.HomeDir, conn, repman.Conf.TerminalSessionResume, repman.GetTerminalManager())
+		session, err = repman.SessionManager.NewSession(session)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
-			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume session"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume session"))
 			return
 		}
 	} else {
@@ -1888,10 +1895,17 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		} else if proxy != nil {
 			host = proxy.GetHost()
 		}
-		session, err = repman.SessionManager.NewSSHSession(username, finalID, conn, host, strconv.Itoa(mycluster.Conf.OnPremiseSSHPort), mycluster.GetOnPremiseSSHUser(), mycluster.GetOnPremiseSSHPass(), mycluster.OnPremiseGetSSHKey(), mycluster.Conf.TerminalSessionResume, mycluster.GetTerminalManager())
+
+		session.Host = host
+		session.Port = strconv.Itoa(mycluster.Conf.OnPremiseSSHPort)
+		session.Username = mycluster.GetOnPremiseSSHUser()
+		session.Password = mycluster.GetOnPremiseSSHPass()
+		session.AppendKey(mycluster.OnPremiseGetSSHKey())
+
+		session, err = repman.SessionManager.NewSSHSession(session)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
-			conn.WriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session"))
 			return
 		}
 	}
