@@ -89,16 +89,16 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 subMenu: [
                     { 
                       name: 'MySQL Terminal', 
-                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.id}/mysql`) 
+                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mysql`) 
                     },
                     {
                       name: 'MyTop Terminal',
-                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.id}/mytop`)
+                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mytop`)
                     },
                     ...(user?.grants['global-terminal'] ? [
                       { 
                         name: 'Shell Terminal', 
-                        onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.id}`) 
+                        onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}`) 
                       }
                       ] : []),
                 ]}
