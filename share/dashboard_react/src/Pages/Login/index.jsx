@@ -9,6 +9,7 @@ import { isAuthorized } from '../../utility/common'
 import PasswordControl from '../../components/PasswordControl'
 import RMButton from '../../components/RMButton'
 import Message from '../../components/Message'
+import { useTheme } from '../../ThemeProvider'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -16,6 +17,7 @@ function Login(props) {
   const [usernameError, setUsernameError] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  const { theme } = useTheme()
 
   const navigate = useNavigate()
   const dispatch = useDispatch()
@@ -76,14 +78,16 @@ function Login(props) {
             <Stack spacing='6'>
               <Stack spacing='5'>
                 <FormControl isInvalid={usernameError}>
-                  <FormLabel htmlFor='username'>Username or Email</FormLabel>
-                  <Input id='username' type='text' value={username} onChange={(e) => setUsername(e.target.value)} />
+                  <FormLabel className={theme === 'dark' ? styles.darkLoginText : ""} htmlFor='username'>Username or Email</FormLabel>
+                  <Input id='username' type='text' value={username} className={theme === 'dark' ? styles.darkLoginText : ""} onChange={(e) => setUsername(e.target.value)} />
                   <FormErrorMessage sx={styles.errorMessage}>{usernameError}</FormErrorMessage>
                 </FormControl>
                 <PasswordControl
                   passwordError={passwordError}
+                  inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                  labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                   onChange={(e) => setPassword(e.target.value)}
-                  className={`${styles.revealButton} ${styles.errorMessage}`}
+                  className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
                 />
               </Stack>
               {error && <Message message={errorMessage} />}

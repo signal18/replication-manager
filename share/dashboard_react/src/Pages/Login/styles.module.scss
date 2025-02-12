@@ -12,6 +12,7 @@
   label {
     color: var(--text-color);
   }
+
   input {
     color: var(--text-color);
     border-color: var(--gray-color);
@@ -32,4 +33,9 @@
       fill: var(--text-color);
     }
   }
+}
+
+
+.darkLoginText {
+  color: var(--primary-color) !important;
 }
