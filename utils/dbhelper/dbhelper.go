@@ -184,6 +184,7 @@ type SlaveHosts struct {
 	Host         string `json:"host"`
 	Port         uint   `json:"port"`
 	Master_id    uint64 `json:"masterId"`
+	Source_id    uint64 `json:"sourceId"`
 	Replica_UUID string `json:"replicaUUID"`
 }
 

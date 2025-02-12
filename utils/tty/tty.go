@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -71,6 +73,7 @@ type Session struct {
 	Manager     *SessionManager `json:"-"`
 	writeMu     sync.Mutex      `json:"-"`
 	Line        string          `json:"-"`
+	closeOnce   sync.Once       `json:"-"`
 }
 
 type SignerList []ssh.Signer
@@ -157,10 +160,12 @@ func (sm *SessionManager) loadState() error {
 	// Restore sessions from the metadata
 	for id, metadata := range sessionMetadata {
 		session := &Session{
-			ID:    id,
-			Owner: metadata["owner"],
-			Host:  metadata["host"],
-			Port:  metadata["port"],
+			ID:      id,
+			Manager: sm,
+			Logger:  sm.Logger,
+			Owner:   metadata["owner"],
+			Host:    metadata["host"],
+			Port:    metadata["port"],
 		}
 		sm.sessions[id] = session
 	}
@@ -197,10 +202,17 @@ func (sm *SessionManager) RemoveSession(id string) {
 	delete(sm.sessions, id)
 }
 
+func (sm *SessionManager) CreateSession(conn *websocket.Conn) *Session {
+	return &Session{
+		Manager: sm,
+		Logger:  sm.Logger,
+		Conn:    conn,
+	}
+}
+
 // NewSession creates a new session, resuming if allowed.
-func (sm *SessionManager) NewSession(session *Session) (*Session, error) {
+func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	var err error
-	session.Manager = sm
 
 	oldSession, found := sm.GetSession(session.ID)
 	if found {
@@ -340,9 +352,15 @@ func (s *Session) HandleOutput(stderr bool) {
 				break
 			}
 			if n > 0 {
-				err := s.SafeWriteMessage(websocket.TextMessage, buffer[:n])
+				msgtype := websocket.TextMessage
+				// Check if the data is valid UTF-8
+				if !utf8.Valid(buffer[:n]) {
+					msgtype = websocket.BinaryMessage
+				}
+
+				err := s.SafeWriteMessage(msgtype, buffer[:n])
 				if err != nil {
-					s.Logger.Println("Error sending output to WebSocket:", err)
+					s.Logger.Println("Error sending stdout to WebSocket:", err)
 					break
 				}
 			}
@@ -359,9 +377,15 @@ func (s *Session) HandleOutput(stderr bool) {
 					break
 				}
 				if n > 0 {
-					err := s.SafeWriteMessage(websocket.TextMessage, buffer[:n])
+					msgtype := websocket.TextMessage
+					// Check if the data is valid UTF-8
+					if !utf8.Valid(buffer[:n]) {
+						msgtype = websocket.BinaryMessage
+					}
+
+					err := s.SafeWriteMessage(msgtype, buffer[:n])
 					if err != nil {
-						s.Logger.Println("Error sending output to WebSocket:", err)
+						s.Logger.Println("Error sending stderr to WebSocket:", err)
 						break
 					}
 				}
@@ -389,24 +413,52 @@ func (s *Session) keepAliveWebSocket() {
 
 // Close gracefully shuts down the session.
 func (s *Session) Close() {
-	s.Logger.Println("Closing session:", s.ID)
+	s.closeOnce.Do(func() {
+		s.Logger.Println("Closing session:", s.ID)
 
-	// Close WebSocket connection
-	s.Conn.Close()
+		// Close WebSocket connection safely
+		if s.Conn != nil {
+			if err := s.Conn.Close(); err != nil && !websocket.IsCloseError(err) {
+				s.Logger.Println("Error closing WebSocket:", err)
+			}
+		}
 
-	// Close stdin to signal the command to terminate
-	s.Stdin.Close()
+		// Close stdin safely
+		if s.Stdin != nil {
+			if err := s.Stdin.Close(); err != nil {
+				s.Logger.Println("Error closing stdin:", err)
+			}
+		}
 
-	// Kill the terminal process if still running
-	if err := s.Cmd.Process.Kill(); err != nil {
-		s.Logger.Println("Error killing process:", err)
-	}
+		// Kill the process if it's still running
+		if s.Cmd != nil && s.Cmd.Process != nil {
+			if err := s.Cmd.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				s.Logger.Println("Error killing process:", err)
+			}
+		}
 
-	// Wait for the process to fully exit
-	s.Cmd.Wait()
+		// Wait for process to fully exit without blocking indefinitely
+		done := make(chan error, 1)
+		go func() {
+			if s.Cmd != nil {
+				done <- s.Cmd.Wait()
+			}
+		}()
 
-	// Notify the SessionManager to remove this session
-	s.Manager.RemoveSession(s.ID)
+		select {
+		case err := <-done:
+			if err != nil && !errors.Is(err, os.ErrProcessDone) {
+				s.Logger.Println("Error waiting for process to exit:", err)
+			}
+		case <-time.After(5 * time.Second):
+			s.Logger.Println("Timeout waiting for process to exit")
+		}
+
+		// Notify SessionManager to remove this session
+		if s.Manager != nil {
+			s.Manager.RemoveSession(s.ID)
+		}
+	})
 }
 
 // SafeWriteMessage ensures thread-safe writes to the WebSocket connection.
@@ -414,17 +466,17 @@ func (s *Session) SafeWriteMessage(messageType int, data []byte) error {
 	// read data and add carriage return each time a newline is encountered
 	// this is to ensure that the terminal displays the output correctly
 
-	data = bytes.ReplaceAll(data, []byte("\n"), []byte("\n\r"))
-
+	if messageType == websocket.TextMessage {
+		data = bytes.ReplaceAll(data, []byte("\n"), []byte("\n\r"))
+	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	return s.Conn.WriteMessage(messageType, data)
 }
 
 // NewSSHSession creates a new SSH session and WebSocket connection, with resumption logic.
-func (sm *SessionManager) NewSSHSession(session *Session) (*Session, error) {
+func (sm *SessionManager) RunSSHSession(session *Session) (*Session, error) {
 	var err error
-	session.Manager = sm
 
 	oldSession, found := sm.GetSession(session.ID)
 	if found {
