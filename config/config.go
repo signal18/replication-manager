@@ -766,7 +766,7 @@ type Config struct {
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
-
+	FrontendTheme string `mapstructure:"frontend-theme" toml:"frontend-theme" json:"frontendTheme"`
 }
 
 type WorkLoad struct {

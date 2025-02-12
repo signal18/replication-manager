@@ -27,7 +27,6 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -53,6 +52,7 @@ import (
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -1756,6 +1756,8 @@ func logResponse(resp *http.Response) {
 // @Router /api/terminal/connect [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName} [get]
 // @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command} [get]
 func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
 	defer repman.LogPanicToFile()
 
@@ -1763,7 +1765,6 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	var mycluster *cluster.Cluster
 	var node *cluster.ServerMonitor
 	var proxy cluster.DatabaseProxy
-	var host string
 
 	vars := mux.Vars(r)
 	path := r.URL.Path
@@ -1889,22 +1890,37 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			return
 		}
 	} else {
-		if node != nil {
-			host = node.Host
-		} else if proxy != nil {
-			host = proxy.GetHost()
+		cmdstring, ok := vars["command"]
+		if ok {
+			session.CmdType, err = tty.GetTerminalCommandType(cmdstring)
+			if err != nil {
+				session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
+				return
+			}
+
+			if cmdstring == "" {
+				cmdstring = "SSH"
+			}
 		}
 
-		session.Host = host
-		session.Port = strconv.Itoa(mycluster.Conf.OnPremiseSSHPort)
-		session.Username = mycluster.GetOnPremiseSSHUser()
-		session.Password = mycluster.GetOnPremiseSSHPass()
-		session.AppendKey(mycluster.OnPremiseGetSSHKey())
+		if node != nil {
+			repman.SetSessionValuesFromNode(session, node)
+		} else if proxy != nil {
+			repman.SetSessionValuesFromProxy(session, proxy)
+		}
 
-		session, err = repman.SessionManager.RunSSHSession(session)
+		if session.CmdType == tty.TerminalBash {
+			session, err = repman.SessionManager.RunSSHSession(session)
+		} else if session.CmdType == tty.TerminalMySQL || session.CmdType == tty.TerminalMyTop {
+			session, err = repman.SessionManager.RunSession(session)
+		} else {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
+			return
+		}
+
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
-			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume SSH session\n"))
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume '"+cmdstring+"' session\n"))
 			return
 		}
 	}

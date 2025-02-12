@@ -21,7 +21,7 @@ const TerminalComponent = () => {
   const terminalRef = useRef(null);
   const terminalInstanceRef = useRef(null); // Store the terminal instance
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
-  const { clusterName, serverName, proxyName } = useParams();
+  const { clusterName, serverName, proxyName, commandType } = useParams();
   const navigate = useNavigate();
 
   const {
@@ -120,6 +120,10 @@ const TerminalComponent = () => {
       websocketUrl = `/api/terminal/connect/clusters/${clusterName}/proxies/${proxyName}`;
     } else {
       websocketUrl = '/api/terminal/connect';
+    }
+
+    if (commandType && commandType !== "") {
+      websocketUrl += `/${commandType}`;
     }
 
     // Update state with the WebSocket URL
