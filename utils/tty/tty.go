@@ -50,6 +50,7 @@ func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) []byte {
 type Session struct {
 	ID          string          `json:"id"`
 	Owner       string          `json:"owner"`
+	WorkingDir  string          `json:"working_dir"`
 	AllowResume bool            `json:"-"`
 	TerminalMgr TerminalManager `json:"-"`
 	Conn        *websocket.Conn `json:"-"`
@@ -197,24 +198,22 @@ func (sm *SessionManager) RemoveSession(id string) {
 }
 
 // NewSession creates a new session, resuming if allowed.
-func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *websocket.Conn, allowResume bool, terminalMgr TerminalManager) (*Session, error) {
+func (sm *SessionManager) NewSession(session *Session) (*Session, error) {
 	var err error
-	session := &Session{
-		ID:          sessionID,
-		Owner:       username,
-		Conn:        conn,
-		Logger:      sm.Logger,
-		Manager:     sm,
-		TerminalMgr: terminalMgr,
-		AllowResume: allowResume,
+	session.Manager = sm
+
+	oldSession, found := sm.GetSession(session.ID)
+	if found {
+		// Close the old session if it exists
+		oldSession.Close()
 	}
 
-	session.safeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
 
 	// If allowed, resume the session using the terminal manager
 	var cmd *exec.Cmd
 	if session.AllowResume && session.TerminalMgr != nil {
-		cmd, err = session.TerminalMgr.LaunchTerminal(sessionID)
+		cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -227,7 +226,7 @@ func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *
 	// Start a pseudo-terminal for the command
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error starting shell session: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error starting shell session: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.PTY = ptyFile
@@ -236,7 +235,7 @@ func (sm *SessionManager) NewSession(username, sessionID, workdir string, conn *
 
 	pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
 
-	session.Stdin.Write([]byte("cd " + workdir + " \n"))
+	session.Stdin.Write([]byte("cd " + session.WorkingDir + " \n"))
 
 	// Add session to manager to keep track of it
 	sm.AddSession(session)
@@ -322,7 +321,7 @@ func (s *Session) HandleWebSocketInput() {
 		}
 
 		s.Stdin.Write(msg)
-		// err = s.safeWriteMessage(websocket.TextMessage, msg)
+		// err = s.SafeWriteMessage(websocket.TextMessage, msg)
 		// if err != nil {
 		// 	s.Logger.Println("Error sending output to WebSocket:", err)
 		// 	break
@@ -341,7 +340,7 @@ func (s *Session) HandleOutput(stderr bool) {
 				break
 			}
 			if n > 0 {
-				err := s.safeWriteMessage(websocket.TextMessage, buffer[:n])
+				err := s.SafeWriteMessage(websocket.TextMessage, buffer[:n])
 				if err != nil {
 					s.Logger.Println("Error sending output to WebSocket:", err)
 					break
@@ -360,7 +359,7 @@ func (s *Session) HandleOutput(stderr bool) {
 					break
 				}
 				if n > 0 {
-					err := s.safeWriteMessage(websocket.TextMessage, buffer[:n])
+					err := s.SafeWriteMessage(websocket.TextMessage, buffer[:n])
 					if err != nil {
 						s.Logger.Println("Error sending output to WebSocket:", err)
 						break
@@ -379,7 +378,7 @@ func (s *Session) keepAliveWebSocket() {
 	for {
 		select {
 		case <-ticker.C:
-			err := s.safeWriteMessage(websocket.PingMessage, []byte{})
+			err := s.SafeWriteMessage(websocket.PingMessage, []byte{})
 			if err != nil {
 				s.Logger.Println("Error sending ping:", err)
 				return
@@ -410,8 +409,8 @@ func (s *Session) Close() {
 	s.Manager.RemoveSession(s.ID)
 }
 
-// safeWriteMessage ensures thread-safe writes to the WebSocket connection.
-func (s *Session) safeWriteMessage(messageType int, data []byte) error {
+// SafeWriteMessage ensures thread-safe writes to the WebSocket connection.
+func (s *Session) SafeWriteMessage(messageType int, data []byte) error {
 	// read data and add carriage return each time a newline is encountered
 	// this is to ensure that the terminal displays the output correctly
 
@@ -423,55 +422,49 @@ func (s *Session) safeWriteMessage(messageType int, data []byte) error {
 }
 
 // NewSSHSession creates a new SSH session and WebSocket connection, with resumption logic.
-func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websocket.Conn, host, port, sshuser, sshpass, sshkey string, allowResume bool, terminalMgr TerminalManager) (*Session, error) {
-	// Create a new session if it doesn't exist
-	session := &Session{
-		ID:          sessionID,
-		Owner:       username,
-		Conn:        conn,
-		Host:        host,
-		Port:        port,
-		Username:    sshuser,
-		Password:    sshpass,
-		AllowResume: allowResume,
-		TerminalMgr: terminalMgr,
+func (sm *SessionManager) NewSSHSession(session *Session) (*Session, error) {
+	var err error
+	session.Manager = sm
+
+	oldSession, found := sm.GetSession(session.ID)
+	if found {
+		// Close the old session if it exists
+		oldSession.Close()
 	}
 
-	session.safeWriteMessage(websocket.TextMessage, []byte("Starting SSH session...\n"))
-
-	session.AppendKey(sshkey)
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Starting SSH session...\n"))
 
 	client, err := session.connectSSH()
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error connecting to SSH server: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error connecting to SSH server: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.SSHClient = client
 
 	sshSession, err := client.NewSession()
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error creating SSH session: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error creating SSH session: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.SSHSession = sshSession
 
 	stdin, err := sshSession.StdinPipe()
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdin: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdin: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.Stdin = stdin
 
 	stdout, err := sshSession.StdoutPipe()
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdout: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdout: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.Stdout = stdout
 
 	stderr, err := sshSession.StderrPipe()
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stderr: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stderr: "+err.Error()+"\n"))
 		return nil, err
 	}
 	session.Stderr = stderr
@@ -482,18 +475,18 @@ func (sm *SessionManager) NewSSHSession(username, sessionID string, conn *websoc
 		ssh.TTY_OP_OSPEED: 14400,
 	})
 	if err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error requesting PTY: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error requesting PTY: "+err.Error()+"\n"))
 		return nil, err
 	}
 
 	if err := sshSession.Shell(); err != nil {
-		session.safeWriteMessage(websocket.TextMessage, []byte("Error starting shell: "+err.Error()+"\n"))
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Error starting shell: "+err.Error()+"\n"))
 		return nil, err
 	}
 
 	// Send the terminal command to the SSH session
 	if session.AllowResume && session.TerminalMgr != nil {
-		session.Stdin.Write(session.TerminalMgr.LaunchSSHTerminal(sessionID))
+		session.Stdin.Write(session.TerminalMgr.LaunchSSHTerminal(session.ID))
 	}
 
 	// Add session to manager to keep track of it
