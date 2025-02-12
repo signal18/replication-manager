@@ -220,8 +220,23 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/view/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.ViewMeetHandler)),
 	))
-	router.Handle("/meet/create/{channelId}", negroni.New(
+	router.Handle("/meet/create/direct/{userId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.CreateDirectChannelMeetHandler)),
+	))
+	router.Handle("/meet/create/private/{channelName}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.CreatePrivateChannelMeetHandler)),
+	))
+	router.Handle("/meet/create/public/{channelName}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.CreatePublicChannelMeetHandler)),
+	))
+	router.Handle("/meet/delete/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.DeleteChannelMeetHandler)),
+	))
+	router.Handle("/meet/leave/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.LeaveChannelMeetHandler)),
+	))
+	router.Handle("/meet/add/{channelId}/{userId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.AddUserChannelMeetHandler)),
 	))
 	router.Handle("/meet/logout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.LogoutMeetHandler)),
@@ -1660,6 +1675,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 	w.Write(body)
 }
 
+/*
 // logRequest logs details of the incoming HTTP request
 func logRequest(r *http.Request) {
 	log.Printf("Incoming Request -> Method: %s, URL: %s", r.Method, r.URL.String())
@@ -1691,7 +1707,7 @@ func logResponse(resp *http.Response) {
 		log.Printf("Response Body: %s", string(body))
 		resp.Body = io.NopCloser(bytes.NewReader(body)) // Reset the body for further use
 	}
-}
+}*/
 
 // Meet Handler
 // to send user info to the front (userID, All available channels, allusers id for private chat)
@@ -1700,7 +1716,11 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 	info := struct {
 		UserID                  string            `json:"user_id"`
 		ChannelIdsOpen          map[string]string `json:"channel_ids_open"`
@@ -1719,7 +1739,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		StatusUsers:             meetClient.StatusUsers,
 	}
 
-	err := json.NewEncoder(w).Encode(info)
+	err = json.NewEncoder(w).Encode(info)
 	if err != nil {
 		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
@@ -1730,7 +1750,11 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
 	str_page := vars["page"]
@@ -1762,7 +1786,11 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 	var request struct {
 		Message string `json:"message"`
 	}
@@ -1774,7 +1802,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&request)
+	err = json.NewDecoder(r.Body).Decode(&request)
 	if err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
@@ -1801,7 +1829,11 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
@@ -1810,7 +1842,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 		return
 	}
 
-	err := meetClient.ViewMessages(channelID)
+	err = meetClient.ViewMessages(channelID)
 
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
@@ -1830,7 +1862,110 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	userID := vars["userId"]
+	if userID == "" {
+		http.Error(w, "User Id is required", http.StatusBadRequest)
+		return
+	}
+
+	newChannelId, newChannelName, err := meetClient.CreateDirectChannel(userID)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":      "success",
+		"channelId":   newChannelId,
+		"channelName": newChannelName,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelName := vars["channelName"]
+	if channelName == "" {
+		http.Error(w, "Channel name is required", http.StatusBadRequest)
+		return
+	}
+
+	newChannelId, newChannelName, err := meetClient.CreatePrivateChannel(channelName)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":      "success",
+		"channelId":   newChannelId,
+		"channelName": newChannelName,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelName := vars["channelName"]
+	if channelName == "" {
+		http.Error(w, "Channel name is required", http.StatusBadRequest)
+		return
+	}
+
+	newChannelId, newChannelName, err := meetClient.CreateOpenChannel(channelName)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":      "success",
+		"channelId":   newChannelId,
+		"channelName": newChannelName,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 
 	vars := mux.Vars(r)
 	channelID := vars["channelId"]
@@ -1839,7 +1974,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 		return
 	}
 
-	newChannelId, err := meetClient.CreateDirectChannel(channelID)
+	err = meetClient.DeleteChannel(channelID)
 
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
@@ -1847,8 +1982,77 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	}
 
 	response := map[string]string{
-		"status":  "success",
-		"channel": newChannelId,
+		"status":    "success",
+		"channelId": channelID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err = meetClient.LeaveChannel(channelID)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":    "success",
+		"channelId": channelID,
+	}
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		return
+	}
+	userID := vars["userId"]
+	if userID == "" {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	err = meetClient.AddUserChannel(channelID, userID)
+
+	if err != nil {
+		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]string{
+		"status":    "success",
+		"channelId": channelID,
 	}
 
 	json.NewEncoder(w).Encode(response)
@@ -1858,9 +2062,13 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 
-	err := meetClient.SetUserStatusOffline()
+	err = meetClient.SetUserStatusOffline()
 
 	meethelper.ClearMeetClient()
 
@@ -1906,7 +2114,11 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 		return
 	}
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 
 	message := r.FormValue("message")
 
@@ -1937,7 +2149,11 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 		return
 	}
 
-	meetClient := meethelper.GetMeetClient()
+	meetClient, err := meethelper.GetMeetClient()
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		return
+	}
 
 	fileBytes, fileName, err := meetClient.DownloadFileFromChannel(fileId)
 

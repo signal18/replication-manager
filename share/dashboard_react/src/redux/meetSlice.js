@@ -91,6 +91,60 @@ export const downloadFileFromChannel = createAsyncThunk(
   }
 );
 
+export const createDirectChannel = createAsyncThunk(
+  'meet/createDirectChannel',
+  async ({ UserId }, thunkAPI) => {
+    const response = await meetService.createDirectChannel(UserId);
+    showSuccessBanner("Direct Channel created");
+    return { newChannelId : response.channelId, newChannelName : response.channelName};
+  }
+);
+
+export const createPublicChannel = createAsyncThunk(
+  'meet/createPublicChannel',
+  async ({ ChannelName }, thunkAPI) => {
+    const response = await meetService.createPublicChannel(ChannelName);
+    showSuccessBanner("Public Channel created");
+    return { newChannelId : response.channelId, newChannelName : response.channelName};
+  }
+);
+
+export const createPrivateChannel = createAsyncThunk(
+  'meet/createPrivateChannel',
+  async ({ ChannelName }, thunkAPI) => {
+    const response = await meetService.createPrivateChannel(ChannelName);
+    showSuccessBanner("Private Channel created");
+    return { newChannelId : response.channelId, newChannelName : response.channelName};
+  }
+);
+
+export const deleteChannel = createAsyncThunk(
+  'meet/deleteChannel',
+  async ({ ChannelId }, thunkAPI) => {
+    const response = await meetService.deleteChannel(ChannelId);
+    showSuccessBanner("Channel deleted");
+    return { deleteChannelId : response.channelId};
+  }
+);
+
+export const leaveChannel = createAsyncThunk(
+  'meet/leaveChannel',
+  async ({ ChannelId }, thunkAPI) => {
+    const response = await meetService.leaveChannel(ChannelId);
+    showSuccessBanner("You leave the channel");
+    return { deleteChannelId : response.channelId};
+  }
+);
+
+export const addUserChannel = createAsyncThunk(
+  'meet/addUserChannel',
+  async ({ ChannelId, UserId }, thunkAPI) => {
+    const response = await meetService.addUserChannel(ChannelId, UserId);
+    showSuccessBanner("User added to channel");
+    return { ChannelId : response.channelId};
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {
@@ -99,13 +153,26 @@ const meetSlice = createSlice({
     loading: false,
     error: null,
     unreadMessagesByChannel: {},
+    channelsO: {},
+    channelsP: {},
+    channelsD: {},
+    channels: [],
   },
-  reducers: {},
+  reducers: {
+  },
   extraReducers: (builder) => {
     builder
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.meetInfo = action.payload.data;
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
+        state.channelsO = action.payload.data.channel_ids_open || {};
+        state.channelsP = action.payload.data.channel_ids_private || {};
+        state.channelsD = action.payload.data.channel_ids_direct || {};
+        state.channels = [
+          ...Object.entries(state.channelsO).map(([name, id]) => ({ name, id, type: 'O' })),
+          ...Object.entries(state.channelsP).map(([name, id]) => ({ name, id, type: 'P' })),
+          ...Object.entries(state.channelsD).map(([name, id]) => ({ name, id, type: 'D' })),
+        ]
       })
       .addCase(logoutFromMeet.pending, (state) => {
         state.loading = true;
@@ -113,6 +180,12 @@ const meetSlice = createSlice({
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;
         state.meetInfo = null;
+        state.messages = {};
+        state.unreadMessagesByChannel = {};
+        state.channelsO = {};
+        state.channelsP = {};
+        state.channelsD = {};
+        state.channels = [];
         // Handle successful logout if needed
       })
       .addCase(logoutFromMeet.rejected, (state, action) => {
@@ -167,6 +240,24 @@ const meetSlice = createSlice({
     
         // Ajouter les messages chargés à l'historique
         state.messages[channelId] = [ ...state.messages[channelId], ...messages];
+      })
+      .addCase(createDirectChannel.fulfilled, (state, action) => {
+        state.channelsD[action.payload.newChannelName] = action.payload.newChannelId;
+        state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'D' });
+      })
+      .addCase(createPrivateChannel.fulfilled, (state, action) => {
+        state.channelsP[action.payload.newChannelName] = action.payload.newChannelId;
+        state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'P' });
+      })
+      .addCase(createPublicChannel.fulfilled, (state, action) => {
+        state.channelsO[action.payload.newChannelName] = action.payload.newChannelId;
+        state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'O' });
+      })
+      .addCase(deleteChannel.fulfilled, (state, action) => {
+        state.channels = state.channels.filter(channel => channel.id !== action.payload.deleteChannelId);
+      })
+      .addCase(leaveChannel.fulfilled, (state, action) => {
+        state.channels = state.channels.filter(channel => channel.id !== action.payload.deleteChannelId);
       });
   },
 });

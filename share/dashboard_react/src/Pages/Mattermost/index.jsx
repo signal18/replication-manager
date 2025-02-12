@@ -5,7 +5,7 @@ import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerO
 import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel, downloadFileFromChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
-import { FaFile, FaDownload } from 'react-icons/fa';
+import { FaDownload } from 'react-icons/fa';
 
 
 
@@ -13,7 +13,6 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     if (!isOpen) return null;
     const dispatch = useDispatch();
     const { meetInfo, messages, loading, error } = useSelector((state) => state.meet, shallowEqual);
-    const [channels, setChannels] = useState([]);
     const [message, setMessage] = useState('');
     const [selectedChannel, setSelectedChannel] = useState('');
     const [page, setPage] = useState(0);
@@ -21,17 +20,6 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     const [scrollPosition, setScrollPosition] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
 
-    //to get the channels from meet info
-    useEffect(() => {
-        if (meetInfo) {
-            const allChannels = [
-                ...Object.entries(meetInfo.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
-                ...Object.entries(meetInfo.channel_ids_private).map(([name, id]) => ({ name, id, type: 'P' })),
-                ...Object.entries(meetInfo.channel_ids_direct).map(([name, id]) => ({ name, id, type: 'D' })),
-            ];
-            setChannels(allChannels);
-        }
-    }, [meetInfo]);
 
     //to set messages for selected channel for the fist time
     useEffect(() => {
@@ -231,7 +219,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 <DrawerBody className={styles.mattermostContainer} >
                     <Box className={styles.accordionPanel}>
                         <Box className={styles.treeViewWrapper}>
-                            <ChannelTreeView channels={channels} onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} />
+                            <ChannelTreeView onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} />
                         </Box>
                         <Box
                             className={styles.messagesWrapper}

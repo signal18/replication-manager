@@ -80,18 +80,19 @@ type MeetFile struct {
 }
 
 // create a client for mattermost and set user info
-func GetMeetClient() *MeetChatClient {
+func GetMeetClient() (*MeetChatClient, error) {
 	//to recreate the client if undefined or if the user session is expired
 	if meetClient == nil || meetClient.Client == nil || meetClient.UserID == "" {
 		meetClient = CreateMeetClient()
 	}
-	meetClient.UserID = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
+	var err error
+	meetClient.UserID, err = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
 	meetClient.TeamIds = meetClient.GetTeamIDs()
 	meetClient.AllUser = meetClient.GetAllUsers()                                                                                                       //to get teamIDs
 	meetClient.ChannelIdsOpen, meetClient.ChannelIdsPrivate, meetClient.ChannelIdsDirect, meetClient.UnReadMessagesByChannel = meetClient.GetChannels() //to get the channels for the user
 	meetClient.StatusUsers = meetClient.GetStatusUsers()
 	meetClient.SetUserStatusOnline()
-	return meetClient
+	return meetClient, err
 }
 
 func CreateMeetClient() *MeetChatClient {
@@ -181,14 +182,14 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 	}
 }
 
-func (c *MeetChatClient) GetMeetUserInfo() string {
+func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
 	user, resp, err := c.Client.GetMe("")
 	if err != nil {
 		fmt.Println("Meet Error:", err, resp.StatusCode, c.Client, c.UserID)
-		return ""
+		return "", err
 	}
 
-	return user.Id
+	return user.Id, err
 }
 
 func (c *MeetChatClient) GetTeamIDs() []string {
@@ -219,14 +220,13 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 	}
 
 	for _, channel := range channels {
-
 		if channel.Type == "O" {
 			channelsMapO[channel.Name] = channel.Id
 		}
 		if channel.Type == "P" {
 			channelsMapP[channel.Name] = channel.Id
 		}
-		if channel.Type == "D" {
+		if channel.Type == "D" && channel.DeleteAt == 0 {
 			directChannelName := strings.Replace(channel.Name, "__", "", 1)
 			directChannelName = strings.Replace(directChannelName, c.UserID, "", 1)
 			channelsMapD[c.AllUser[directChannelName]] = channel.Id
@@ -348,7 +348,7 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 }
 
 func (c *MeetChatClient) GetAllUsers() map[string]string {
-	users, resp, err := c.Client.GetUsers(0, 100, "")
+	users, resp, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
 
 	usersMap := make(map[string]string)
 
@@ -397,17 +397,98 @@ func (c *MeetChatClient) ViewMessages(channelID string) error {
 }
 
 // to create direct channel with a user
-func (c *MeetChatClient) CreateDirectChannel(userID string) (string, error) {
+func (c *MeetChatClient) CreateDirectChannel(userID string) (string, string, error) {
 	channel, resp, err := c.Client.CreateDirectChannel(c.UserID, userID)
 	if err != nil {
 		fmt.Println("CreateDirectChannel Mattermost Error:", err, resp.StatusCode)
-		return "", err
+		return "", "", err
 	}
 
 	//update the direct channels
 	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
 
-	return channel.Id, nil
+	return channel.Id, getValue(c.ChannelIdsDirect, channel.Id), nil
+}
+
+func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, error) {
+	channel, resp, err := c.Client.CreateChannel(&model.Channel{
+		CreatorId:   c.UserID,
+		Name:        channelName,
+		DisplayName: channelName,
+		Type:        model.ChannelTypeOpen,
+		TeamId:      c.TeamIds[0],
+	})
+
+	if err != nil {
+		fmt.Println("CreateOpenChannel Mattermost Error:", err, resp.StatusCode)
+		return "", "", err
+	}
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return channel.Id, getValue(c.ChannelIdsOpen, channel.Id), nil
+}
+
+func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, string, error) {
+	channel, resp, err := c.Client.CreateChannel(&model.Channel{
+		CreatorId:   c.UserID,
+		Name:        channelName,
+		DisplayName: channelName,
+		Type:        model.ChannelTypePrivate,
+		TeamId:      c.TeamIds[0],
+	})
+
+	if err != nil {
+		fmt.Println("CreatePrivateChannel Mattermost Error:", err, resp.StatusCode)
+		return "", "", err
+	}
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return channel.Id, getValue(c.ChannelIdsPrivate, channel.Id), nil
+}
+
+func (c *MeetChatClient) DeleteChannel(channelID string) error {
+	resp, err := c.Client.DeleteChannel(channelID)
+	if err != nil {
+		fmt.Println("DeleteChannel Mattermost Error:", err, resp.StatusCode)
+		return err
+	}
+
+	fmt.Println("DeleteChannel Mattermost :", resp.StatusCode)
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return nil
+}
+
+func (c *MeetChatClient) LeaveChannel(channelID string) error {
+	resp, err := c.Client.RemoveUserFromChannel(channelID, c.UserID)
+	if err != nil {
+		fmt.Println("LeaveChannel Mattermost Error:", err, resp.StatusCode)
+		return err
+	}
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return nil
+}
+
+func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
+	_, resp, err := c.Client.AddChannelMember(channelID, userID)
+	if err != nil {
+		fmt.Println("LeaveChannel Mattermost Error:", err, resp.StatusCode)
+		return err
+	}
+
+	//update the direct channels
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel = c.GetChannels()
+
+	return nil
 }
 
 // to set user as online

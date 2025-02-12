@@ -1,3 +1,4 @@
+import { create } from 'lodash';
 import { meetApi } from './apiHelper';
 
 export const meetService = {
@@ -7,7 +8,13 @@ export const meetService = {
     setMessageViewOnChannel,
     logoutFromMeet,
     postFileOnChannel,
-    downloadFileFromChannel
+    downloadFileFromChannel, 
+    createDirectChannel,
+    createPrivateChannel,
+    createPublicChannel,
+    deleteChannel,
+    leaveChannel,
+    addUserChannel
 }
 
 
@@ -31,7 +38,6 @@ async function postMeetMessageOnChannel(channelId, message) {
 
         console.log('Response from API:', response.data);
         return response.data;
-        //return response;
     } catch (error) {
         console.error('Error posting meet message:', error);
         throw error;
@@ -88,6 +94,90 @@ async function downloadFileFromChannel(fileId) {
     try {
         const response = await meetApi.get(`download/${fileId}`);
         return response;
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function createDirectChannel(UserId) {
+    try {
+        const response = await meetApi.get(`create/direct/${UserId}`);
+        if (!response.data || !response.data.channelId || !response.data.channelName) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function createPrivateChannel(ChannelName) {
+    try {
+        const response = await meetApi.get(`create/private/${ChannelName}`);
+        if (!response.data || !response.data.channelId || !response.data.channelName) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function createPublicChannel(ChannelName) {
+    try {
+        const response = await meetApi.get(`create/public/${ChannelName}`);
+        if (!response.data || !response.data.channelId || !response.data.channelName) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function deleteChannel(ChannelId) {
+    try {
+        const response = await meetApi.get(`delete/${ChannelId}`);
+        if (!response.data || !response.data.channelId) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function leaveChannel(ChannelId) {
+    try {
+        const response = await meetApi.get(`leave/${ChannelId}`);
+        if (!response.data || !response.data.channelId) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function addUserChannel(ChannelId, UserId) {
+    try {
+        const response = await meetApi.get(`add/${ChannelId}/${UserId}`);
+        if (!response.data || !response.data.channelId) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
     } catch (error) {
         console.error('Error view meet messages:', error);
         throw error;
