@@ -26,7 +26,7 @@ const PasswordControl = forwardRef((props, ref) => {
 
   return (
     <FormControl isInvalid={props.passwordError}>
-      <FormLabel htmlFor='password'>Password</FormLabel>
+      <FormLabel className={props.labelClassName} htmlFor='password'>Password</FormLabel>
       <InputGroup>
         <InputRightElement>
           <RMIconButton
@@ -46,6 +46,7 @@ const PasswordControl = forwardRef((props, ref) => {
           autoComplete='current-password'
           required
           {...props}
+          className={props.inputClassName}
         />
       </InputGroup>
       <FormErrorMessage className={props.errorMessage}>{props.passwordError}</FormErrorMessage>

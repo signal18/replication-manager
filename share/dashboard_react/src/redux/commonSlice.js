@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit'
 
 export const commonSlice = createSlice({
   name: 'common',
-  initialState: { theme: 'light', isMobile: false, isTablet: false, isDesktop: false },
+  initialState: { isMobile: false, isTablet: false, isDesktop: false },
   reducers: {
     setIsMobile: (state, action) => {
       state.isMobile = action.payload
