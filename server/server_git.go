@@ -211,8 +211,9 @@ func (repman *ReplicationManager) PushAllConfigsToGit() {
 		return
 	}
 
-	if commits >= 20 {
+	if commits >= 10 {
 		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
+		repman.ShallowClone()
 	}
 }
 
@@ -682,7 +683,7 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
-			Depth:             10, // Shallow clone
+			Depth:             1, // Shallow clone
 		})
 
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
@@ -696,7 +697,7 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 					URL:               url,
 					RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 					Auth:              auth,
-					Depth:             10,
+					Depth:             1,
 				})
 			}
 			repman.RestoreConfigsFromTmpDir(path)
@@ -839,4 +840,26 @@ func (repman *ReplicationManager) CountAllCommits() (int, error) {
 	})
 
 	return commitCount, nil
+}
+
+func (repman *ReplicationManager) ShallowClone() error {
+	url := repman.Conf.GitUrl
+	tok := repman.Conf.GetDecryptedValue("git-acces-token")
+	user := repman.Conf.GitUsername
+	path := repman.Conf.WorkingDir
+
+	auth := &git_https.BasicAuth{
+		Username: user, // Can be any non-empty string
+		Password: tok,
+	}
+
+	// Perform shallow clone for better performance
+	_, err := git.PlainClone(path, false, &git.CloneOptions{
+		URL:               url,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Auth:              auth,
+		Depth:             1, // Shallow clone
+	})
+
+	return err
 }
