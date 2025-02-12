@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Text } from '@chakra-ui/react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Box, chakra, HStack, Text } from '@chakra-ui/react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import 'typeface-fira-code';
 import PageContainer from '../PageContainer';
 import { Terminal } from '@xterm/xterm';
@@ -13,6 +13,8 @@ import { getClusterData } from '../../redux/clusterSlice';
 import RMButton from '../../components/RMButton';
 import { getTokenByBaseURL } from '../../services/apiHelper';
 
+const ChakraLink = chakra(Link);
+
 const TerminalComponent = () => {
   const [status, setStatus] = useState('disconnected');
   const [url, setUrl] = useState('');
@@ -21,13 +23,13 @@ const TerminalComponent = () => {
   const socketRef = useRef(null); // Store the WebSocket connection in a ref for stability
   const { clusterName, serverName, proxyName } = useParams();
   const navigate = useNavigate();
-  
+
   const {
     cluster: { clusterData },
     auth: { baseURL },
   } = useSelector((state) => state);
   const dispatch = useDispatch();
-  
+
   useEffect(() => {
     if (clusterName) {
       dispatch(getClusterData({ clusterName: clusterName }))
@@ -38,7 +40,7 @@ const TerminalComponent = () => {
     if (clusterData) {
       const servers = clusterData.dbServers || [];
       const proxies = clusterData.proxyServers || [];
-  
+
       if (serverName) {
         if (!servers.find(srv => srv === serverName)) {
           navigate(`/`);
@@ -49,7 +51,7 @@ const TerminalComponent = () => {
         }
       }
     }
-  }, [clusterData?.name,serverName,proxyName])
+  }, [clusterData?.name, serverName, proxyName])
 
   const sendMessage = (message) => {
     if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
@@ -87,13 +89,13 @@ const TerminalComponent = () => {
 
     // Automatically resize the terminal on window resize
     const resizeListener = () => {
-        fitAddon.fit(); // Resize terminal to fit container
-        let dim = fitAddon.proposeDimensions(); // Propose dimensions to terminal
-    
-        // Send updated cols and rows to backend if connected
-        if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
-          sendMessage(`{"type":"resize","cols":${dim.cols},"rows":${dim.rows}}`);
-        }
+      fitAddon.fit(); // Resize terminal to fit container
+      let dim = fitAddon.proposeDimensions(); // Propose dimensions to terminal
+
+      // Send updated cols and rows to backend if connected
+      if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        sendMessage(`{"type":"resize","cols":${dim.cols},"rows":${dim.rows}}`);
+      }
     }
     window.addEventListener("resize", resizeListener);
 
@@ -161,28 +163,39 @@ const TerminalComponent = () => {
   return (
     <PageContainer>
       <Box className={styles.container}>
-      { clusterName ? serverName ? (
-        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Server Terminal {clusterName} - {serverName}</Text>
-      ) : (
-        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Proxy Terminal {clusterName} - {serverName}</Text>
-      ) : (
-        <Text fontSize="xl" fontWeight="bold" className={styles.title}>Web Terminal</Text>
-      )
-      }
-      <div ref={terminalRef} style={{ height: '75vh', width: '100%', border: '1px solid #000' }}></div>
-      <div style={{ marginTop: '10px' }}>
-        {status === 'connected' ? (
-          <RMButton onClick={handleDisconnect}>Disconnect</RMButton>
-        ) : (
-          <RMButton onClick={handleConnect}>Connect</RMButton>
-        )}
-      </div>
+        <HStack justify="space-between" align="center" spacing={4}>
+          <Text fontSize="xl" fontWeight="bold" className={styles.title}>
+            {clusterName ? (serverName ? "Server Terminal" : "Proxy Terminal") : "Web Terminal"}
+          </Text>
 
-      <div>Status: {status}</div>
-      <div>WebSocket URL: {url}</div>
-      {status === 'connecting' && <p>Connecting...</p>}
-      {status === 'disconnected' && <p>Disconnected. Try reconnecting.</p>}
-      {status === 'error' && <p>Error occurred while connecting.</p>}
+          <HStack spacing={2}>
+            {clusterName && (
+              <>
+                <ChakraLink to={`/clusters/${clusterName}`} fontSize="lg" fontWeight="bold" textDecoration="underline">
+                  {clusterName}
+                </ChakraLink>
+                <Text fontSize="lg">{" >> "}</Text>
+              </>
+            )}
+            <Text fontSize="lg" fontWeight="bold">
+              {serverName || proxyName || ""}
+            </Text>
+          </HStack>
+        </HStack>
+        <div ref={terminalRef} style={{ height: '75vh', width: '100%', border: '1px solid #000' }}></div>
+        <div style={{ marginTop: '10px' }}>
+          {status === 'connected' ? (
+            <RMButton onClick={handleDisconnect}>Disconnect</RMButton>
+          ) : (
+            <RMButton onClick={handleConnect}>Connect</RMButton>
+          )}
+        </div>
+
+        <div>Status: {status}</div>
+        <div>WebSocket URL: {url}</div>
+        {status === 'connecting' && <p>Connecting...</p>}
+        {status === 'disconnected' && <p>Disconnected. Try reconnecting.</p>}
+        {status === 'error' && <p>Error occurred while connecting.</p>}
       </Box>
     </PageContainer>
   );
