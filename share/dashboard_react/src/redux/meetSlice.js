@@ -153,9 +153,6 @@ const meetSlice = createSlice({
     loading: false,
     error: null,
     unreadMessagesByChannel: {},
-    channelsO: {},
-    channelsP: {},
-    channelsD: {},
     channels: [],
   },
   reducers: {
@@ -165,13 +162,10 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.meetInfo = action.payload.data;
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
-        state.channelsO = action.payload.data.channel_ids_open || {};
-        state.channelsP = action.payload.data.channel_ids_private || {};
-        state.channelsD = action.payload.data.channel_ids_direct || {};
         state.channels = [
-          ...Object.entries(state.channelsO).map(([name, id]) => ({ name, id, type: 'O' })),
-          ...Object.entries(state.channelsP).map(([name, id]) => ({ name, id, type: 'P' })),
-          ...Object.entries(state.channelsD).map(([name, id]) => ({ name, id, type: 'D' })),
+          ...Object.entries(action.payload.data?.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
+          ...Object.entries(action.payload.data?.channel_ids_private).map(([name, id]) => ({ name, id, type: 'P' })),
+          ...Object.entries(action.payload.data?.channel_ids_direct).map(([name, id]) => ({ name, id, type: 'D' })),
         ]
       })
       .addCase(logoutFromMeet.pending, (state) => {
@@ -182,9 +176,6 @@ const meetSlice = createSlice({
         state.meetInfo = null;
         state.messages = {};
         state.unreadMessagesByChannel = {};
-        state.channelsO = {};
-        state.channelsP = {};
-        state.channelsD = {};
         state.channels = [];
         // Handle successful logout if needed
       })
@@ -212,7 +203,9 @@ const meetSlice = createSlice({
         if (!state.messages[channelId]) {
           state.messages[channelId] = [];
         } 
-        state.messages[channelId] = messages;
+        if (messages.length > 0) {
+          state.messages[channelId] = messages;
+        }
       })
       .addCase(fetchNewMessages.fulfilled, (state, action) => {
         state.loading = false;
@@ -227,8 +220,12 @@ const meetSlice = createSlice({
           !existingMessages.some(existingMsg => existingMsg.ID === msg.ID)
         );
     
-        // Mettre à jour l'état des messages avec les nouveaux messages
-        state.messages[channelId] = [...newMessages, ...state.messages[channelId]];
+        // Mettre à jour l'état des messages avec les nouveaux messages si il existe
+        if (newMessages.length > 0) {
+          state.unreadMessagesByChannel[channelId] = (state.unreadMessagesByChannel[channelId] || 0) + newMessages.length;
+          state.messages[channelId] = [...newMessages, ...state.messages[channelId]];
+        }
+        
         
       })
       .addCase(loadHistoryMessages.fulfilled, (state, action) => {
@@ -238,19 +235,18 @@ const meetSlice = createSlice({
           state.messages[channelId] = [];
         }
     
-        // Ajouter les messages chargés à l'historique
-        state.messages[channelId] = [ ...state.messages[channelId], ...messages];
+        // Ajouter les messages chargés à l'historique si il existe 
+        if (messages.length > 0) {
+          state.messages[channelId] = [...state.messages[channelId], ...messages];
+        }
       })
       .addCase(createDirectChannel.fulfilled, (state, action) => {
-        state.channelsD[action.payload.newChannelName] = action.payload.newChannelId;
         state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'D' });
       })
       .addCase(createPrivateChannel.fulfilled, (state, action) => {
-        state.channelsP[action.payload.newChannelName] = action.payload.newChannelId;
         state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'P' });
       })
       .addCase(createPublicChannel.fulfilled, (state, action) => {
-        state.channelsO[action.payload.newChannelName] = action.payload.newChannelId;
         state.channels.push({ name: action.payload.newChannelName, id: action.payload.newChannelId, type: 'O' });
       })
       .addCase(deleteChannel.fulfilled, (state, action) => {

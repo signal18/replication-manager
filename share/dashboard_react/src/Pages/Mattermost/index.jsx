@@ -1,11 +1,13 @@
 import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef, memo } from 'react';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
-import { Input, Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
-import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel, downloadFileFromChannel } from '../../redux/meetSlice';
+import { Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
-import { FaDownload } from 'react-icons/fa';
+import MessageRender from '../../components/MessageRender';
+import Picker from "@emoji-mart/react";
+import data from "@emoji-mart/data";
 
 
 
@@ -19,6 +21,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     const messagesContainerRef = useRef(null);
     const [scrollPosition, setScrollPosition] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
+    const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
 
     //to set messages for selected channel for the fist time
@@ -44,7 +47,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         }
     }, [messages]);
 
-    //to update messages every 3 seconds
+    //to update messages every 2 seconds
     useEffect(() => {
         const interval = setInterval(() => {
             if (selectedChannel) {
@@ -52,7 +55,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 dispatch(fetchNewMessages({ channelId: selectedChannel }));
                 dispatch(getMeetInfo());
             }
-        }, 2000);
+        }, 1000);
 
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);
@@ -74,6 +77,11 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         }
     };
 
+    //to handle the file selected
+    const handleFileSelected = (file) => {
+        setSelectedFile(file);
+    };
+
     //to send the message to the selected channel
     const handleSendMessage = async () => {
         if (selectedChannel) {
@@ -84,12 +92,12 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 formData.append('fileName', selectedFile.name);
                 formData.append('message', message);
 
-                await dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
+                dispatch(uploadFileOnChannel({ channelId: selectedChannel, formData }));
 
                 setSelectedFile(null);
             } else if (message.trim()) {
                 // If no file is selected, just send the message
-                await dispatch(postMeetMessage({ channelId: selectedChannel, message }));
+                dispatch(postMeetMessage({ channelId: selectedChannel, message }));
             }
 
             setMessage('');
@@ -99,115 +107,6 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         }
     };
 
-    //////////////////////////////////////
-    //Messages Render Functions//////////
-    const getUserName = (userId) => {
-        return meetInfo.all_users[userId] || userId;
-    };
-
-    const formatTime = (timestamp) => {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString(); // Format the time as a readable string
-    };
-
-    const formatDate = (timestamp) => {
-        const date = new Date(timestamp);
-        return date.toLocaleDateString(); // Format the date as a readable string
-    };
-
-    const formatFileSize = (sizeInBytes) => {
-        const units = ['Bytes', 'KB', 'MB', 'GB'];
-        let size = sizeInBytes;
-        let unitIndex = 0;
-        while (size >= 1024 && unitIndex < units.length - 1) {
-            size /= 1024;
-            unitIndex++;
-        }
-        return `${size.toFixed(1)} ${units[unitIndex]}`;
-    };
-
-    const handleFileDownload = async (selectedfileId, selectedFileName) => {
-        try {
-            const response = await dispatch(downloadFileFromChannel({fileId : selectedfileId}));
-            if (response.payload.response.status === 200) {
-                //const blob = new Blob([response.data], { type: 'application/octet-stream' });
-                const blob = response.payload.response.data;  
-                
-                if (!(blob instanceof Blob)) {
-                    console.error("Le fichier téléchargé n'est pas un Blob !");
-                    return;
-                }
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-                a.download = selectedFileName; // Remplacez par le nom réel du fichier
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-            } else {
-                console.error('Error downloading file');
-            }
-        } catch (error) {
-            console.error('Error downloading file:', error);
-        }
-    };
-
-    const renderMessages = () => {
-        if (!messages[selectedChannel]) return null;
-
-        let lastDate = '';
-
-        return messages[selectedChannel].slice().reverse().map((msg, index) => {
-            const messageDate = formatDate(msg.CreateAt);
-            const shouldShowDate = messageDate !== lastDate;
-
-            if (shouldShowDate) {
-                lastDate = messageDate;
-            }
-
-            return (
-                <React.Fragment key={index}>
-                    {shouldShowDate && (
-                        <Box className={styles.dateSeparator}>
-                            {messageDate}
-                        </Box>
-                    )}
-                    <Box key={index} className={styles.post}>
-                        <div className={styles.postUser}>{getUserName(msg.UserId)} {formatTime(msg.CreateAt)}</div>
-                        <div className={styles.postContent}>{msg.Message}</div>
-                        {msg?.Metadata && msg?.Metadata.length > 0 && (
-                            <Box className={styles.fileAttachments}>
-                            {msg.Metadata.map((fileInfo, fileIndex) => (
-                                <Box key={fileIndex} className={styles.fileAttachment}>
-                                    <Box className={styles.fileDetails}>
-                                            <Text className={styles.fileName}>{fileInfo.Name || 'File'}</Text>
-                                            <Text className={styles.fileSize}>{formatFileSize(fileInfo.Size)}</Text>
-                                    </Box>
-                                    <Box className={styles.fileDownload}>
-                                        <a href="#" onClick={() => handleFileDownload(fileInfo.ID, fileInfo.Name)} className={styles.fileLink}>
-                                            <FaDownload />
-                                        </a>
-                                    </Box>
-                                </Box>
-                                ))}
-                            </Box>
-                        )}
-                    </Box>
-                </React.Fragment>
-            );
-        });
-    };
-    //////////////////////////////////
-
-    /////////////////////////////////
-    //File Upload Button Component//
-
-    const handleFileSelected = (file) => {
-        console.log('File selected in parent:', file);
-        setSelectedFile(file);
-    };
-    /////////////////////////////////
 
     return (
         <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="lg">
@@ -225,7 +124,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                             className={styles.messagesWrapper}
                         >
                             <Box className={styles.messagesContainer} ref={messagesContainerRef} onScroll={handleScroll}>
-                                {renderMessages()}
+                                <MessageRender messages={messages[selectedChannel] || null} allUsers={meetInfo?.all_users || {}} />
                             </Box>
 
                             <Box className={styles.newPost}>
@@ -235,12 +134,24 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                                     placeholder="Write a message..."
                                     className={styles.newPostInput}
                                 />
+                                <Button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={styles.emojiButton}>
+                                    😊
+                                </Button>
+                                {showEmojiPicker && (
+                                    <Box position="absolute" bottom="50px" right="10px" zIndex="1000">
+                                        <Picker 
+                                            data={data} 
+                                            onEmojiSelect={(emoji) => setMessage((prevMessage) => prevMessage + emoji.native)}
+                                        />
+                                    </Box>
+                                )}     
                                 <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
                                     <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
                                         <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
                                     </svg>
                                 </Button>
-                                <Box>
+                                
+                                <Box position="absolute" bottom="50px" right="10px" zIndex="1000">
                                     <FileUploadButton onFileSelected={handleFileSelected} />
                                     {selectedFile && (
                                         <>

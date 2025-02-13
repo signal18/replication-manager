@@ -87,6 +87,10 @@ func GetMeetClient() (*MeetChatClient, error) {
 	}
 	var err error
 	meetClient.UserID, err = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
+	if err != nil {
+		fmt.Println("GetMeetClient Error:", err)
+		return nil, err
+	}
 	meetClient.TeamIds = meetClient.GetTeamIDs()
 	meetClient.AllUser = meetClient.GetAllUsers()                                                                                                       //to get teamIDs
 	meetClient.ChannelIdsOpen, meetClient.ChannelIdsPrivate, meetClient.ChannelIdsDirect, meetClient.UnReadMessagesByChannel = meetClient.GetChannels() //to get the channels for the user
