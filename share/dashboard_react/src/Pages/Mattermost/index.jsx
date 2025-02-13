@@ -118,7 +118,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 <DrawerBody className={styles.mattermostContainer} >
                     <Box className={styles.accordionPanel}>
                         <Box className={styles.treeViewWrapper}>
-                            <ChannelTreeView onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} />
+                            <ChannelTreeView onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} usersStatus={meetInfo?.status_users || {}} />
                         </Box>
                         <Box
                             className={styles.messagesWrapper}
@@ -144,21 +144,18 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                                             onEmojiSelect={(emoji) => setMessage((prevMessage) => prevMessage + emoji.native)}
                                         />
                                     </Box>
-                                )}     
+                                )}
+                                <FileUploadButton onFileSelected={handleFileSelected} />
+                                {selectedFile && (
+                                    <Text>Fichier sélectionné: {selectedFile.name}</Text>
+                                )}   
                                 <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
                                     <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
                                         <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
                                     </svg>
                                 </Button>
                                 
-                                <Box position="absolute" bottom="50px" right="10px" zIndex="1000">
-                                    <FileUploadButton onFileSelected={handleFileSelected} />
-                                    {selectedFile && (
-                                        <>
-                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
-                                        </>
-                                    )}
-                                </Box>
+                                
                             </Box>
                         </Box>
                     </Box>

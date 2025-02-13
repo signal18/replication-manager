@@ -3,9 +3,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import {Accordion, AccordionItem, AccordionButton, AccordionIcon, AccordionPanel,Box, Button, Menu, MenuButton, MenuList, MenuItem, Input, AlertDialog,AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent, AlertDialogOverlay } from '@chakra-ui/react';
 import styles from './styles.module.scss';
 import {createDirectChannel, addUserChannel, createPublicChannel, createPrivateChannel, leaveChannel} from '../../redux/meetSlice';
-import { FaPlus, FaArrowRight, FaUserPlus } from 'react-icons/fa';
+import { FaPlus, FaArrowRight, FaUserPlus, FaCircle } from 'react-icons/fa';
 
-const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers }) => {
+const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, usersStatus }) => {
     const dispatch = useDispatch();
     const [searchTerm, setSearchTerm] = useState('');
     const [channelToLeave, setChannelToLeave] = useState(null);
@@ -141,7 +141,13 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers })
                                                         key={user.id}
                                                         onClick={() => handleUserClick(user.id)}
                                                     >
-                                                        {user.name}
+                                                        <Box display="flex" alignItems="center">
+                                                            <FaCircle
+                                                                color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
+                                                                style={{ marginRight: '8px' }}
+                                                            />
+                                                            {user.name}
+                                                        </Box>
                                                     </MenuItem>
                                                 ))}
                                             </MenuList>
@@ -158,7 +164,18 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers })
                                         className={styles.channel}
                                         onClick={() => onSelectChannel(channel.id)}
                                     >
-                                        <div className={styles.channelName}>{channel.name}</div>
+                                        <div className={styles.channelName}>
+                                            {type === 'D' && (
+                                                <Box display="flex" alignItems="center">
+                                                    <FaCircle
+                                                        color={usersStatus[channel.name] === 'online' ? 'green' : 'gray'}
+                                                        style={{ marginRight: '8px' }}
+                                                    />
+                                                    {channel.name}
+                                                </Box>
+                                            )}
+                                            {type !== 'D' && channel.name}
+                                        </div>
                                         <div className={styles.channelUnreadMessages}>{unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}</div>
                                         {type === 'P' && (
                                             <>
@@ -263,7 +280,13 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers })
                                                 key={user.id}
                                                 onClick={() => confirmAddUserToChannel(user.id)}
                                             >
-                                                {user.name}
+                                                <Box display="flex" alignItems="center">
+                                                    <FaCircle
+                                                        color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
+                                                        style={{ marginRight: '8px' }}
+                                                    />
+                                                    {user.name}
+                                                </Box>
                                             </MenuItem>
                                         ))}
                                     </MenuList>

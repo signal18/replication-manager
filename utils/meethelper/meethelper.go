@@ -529,7 +529,7 @@ func (c *MeetChatClient) GetStatusUsers() map[string]string {
 		userId := getValue(c.AllUser, userName)
 		status, _, _ := c.Client.GetUserStatus(userId, "")
 		if status != nil {
-			statusUsers[userId] = status.Status
+			statusUsers[userName] = status.Status
 		}
 	}
 	return statusUsers
