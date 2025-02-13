@@ -1875,7 +1875,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 	finalID := username + "-" + sessionID
 
-	session.Owner = username
+	session.Owner = uinfomap["User"]
 	session.ID = finalID
 	session.AllowResume = repman.Conf.TerminalSessionResume
 	session.TerminalMgr = repman.GetTerminalManager()
@@ -1904,9 +1904,14 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 		}
 
 		if node != nil {
-			repman.SetSessionValuesFromNode(session, node)
+			err = repman.SetSessionValuesFromNode(session, node)
 		} else if proxy != nil {
-			repman.SetSessionValuesFromProxy(session, proxy)
+			err = repman.SetSessionValuesFromProxy(session, proxy)
+		}
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error setting session values from node: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from node\n"))
+			return
 		}
 
 		if session.CmdType == tty.TerminalBash {

@@ -7,6 +7,7 @@ import (
 
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/tty"
 )
 
@@ -56,16 +57,54 @@ func (repman *ReplicationManager) ParseWebSocketJWT(tokenString string) (map[str
 
 func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session, node *cluster.ServerMonitor) error {
 	session.Host = node.Host
+	mycluster := node.ClusterGroup
+
+	apiUser, ok := mycluster.APIUsers[session.Owner]
+	if !ok {
+		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
+	}
+
 	switch session.CmdType {
 	case tty.TerminalBash:
-		session.Port = strconv.Itoa(node.ClusterGroup.Conf.OnPremiseSSHPort)
-		session.Username = node.ClusterGroup.GetOnPremiseSSHUser()
-		session.Password = node.ClusterGroup.GetOnPremiseSSHPass()
-		session.AppendKey(node.ClusterGroup.OnPremiseGetSSHKey())
+		session.Port = strconv.Itoa(mycluster.Conf.OnPremiseSSHPort)
+		session.Username = mycluster.GetOnPremiseSSHUser()
+		session.Password = mycluster.GetOnPremiseSSHPass()
+		session.AppendKey(mycluster.OnPremiseGetSSHKey())
 	case tty.TerminalMySQL, tty.TerminalMyTop:
 		session.Port = node.Port
-		session.Username = node.User
-		session.Password = node.Pass
+		if apiUser.Roles[config.RoleSysOps] {
+			// SysOps can connect to the database using the root user
+			session.Username = mycluster.GetDbUser()
+			session.Password = mycluster.GetDbPass()
+		} else if apiUser.Roles[config.RoleSponsor] {
+			// Sponsor can connect to the database using the sponsor user
+			session.Username = mycluster.GetSponsorUser()
+			session.Password = mycluster.GetSponsorPass()
+		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantDBTerminal] {
+			// External SysOps, DBOps and the user has the grant can connect to the database using the dba user
+			session.Username = mycluster.GetDbaUser()
+			session.Password = mycluster.GetDbaPass()
+
+			if session.Username == "" || session.Password == "" {
+				// Generate a new password for the dba user
+				dbapass, err := mycluster.GeneratePassword() // Generate a new password
+				if err != nil {
+					dbapass, err = mycluster.GeneratePassword() // Retry
+					if err != nil {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error generating password: %s", err.Error())
+						return err
+					}
+				}
+
+				err = mycluster.SetDBAUserCredentials("dba", dbapass)
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
+					return err
+				}
+			}
+		} else {
+			return fmt.Errorf("user %s does not have the required roles or grant to connect to the database", session.Owner)
+		}
 	default:
 		return fmt.Errorf("unsupported command type: %s", session.CmdType)
 	}
