@@ -360,7 +360,7 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["type"] = "docker"
-		svccontainer["image"] = "google/pause"
+		svccontainer["image"] = "ghcr.io/opensvc/pause"
 		svccontainer["hostname"] = "{svcname}.{namespace}.svc.{clustername}"
 		svccontainer["rm"] = "true"
 	}
@@ -807,7 +807,7 @@ func (server *ServerMonitor) GetPodDockerDBTemplate(collector opensvc.Collector,
 [container#00` + pod + `]
 type = docker
 hostname = {svcname}.{namespace}.svc.{clustername}
-image = google/pause
+image = ghcr.io/opensvc/pause
 rm = true
 
 

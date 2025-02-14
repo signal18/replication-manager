@@ -109,7 +109,7 @@ func (cluster *Cluster) GetPodDockerShardproxyTemplate(collector opensvc.Collect
 [container#00` + pod + `]
 type = docker
 hostname = {svcname}.{namespace}.svc.{clustername}
-image = google/pause
+image = ghcr.io/opensvc/pause
 rm = true
 
 

@@ -65,7 +65,7 @@ func (cluster *Cluster) GetPodDockerProxysqlTemplate(collector opensvc.Collector
 [container#00` + pod + `]
 type = docker
 hostname = {svcname}.{namespace}.svc.{clustername}
-image = google/pause
+image = ghcr.io/opensvc/pause
 rm = true
 
 

@@ -63,7 +63,7 @@ func (cluster *Cluster) GetPodDockerMaxscaleTemplate(collector opensvc.Collector
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = google/pause
+run_image = ghcr.io/opensvc/pause
 hostname={svcname}.{namespace}.svc.{clustername}
 rm = true
 
