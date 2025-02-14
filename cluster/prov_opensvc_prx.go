@@ -541,6 +541,7 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 	} else {
 		svcdefault["flex_primary"] = server.Agent
 		svcdefault["rollback"] = "false"
+		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
 	if cluster.Conf.ProvProxType == "docker" {
