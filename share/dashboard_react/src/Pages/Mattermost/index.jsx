@@ -120,44 +120,46 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                         <Box className={styles.treeViewWrapper}>
                             <ChannelTreeView onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} usersStatus={meetInfo?.status_users || {}} />
                         </Box>
-                        <Box
-                            className={styles.messagesWrapper}
-                        >
-                            <Box className={styles.messagesContainer} ref={messagesContainerRef} onScroll={handleScroll}>
-                                <MessageRender messages={messages[selectedChannel] || null} allUsers={meetInfo?.all_users || {}} />
-                            </Box>
+                        {selectedChannel && (
+                            <Box
+                                className={styles.messagesWrapper} flex="1"
+                            >
+                                <Box className={styles.messagesContainer} ref={messagesContainerRef} onScroll={handleScroll}>
+                                    <MessageRender messages={messages[selectedChannel] || null} allUsers={meetInfo?.all_users || {}} />
+                                </Box>
 
-                            <Box className={styles.newPost}>
-                                <Textarea
-                                    value={message}
-                                    onChange={(e) => setMessage(e.target.value)}
-                                    placeholder="Write a message..."
-                                    className={styles.newPostInput}
-                                />
-                                <Button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={styles.emojiButton}>
-                                    😊
-                                </Button>
-                                {showEmojiPicker && (
-                                    <Box position="absolute" bottom="50px" right="10px" zIndex="1000">
-                                        <Picker 
-                                            data={data} 
-                                            onEmojiSelect={(emoji) => setMessage((prevMessage) => prevMessage + emoji.native)}
-                                        />
-                                    </Box>
-                                )}
-                                <FileUploadButton onFileSelected={handleFileSelected} />
-                                {selectedFile && (
-                                    <Text>Fichier sélectionné: {selectedFile.name}</Text>
-                                )}   
-                                <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
-                                    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
-                                        <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
-                                    </svg>
-                                </Button>
-                                
-                                
+                                <Box className={styles.newPost}>
+                                    <Textarea
+                                        value={message}
+                                        onChange={(e) => setMessage(e.target.value)}
+                                        placeholder="Write a message..."
+                                        className={styles.newPostInput}
+                                    />
+                                    <Button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className={styles.emojiButton}>
+                                        😊
+                                    </Button>
+                                    {showEmojiPicker && (
+                                        <Box position="absolute" bottom="50px" right="10px" zIndex="1000">
+                                            <Picker 
+                                                data={data} 
+                                                onEmojiSelect={(emoji) => setMessage((prevMessage) => prevMessage + emoji.native)}
+                                            />
+                                        </Box>
+                                    )}
+                                    <FileUploadButton onFileSelected={handleFileSelected} />
+                                    {selectedFile && (
+                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
+                                    )}   
+                                    <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
+                                        <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
+                                            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
+                                        </svg>
+                                    </Button>
+                                    
+                                    
+                                </Box>
                             </Box>
-                        </Box>
+                        )}
                     </Box>
                 </DrawerBody>
             </DrawerContent>
