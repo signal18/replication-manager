@@ -1841,8 +1841,9 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
 			return
 		}
-	} else {
+
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
+	} else {
 		mycluster = repman.getClusterByName(vars["clusterName"])
 		if mycluster == nil {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid cluster\n"))
@@ -1916,7 +1917,11 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 		if session.CmdType == tty.TerminalBash {
 			session, err = repman.SessionManager.RunSSHSession(session)
-		} else if session.CmdType == tty.TerminalMySQL || session.CmdType == tty.TerminalMyTop {
+		} else if session.CmdType == tty.TerminalMySQL {
+			session.Arguments = append(session.Arguments, "-p")
+			session, err = repman.SessionManager.RunSession(session)
+		} else if session.CmdType == tty.TerminalMyTop {
+			session.Arguments = append(session.Arguments, "--prompt")
 			session, err = repman.SessionManager.RunSession(session)
 		} else {
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
