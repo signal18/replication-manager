@@ -251,9 +251,9 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 
 	var cmd *exec.Cmd
 	if session.CmdType == TerminalMySQL {
-		cmd = exec.Command("mysql", "-h", session.Host, "-P", session.Port, "-u", session.Username, "-p")
+		cmd = exec.Command("mysql", "-h", session.Host, "-P", session.Port, "-u", session.Username, "--password="+session.Password)
 	} else if session.CmdType == TerminalMyTop {
-		cmd = exec.Command("mytop", "-h", session.Host, "-P", session.Port, "-u", session.Username, "--prompt")
+		cmd = exec.Command("mytop", "-h", session.Host, "-P", session.Port, "-u", session.Username, "-p", session.Password)
 	} else {
 		if session.AllowResume && session.TerminalMgr != nil {
 			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
@@ -277,22 +277,7 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	session.Stdin = ptyFile
 	session.Stdout = ptyFile
 
-	if session.CmdType == TerminalMySQL {
-		for {
-			buf := make([]byte, 1)
-			_, err := session.Stdout.Read(buf)
-			if err != nil {
-				break
-			}
-
-			if buf[0] == ':' {
-				break
-			}
-		}
-		session.Stdin.Write([]byte(session.Password + "\n"))
-	} else if session.CmdType == TerminalMyTop {
-		session.Stdin.Write([]byte(session.Password + "\n"))
-	} else {
+	if session.CmdType == TerminalBash {
 		session.Stdin.Write([]byte("cd " + session.WorkingDir + "\n"))
 	}
 
