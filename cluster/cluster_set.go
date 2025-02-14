@@ -529,6 +529,29 @@ func (cluster *Cluster) SetCloud18DatabaseReadWriteSrvRecord(value string) {
 	cluster.Conf.Cloud18DatabaseReadWriteSrvRecord = value
 }
 
+func (cluster *Cluster) SetCloud18DbaUserCredentials(cred string) error {
+	dbauser, dbapass := misc.SplitPair(cred)
+	if dbauser != "" {
+		if dbapass == "" {
+			dbapass, _ = cluster.GeneratePassword()
+		}
+		err := cluster.SetDBAUserCredentials(dbauser, dbapass)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
+			return err
+		}
+	}
+
+	var new_secret config.Secret
+	new_secret.Value = cred
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
+
+	cluster.Conf.Cloud18DbaUserCredentials = cred
+	cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
+
+	return nil
+}
+
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	cluster.Conf.TestInjectTraffic = traffic
 }

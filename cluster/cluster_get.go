@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -86,6 +87,34 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
 	return misc.RemoveEmptyString(dumpargs)
+}
+
+// GetMySQLClientParams returns the parameters to connect to a MySQL server
+//   - server: the server to connect to
+//   - roleType: the type of authentication to use
+//   - interactive: if true, the password will be prompted and not included in the command line
+func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
+	args := []string{"--host=" + server.Host, "--port=" + server.Port, server.GetSSLClientParam("client")}
+	var passwd string
+	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
+		args = append(args, "--user="+cluster.GetDbUser())
+		passwd = "--password=" + cluster.GetDbPass()
+	} else if roleType == config.RoleSponsor {
+		args = append(args, "--user="+cluster.GetSponsorUser())
+		passwd = "--password=" + cluster.GetSponsorPass()
+	} else if slices.Contains([]string{config.RoleDBOps, config.RoleExtDBOps, "grant"}, roleType) {
+		args = append(args, "--user="+cluster.GetDbaUser())
+		passwd = "--password=" + cluster.GetDbaPass()
+	}
+
+	if !interactive {
+		args = append(args, passwd)
+	}
+
+	// Remove empty strings
+	args = misc.RemoveEmptyString(args)
+
+	return args
 }
 
 // This will use installed mysqldump first

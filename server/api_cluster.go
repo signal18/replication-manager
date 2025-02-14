@@ -2833,25 +2833,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		cred := string(val)
-		dbauser, dbapass := misc.SplitPair(cred)
-		if dbauser != "" {
-			if dbapass == "" {
-				dbapass, _ = mycluster.GeneratePassword()
-			}
-			err = mycluster.SetDBAUserCredentials(dbauser, dbapass)
-			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
-				return err
-			}
+		err = mycluster.SetCloud18DbaUserCredentials(string(val))
+		if err != nil {
+			return err
 		}
-
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
-
-		mycluster.Conf.Cloud18DbaUserCredentials = cred
-		mycluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
 	case "cloud18-sponsor-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {

@@ -85,6 +85,7 @@ type Session struct {
 	SSHClient   *ssh.Client         `json:"-"`
 	SSHSession  *ssh.Session        `json:"-"`
 	Cmd         *exec.Cmd           `json:"-"`
+	Arguments   []string            `json:"-"`
 	CmdType     TerminalCommandType `json:"-"`
 	PTY         *os.File            `json:"-"`
 	Stdin       io.WriteCloser      `json:"-"`
@@ -251,9 +252,9 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 
 	var cmd *exec.Cmd
 	if session.CmdType == TerminalMySQL {
-		cmd = exec.Command("mysql", "-h", session.Host, "-P", session.Port, "-u", session.Username, "-p")
+		cmd = exec.Command("mysql", session.Arguments...)
 	} else if session.CmdType == TerminalMyTop {
-		cmd = exec.Command("mytop", "-h", session.Host, "-P", session.Port, "-u", session.Username, "--prompt")
+		cmd = exec.Command("mytop", session.Arguments...)
 	} else {
 		if session.AllowResume && session.TerminalMgr != nil {
 			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
@@ -266,6 +267,8 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	}
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	session.Cmd = cmd
+
+	session.Logger.Printf("Starting command: %v\n", cmd)
 
 	// Start a pseudo-terminal for the command
 	ptyFile, err := pty.Start(cmd)
@@ -291,17 +294,18 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 				msgtype := websocket.TextMessage
 				if !utf8.Valid(buffer[:n]) {
 					msgtype = websocket.BinaryMessage
-					err := session.SafeWriteMessage(msgtype, buffer[:n])
-					if err != nil {
-						session.Logger.Println("Error sending stdout to WebSocket:", err)
-						break
-					}
 				} else {
 					bufstr := string(buffer[:n])
 					if strings.Contains(strings.ToLower(bufstr), "password:") {
 						session.Stdin.Write([]byte(session.Password + "\n"))
 						break
 					}
+				}
+
+				err := session.SafeWriteMessage(msgtype, buffer[:n])
+				if err != nil {
+					session.Logger.Println("Error sending stdout to WebSocket:", err)
+					break
 				}
 
 			}
@@ -436,7 +440,9 @@ func (s *Session) HandleOutput(stderr bool) {
 
 				err := s.SafeWriteMessage(msgtype, buffer[:n])
 				if err != nil {
-					s.Logger.Println("Error sending stdout to WebSocket:", err)
+					if !errors.Is(err, websocket.ErrCloseSent) {
+						s.Logger.Println("Error sending stdout to WebSocket:", err)
+					}
 					break
 				}
 			}
@@ -461,7 +467,9 @@ func (s *Session) HandleOutput(stderr bool) {
 
 					err := s.SafeWriteMessage(msgtype, buffer[:n])
 					if err != nil {
-						s.Logger.Println("Error sending stderr to WebSocket:", err)
+						if !errors.Is(err, websocket.ErrCloseSent) {
+							s.Logger.Println("Error sending stderr to WebSocket:", err)
+						}
 						break
 					}
 				}
@@ -480,7 +488,9 @@ func (s *Session) keepAliveWebSocket() {
 		case <-ticker.C:
 			err := s.SafeWriteMessage(websocket.PingMessage, []byte{})
 			if err != nil {
-				s.Logger.Println("Error sending ping:", err)
+				if !websocket.IsCloseError(err) && !errors.Is(err, websocket.ErrCloseSent) {
+					s.Logger.Println("Error sending ping:", err)
+				}
 				return
 			}
 		}
