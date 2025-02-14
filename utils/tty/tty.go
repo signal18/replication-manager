@@ -277,21 +277,35 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	session.Stdin = ptyFile
 	session.Stdout = ptyFile
 
-	if session.CmdType == TerminalMySQL {
+	if session.CmdType == TerminalMySQL || session.CmdType == TerminalMyTop {
+		// Wait for the Password: prompt and send the password
+		buffer := make([]byte, 1024)
 		for {
-			buf := make([]byte, 1)
-			_, err := session.Stdout.Read(buf)
-			if err != nil {
+			n, err := ptyFile.Read(buffer)
+			if err != nil && err != io.EOF {
+				session.Logger.Println("Error reading from stdout:", err)
 				break
 			}
 
-			if buf[0] == ':' {
-				break
+			if n > 0 {
+				msgtype := websocket.TextMessage
+				if !utf8.Valid(buffer[:n]) {
+					msgtype = websocket.BinaryMessage
+					err := session.SafeWriteMessage(msgtype, buffer[:n])
+					if err != nil {
+						session.Logger.Println("Error sending stdout to WebSocket:", err)
+						break
+					}
+				} else {
+					bufstr := string(buffer[:n])
+					if strings.Contains(strings.ToLower(bufstr), "password:") {
+						session.Stdin.Write([]byte(session.Password + "\n"))
+						break
+					}
+				}
+
 			}
 		}
-		session.Stdin.Write([]byte(session.Password + "\n"))
-	} else if session.CmdType == TerminalMyTop {
-		session.Stdin.Write([]byte(session.Password + "\n"))
 	} else {
 		session.Stdin.Write([]byte("cd " + session.WorkingDir + "\n"))
 	}
