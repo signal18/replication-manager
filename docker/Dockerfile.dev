@@ -2,13 +2,16 @@ FROM golang:1.23-bookworm AS builder
 
 ENV PROXYSQL_VERSION=2.5.5
 # Using 0.17.1-1
+ENV MARIADB_VERSION=11.4
 ENV MYDUMPER_VERSION=0.17.1-1
 
 RUN mkdir -p /go/src/github.com/signal18/replication-manager
 WORKDIR /go/src/github.com/signal18/replication-manager
 
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
+
 # Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian11_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian11_amd64.deb
 RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb
 
