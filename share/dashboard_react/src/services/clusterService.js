@@ -397,11 +397,11 @@ function stopProxy(clusterName, proxyId, baseURL) {
 
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
-  return getApi(baseURL).getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {
-  return getApi(baseURL).getRequest(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
 }
 
 function toggleDatabaseActions(clusterName, serviceName, dbId, baseURL) {
