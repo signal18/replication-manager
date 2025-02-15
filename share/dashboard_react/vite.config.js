@@ -18,6 +18,7 @@ export default defineConfig({
   css: {
     preprocessorOptions: {
       scss: {
+        silenceDeprecations: ["import", "legacy-js-api", "global-builtin"],
         additionalData: `@import './src/styles/_mixins.scss';
          @import './src/styles/_variables.scss';
          @import './src/styles/_lighttheme.scss'; 
