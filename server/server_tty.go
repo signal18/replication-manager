@@ -76,16 +76,22 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 			// SysOps can connect to the database using the root user
 			session.Username = mycluster.GetDbUser()
 			session.Password = mycluster.GetDbPass()
+			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSysOps, true)
 		} else if apiUser.Roles[config.RoleSponsor] {
 			// Sponsor can connect to the database using the sponsor user
 			session.Username = mycluster.GetSponsorUser()
 			session.Password = mycluster.GetSponsorPass()
+			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSponsor, true)
 		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantDBTerminal] {
 			// External SysOps, DBOps and the user has the grant can connect to the database using the dba user
 			session.Username = mycluster.GetDbaUser()
 			session.Password = mycluster.GetDbaPass()
 
 			if session.Username == "" || session.Password == "" {
+				if session.Username == "" {
+					session.Username = "dba"
+				}
+
 				// Generate a new password for the dba user
 				dbapass, err := mycluster.GeneratePassword() // Generate a new password
 				if err != nil {
@@ -96,12 +102,18 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 					}
 				}
 
-				err = mycluster.SetDBAUserCredentials("dba", dbapass)
+				if session.Password == "" {
+					session.Password = dbapass
+				}
+
+				err = mycluster.SetCloud18DbaUserCredentials(session.Username + ":" + dbapass)
 				if err != nil {
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
 					return err
 				}
+
 			}
+
+			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleDBOps, true)
 		} else {
 			return fmt.Errorf("user %s does not have the required roles or grant to connect to the database", session.Owner)
 		}
