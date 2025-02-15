@@ -280,6 +280,9 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 	var err error
 	qrt, logs, err = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Can't fetch Query Response Time ")
+	if qrt == nil {
+		qrt = make([]dbhelper.ResponseTime, 0)
+	}
 	return qrt
 }
 
@@ -432,7 +435,7 @@ func (server *ServerMonitor) GetPFSQueries() {
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
-	var rows []dbhelper.PFSQuery
+	rows := make([]dbhelper.PFSQuery, 0)
 	for _, v := range server.PFSQueries.ToNewMap() {
 		rows = append(rows, *v)
 	}
@@ -494,10 +497,10 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
-	var rows []dbhelper.PFSQuery
+	rows := make([]dbhelper.PFSQuery, 0)
+
 	for _, s := range server.SlowLog.Buffer {
 		if s.Query != "" {
-
 			var nval dbhelper.PFSQuery
 			nval.Digest_text = dbhelper.GetQueryDigest(s.Query)
 			nval.Digest = s.Digest
