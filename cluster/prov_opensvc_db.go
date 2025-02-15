@@ -274,7 +274,7 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
-		svccontainer["run_args"] = "--ulimit nofile=262144:262144 --tmpfs=/tmp:size=" + server.ClusterGroup.Conf.ProvDBDockerTmpfsSize + "m"
+		svccontainer["run_args"] = fmt.Sprintf("--tmpfs=/tmp:size=%sm %s", server.ClusterGroup.Conf.ProvDBDockerTmpfsSize, server.ClusterGroup.Conf.ProvDBDockerRunArgs)
 		svccontainer["#run_args"] = "--user mysql --cap-add SYS_PTRACE --ulimit nofile=262144:262144"
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
