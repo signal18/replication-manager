@@ -271,6 +271,10 @@ func (server *ServerMonitor) GetTableFromDict(URI string) (*v3.Table, error) {
 }
 
 func (server *ServerMonitor) GetMetaDataLocks() []dbhelper.MetaDataLock {
+	if server.MetaDataLocks == nil {
+		return make([]dbhelper.MetaDataLock, 0)
+	}
+
 	return server.MetaDataLocks
 }
 
