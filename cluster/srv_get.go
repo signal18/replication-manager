@@ -799,6 +799,21 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
+
+	if server.HasSSL() {
+		cacertfile := cluster.Conf.HostsTLSCA
+		clicertfile := cluster.Conf.HostsTlsCliCert
+		clikeyfile := cluster.Conf.HostsTlsCliKey
+
+		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
+			cacertfile = cluster.WorkingDir + "/ca-cert.pem"
+			clicertfile = cluster.WorkingDir + "/client-cert.pem"
+			clikeyfile = cluster.WorkingDir + "/client-key.pem"
+		}
+
+		return "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+	}
+
 	// Only add for client dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
 		switch tool {
