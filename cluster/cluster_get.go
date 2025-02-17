@@ -1220,24 +1220,32 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs := make(map[string]string)
-	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
+	if cluster.HaveDBTLSCert {
+		cliCertPath := cluster.WorkingDir + "/client-cert.pem"
+		clientCert, err := misc.ReadFile(cliCertPath)
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], cliCertPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+		cliKeyPath := cluster.WorkingDir + "/client-key.pem"
+		clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], cliKeyPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+		caCertPath := cluster.WorkingDir + "/ca-cert.pem"
+		caCert, err := misc.ReadFile(caCertPath)
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], caCertPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+
+		certs["clientCert"] = clientCert
+		certs["clientKey"] = clientkey
+		certs["caCert"] = caCert
 	}
-	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
-	}
-	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
-	}
-	certs["clientCert"] = clientCert
-	certs["clientKey"] = clientkey
-	certs["caCert"] = caCert
+
+	cluster.GetStateMachine().DeleteState("WARN0137")
 	return certs, nil
 }
 

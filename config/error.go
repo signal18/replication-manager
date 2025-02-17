@@ -198,6 +198,7 @@ var ClusterError = map[string]string{
 	"WARN0134":  "Restic repository is locked. Repo: %s",
 	"WARN0135":  "Cluster has bad measurement in config file: %v",
 	"WARN0136":  "Enforce GTID replication is not yet available in MySQL. Skipping server %s",
+	"WARN0137":  "Unable to open certificate file %s. Err: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

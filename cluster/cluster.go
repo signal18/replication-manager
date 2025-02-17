@@ -686,7 +686,7 @@ func (cluster *Cluster) Run() {
 						} else {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
-							cluster.StateMachine.PreserveState("WARN0132")
+							cluster.StateMachine.PreserveState("WARN0132", "WARN0137")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
