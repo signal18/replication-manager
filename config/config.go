@@ -526,7 +526,9 @@ type Config struct {
 	ProvNetmask                               string                 `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                 `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
-	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes,required" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
+	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
+	ProvDBDockerRunArgs                       string                 `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
+	ProvDBJobsDockerRunArgs                   string                 `mapstructure:"prov-db-jobs-docker-run-args" toml:"prov-db-jobs-docker-run-args" json:"provDbJobsDockerRunArgs"`
 	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
 	ProvDBLoadCSV                             string                 `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
@@ -553,6 +555,7 @@ type Config struct {
 	ProvProxHaproxyImg                        string                 `mapstructure:"prov-proxy-docker-haproxy-img" toml:"prov-proxy-docker-haproxy-img" json:"provProxyDockerHaproxyImg"`
 	ProvProxProxysqlImg                       string                 `mapstructure:"prov-proxy-docker-proxysql-img" toml:"prov-proxy-docker-proxysql-img" json:"provProxyDockerProxysqlImg"`
 	ProvProxMysqlRouterImg                    string                 `mapstructure:"prov-proxy-docker-mysqlrouter-img" toml:"prov-proxy-docker-mysqlrouter-img" json:"provProxyDockerMysqlrouterImg"`
+	ProvProxDockerRunArgs                     string                 `mapstructure:"prov-proxy-docker-run-args" toml:"prov-proxy-docker-run-args" json:"provProxyDockerRunArgs"`
 	ProvProxTags                              string                 `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
 	ProvSphinxAgents                          string                 `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
 	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
@@ -575,6 +578,7 @@ type Config struct {
 	ProvSSLKeyUUID                            string                 `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
 	ProvNetCNI                                bool                   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	ProvNetCNICluster                         string                 `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
+	ProvNetDockerRunArgs                      string                 `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool                   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string                 `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string                 `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
