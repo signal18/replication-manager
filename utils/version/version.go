@@ -308,11 +308,11 @@ func (mv *Version) IsMySQLOrPerconaGreater84() bool {
 	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 8 && mv.Minor >= 4) || mv.Major > 8)
 }
 
-// IsMariaDBZeroConfigSSL checks if the version is MariaDB 11.4 or greater
-func (mv *Version) IsMariaDBGreater114() bool {
+// IsMariaDBGreater113 checks if the version is MariaDB 11.3 or greater which introduce breaking changes in SSL
+func (mv *Version) IsMariaDBGreater113() bool {
 	if mv == nil {
 		return false
 	}
 
-	return mv.Flavor == "MariaDB" && ((mv.Major == 11 && mv.Minor >= 4) || mv.Major > 11)
+	return mv.Flavor == "MariaDB" && ((mv.Major == 11 && mv.Minor >= 3) || mv.Major > 11)
 }

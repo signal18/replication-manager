@@ -800,7 +800,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
 
-	if server.HasSSL() && !server.DBVersion.IsMariaDBGreater114() {
+	if server.HasSSL() && !server.DBVersion.IsMariaDBGreater113() {
 		cacertfile := cluster.Conf.HostsTLSCA
 		clicertfile := cluster.Conf.HostsTlsCliCert
 		clikeyfile := cluster.Conf.HostsTlsCliKey
