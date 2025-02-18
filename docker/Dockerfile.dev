@@ -32,8 +32,8 @@ RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
 COPY . .
 
 RUN make pro cli && \
-rm replication-manager-pro && \
-rm replication-manager-cli && \
+rm -f replication-manager-pro && \
+rm -f replication-manager-cli && \
 ln -s build/binaries/replication-manager-pro replication-manager-pro && \
 ln -s build/binaries/replication-manager-cli replication-manager-cli
 
