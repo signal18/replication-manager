@@ -39,6 +39,7 @@ type Alert struct {
 
 func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error {
 
+
 	e := email.NewEmail()
 	e.From = Conf.MailFrom
 	e.To = strings.Split(Conf.MailTo, ",")
@@ -64,16 +65,24 @@ func (a *Alert) EmailMessage(msg string, subj string, Conf config.Config) error 
 
 	var err error
 	if Conf.MailSMTPUser == "" {
+			log.Println("ici")
 		if Conf.MailSMTPTLSSkipVerify {
 			err = e.SendWithTLS(Conf.MailSMTPAddr, nil, &tls.Config{InsecureSkipVerify: true})
 		} else {
 			err = e.Send(Conf.MailSMTPAddr, nil)
 		}
 	} else {
+		host, _, err = net.SplitHostPort(Conf.MailSMTPAddr)
+		if err != nil {
+			log.Println("ERROR", "Could not send mail alert to %s: %s",Conf.MailSMTPAddr, err)
+		}
+		log.Println("laaa")
+
+			log.Println("INFO", "Send mail to host: %s",host)
 		if Conf.MailSMTPTLSSkipVerify {
-			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]), &tls.Config{InsecureSkipVerify: true})
+			err = e.SendWithTLS(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, host), &tls.Config{InsecureSkipVerify: true})
 		} else {
-			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, strings.Split(Conf.MailSMTPAddr, ":")[0]))
+			err = e.Send(Conf.MailSMTPAddr, smtp.PlainAuth("", Conf.MailSMTPUser, Conf.Secrets["mail-smtp-password"].Value, host))
 		}
 	}
 	if err != nil {

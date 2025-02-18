@@ -15,8 +15,8 @@ BIN-ARB = $(BIN)-arb
 BIN-EMBED = $(BIN)
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
-WITH_REACT = ON 
-	
+WITH_REACT = ON
+
 all: bin tar cli arb
 
 bin: osc tst pro osc-cgo emb
@@ -25,7 +25,7 @@ non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-pro osc emb pro-basedir : react 
+pro osc emb pro-basedir : react
 
 react:
 	$(Building react frontend $(REACT))
@@ -53,7 +53,7 @@ tst:
 tst-basedir:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server"  --ldflags "-w -s $(TAR) -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD)   -X github.com/signal18/replication-manager/server.WithDeprecate=OFF"  $(LDFLAGS) -o $(BINDIR)/$(BIN-TST)-basedir
 
-pro:  
+pro:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags " -w -s -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN-PRO)
 
 pro-basedir:

@@ -2896,7 +2896,9 @@ func (repman *ReplicationManager) InitMailer() {
 
 	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
 	if repman.Conf.MailSMTPUser != "" {
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
+		//repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
+		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
+
 	}
 
 	if repman.Conf.MailSMTPTLSSkipVerify {
@@ -2907,7 +2909,8 @@ func (repman *ReplicationManager) InitMailer() {
 func (repman *ReplicationManager) ReloadMailerConfig() {
 	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
 	if repman.Conf.MailSMTPUser != "" {
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
+//		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
+repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
 	}
 
 	if repman.Conf.MailSMTPTLSSkipVerify {

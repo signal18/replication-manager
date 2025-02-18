@@ -2,8 +2,10 @@ package mailer
 
 import (
 	"crypto/tls"
+  "net"
 	"net/smtp"
 	"strings"
+	"log"
 
 	"github.com/jordan-wright/email"
 )
@@ -19,7 +21,11 @@ func (m *Mailer) SetAddress(host string) {
 }
 
 func (m *Mailer) SetSmtpAuth(identity, username, password, host string) {
-	m.Auth = smtp.PlainAuth(identity, username, password, host)
+	hostonly, _, err := net.SplitHostPort(host)
+	if err != nil {
+		log.Println("ERROR", "Could not send mail alert to %s: %s",host, err)
+	}
+	m.Auth = smtp.PlainAuth(identity, username, password, hostonly)
 }
 
 func (m *Mailer) SetTlsConfig(conf *tls.Config) {
