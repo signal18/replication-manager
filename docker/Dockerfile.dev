@@ -31,7 +31,11 @@ RUN /usr/local/go/bin/go install -v honnef.co/go/tools/cmd/staticcheck@latest
 
 COPY . .
 
-RUN make pro cli
+RUN make pro cli && \
+rm replication-manager-pro && \
+rm replication-manager-cli && \
+ln -s build/binaries/replication-manager-pro replication-manager-pro && \
+ln -s build/binaries/replication-manager-cli replication-manager-cli
 
 RUN mkdir -p \
         /etc/replication-manager \
@@ -46,5 +50,5 @@ cp -r share /usr/share/replication-manager/ && \
 cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
 cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
 
-CMD ["while true ; do sleep 1; done"]
+CMD ["while true; do sleep 86400; done"]
 EXPOSE 10001
