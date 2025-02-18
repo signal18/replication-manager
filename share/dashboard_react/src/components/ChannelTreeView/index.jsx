@@ -5,7 +5,7 @@ import styles from './styles.module.scss';
 import {createDirectChannel, addUserChannel, createPublicChannel, createPrivateChannel, leaveChannel} from '../../redux/meetSlice';
 import { FaPlus, FaArrowRight, FaUserPlus, FaCircle } from 'react-icons/fa';
 
-const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, usersStatus }) => {
+const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, usersStatus, selectedChannel = '' , selectedAccordionIndex, setSelectedAccordionIndex }) => {
     const dispatch = useDispatch();
     const [searchTerm, setSearchTerm] = useState('');
     const [channelToLeave, setChannelToLeave] = useState(null);
@@ -98,119 +98,126 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
         setIsAddUserOpen(false);
     };
 
+    const handleSelectChannel = (channelId) => {
+        onSelectChannel(channelId);
+        setSelectedAccordionIndex([]);
+    };
+
     return (
     <>
-        <Accordion multiple className={styles.channelsContainer} allowMultiple allowToggle>
-            <AccordionItem className={styles.channelsTreeView} allowToggle>
-                <AccordionButton className={styles.channelsTreeViewTitle}>
-                    <p>Channels</p>
-                    <AccordionIcon />
-                </AccordionButton>
-                <AccordionPanel className={styles.channelsTreeViewContent}>
-                    {Object.entries(groupedChannels).map(([type, channels]) => (
-                        <AccordionItem key={type} className={styles.channelsGroup}>
-                            <AccordionButton className={styles.channelsTypeButton}>
-                                <p>
-                                    {type === 'O' ? 'Public Channels' : type === 'P' ? 'Private Channels' : 'Direct Channels'}
-                                    {totalUnreadMessagesByType[type] > 0 && ` (${totalUnreadMessagesByType[type]})`}
-                                </p>
-                                {type !== 'D' && (
-                                    <Button
-                                        colorScheme="teal"
-                                        size="sm"
-                                        onClick={() => handleCreateChannel(type)}
-                                    >
-                                        <FaPlus />
-                                    </Button>
-                                )}
-                                {type === 'D' && (
-                                    <Box display="flex" alignItems="center">
-                                        <Menu>
-                                            <MenuButton as={Button} colorScheme="teal" size="sm" ml="auto">
-                                                <FaPlus />
-                                            </MenuButton>
-                                            <MenuList>
-                                                <Input
-                                                    placeholder="Search users..."
-                                                    value={searchTerm}
-                                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                                    mb={2}
-                                                />
-                                                {filteredUsers.map((user) => (
-                                                    <MenuItem
-                                                        key={user.id}
-                                                        onClick={() => handleUserClick(user.id)}
-                                                    >
-                                                        <Box display="flex" alignItems="center">
-                                                            <FaCircle
-                                                                color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
-                                                                style={{ marginRight: '8px' }}
-                                                            />
-                                                            {user.name}
-                                                        </Box>
-                                                    </MenuItem>
-                                                ))}
-                                            </MenuList>
-                                        </Menu>
-                                    </Box>
-                                )}
-                                <AccordionIcon />
-                            </AccordionButton>
-                            <AccordionPanel className={styles.channelsOfAGroup}>
-                                {channels.map((channel) => (
-                                    <Box
-                                        key={channel.id}
-                                        as='button'
-                                        className={styles.channel}
-                                        onClick={() => onSelectChannel(channel.id)}
-                                    >
-                                        <div className={styles.channelName}>
-                                            {type === 'D' && (
-                                                <Box display="flex" alignItems="center">
-                                                    <FaCircle
-                                                        color={usersStatus[channel.name] === 'online' ? 'green' : 'gray'}
-                                                        style={{ marginRight: '8px' }}
+        <Accordion multiple className={styles.channelsContainer} allowMultiple allowToggle index={selectedAccordionIndex} onChange={(index) => setSelectedAccordionIndex(index.length ? index : [])}>
+                <AccordionItem className={styles.channelsTreeView}>
+                    <AccordionButton className={styles.channelsTreeViewTitle} onClick={() => setSelectedAccordionIndex([0])}>
+                        <p>Channels {selectedChannel && `- ${channels.find(c => c.id === selectedChannel)?.name || "Unknown"}`}</p>
+                        <AccordionIcon />
+                    </AccordionButton>
+
+                    <AccordionPanel className={styles.channelsTreeViewContent}>
+                        {Object.entries(groupedChannels).map(([type, channels]) => (
+                            <AccordionItem key={type} className={styles.channelsGroup}>
+                                <AccordionButton className={styles.channelsTypeButton}>
+                                    <p>
+                                        {type === 'O' ? 'Public Channels' : type === 'P' ? 'Private Channels' : 'Direct Channels'}
+                                        {totalUnreadMessagesByType[type] > 0 && ` (${totalUnreadMessagesByType[type]})`}
+                                    </p>
+                                    {type !== 'D' && (
+                                        <Button
+                                            colorScheme="teal"
+                                            size="sm"
+                                            onClick={() => handleCreateChannel(type)}
+                                        >
+                                            <FaPlus />
+                                        </Button>
+                                    )}
+                                    {type === 'D' && (
+                                        <Box display="flex" alignItems="center">
+                                            <Menu>
+                                                <MenuButton as={Button} colorScheme="teal" size="sm" ml="auto">
+                                                    <FaPlus />
+                                                </MenuButton>
+                                                <MenuList>
+                                                    <Input
+                                                        placeholder="Search users..."
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                        mb={2}
                                                     />
-                                                    {channel.name}
-                                                </Box>
+                                                    {filteredUsers.map((user) => (
+                                                        <MenuItem
+                                                            key={user.id}
+                                                            onClick={() => handleUserClick(user.id)}
+                                                        >
+                                                            <Box display="flex" alignItems="center">
+                                                                <FaCircle
+                                                                    color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
+                                                                    style={{ marginRight: '8px' }}
+                                                                />
+                                                                {user.name}
+                                                            </Box>
+                                                        </MenuItem>
+                                                    ))}
+                                                </MenuList>
+                                            </Menu>
+                                        </Box>
+                                    )}
+                                    <AccordionIcon />
+                                </AccordionButton>
+                                <AccordionPanel className={styles.channelsOfAGroup}>
+                                    {channels.map((channel) => (
+                                        <Box
+                                            key={channel.id}
+                                            as='button'
+                                            className={styles.channel}
+                                            onClick={() => handleSelectChannel(channel.id)}
+                                        >
+                                            <div className={styles.channelName}>
+                                                {type === 'D' && (
+                                                    <Box display="flex" alignItems="center">
+                                                        <FaCircle
+                                                            color={usersStatus[channel.name] === 'online' ? 'green' : 'gray'}
+                                                            style={{ marginRight: '8px' }}
+                                                        />
+                                                        {channel.name}
+                                                    </Box>
+                                                )}
+                                                {type !== 'D' && channel.name}
+                                            </div>
+                                            <div className={styles.channelUnreadMessages}>{unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}</div>
+                                            {type === 'P' && (
+                                                <>
+                                                <Button
+                                                    colorScheme="red"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleLeaveChannel(channel.id);
+                                                    }}
+                                                >
+                                                    <FaArrowRight />
+                                                </Button>
+                                                <Button
+                                                    colorScheme="blue"
+                                                    size="sm"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleAddUserToChannel(channel.id);
+                                                    }}
+                                                    ml={2}
+                                                >
+                                                    <FaUserPlus />
+                                                </Button>
+
+                                                </>
                                             )}
-                                            {type !== 'D' && channel.name}
-                                        </div>
-                                        <div className={styles.channelUnreadMessages}>{unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}</div>
-                                        {type === 'P' && (
-                                            <>
-                                            <Button
-                                                colorScheme="red"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleLeaveChannel(channel.id);
-                                                }}
-                                            >
-                                                <FaArrowRight />
-                                            </Button>
-                                            <Button
-                                                colorScheme="blue"
-                                                size="sm"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleAddUserToChannel(channel.id);
-                                                }}
-                                                ml={2}
-                                            >
-                                                <FaUserPlus />
-                                            </Button>
-                                            
-                                            </>
-                                        )}
-                                    </Box>
-                                ))}
-                                
-                            </AccordionPanel>
-                        </AccordionItem>
-                    ))}
-                </AccordionPanel>
-            </AccordionItem>
+                                        </Box>
+                                    ))}
+
+                                </AccordionPanel>
+                            </AccordionItem>
+                        ))}
+                    </AccordionPanel>
+                
+                </AccordionItem>
             </Accordion>
             <AlertDialog isOpen={isOpen} leastDestructiveRef={undefined} onClose={cancelLeaveChannel}>
                 <AlertDialogOverlay>

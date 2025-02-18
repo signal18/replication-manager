@@ -20,14 +20,20 @@
 
       .messagesWrapper {
         overflow-y: auto;
-        max-height: 400px; // Remplace par une valeur adaptée
+        max-height: calc(100vh - 200px);
+        height: 100%;
         display: flex;
         flex-grow: 1;
         flex-direction: column;
         justify-content: end; 
+        transition: height 0.3s ease-in-out;
+        &.expanded { 
+          height: calc(100vh - 50px);
+        }
         
         .messagesContainer {
-          max-height: 400px;
+          max-height: none;
+          height: 100%;
           overflow-y: auto;
           margin-bottom: 10px;
           padding: 10px;

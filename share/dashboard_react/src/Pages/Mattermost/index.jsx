@@ -17,6 +17,8 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     const { meetInfo, messages, loading, error } = useSelector((state) => state.meet, shallowEqual);
     const [message, setMessage] = useState('');
     const [selectedChannel, setSelectedChannel] = useState('');
+    const [selectedAccordionIndex, setSelectedAccordionIndex] = useState([0]);
+    const isTreeViewOpen = selectedAccordionIndex.length > 0;
     const [page, setPage] = useState(0);
     const messagesContainerRef = useRef(null);
     const [scrollPosition, setScrollPosition] = useState(null);
@@ -118,11 +120,11 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
                 <DrawerBody className={styles.mattermostContainer} >
                     <Box className={styles.accordionPanel}>
                         <Box className={styles.treeViewWrapper}>
-                            <ChannelTreeView onSelectChannel={setSelectedChannel} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} usersStatus={meetInfo?.status_users || {}} />
+                            <ChannelTreeView onSelectChannel={(channel) => { setSelectedChannel(channel); setSelectedAccordionIndex([]);}} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} usersStatus={meetInfo?.status_users || {}} selectedChannel={selectedChannel} selectedAccordionIndex={selectedAccordionIndex} setSelectedAccordionIndex={setSelectedAccordionIndex}/>
                         </Box>
                         {selectedChannel && (
                             <Box
-                                className={styles.messagesWrapper} flex="1"
+                                className={`${styles.messagesWrapper} ${!isTreeViewOpen ? styles.expanded : ''}`}
                             >
                                 <Box className={styles.messagesContainer} ref={messagesContainerRef} onScroll={handleScroll}>
                                     <MessageRender messages={messages[selectedChannel] || null} allUsers={meetInfo?.all_users || {}} />
