@@ -57,9 +57,9 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
-	"github.com/signal18/replication-manager/utils/mailer"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/peerclient"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -2909,8 +2909,8 @@ func (repman *ReplicationManager) InitMailer() {
 func (repman *ReplicationManager) ReloadMailerConfig() {
 	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
 	if repman.Conf.MailSMTPUser != "" {
-//		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
+		// repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
+		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
 	}
 
 	if repman.Conf.MailSMTPTLSSkipVerify {
