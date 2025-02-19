@@ -353,12 +353,17 @@ func (server *ServerMonitor) SetInnoDBMonitor() {
 
 func (server *ServerMonitor) createCookie(key string) error {
 	cluster := server.ClusterGroup
-	newFile, err := os.Create(server.Datadir + "/@" + key)
-	defer newFile.Close()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Create cookie (%s) %s", key, err)
+
+	if _, err := os.Stat(server.Datadir + "/@" + key); os.IsNotExist(err) {
+		newFile, err := os.Create(server.Datadir + "/@" + key)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Create cookie (%s) %s", key, err)
+			return err
+		}
+		defer newFile.Close()
 	}
-	return err
+
+	return nil
 }
 
 func (server *ServerMonitor) SetProvisionCookie() error {
