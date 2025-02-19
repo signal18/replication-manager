@@ -42,13 +42,14 @@ RUN mkdir -p \
         /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
 
-
 RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
 cp etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml && \
 cp etc/local/masterslave/proxysql/config.toml /etc/replication-manager/cluster.d/localmasterslaveproxysql.toml && \
 cp -r share /usr/share/replication-manager/ && \
 cp build/binaries/replication-manager-pro /usr/bin/replication-manager && \
 cp build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+
+RUN bash scripts/post_install.sh
 
 CMD ["while true; do sleep 86400; done"]
 EXPOSE 10001
