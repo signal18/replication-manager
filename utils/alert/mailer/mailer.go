@@ -48,9 +48,36 @@ func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify 
 		m.TLS = &tls.Config{InsecureSkipVerify: true}
 	}
 
-	m.Pool, _ = email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
+	m.ReinitPool()
 
 	return m, nil
+}
+
+func (m *Mailer) Close() {
+	if m.Pool != nil {
+		m.Pool.Close()
+	}
+}
+
+func (m *Mailer) ReinitPool() error {
+	var err error
+	var pool *email.Pool
+	if m.Pool != nil {
+		m.Pool.Close()
+	}
+
+	if m.TLS != nil {
+		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
+	} else {
+		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth)
+	}
+	if err != nil {
+		return err
+	}
+
+	m.Pool = pool
+
+	return nil
 }
 
 func (m *Mailer) UpdateMaxPool(maxPool int) {
@@ -59,13 +86,7 @@ func (m *Mailer) UpdateMaxPool(maxPool int) {
 	}
 
 	m.MaxConn = maxPool
-
-	pool, err := email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
-	if err != nil {
-		return
-	}
-
-	m.Pool = pool
+	m.ReinitPool()
 }
 
 // UpdateTimeout updates the timeout for the mailer
@@ -90,15 +111,7 @@ func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) error {
 		m.TLS = nil
 	}
 
-	m.Pool.Close()
-	pool, err := email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
-	if err != nil {
-		return err
-	}
-
-	m.Pool = pool
-
-	return nil
+	return m.ReinitPool()
 }
 
 func (m *Mailer) UpdateAuth(smtpUser, smtpPassword string) error {
@@ -112,29 +125,12 @@ func (m *Mailer) UpdateAuth(smtpUser, smtpPassword string) error {
 		m.Auth = nil
 	}
 
-	m.Pool.Close()
-	pool, err := email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
-	if err != nil {
-		return err
-	}
-
-	m.Pool = pool
-
-	return nil
+	return m.ReinitPool()
 }
 
 func (m *Mailer) UpdateAddress(smtpAddr string) error {
 	m.Address = smtpAddr
-
-	m.Pool.Close()
-	pool, err := email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
-	if err != nil {
-		return err
-	}
-
-	m.Pool = pool
-
-	return nil
+	return m.ReinitPool()
 }
 
 func (m *Mailer) Send(e *email.Email) error {
