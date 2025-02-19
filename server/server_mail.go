@@ -7,7 +7,31 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 )
+
+func (repman *ReplicationManager) InitMailer() error {
+	m, err := mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailMaxPool, repman.Conf.MailTimeout)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
+		return err
+	}
+
+	repman.Mailer = m
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Mailer initialized")
+
+	return nil
+}
+
+func (repman *ReplicationManager) SendEmailMessage(msg, subj, to string, useTLS bool, isHTML bool, attachments []string) error {
+	if repman.Mailer == nil {
+		if err := repman.InitMailer(); err != nil {
+			return err
+		}
+	}
+
+	return repman.Mailer.SendEmailMessage(msg, subj, to, false, nil)
+}
 
 func (repman *ReplicationManager) SendCloud18ClusterSubscriptionMail(clustername string, userform cluster.UserForm) error {
 	err := repman.SendOwnerCloud18SubscriptionMail(clustername, userform)
@@ -41,7 +65,7 @@ Best regards,
 Replication Manager
 `, userform.Username, clustername, repman.Conf.APIPublicURL, time.Now().Format("2006-01-02 15:04:05"))
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorCloud18SubscriptionMail(clustername string, userform cluster.UserForm) error {
@@ -80,7 +104,7 @@ Best regards,
 %s
 `, userform.Username, clustername, time.Now().Format("2006-01-02 15:04:05"), "", "", "", "", "", repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorActivationMail(cl *cluster.Cluster, userform cluster.UserForm) error {
@@ -107,7 +131,7 @@ Best regards,
 %s
 `, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendPendingRejectionMail(cl *cluster.Cluster, userform cluster.UserForm) error {
@@ -134,7 +158,7 @@ Best regards,
 %s
 `, cl.Name, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorCredentialsMail(cl *cluster.Cluster) error {
@@ -178,7 +202,7 @@ Best regards,
 %s
 `, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetSponsorUser(), cl.GetSponsorPass(), repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendDBACredentialsMail(cl *cluster.Cluster, dest, delegator string) error {
@@ -231,7 +255,7 @@ Best regards,
 %s
 `, delegator, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetDbaUser(), cl.GetDbaPass(), repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, strings.Join(to, ","), repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, strings.Join(to, ","), repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSysAdmCredentialsMail(cl *cluster.Cluster, dest, delegator string) error {
@@ -285,7 +309,7 @@ Best regards,
 %s
 `, delegator, cl.Conf.Cloud18DatabaseReadWriteSplitSrvRecord, cl.Conf.Cloud18DatabaseReadWriteSrvRecord, cl.Conf.Cloud18DatabaseReadSrvRecord, cl.GetDbaUser(), cl.GetDbaPass(), repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, strings.Join(to, ","), repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, strings.Join(to, ","), repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorUnsubscribeMail(cl *cluster.Cluster, userform cluster.UserForm) error {
@@ -307,7 +331,7 @@ Best regards,
 %s
 `, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorExternalOpsSubscriptionMail(cl *cluster.Cluster, userform CloudUserForm, partner config.Partner) error {
@@ -338,7 +362,7 @@ Best regards,
 %s
 `, cl.Name, userform.Roles, partner.Name, time.Now().Format("2006-01-02 15:04:05"), repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendExternalOpsSubscriptionMail(cl *cluster.Cluster, userform CloudUserForm) error {
@@ -368,7 +392,7 @@ Best regards,
 %s
 `, cl.Name, userform.Roles, cl.GetExternalCost(userform.Roles), cl.Conf.Cloud18CostCurrency, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorExternalOpsActivationMail(cl *cluster.Cluster, role string, partner config.Partner) error {
@@ -393,7 +417,7 @@ Best regards,
 %s
 `, partner.Name, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendExternalOpsActivationMail(cl *cluster.Cluster, userform CloudUserForm) error {
@@ -420,7 +444,7 @@ Best regards,
 %s
 `, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorPendingRejectionExternalOpsMail(cl *cluster.Cluster, role string, partner config.Partner) error {
@@ -445,7 +469,7 @@ Best regards,
 %s
 `, cl.Name, partner.Name, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendPartnerPendingRejectionExternalOpsMail(cl *cluster.Cluster, userform CloudUserForm) error {
@@ -470,7 +494,7 @@ Best regards,
 %s
 `, cl.Name, userform.Reason, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendSponsorExternalOpsEndMail(cl *cluster.Cluster, role string, partner config.Partner) error {
@@ -492,7 +516,7 @@ Best regards,
 %s
 `, partner.Name, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }
 
 func (repman *ReplicationManager) SendPartnerExternalOpsEndMail(cl *cluster.Cluster, userform CloudUserForm) error {
@@ -516,5 +540,5 @@ Best regards,
 %s
 `, cl.Name, userform.Reason, repman.Partner.Name)
 
-	return repman.Mailer.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
+	return repman.SendEmailMessage(msg, subj, to, repman.Conf.MailSMTPTLSSkipVerify, false, nil)
 }

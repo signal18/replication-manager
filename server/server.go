@@ -611,6 +611,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
 		flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
 		flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
+		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 10, "Max pool of SMTP connection")
+		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds. 0 means no timeout, default 5")
 	}
 
 	flags.BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
@@ -1809,6 +1811,8 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 func (repman *ReplicationManager) Run() error {
 	var err error
 
+	repman.InitMailer()
+
 	// Defer to recover and log panics
 	defer repman.LogPanicToFile()
 	repman.globalScheduler = cron.New()
@@ -1830,8 +1834,6 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
-
-	repman.Mailer = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify)
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {

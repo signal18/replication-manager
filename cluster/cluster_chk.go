@@ -536,6 +536,11 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		return nil
 	}
 	if cluster.Conf.MailTo != "" {
+		if cluster.Mailer == nil {
+			if err := cluster.InitMailer(); err != nil {
+				return err
+			}
+		}
 		go alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
 	}
 	cluster.BashScriptAlert(alert)

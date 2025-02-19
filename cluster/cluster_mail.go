@@ -6,7 +6,21 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 )
+
+func (cluster *Cluster) InitMailer() error {
+	m, err := mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify, cluster.Conf.MailMaxPool, cluster.Conf.MailTimeout)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
+		return err
+	}
+
+	cluster.Mailer = m
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster mailed initialized successfully")
+
+	return nil
+}
 
 func (cluster *Cluster) GetAlertRecipients(sendDbOps, sendSysOps bool) string {
 	to := strings.Split(cluster.Conf.MailTo, ",")
@@ -46,7 +60,13 @@ func (cluster *Cluster) ToAlertMessage(msg string) string {
 //
 // if isAlert is true, the message will be prepended with "Alert: "
 func (cluster *Cluster) SendMail(msg, subj, to string) error {
-	err := cluster.Mailer.SendEmailMessage(msg, subj, to, cluster.Conf.MailSMTPTLSSkipVerify, false, nil)
+	if cluster.Mailer == nil {
+		if err := cluster.InitMailer(); err != nil {
+			return err
+		}
+	}
+
+	err := cluster.Mailer.SendEmailMessage(msg, subj, to, false, nil)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error sending email for with subject %s. Err: %v", subj, err)
 		return err

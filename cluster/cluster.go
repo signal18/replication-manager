@@ -427,8 +427,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
 	cluster.GetPersitentState()
-
-	cluster.Mailer = mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify)
+	cluster.InitMailer()
 
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})

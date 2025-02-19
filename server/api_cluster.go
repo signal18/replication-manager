@@ -3491,6 +3491,14 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.MailSMTPTLSSkipVerify = isactive
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
+	case "mail-max-pool":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.MailMaxPool = v
+		repman.Mailer.UpdateMaxPool(v)
+	case "mail-timeout":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.MailTimeout = v
+		repman.Mailer.UpdateTimeout(v)
 	default:
 		return errors.New("Setting not found")
 	}

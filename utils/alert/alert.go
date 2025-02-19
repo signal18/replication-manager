@@ -39,13 +39,7 @@ func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
 	}
 	e.Text = []byte(text)
 
-	var err error
-	if mailer.TLS != nil {
-		err = mailer.SendWithTLS(e)
-	} else {
-		err = mailer.Send(e)
-	}
-
+	err := mailer.Send(e)
 	if err != nil {
 		log.Printf("ERROR: Could not send mail alert: %s", err)
 	}
