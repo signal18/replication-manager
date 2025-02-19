@@ -2045,7 +2045,7 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 		// Send the email in the cluster scope
 		err = mycluster.SendMail(email)
 		if err != nil {
-			http.Error(w, "Error sending email", 500)
+			http.Error(w, "Error sending email: "+err.Error(), 500)
 			return
 		}
 
@@ -2058,7 +2058,7 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 		// Send the email in global scope
 		err = repman.SendMail(email)
 		if err != nil {
-			http.Error(w, "Error sending email", 500)
+			http.Error(w, "Error sending email: "+err.Error(), 500)
 			return
 		}
 	}

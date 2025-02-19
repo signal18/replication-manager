@@ -82,6 +82,7 @@ func (cluster *Cluster) SendMail(em mailer.Email) error {
 func (cluster *Cluster) SendEMailMessage(msg, subj, to string) error {
 	if cluster.Mailer == nil {
 		if err := cluster.InitMailer(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error init mailer when sending %s. Err: %v", subj, err)
 			return err
 		}
 	}
