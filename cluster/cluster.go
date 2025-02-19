@@ -428,6 +428,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SaveAcls()
 	cluster.GetPersitentState()
 
+	cluster.Mailer = mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify)
+
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
@@ -456,7 +458,7 @@ func (cluster *Cluster) InitFromConf() {
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
-		go cluster.SendMail(msg, subj, true, true, true)
+		go cluster.SendMail(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{

@@ -14,22 +14,53 @@ type Mailer struct {
 	Address string
 	Auth    smtp.Auth
 	TLS     *tls.Config
+	From    string
 }
 
-func (m *Mailer) SetAddress(host string) {
-	m.Address = host
-}
-
-func (m *Mailer) SetSmtpAuth(identity, username, password, host string) {
-	hostonly, _, err := net.SplitHostPort(host)
-	if err != nil {
-		log.Println("ERROR", "Could not send mail alert to %s: %s", host, err)
+func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool) *Mailer {
+	m := &Mailer{
+		Address: smtpAddr,
+		From:    mailFrom,
 	}
-	m.Auth = smtp.PlainAuth(identity, username, password, hostonly)
+
+	if smtpUser != "" {
+		host, _, err := net.SplitHostPort(smtpAddr)
+		if err != nil {
+			log.Printf("ERROR: Could not parse mail host from %s: %s", smtpAddr, err)
+			return m
+		}
+		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
+	}
+
+	if tlsSkipVerify {
+		m.TLS = &tls.Config{InsecureSkipVerify: true}
+	}
+	return m
 }
 
-func (m *Mailer) SetTlsConfig(conf *tls.Config) {
-	m.TLS = conf
+func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) {
+	if tlsSkipVerify {
+		m.TLS = &tls.Config{InsecureSkipVerify: true}
+	} else {
+		m.TLS = nil
+	}
+}
+
+func (m *Mailer) UpdateAuth(smtpUser, smtpPassword string) {
+	if smtpUser != "" {
+		host, _, err := net.SplitHostPort(m.Address)
+		if err != nil {
+			log.Printf("ERROR: Could not parse mail host from %s: %s", m.Address, err)
+			return
+		}
+		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
+	} else {
+		m.Auth = nil
+	}
+}
+
+func (m *Mailer) UpdateAddress(smtpAddr string) {
+	m.Address = smtpAddr
 }
 
 func (m *Mailer) Send(e *email.Email) error {
@@ -40,20 +71,15 @@ func (m *Mailer) SendWithTLS(e *email.Email) error {
 	return e.SendWithTLS(m.Address, m.Auth, m.TLS)
 }
 
-func (m *Mailer) SendEmailMessage(msg string, subj string, From, To, CC string, useTLS bool) error {
-
+func (m *Mailer) SendEmailMessage(msg, subj, to string, useTLS bool) error {
 	e := email.NewEmail()
-	e.From = From
-	e.To = strings.Split(To, ",")
+	e.From = m.From
+	e.To = strings.Split(to, ",")
 	e.Subject = subj
 	e.Text = []byte(msg)
 
-	var err error
 	if useTLS {
-		err = m.SendWithTLS(e)
-	} else {
-		err = m.Send(e)
+		return m.SendWithTLS(e)
 	}
-
-	return err
+	return m.Send(e)
 }

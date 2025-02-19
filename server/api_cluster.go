@@ -3441,7 +3441,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetLogGitLevel(val)
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAddress(value)
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -3452,10 +3452,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.MailSMTPPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("mail-smtp-password")
 		repman.Conf.Secrets["mail-smtp-password"] = new_secret
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
 	case "mail-to":
 		repman.Conf.SetMailTo(value)
 	case "mail-from":
@@ -3490,7 +3490,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SchedulerReceiverUseSSL = isactive
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.MailSMTPTLSSkipVerify = isactive
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	default:
 		return errors.New("Setting not found")
 	}
@@ -3537,7 +3537,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.SchedulerReceiverUseSSL = !repman.Conf.SchedulerReceiverUseSSL
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.SwitchMailSmtpTlsSkipVerify()
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	default:
 		return errors.New("Setting not found")
 	}

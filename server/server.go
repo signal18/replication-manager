@@ -9,7 +9,6 @@ package server
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -1832,7 +1831,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
 
-	repman.InitMailer()
+	repman.Mailer = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify)
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -2152,7 +2151,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
-	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Partner = &repman.Partner
 
 	myClusterConf := repman.Confs[clusterName]
@@ -2889,31 +2887,4 @@ func (repman *ReplicationManager) Save() error {
 	repman.IsNeedGitPush = has_changed
 
 	return nil
-}
-
-func (repman *ReplicationManager) InitMailer() {
-	repman.Mailer = new(mailer.Mailer)
-
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-		//repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
-
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
-}
-
-func (repman *ReplicationManager) ReloadMailerConfig() {
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-		// repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
 }
