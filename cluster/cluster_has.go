@@ -109,7 +109,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !db.HasProvisionCookie() {
 			if db.IsRunning() {
 				db.SetProvisionCookie()
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can DB Connect creating cookie state:%s", db.State)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Can DB Connect creating cookie state:%s", db.State)
 			} else {
 				return false
 			}
@@ -119,7 +119,7 @@ func (cluster *Cluster) IsProvisioned() bool {
 		if !px.HasProvisionCookie() {
 			if px.IsRunning() {
 				px.SetProvisionCookie()
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can Proxy Connect creating cookie state:%s", px.GetState())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Can Proxy Connect creating cookie state:%s", px.GetState())
 			} else {
 				return false
 			}
