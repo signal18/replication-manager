@@ -134,16 +134,19 @@ func (m *Mailer) UpdateAddress(smtpAddr string) error {
 }
 
 func (m *Mailer) Send(e *email.Email) error {
-	if m.Pool == nil {
-		pool, err := email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
+	if m.TLS != nil {
+		err := e.SendWithTLS(m.Address, m.Auth, m.TLS)
 		if err != nil {
 			return err
 		}
-
-		m.Pool = pool
+	} else {
+		err := e.Send(m.Address, m.Auth)
+		if err != nil {
+			return err
+		}
 	}
 
-	return m.Pool.Send(e, m.Timeout)
+	return nil
 }
 
 func (m *Mailer) SendEmailMessage(edata Email) error {
