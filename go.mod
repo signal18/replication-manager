@@ -53,7 +53,6 @@ require (
 	github.com/iu0v1/gelada v1.2.2
 	github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806
 	github.com/jmoiron/sqlx v1.3.3
-	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
 	github.com/juju/errors v0.0.0-20220203013757-bd733f3c86b9
 	github.com/kisielk/og-rek v0.0.0-20170425174049-dd41cde712de
 	github.com/klauspost/compress v1.15.9
@@ -151,6 +150,7 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/jmespath/go-jmespath v0.3.0 // indirect
+	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect

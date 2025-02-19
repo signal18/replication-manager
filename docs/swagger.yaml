@@ -1283,6 +1283,8 @@ definitions:
         type: string
       binlogIgnoreDB:
         type: string
+      executedGtidSet:
+        type: string
       file:
         type: string
       position:
@@ -1293,8 +1295,6 @@ definitions:
       channelName:
         $ref: '#/definitions/sql.NullString'
       connectionName:
-        $ref: '#/definitions/sql.NullString'
-      eeplicateDoDomainIds:
         $ref: '#/definitions/sql.NullString'
       execMasterLogPos:
         $ref: '#/definitions/sql.NullString'
@@ -1330,6 +1330,8 @@ definitions:
         $ref: '#/definitions/sql.NullString'
       replicateDoDb:
         $ref: '#/definitions/sql.NullString'
+      replicateDoDomainIds:
+        $ref: '#/definitions/sql.NullString'
       replicateDoTable:
         $ref: '#/definitions/sql.NullString'
       replicateIgnoreDb:
@@ -1356,6 +1358,10 @@ definitions:
         $ref: '#/definitions/sql.NullString'
       slaveSqlRunning:
         $ref: '#/definitions/sql.NullString'
+      sqlDelay:
+        $ref: '#/definitions/sql.NullInt64'
+      sqlRemainingDelay:
+        $ref: '#/definitions/sql.NullInt64'
       usingGtid:
         $ref: '#/definitions/sql.NullString'
     type: object
@@ -1998,6 +2004,8 @@ definitions:
         type: integer
       mailFrom:
         type: string
+      mailMaxPool:
+        type: integer
       mailSmtpAddr:
         type: string
       mailSmtpPassword:
@@ -2006,6 +2014,8 @@ definitions:
         type: boolean
       mailSmtpUser:
         type: string
+      mailTimeout:
+        type: integer
       mailTo:
         type: string
       maxscale:
@@ -2280,12 +2290,16 @@ definitions:
         type: string
       provDbDockerImg:
         type: string
+      provDbDockerRunArgs:
+        type: string
       provDbDockerTmpfsSize:
         type: string
       provDbDomain:
         type: string
       provDbExpireLogDays:
         type: integer
+      provDbJobsDockerRunArgs:
+        type: string
       provDbLoadCsv:
         type: string
       provDbLoadSql:
@@ -2322,6 +2336,8 @@ definitions:
         type: boolean
       provNetCniCluster:
         type: string
+      provNetDockerRunArgs:
+        type: string
       provOrchestrator:
         type: string
       provOrchestratorCluster:
@@ -2357,6 +2373,8 @@ definitions:
       provProxyDockerMysqlrouterImg:
         type: string
       provProxyDockerProxysqlImg:
+        type: string
+      provProxyDockerRunArgs:
         type: string
       provProxyDockerShardproxyImg:
         type: string
@@ -2764,6 +2782,21 @@ definitions:
         type: integer
       serverId:
         type: integer
+    type: object
+  mailer.Email:
+    properties:
+      attachments:
+        items:
+          type: string
+        type: array
+      is_html:
+        type: boolean
+      message:
+        type: string
+      subject:
+        type: string
+      to:
+        type: string
     type: object
   myproxy.Server:
     type: object
@@ -3850,6 +3883,46 @@ paths:
       summary: Rotate passwords for a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/send-email:
+    post:
+      consumes:
+      - application/json
+      description: Sends an email to the specified recipient.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Email details
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/mailer.Email'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            type: string
+        "400":
+          description: Error in request
+          schema:
+            type: string
+        "500":
+          description: Error sending email
+          schema:
+            type: string
+      summary: Send Email
+      tags:
+      - AlertMailer
   /api/clusters/{clusterName}/actions/staging-refresh:
     post:
       description: Refreshes the staging cluster specified by the cluster name in
@@ -10591,82 +10664,6 @@ paths:
       summary: Update a cluster user
       tags:
       - User
-  /api/clusters/{clustername}/proxies/{serverName}/terminal:
-    get:
-      consumes:
-      - application/json
-      description: Establishes a WebSocket connection for a terminal session.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clustername
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Connected successfully
-          schema:
-            type: string
-        "400":
-          description: No user provided
-          schema:
-            type: string
-        "500":
-          description: No valid node" or "No valid cluster
-          schema:
-            type: string
-      summary: Terminal
-      tags:
-      - Terminal
-  /api/clusters/{clustername}/servers/{serverName}/terminal:
-    get:
-      consumes:
-      - application/json
-      description: Establishes a WebSocket connection for a terminal session.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clustername
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Connected successfully
-          schema:
-            type: string
-        "400":
-          description: No user provided
-          schema:
-            type: string
-        "500":
-          description: No valid node" or "No valid cluster
-          schema:
-            type: string
-      summary: Terminal
-      tags:
-      - Terminal
   /api/clusters/actions/add/{clusterName}:
     post:
       consumes:
@@ -10993,6 +10990,42 @@ paths:
       summary: List Grafana files
       tags:
       - Public
+  /api/email/send:
+    post:
+      consumes:
+      - application/json
+      description: Sends an email to the specified recipient.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Email details
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/mailer.Email'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            type: string
+        "400":
+          description: Error in request
+          schema:
+            type: string
+        "500":
+          description: Error sending email
+          schema:
+            type: string
+      summary: Send Email
+      tags:
+      - AlertMailer
   /api/heartbeat:
     get:
       consumes:
@@ -11130,7 +11163,7 @@ paths:
       summary: Get Replication Manager Status
       tags:
       - Public
-  /api/terminal:
+  /api/terminal/connect:
     get:
       consumes:
       - application/json
@@ -11158,6 +11191,226 @@ paths:
           schema:
             type: string
       summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/servers/{serverName}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/list:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of terminal sessions for a user.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of terminal sessions
+          schema:
+            items:
+              type: string
+            type: array
+        "403":
+          description: Terminal session is disabled
+          schema:
+            type: string
+        "500":
+          description: Error getting JWT claims" or "Error encoding JSON
+          schema:
+            type: string
+      summary: Get Terminal Session List
+      tags:
+      - Terminal
+  /api/terminal/list/clusters/{clusterName}:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of terminal sessions for a user.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of terminal sessions
+          schema:
+            items:
+              type: string
+            type: array
+        "403":
+          description: Terminal session is disabled
+          schema:
+            type: string
+        "500":
+          description: Error getting JWT claims" or "Error encoding JSON
+          schema:
+            type: string
+      summary: Get Terminal Session List
       tags:
       - Terminal
   /api/terms:

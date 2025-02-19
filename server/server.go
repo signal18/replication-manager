@@ -9,7 +9,6 @@ package server
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -57,9 +56,9 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
-	"github.com/signal18/replication-manager/utils/mailer"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/peerclient"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -612,6 +611,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
 		flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
 		flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
+		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 10, "Max pool of SMTP connection")
+		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds. 0 means no timeout, default 5")
 	}
 
 	flags.BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
@@ -1810,6 +1811,8 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 func (repman *ReplicationManager) Run() error {
 	var err error
 
+	repman.InitMailer()
+
 	// Defer to recover and log panics
 	defer repman.LogPanicToFile()
 	repman.globalScheduler = cron.New()
@@ -1831,8 +1834,6 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
-
-	repman.InitMailer()
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -2152,7 +2153,6 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
-	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Partner = &repman.Partner
 
 	myClusterConf := repman.Confs[clusterName]
@@ -2889,31 +2889,4 @@ func (repman *ReplicationManager) Save() error {
 	repman.IsNeedGitPush = has_changed
 
 	return nil
-}
-
-func (repman *ReplicationManager) InitMailer() {
-	repman.Mailer = new(mailer.Mailer)
-
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-		//repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
-
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
-}
-
-func (repman *ReplicationManager) ReloadMailerConfig() {
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-//		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, repman.Conf.MailSMTPAddr)
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
 }

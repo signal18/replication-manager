@@ -2,10 +2,12 @@ package server
 
 import (
 	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -103,11 +105,25 @@ func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, l
 
 func (repman *ReplicationManager) LogPanicToFile() {
 	if r := recover(); r != nil {
-		repman.Logrus.WithFields(log.Fields{
+		fields := log.Fields{
 			"cluster":    "none",
 			"panic":      r,
 			"stacktrace": string(debug.Stack()),
-		}).Print("Application terminated unexpectedly")
+		}
+
+		repman.Logrus.WithFields(fields).Print("Application terminated unexpectedly")
+
+		// Convert to json
+		path := filepath.Join(repman.Conf.WorkingDir, "panic.log")
+		content, err := json.MarshalIndent(fields, "", "\t")
+		if err != nil {
+			repman.Logrus.Print("Unable to decode stacktrace")
+		}
+
+		if err = os.WriteFile(path, content, 0644); err != nil {
+			repman.Logrus.Print("Unable to write stacktrace to panic.log")
+		}
+
 	}
 }
 

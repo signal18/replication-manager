@@ -297,6 +297,8 @@ type Config struct {
 	MailSMTPUser                              string                 `scope:"server" mapstructure:"mail-smtp-user" toml:"mail-smtp-user" json:"mailSmtpUser"`
 	MailSMTPPassword                          string                 `scope:"server" mapstructure:"mail-smtp-password" toml:"mail-smtp-password" json:"mailSmtpPassword"`
 	MailSMTPTLSSkipVerify                     bool                   `scope:"server" mapstructure:"mail-smtp-tls-skip-verify" toml:"mail-smtp-tls-skip-verify" json:"mailSmtpTlsSkipVerify"`
+	MailMaxPool                               int                    `scope:"server" mapstructure:"mail-max-pool" toml:"mail-max-pool" json:"mailMaxPool"`
+	MailTimeout                               int                    `scope:"server" mapstructure:"mail-timeout" toml:"mail-timeout" json:"mailTimeout"`
 	SlackURL                                  string                 `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string                 `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string                 `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
@@ -1100,6 +1102,7 @@ const (
 	GrantClusterResetSLA           string = "cluster-reset-sla"
 	GrantClusterDebug              string = "cluster-debug"
 	GrantClusterStaging            string = "cluster-staging"
+	GrantClusterAlert              string = "cluster-alert"
 
 	GrantProxyConfigCreate      string = "proxy-config-create"
 	GrantProxyConfigGet         string = "proxy-config-get"
@@ -2197,6 +2200,7 @@ func GetGrantType() map[string]string {
 		GrantClusterResetSLA:           GrantClusterResetSLA,
 		GrantClusterRotatePasswords:    GrantClusterRotatePasswords,
 		GrantClusterStaging:            GrantClusterStaging,
+		GrantClusterAlert:              GrantClusterAlert,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
@@ -2294,6 +2298,7 @@ func GetGrantCluster() []string {
 		GrantClusterResetSLA,
 		GrantClusterRotatePasswords,
 		GrantClusterStaging,
+		GrantClusterAlert,
 	}
 }
 

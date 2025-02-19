@@ -15,10 +15,11 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) BashScriptAlert(alert Alert) error {
+func (cluster *Cluster) BashScriptAlert(alert alert.Alert) error {
 	if cluster.Conf.AlertScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling alert script")
 		var out []byte

@@ -34,11 +34,11 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
-	"github.com/signal18/replication-manager/utils/mailer"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
@@ -427,6 +427,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
 	cluster.GetPersitentState()
+	cluster.InitMailer()
 
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
@@ -456,7 +457,7 @@ func (cluster *Cluster) InitFromConf() {
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
-		go cluster.SendMail(msg, subj, true, true, true)
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
