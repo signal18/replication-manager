@@ -50,6 +50,7 @@ import (
 	_ "github.com/signal18/replication-manager/docs"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/tty"
@@ -294,6 +295,11 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/monitor", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
+	))
+
+	router.Handle("/api/email/send", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
 
 	repman.apiDatabaseUnprotectedHandler(router)
@@ -1990,4 +1996,73 @@ func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseW
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(jsonSessions)
+}
+
+// handlerMuxSendEmail handles the HTTP request to send an email.
+// @Summary Send Email
+// @Description Sends an email to the specified recipient.
+// @Tags AlertMailer
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string false "Cluster Name"
+// @Param email body mailer.Email true "Email details"
+// @Success 200 {string} string "Email sent successfully"
+// @Failure 400 {string} string "Error in request"
+// @Failure 500 {string} string "Error sending email"
+// @Router /api/email/send [post]
+// @Router /api/clusters/{clusterName}/actions/send-email [post]
+func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *http.Request) {
+	var email mailer.Email
+	vars := mux.Vars(r)
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error getting JWT claims", 500)
+		return
+	}
+
+	// Decode the request body into the Email struct
+	err = json.NewDecoder(r.Body).Decode(&email)
+	if err != nil {
+		http.Error(w, "Error in request", 400)
+		return
+	}
+
+	clusterName := vars["clusterName"]
+	if clusterName != "" {
+		mycluster := repman.getClusterByName(clusterName)
+		if mycluster == nil {
+			http.Error(w, "Invalid cluster name", 500)
+			return
+		}
+
+		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], r.URL.Path, "oidc") {
+			http.Error(w, "No valid ACL", 500)
+			return
+		}
+
+		// Send the email in the cluster scope
+		err = mycluster.SendMail(email)
+		if err != nil {
+			http.Error(w, "Error sending email", 500)
+			return
+		}
+
+	} else {
+		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
+			http.Error(w, "No valid ACL", 500)
+			return
+		}
+
+		// Send the email in global scope
+		err = repman.SendMail(email)
+		if err != nil {
+			http.Error(w, "Error sending email", 500)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent successfully"))
 }

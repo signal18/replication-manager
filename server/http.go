@@ -233,6 +233,10 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateSwaggerMiddleware),
 			negroni.Wrap(http.HandlerFunc(httpSwagger.Handler(httpSwagger.URL("/api-docs/doc.json")))),
 		))
+		router.Handle("/api/email/send", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
+		))
 		repman.apiClusterProtectedHandler(router)
 		repman.apiDatabaseProtectedHandler(router)
 		repman.apiProxyProtectedHandler(router)

@@ -53,20 +53,39 @@ func (cluster *Cluster) ToAlertMessage(msg string) string {
 	return fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n", msg, cluster.GetInstanceAddress(), cluster.Name)
 }
 
-// SendMail sends an email
-// if the cloud18 flag is set to true
-//   - if sendDbOps is true and the external dbops is set, the mail will be sent to the external dbops
-//   - if sendSysOps is true and the external sysops is set, the mail will be sent to the external sysops
-//
-// if isAlert is true, the message will be prepended with "Alert: "
-func (cluster *Cluster) SendMail(msg, subj, to string) error {
+func (cluster *Cluster) SendMail(em mailer.Email) error {
 	if cluster.Mailer == nil {
 		if err := cluster.InitMailer(); err != nil {
 			return err
 		}
 	}
 
-	err := cluster.Mailer.SendEmailMessage(msg, subj, to, false, nil)
+	if !strings.HasPrefix(em.Subject, "Cluster: "+cluster.Name) {
+		em.Subject = "Cluster: " + cluster.Name + " - " + em.Subject
+	}
+
+	err := cluster.Mailer.SendEmailMessage(em)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error sending email for with subject %s. Err: %v", em.Subject, err)
+		return err
+	}
+
+	return nil
+}
+
+// SendMail sends an email
+// if the cloud18 flag is set to true
+//   - if sendDbOps is true and the external dbops is set, the mail will be sent to the external dbops
+//   - if sendSysOps is true and the external sysops is set, the mail will be sent to the external sysops
+//
+// if isAlert is true, the message will be prepended with "Alert: "
+func (cluster *Cluster) SendEMailMessage(msg, subj, to string) error {
+	if cluster.Mailer == nil {
+		if err := cluster.InitMailer(); err != nil {
+			return err
+		}
+	}
+	err := cluster.Mailer.SendEmailMessage(mailer.Email{Message: msg, Subject: subj, To: to})
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error sending email for with subject %s. Err: %v", subj, err)
 		return err

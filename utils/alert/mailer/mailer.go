@@ -20,6 +20,14 @@ type Mailer struct {
 	Timeout time.Duration
 }
 
+type Email struct {
+	Message     string   `json:"message"`
+	Subject     string   `json:"subject"`
+	To          string   `json:"to"`
+	IsHTML      bool     `json:"is_html"`
+	Attachments []string `json:"attachments"`
+}
+
 func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool, maxConn, timeout int) (*Mailer, error) {
 	m := &Mailer{
 		Address: smtpAddr,
@@ -142,19 +150,19 @@ func (m *Mailer) Send(e *email.Email) error {
 	return m.Pool.Send(e, m.Timeout)
 }
 
-func (m *Mailer) SendEmailMessage(msg, subj, to string, isHTML bool, attachments []string) error {
+func (m *Mailer) SendEmailMessage(edata Email) error {
 	e := email.NewEmail()
 	e.From = m.From
-	e.To = strings.Split(to, ",")
-	e.Subject = subj
-	if isHTML {
-		e.HTML = []byte(msg)
+	e.To = strings.Split(edata.To, ",")
+	e.Subject = edata.Subject
+	if edata.IsHTML {
+		e.HTML = []byte(edata.Message)
 	} else {
-		e.Text = []byte(msg)
+		e.Text = []byte(edata.Message)
 	}
 
-	if len(attachments) > 0 {
-		for _, attachment := range attachments {
+	if len(edata.Attachments) > 0 {
+		for _, attachment := range edata.Attachments {
 			if _, err := e.AttachFile(attachment); err != nil {
 				return err
 			}

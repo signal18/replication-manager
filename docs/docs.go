@@ -1432,6 +1432,66 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/send-email": {
+            "post": {
+                "description": "Sends an email to the specified recipient.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AlertMailer"
+                ],
+                "summary": "Send Email",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "description": "Email details",
+                        "name": "email",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mailer.Email"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email sent successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Error in request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error sending email",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/staging-refresh": {
             "post": {
                 "description": "Refreshes the staging cluster specified by the cluster name in the URL.",
@@ -11284,120 +11344,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clustername}/proxies/{serverName}/terminal": {
-            "get": {
-                "description": "Establishes a WebSocket connection for a terminal session.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Terminal"
-                ],
-                "summary": "Terminal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clustername",
-                        "in": "path"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Connected successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "No user provided",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No valid node\" or \"No valid cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clustername}/servers/{serverName}/terminal": {
-            "get": {
-                "description": "Establishes a WebSocket connection for a terminal session.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Terminal"
-                ],
-                "summary": "Terminal",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clustername",
-                        "in": "path"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
-                        "in": "path"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Connected successfully",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "No user provided",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No valid node\" or \"No valid cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/configs/grafana": {
             "get": {
                 "description": "Returns a list of Grafana files from the specified directory.",
@@ -11420,6 +11366,60 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/email/send": {
+            "post": {
+                "description": "Sends an email to the specified recipient.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AlertMailer"
+                ],
+                "summary": "Send Email",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "description": "Email details",
+                        "name": "email",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/mailer.Email"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Email sent successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Error in request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error sending email",
                         "schema": {
                             "type": "string"
                         }
@@ -11630,7 +11630,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/terminal": {
+        "/api/terminal/connect": {
             "get": {
                 "description": "Establishes a WebSocket connection for a terminal session.",
                 "consumes": [
@@ -11668,6 +11668,336 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/servers/{serverName}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command}": {
+            "get": {
+                "description": "Establishes a WebSocket connection for a terminal session.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Terminal",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Connected successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "No user provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No valid node\" or \"No valid cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/list": {
+            "get": {
+                "description": "Returns a list of terminal sessions for a user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Get Terminal Session List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of terminal sessions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Terminal session is disabled",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting JWT claims\" or \"Error encoding JSON",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/terminal/list/clusters/{clusterName}": {
+            "get": {
+                "description": "Returns a list of terminal sessions for a user.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Terminal"
+                ],
+                "summary": "Get Terminal Session List",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of terminal sessions",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Terminal session is disabled",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting JWT claims\" or \"Error encoding JSON",
                         "schema": {
                             "type": "string"
                         }
@@ -13811,6 +14141,9 @@ const docTemplate = `{
                 "binlogIgnoreDB": {
                     "type": "string"
                 },
+                "executedGtidSet": {
+                    "type": "string"
+                },
                 "file": {
                     "type": "string"
                 },
@@ -13826,9 +14159,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/sql.NullString"
                 },
                 "connectionName": {
-                    "$ref": "#/definitions/sql.NullString"
-                },
-                "eeplicateDoDomainIds": {
                     "$ref": "#/definitions/sql.NullString"
                 },
                 "execMasterLogPos": {
@@ -13882,6 +14212,9 @@ const docTemplate = `{
                 "replicateDoDb": {
                     "$ref": "#/definitions/sql.NullString"
                 },
+                "replicateDoDomainIds": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
                 "replicateDoTable": {
                     "$ref": "#/definitions/sql.NullString"
                 },
@@ -13920,6 +14253,12 @@ const docTemplate = `{
                 },
                 "slaveSqlRunning": {
                     "$ref": "#/definitions/sql.NullString"
+                },
+                "sqlDelay": {
+                    "$ref": "#/definitions/sql.NullInt64"
+                },
+                "sqlRemainingDelay": {
+                    "$ref": "#/definitions/sql.NullInt64"
                 },
                 "usingGtid": {
                     "$ref": "#/definitions/sql.NullString"
@@ -14883,6 +15222,9 @@ const docTemplate = `{
                 "mailFrom": {
                     "type": "string"
                 },
+                "mailMaxPool": {
+                    "type": "integer"
+                },
                 "mailSmtpAddr": {
                     "type": "string"
                 },
@@ -14894,6 +15236,9 @@ const docTemplate = `{
                 },
                 "mailSmtpUser": {
                     "type": "string"
+                },
+                "mailTimeout": {
+                    "type": "integer"
                 },
                 "mailTo": {
                     "type": "string"
@@ -15306,6 +15651,9 @@ const docTemplate = `{
                 "provDbDockerImg": {
                     "type": "string"
                 },
+                "provDbDockerRunArgs": {
+                    "type": "string"
+                },
                 "provDbDockerTmpfsSize": {
                     "type": "string"
                 },
@@ -15314,6 +15662,9 @@ const docTemplate = `{
                 },
                 "provDbExpireLogDays": {
                     "type": "integer"
+                },
+                "provDbJobsDockerRunArgs": {
+                    "type": "string"
                 },
                 "provDbLoadCsv": {
                     "type": "string"
@@ -15369,6 +15720,9 @@ const docTemplate = `{
                 "provNetCniCluster": {
                     "type": "string"
                 },
+                "provNetDockerRunArgs": {
+                    "type": "string"
+                },
                 "provOrchestrator": {
                     "type": "string"
                 },
@@ -15421,6 +15775,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provProxyDockerProxysqlImg": {
+                    "type": "string"
+                },
+                "provProxyDockerRunArgs": {
                     "type": "string"
                 },
                 "provProxyDockerShardproxyImg": {
@@ -16032,6 +16389,29 @@ const docTemplate = `{
                 },
                 "serverId": {
                     "type": "integer"
+                }
+            }
+        },
+        "mailer.Email": {
+            "type": "object",
+            "properties": {
+                "attachments": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "is_html": {
+                    "type": "boolean"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "subject": {
+                    "type": "string"
+                },
+                "to": {
+                    "type": "string"
                 }
             }
         },

@@ -457,7 +457,7 @@ func (cluster *Cluster) InitFromConf() {
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
-		go cluster.SendMail(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
