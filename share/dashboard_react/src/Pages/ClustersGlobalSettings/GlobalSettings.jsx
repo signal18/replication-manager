@@ -115,6 +115,32 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      key: 'Max Pool Connections',
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.mailMaxPool}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'mail-max-pool' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'mail-max-pool', value: value }))}
+        />
+      )
+    },
+    {
+      key: 'Mail Timeout in Seconds (0 = no timeout)',
+      value: (
+        <NumberInput
+          min={0}
+          value={config?.mailTimeout}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'mail-timeout' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'mail-timeout', value: value }))}
+        />
+      )
+    },
+    {
       key: 'Log File Level',
       value: (
         <LogSlider
