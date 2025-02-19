@@ -2,7 +2,6 @@ package mailer
 
 import (
 	"crypto/tls"
-	"log"
 	"net"
 	"net/smtp"
 	"strings"
@@ -15,9 +14,10 @@ type Mailer struct {
 	Auth    smtp.Auth
 	TLS     *tls.Config
 	From    string
+	ErrorCh chan error
 }
 
-func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool) *Mailer {
+func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool) (*Mailer, error) {
 	m := &Mailer{
 		Address: smtpAddr,
 		From:    mailFrom,
@@ -26,8 +26,7 @@ func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify 
 	if smtpUser != "" {
 		host, _, err := net.SplitHostPort(smtpAddr)
 		if err != nil {
-			log.Printf("ERROR: Could not parse mail host from %s: %s", smtpAddr, err)
-			return m
+			return nil, err
 		}
 		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
 	}
@@ -35,7 +34,7 @@ func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify 
 	if tlsSkipVerify {
 		m.TLS = &tls.Config{InsecureSkipVerify: true}
 	}
-	return m
+	return m, nil
 }
 
 func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) {
@@ -46,17 +45,18 @@ func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) {
 	}
 }
 
-func (m *Mailer) UpdateAuth(smtpUser, smtpPassword string) {
+func (m *Mailer) UpdateAuth(smtpUser, smtpPassword string) error {
 	if smtpUser != "" {
 		host, _, err := net.SplitHostPort(m.Address)
 		if err != nil {
-			log.Printf("ERROR: Could not parse mail host from %s: %s", m.Address, err)
-			return
+			return err
 		}
 		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
 	} else {
 		m.Auth = nil
 	}
+
+	return nil
 }
 
 func (m *Mailer) UpdateAddress(smtpAddr string) {
@@ -71,12 +71,24 @@ func (m *Mailer) SendWithTLS(e *email.Email) error {
 	return e.SendWithTLS(m.Address, m.Auth, m.TLS)
 }
 
-func (m *Mailer) SendEmailMessage(msg, subj, to string, useTLS bool) error {
+func (m *Mailer) SendEmailMessage(msg, subj, to string, useTLS bool, isHTML bool, attachments []string) error {
 	e := email.NewEmail()
 	e.From = m.From
 	e.To = strings.Split(to, ",")
 	e.Subject = subj
-	e.Text = []byte(msg)
+	if isHTML {
+		e.HTML = []byte(msg)
+	} else {
+		e.Text = []byte(msg)
+	}
+
+	if len(attachments) > 0 {
+		for _, attachment := range attachments {
+			if _, err := e.AttachFile(attachment); err != nil {
+				return err
+			}
+		}
+	}
 
 	if useTLS {
 		return m.SendWithTLS(e)

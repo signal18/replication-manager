@@ -46,7 +46,7 @@ func (cluster *Cluster) ToAlertMessage(msg string) string {
 //
 // if isAlert is true, the message will be prepended with "Alert: "
 func (cluster *Cluster) SendMail(msg, subj, to string) error {
-	err := cluster.Mailer.SendEmailMessage(msg, subj, to, cluster.Conf.MailSMTPTLSSkipVerify)
+	err := cluster.Mailer.SendEmailMessage(msg, subj, to, cluster.Conf.MailSMTPTLSSkipVerify, false, nil)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error sending email for with subject %s. Err: %v", subj, err)
 		return err
