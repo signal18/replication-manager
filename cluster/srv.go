@@ -538,9 +538,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
 		server.DelRestartCookie()
-		server.DelProvisionCookie()
 		server.DelReprovisionCookie()
-
 	}
 
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding
