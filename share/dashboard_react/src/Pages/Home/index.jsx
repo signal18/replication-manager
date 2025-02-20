@@ -19,12 +19,13 @@ import {
   getTopProcess,
   setCluster,
   setRefreshInterval,
-  pauseAutoReload
+  pauseAutoReload,
+  getBackupStats
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import Dashboard from '../Dashboard'
@@ -41,7 +42,6 @@ import PeerClusterList from '../PeerClusterList'
 import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
-import RMIconButton from '../../components/RMIconButton'
 import { setBaseURL } from '../../redux/authSlice'
 import MattermostManager from '../Mattermost'
 import Chat from '../Chat'
@@ -58,8 +58,10 @@ function Home() {
   const dashboardTabsRef = useRef([])
   const globalTabsRef = useRef([])
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
-
   const params = useParams()
+
+  // use navigation
+  const navigate = useNavigate()
 
   const {
     cluster: { refreshInterval, clusterData },
@@ -185,6 +187,7 @@ function Home() {
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
         dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
@@ -227,6 +230,10 @@ function Home() {
     dispatch(pauseAutoReload({ isPaused: false }))
   }
 
+  const openTerminalPage = () => {
+    navigate('/terminal')
+  }
+
   return (
     <PageContainer>
       <Box className={styles.container}>
@@ -238,13 +245,14 @@ function Home() {
               ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
               : globalTabsRef.current
           }
-          tabPrefix={selectedClusterNameRef.current == '' && (<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus}/></div>)}
+          tabPrefix={[...(selectedClusterNameRef.current == '' ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus}/></div>]: [])]}
+          tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>]:[])]}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} />,
-                <Settings user={user} selectedCluster={selectedCluster} />,
+                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} />,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
                   ? [<Graphs />]
@@ -260,7 +268,7 @@ function Home() {
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
-                ...(monitor?.config?.cloud18 ? [<Chat />] : [])
+                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
                 ? [<PeerClusterList />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />, <Chat />, <MattermostManager/>]

@@ -23,7 +23,12 @@ type stat struct {
 func (s *stat) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var buf bytes.Buffer
 
-	rr, err := s.r.canal.Execute("SHOW MASTER STATUS")
+	q := "SHOW MASTER STATUS"
+	if s.r.c.MyVersion.IsMySQLOrPerconaGreater84() {
+		q = "SHOW BINARY LOG STATUS"
+	}
+
+	rr, err := s.r.canal.Execute(q)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("execute sql error %v", err)))

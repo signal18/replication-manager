@@ -3,7 +3,7 @@ import { handleError, showErrorBanner, showSuccessBanner } from '../utility/comm
 import { globalClustersService } from '../services/globalClustersService'
 import { Link } from '@chakra-ui/react'
 
-export const getClusters = createAsyncThunk('globalClusters/getClusters', async ({}, thunkAPI) => {
+export const getClusters = createAsyncThunk('globalClusters/getClusters', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusters()
     return { data, status }
@@ -14,16 +14,50 @@ export const getClusters = createAsyncThunk('globalClusters/getClusters', async 
 
 export const addCluster = createAsyncThunk('globalClusters/addCluster', async ({ clusterName, formdata }, thunkAPI) => {
   try {
-    const { data, status } = await globalClustersService.addCluster(clusterName,formdata)
-    showSuccessBanner("Add cluster '"+clusterName+"' is successful!", status, thunkAPI)
-    return { data, status }
+    const { data, status } = await globalClustersService.addCluster(clusterName, formdata)
+    if (status === 200) {
+      showSuccessBanner("Add cluster '" + clusterName + "' is successful!", status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
   } catch (error) {
-    showErrorBanner("Add cluster '"+clusterName+"' is failed!", error, thunkAPI)
+    showErrorBanner("Add cluster '" + clusterName + "' is failed!", error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
 
-export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers', async ({}, thunkAPI) => {
+export const dropCluster = createAsyncThunk('globalClusters/dropCluster', async ({ clusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.dropCluster(clusterName)
+    if (status === 200) {
+      showSuccessBanner("Drop cluster '" + clusterName + "' is successful!", status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner("Drop cluster '" + clusterName + "' is failed!", error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const renameCluster = createAsyncThunk('globalClusters/renameCluster', async ({ clusterName, newClusterName }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.renameCluster(clusterName, newClusterName)
+    if (status === 200) {
+      showSuccessBanner("Rename cluster '" + clusterName + "' is successful!", status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner("Rename cluster '" + clusterName + "' is failed!", error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusterPeers()
     return { data, status }
@@ -32,7 +66,7 @@ export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers'
   }
 })
 
-export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForSale', async ({}, thunkAPI) => {
+export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForSale', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusterForSale()
     return { data, status }
@@ -41,7 +75,7 @@ export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForS
   }
 })
 
-export const getMonitoredData = createAsyncThunk('globalClusters/getMonitoredData', async ({}, thunkAPI) => {
+export const getMonitoredData = createAsyncThunk('globalClusters/getMonitoredData', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getMonitoredData()
     return { data, status }
@@ -96,22 +130,22 @@ export const setGlobalSetting = createAsyncThunk(
   }
 )
 
-export const reloadClustersPlan = createAsyncThunk('globalClusters/reloadClustersPlan',async ({}, thunkAPI) => {
-    try {
-      const { data, status } = await globalClustersService.reloadClustersPlan()
-      showSuccessBanner('All clusters plan reloaded!', status, thunkAPI)
-      return { data, status }
-    } catch (error) {
-      console.log('error::', error)
-      showErrorBanner('Failed to reload clusters plans!', error, thunkAPI)
-      handleError(error, thunkAPI)
-    }
+export const reloadClustersPlan = createAsyncThunk('globalClusters/reloadClustersPlan', async ({ }, thunkAPI) => {
+  try {
+    const { data, status } = await globalClustersService.reloadClustersPlan()
+    showSuccessBanner('All clusters plan reloaded!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    console.log('error::', error)
+    showErrorBanner('Failed to reload clusters plans!', error, thunkAPI)
+    handleError(error, thunkAPI)
   }
+}
 )
 
-export const getTermsData = createAsyncThunk('globalClusters/getTermsData', async ({}, thunkAPI) => {
+export const getTermsData = createAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
-    const { data, status } = await globalClustersService.getTermsData()
+    const { data, status } = await globalClustersService.getTermsData(baseURL)
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
@@ -122,12 +156,12 @@ const initialState = {
   loading: false,
   error: null,
   clusters: null,
-  isDownList: {}, 
-  isFailableList: {}, 
+  isDownList: {},
+  isFailableList: {},
   clusterPeers: null,
   clusterForSale: null,
   monitor: null,
-  terms: null
+  terms: ``
 }
 
 export const globalClustersSlice = createSlice({
@@ -159,28 +193,28 @@ export const globalClustersSlice = createSlice({
         state.loading = false
         state.error = action.error
       })
-      .addCase(getMonitoredData.pending, (state) => {})
+      .addCase(getMonitoredData.pending, (state) => { })
       .addCase(getMonitoredData.fulfilled, (state, action) => {
         state.monitor = action.payload.data
       })
       .addCase(getMonitoredData.rejected, (state, action) => {
         state.error = action.error
       })
-      .addCase(getTermsData.pending, (state) => {})
+      .addCase(getTermsData.pending, (state) => { })
       .addCase(getTermsData.fulfilled, (state, action) => {
         state.terms = action.payload.data
       })
       .addCase(getTermsData.rejected, (state, action) => {
         state.error = action.error
       })
-      .addCase(getClusterPeers.pending, (state) => {})
+      .addCase(getClusterPeers.pending, (state) => { })
       .addCase(getClusterPeers.fulfilled, (state, action) => {
         state.clusterPeers = action.payload.data
       })
       .addCase(getClusterPeers.rejected, (state, action) => {
         state.error = action.error
       })
-      .addCase(getClusterForSale.pending, (state) => {})
+      .addCase(getClusterForSale.pending, (state) => { })
       .addCase(getClusterForSale.fulfilled, (state, action) => {
         state.clusterForSale = action.payload.data
       })

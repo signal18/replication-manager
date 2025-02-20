@@ -5,7 +5,7 @@ import styles from './styles.module.scss'
 import RMIconButton from '../RMIconButton'
 import ConfirmModal from '../Modals/ConfirmModal'
 
-function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle }) {
+function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
 
@@ -23,6 +23,8 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
   const handleChange = (e) => {
     setCurrentValue(e.target.value)
   }
+
+  const valid = regexPattern ? new RegExp(regexPattern).test(currentValue) : true
 
   return (
     <Flex className={`${styles.textContainer} ${className}`} direction={direction}>
@@ -54,6 +56,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
             <RMIconButton
               icon={HiCheck}
               colorScheme='green'
+              isDisabled={!valid}
               tooltip='Save'
               onClick={() => {
                 setIsConfirmModalOpen(true)

@@ -28,7 +28,7 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
   const [planOptions, setPlanOptions] = useState([])
   const [planDetails, setPlanDetails] = useState(null)
   const [clusterName, setClusterName] = useState('')
-  const [orchestrator, setOrchestrator] = useState('')
+  const [orchestrator, setOrchestrator] = useState(defaultOrchestrator)
   const [plan, setPlan] = useState('')
   const [clusterNameError, setClusterNameError] = useState('')
   const [orchestratorError, setOrchestratorError] = useState('')

@@ -216,7 +216,15 @@ func (cluster *Cluster) HasAllDbUp() bool {
 
 		}
 	}
+
+	if cluster.GetTopology() != config.TopoUnknown {
+		cluster.GetStateMachine().Discovered = true
+	}
 	return true
+}
+
+func (cluster *Cluster) HasBadConfigMeasurement() bool {
+	return len(cluster.ErrorConfigMap) > 0
 }
 
 func (cluster *Cluster) HasAllDbDown() bool {

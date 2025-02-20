@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -357,6 +358,12 @@ func (cluster *Cluster) SetCfgGroupDisplay(cfgGroup string) {
 
 func (cluster *Cluster) SetInteractive(check bool) {
 	cluster.Conf.Interactive = check
+	if cluster.Conf.Interactive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to interactive mode")
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover monitor switched to automatic mode")
+	}
+
 }
 
 func (cluster *Cluster) SetDBDiskSize(value string) {
@@ -520,6 +527,29 @@ func (cluster *Cluster) SetCloud18DatabaseReadSrvRecord(value string) {
 
 func (cluster *Cluster) SetCloud18DatabaseReadWriteSrvRecord(value string) {
 	cluster.Conf.Cloud18DatabaseReadWriteSrvRecord = value
+}
+
+func (cluster *Cluster) SetCloud18DbaUserCredentials(cred string) error {
+	dbauser, dbapass := misc.SplitPair(cred)
+	if dbauser != "" {
+		if dbapass == "" {
+			dbapass, _ = cluster.GeneratePassword()
+		}
+		err := cluster.SetDBAUserCredentials(dbauser, dbapass)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
+			return err
+		}
+	}
+
+	var new_secret config.Secret
+	new_secret.Value = cred
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
+
+	cluster.Conf.Cloud18DbaUserCredentials = cred
+	cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
+
+	return nil
 }
 
 func (cluster *Cluster) SetTraffic(traffic bool) {
@@ -973,15 +1003,19 @@ func (cluster *Cluster) SetAgentsMaxCpuFreq() {
 	}
 }
 
-func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
+// SetBackupKeepLastN set the number of backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepLastN(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
 		return err
 	}
-	cluster.Conf.BackupKeepYearly = numkeep
+	cluster.Conf.BackupKeepLast = numkeep
 	return nil
 }
 
+// SetBackupKeepHourly set the number of hourly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepHourly(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
@@ -991,14 +1025,8 @@ func (cluster *Cluster) SetBackupKeepHourly(keep string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetBackupKeepMonthly(keep string) error {
-	numkeep, err := strconv.Atoi(keep)
-	if err != nil {
-		return err
-	}
-	cluster.Conf.BackupKeepMonthly = numkeep
-	return nil
-}
+// SetBackupKeepDaily set the number of daily backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepDaily(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
@@ -1008,6 +1036,8 @@ func (cluster *Cluster) SetBackupKeepDaily(keep string) error {
 	return nil
 }
 
+// SetBackupKeepWeekly set the number of weekly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
 func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
 	numkeep, err := strconv.Atoi(keep)
 	if err != nil {
@@ -1017,17 +1047,111 @@ func (cluster *Cluster) SetBackupKeepWeekly(keep string) error {
 	return nil
 }
 
+// SetBackupKeepMonthly set the number of monthly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepMonthly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepMonthly = numkeep
+	return nil
+}
+
+// SetBackupKeepYearly set the number of yearly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepYearly(keep string) error {
+	numkeep, err := strconv.Atoi(keep)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupKeepYearly = numkeep
+	return nil
+}
+
+// SetBackupKeepWithin set the duration of backups to keep.
+// If the value is empty, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithin(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithin = keep
+	return nil
+}
+
+// SetBackupKeepWithinHourly set the number of hourly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinHourly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinHourly = keep
+	return nil
+}
+
+// SetBackupKeepWithinDaily set the number of daily backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinDaily(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinDaily = keep
+	return nil
+}
+
+// SetBackupKeepWithinWeekly set the number of weekly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinWeekly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinWeekly = keep
+	return nil
+}
+
+// SetBackupKeepWithinMonthly set the number of monthly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinMonthly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinMonthly = keep
+	return nil
+}
+
+// SetBackupKeepWithinYearly set the number of yearly backups to keep.
+// If the value is 0, the arguments will be omitted for purge, which means that the backup can be purged due to arguments not found.
+func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
+	if !config.ResticDurationChecker(keep) {
+		return fmt.Errorf("Invalid duration format")
+	}
+
+	cluster.Conf.BackupKeepWithinYearly = keep
+	return nil
+}
+
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
 	if cluster.Conf.BackupLogicalType != backup {
 		cluster.Conf.BackupLogicalType = backup
-		cluster.GetBackupServer().DelBackupLogicalCookie()
+		bcksrv := cluster.GetBackupServer()
+		if bcksrv != nil {
+			bcksrv.DelBackupLogicalCookie()
+		}
 	}
 }
 
 func (cluster *Cluster) SetBackupPhysicalType(backup string) {
 	if cluster.Conf.BackupPhysicalType != backup {
 		cluster.Conf.BackupPhysicalType = backup
-		cluster.GetBackupServer().DelBackupPhysicalCookie()
+		bcksrv := cluster.GetBackupServer()
+		if bcksrv != nil {
+			bcksrv.DelBackupLogicalCookie()
+		}
 	}
 }
 
@@ -1222,6 +1346,23 @@ func (cluster *Cluster) SetActiveStatus(status string) {
 		if cluster.Status == ConstMonitorActif {
 			cluster.scheduler.Start()
 		} else {
+			cluster.scheduler.Stop()
+		}
+	}
+}
+
+func (cluster *Cluster) SetMonitoringScheduler(isactive bool) {
+	if cluster.Conf.MonitorScheduler != isactive {
+		cluster.Conf.MonitorScheduler = isactive
+		if cluster.Conf.MonitorScheduler {
+			if cluster.Status == ConstMonitorActif {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting scheduler")
+				cluster.scheduler.Start()
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Scheduler enabled but monitoring is in standby mode. Scheduler will start when monitoring is in active mode")
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler")
 			cluster.scheduler.Stop()
 		}
 	}
@@ -1993,6 +2134,21 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 	}
 }
 
+func (cluster *Cluster) SetLogArchiveLevel(value int) {
+	var lvl logrus.Level
+	cluster.Conf.LogArchiveLevel = value
+	if cluster.ResticRepo != nil {
+		if value > 0 {
+			lvl = config.ToLogrusLevel(value)
+		}
+		cluster.ResticRepo.SetLogLevel(lvl)
+	}
+}
+
+func (cluster *Cluster) SetLogMailerLevel(value int) {
+	cluster.Conf.LogMailerLevel = value
+}
+
 func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
 	cluster.InPhysicalBackup = value
 }
@@ -2227,4 +2383,39 @@ func (cluster *Cluster) SetResticVersion() error {
 
 func (cluster *Cluster) SetInRollingRestart(value bool) {
 	cluster.InRollingRestart = value
+}
+
+func (cluster *Cluster) RenameCluster(newClusterName string) error {
+
+	if cluster.IsProvisioned() {
+		return errors.New("Cannot rename provisioned cluster")
+	}
+
+	cluster.Lock()
+	defer func() {
+		cluster.Unlock()
+		cluster.Save()
+	}()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)
+
+	// Rename cluster directory
+	err := os.Rename(cluster.Conf.WorkingDir+"/"+cluster.Name, cluster.Conf.WorkingDir+"/"+newClusterName)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster configuration file
+	err = os.Rename(cluster.Conf.WorkingDir+"/"+newClusterName+"/"+cluster.Name+".toml", cluster.Conf.WorkingDir+"/"+newClusterName+"/"+newClusterName+".toml")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rename cluster working directory fail: %s", err)
+		return err
+	}
+
+	// Rename cluster name
+	cluster.Name = newClusterName
+
+	return nil
+
 }

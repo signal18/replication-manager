@@ -1,10 +1,77 @@
 definitions:
+  archiver.BackupStat:
+    properties:
+      total_blob_count:
+        type: integer
+      total_file_count:
+        type: integer
+      total_size:
+        type: integer
+    type: object
+  archiver.ResticPurgeOption:
+    properties:
+      keepDaily:
+        type: integer
+      keepHourly:
+        type: integer
+      keepLast:
+        type: integer
+      keepMonthly:
+        type: integer
+      keepWeekly:
+        type: integer
+      keepWithin:
+        type: string
+      keepWithinDaily:
+        type: string
+      keepWithinHourly:
+        type: string
+      keepWithinMonthly:
+        type: string
+      keepWithinWeekly:
+        type: string
+      keepWithinYearly:
+        type: string
+      keepYearly:
+        type: integer
+    type: object
+  archiver.ResticTask:
+    properties:
+      dir_path:
+        type: string
+      error_state:
+        $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+      opt:
+        $ref: '#/definitions/archiver.ResticPurgeOption'
+      tags:
+        items:
+          type: string
+        type: array
+      task_id:
+        type: integer
+      task_type:
+        $ref: '#/definitions/archiver.TaskType'
+    type: object
+  archiver.TaskType:
+    enum:
+    - 0
+    - 1
+    - 2
+    - 3
+    type: integer
+    x-enum-varnames:
+    - PurgeTask
+    - BackupTask
+    - FetchTask
+    - UnlockTask
   cluster.APIUser:
     properties:
       grants:
         additionalProperties:
           type: boolean
         type: object
+      isExternal:
+        type: boolean
       roles:
         additionalProperties:
           type: boolean
@@ -214,6 +281,8 @@ definitions:
         type: object
       name:
         type: string
+      partner:
+        $ref: '#/definitions/config.Partner'
       proxyServers:
         items:
           type: string
@@ -472,6 +541,8 @@ definitions:
         $ref: '#/definitions/dbhelper.BinaryLogMetaMap'
       binaryLogFilesCount:
         type: integer
+      binaryLogName:
+        type: string
       binaryLogOldestTimestamp:
         type: integer
       binaryLogPos:
@@ -1212,6 +1283,8 @@ definitions:
         type: string
       binlogIgnoreDB:
         type: string
+      executedGtidSet:
+        type: string
       file:
         type: string
       position:
@@ -1222,8 +1295,6 @@ definitions:
       channelName:
         $ref: '#/definitions/sql.NullString'
       connectionName:
-        $ref: '#/definitions/sql.NullString'
-      eeplicateDoDomainIds:
         $ref: '#/definitions/sql.NullString'
       execMasterLogPos:
         $ref: '#/definitions/sql.NullString'
@@ -1259,6 +1330,8 @@ definitions:
         $ref: '#/definitions/sql.NullString'
       replicateDoDb:
         $ref: '#/definitions/sql.NullString'
+      replicateDoDomainIds:
+        $ref: '#/definitions/sql.NullString'
       replicateDoTable:
         $ref: '#/definitions/sql.NullString'
       replicateIgnoreDb:
@@ -1285,6 +1358,10 @@ definitions:
         $ref: '#/definitions/sql.NullString'
       slaveSqlRunning:
         $ref: '#/definitions/sql.NullString'
+      sqlDelay:
+        $ref: '#/definitions/sql.NullInt64'
+      sqlRemainingDelay:
+        $ref: '#/definitions/sql.NullInt64'
       usingGtid:
         $ref: '#/definitions/sql.NullString'
     type: object
@@ -1325,6 +1402,14 @@ definitions:
       apiCredentialsExternal:
         type: string
       apiCredentialsSecureConfig:
+        type: boolean
+      apiErrorDisregardPort:
+        type: boolean
+      apiErrorLimit:
+        type: integer
+      apiErrorLimitDuration:
+        type: integer
+      apiErrorSuppress:
         type: boolean
       apiHttpsBind:
         type: boolean
@@ -1398,12 +1483,26 @@ definitions:
         type: integer
       backupKeepHourly:
         type: integer
+      backupKeepLast:
+        type: integer
       backupKeepMonthly:
         type: integer
       backupKeepUntilValid:
         type: boolean
       backupKeepWeekly:
         type: integer
+      backupKeepWithin:
+        type: string
+      backupKeepWithinDaily:
+        type: string
+      backupKeepWithinHourly:
+        type: string
+      backupKeepWithinMonthly:
+        type: string
+      backupKeepWithinWeekly:
+        type: string
+      backupKeepWithinYearly:
+        type: string
       backupKeepYearly:
         type: integer
       backupLoadScript:
@@ -1448,6 +1547,8 @@ definitions:
         type: string
       backupResticRepository:
         type: string
+      backupResticTimeout:
+        type: integer
       backupSaveScript:
         type: string
       backupStreaming:
@@ -1500,7 +1601,11 @@ definitions:
         type: string
       cloud18ExternalDbOps:
         type: string
+      cloud18ExternalDbOpsStatus:
+        type: string
       cloud18ExternalSysOps:
+        type: string
+      cloud18ExternalSysOpsStatus:
         type: string
       cloud18GitUser:
         type: string
@@ -1520,6 +1625,10 @@ definitions:
         type: number
       cloud18MonthlyDbopsCost:
         type: number
+      cloud18MonthlyExternalDbopsCost:
+        type: number
+      cloud18MonthlyExternalSysopsCost:
+        type: number
       cloud18MonthlyInfraCost:
         type: number
       cloud18MonthlyLicenseCost:
@@ -1534,6 +1643,10 @@ definitions:
         type: string
       cloud18PromotionPct:
         type: number
+      cloud18SalesExternalOpsStopScript:
+        type: string
+      cloud18SalesExternalOpsValidateScript:
+        type: string
       cloud18SalesSubscriptionScript:
         type: string
       cloud18SalesSubscriptionValidateScript:
@@ -1817,6 +1930,8 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logArchiveLevel:
+        type: integer
       logBackupStream:
         type: boolean
       logBackupStreamLevel:
@@ -1889,6 +2004,8 @@ definitions:
         type: integer
       mailFrom:
         type: string
+      mailMaxPool:
+        type: integer
       mailSmtpAddr:
         type: string
       mailSmtpPassword:
@@ -1897,6 +2014,8 @@ definitions:
         type: boolean
       mailSmtpUser:
         type: string
+      mailTimeout:
+        type: integer
       mailTo:
         type: string
       maxscale:
@@ -1937,6 +2056,8 @@ definitions:
         type: integer
       maxscalemBinaryPath:
         type: string
+      measurementAutoClampLimit:
+        type: boolean
       monitoringAddress:
         type: string
       monitoringAlertTrigger:
@@ -2127,6 +2248,8 @@ definitions:
         type: string
       provDbBinaryInTarball:
         type: boolean
+      provDbBinaryLogName:
+        type: string
       provDbBinaryTarballName:
         type: string
       provDbBootstrapScript:
@@ -2167,10 +2290,16 @@ definitions:
         type: string
       provDbDockerImg:
         type: string
+      provDbDockerRunArgs:
+        type: string
+      provDbDockerTmpfsSize:
+        type: string
       provDbDomain:
         type: string
       provDbExpireLogDays:
         type: integer
+      provDbJobsDockerRunArgs:
+        type: string
       provDbLoadCsv:
         type: string
       provDbLoadSql:
@@ -2207,6 +2336,8 @@ definitions:
         type: boolean
       provNetCniCluster:
         type: string
+      provNetDockerRunArgs:
+        type: string
       provOrchestrator:
         type: string
       provOrchestratorCluster:
@@ -2242,6 +2373,8 @@ definitions:
       provProxyDockerMysqlrouterImg:
         type: string
       provProxyDockerProxysqlImg:
+        type: string
+      provProxyDockerRunArgs:
         type: string
       provProxyDockerShardproxyImg:
         type: string
@@ -2551,10 +2684,6 @@ definitions:
         type: string
       sstSendBuffer:
         type: integer
-      stagingPostDetachScript:
-        type: string
-      stagingRefreshScript:
-        type: string
       switchoverAtEqualGtid:
         type: boolean
       switchoverAtSync:
@@ -2591,12 +2720,22 @@ definitions:
         type: integer
       sysbenchV1:
         type: boolean
+      terminalSessionEnabled:
+        type: boolean
+      terminalSessionManager:
+        type: string
+      terminalSessionResume:
+        type: boolean
       test:
         type: boolean
       testInjectTraffic:
         type: boolean
       topologyStaging:
         type: boolean
+      topologyStagingPostDetachScript:
+        type: string
+      topologyStagingRefreshScript:
+        type: string
       topologyTarget:
         type: string
       vaultAuth:
@@ -2622,6 +2761,19 @@ definitions:
       withTarball:
         type: string
     type: object
+  github_com_signal18_replication-manager_utils_state.State:
+    properties:
+      errDesc:
+        type: string
+      errFrom:
+        type: string
+      errKey:
+        type: string
+      errType:
+        type: string
+      serverUrl:
+        type: string
+    type: object
   gtid.Gtid:
     properties:
       domainId:
@@ -2630,6 +2782,21 @@ definitions:
         type: integer
       serverId:
         type: integer
+    type: object
+  mailer.Email:
+    properties:
+      attachments:
+        items:
+          type: string
+        type: array
+      is_html:
+        type: boolean
+      message:
+        type: string
+      subject:
+        type: string
+      to:
+        type: string
     type: object
   myproxy.Server:
     type: object
@@ -2770,6 +2937,21 @@ definitions:
         type: string
       success:
         type: boolean
+    type: object
+  server.CloudUserForm:
+    properties:
+      cost:
+        type: number
+      grants:
+        type: string
+      password:
+        type: string
+      reason:
+        type: string
+      roles:
+        type: string
+      username:
+        type: string
     type: object
   server.CredentialMailForm:
     properties:
@@ -3701,6 +3883,114 @@ paths:
       summary: Rotate passwords for a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/send-email:
+    post:
+      consumes:
+      - application/json
+      description: Sends an email to the specified recipient.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Email details
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/mailer.Email'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            type: string
+        "400":
+          description: Error in request
+          schema:
+            type: string
+        "500":
+          description: Error sending email
+          schema:
+            type: string
+      summary: Send Email
+      tags:
+      - AlertMailer
+  /api/clusters/{clusterName}/actions/staging-refresh:
+    post:
+      description: Refreshes the staging cluster specified by the cluster name in
+        the URL.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staging cluster refresh initiated
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Refresh Staging Cluster
+      tags:
+      - ClusterActions
+  /api/clusters/{clusterName}/actions/staging-reload-script:
+    post:
+      description: Reloads the staging script specified by the cluster name in the
+        URL.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staging script reloaded
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reload Staging Script
+      tags:
+      - ClusterActions
   /api/clusters/{clusterName}/actions/start-traffic:
     post:
       consumes:
@@ -3889,6 +4179,316 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/archives:
+    get:
+      description: This endpoint retrieves the backups for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/fetch:
+    post:
+      description: Fetches the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives fetch queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Fetch Archives
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/init:
+    post:
+      description: Inits the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/init/{force}:
+    post:
+      description: Inits the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Force init
+        enum:
+        - force
+        in: path
+        name: force
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/purge:
+    post:
+      description: Purges the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Purge Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue:
+    get:
+      description: Gets the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue fetched
+          schema:
+            items:
+              $ref: '#/definitions/archiver.ResticTask'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Archives Task Queue
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/task-queue/reset:
+    get:
+      description: Empty the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reset Archives Task Queue
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/unlock:
+    post:
+      description: Unlocks the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives purge queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Unlock Restic Backup
+      tags:
+      - ClusterBackups
   /api/clusters/{clusterName}/backups:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -3923,6 +4523,41 @@ paths:
           schema:
             type: string
       summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/backups/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/archiver.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/certificates:
@@ -3994,6 +4629,171 @@ paths:
       summary: Retrieve variable differences for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/ext-role/accept:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint accepts external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent to sponsor!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error accepting subscription
+          schema:
+            type: string
+      summary: Accept external operations for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/ext-role/quote:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint quotes external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent to sponsor!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error accepting external operations
+          schema:
+            type: string
+      summary: Quote external operations for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/ext-role/refuse:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint rejects external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Subscription removed!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error removing subscription
+          schema:
+            type: string
+      summary: Reject external operations for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/ext-role/subscribe:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint subscribes external operations for the specified
+        cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent to sponsor!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error subscribing external operations
+          schema:
+            type: string
+      summary: subscribe external operations for a specific cluster
+      tags:
+      - Cloud18
   /api/clusters/{clusterName}/graphite-filterlist:
     get:
       description: This endpoint retrieves the Graphite filter list for the specified
@@ -4460,6 +5260,47 @@ paths:
           schema:
             type: string
       summary: Accept a subscription for a specific cluster
+      tags:
+      - Cloud18
+  /api/clusters/{clusterName}/sales/end-external-ops:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint removes external operations for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: User Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.CloudUserForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sponsor partnership removed!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error removing sponsor partnership
+          schema:
+            type: string
+      summary: Remove external operations for a specific cluster
       tags:
       - Cloud18
   /api/clusters/{clusterName}/sales/end-subscription:
@@ -8807,6 +9648,50 @@ paths:
       summary: Switch settings for a specific cluster
       tags:
       - ClusterSettings
+  /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint switches the settings for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Setting Name
+        in: path
+        name: settingName
+        required: true
+        type: string
+      - description: Toggle state (on/off)
+        in: path
+        name: state
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully switched setting
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch settings for a specific cluster
+      tags:
+      - ClusterSettings
   /api/clusters/{clusterName}/shardclusters:
     get:
       description: This endpoint retrieves the shard clusters for the specified cluster.
@@ -9451,7 +10336,7 @@ paths:
       summary: Shows the slaves for that specific named cluster
       tags:
       - ClusterTopology
-  /api/clusters/{clusterName}/topology/standalones:
+  /api/clusters/{clusterName}/topology/state/{state}:
     get:
       description: This endpoint retrieves the servers for the specified cluster.
       parameters:
@@ -9466,11 +10351,16 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: Server State
+        in: path
+        name: state
+        required: true
+        type: string
       produces:
       - application/json
       responses:
         "200":
-          description: Standalone Server
+          description: server by state
           schema:
             items:
               $ref: '#/definitions/cluster.ServerMonitor'
@@ -9479,10 +10369,10 @@ paths:
           description: Internal Server Error
           schema:
             type: string
-      summary: Retrieve all standalone server for a specific cluster
+      summary: Retrieve all servers by state for a specific cluster
       tags:
       - ClusterTopology
-  /api/clusters/{clusterName}/topology/standalones/count:
+  /api/clusters/{clusterName}/topology/state/{state}/count:
     get:
       description: Return number of servers for that specific named cluster
       parameters:
@@ -9497,6 +10387,11 @@ paths:
         name: clusterName
         required: true
         type: string
+      - description: Server State
+        in: path
+        name: state
+        required: true
+        type: string
       responses:
         "200":
           description: Number of servers
@@ -9509,9 +10404,9 @@ paths:
       summary: Return number of servers for that specific named cluster
       tags:
       - ClusterTopology
-  /api/clusters/{clusterName}/topology/standalones/index/{index}:
+  /api/clusters/{clusterName}/topology/state/{state}/index/{index}:
     get:
-      description: This endpoint retrieves the servers for the specified cluster.
+      description: This endpoint retrieves the server for the specified cluster.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -9522,6 +10417,11 @@ paths:
       - description: Cluster Name
         in: path
         name: clusterName
+        required: true
+        type: string
+      - description: Server State
+        in: path
+        name: state
         required: true
         type: string
       - description: Index
@@ -9533,17 +10433,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: Standalone Server
+          description: server by state
           schema:
             $ref: '#/definitions/cluster.ServerMonitor'
         "500":
           description: Internal Server Error
           schema:
             type: string
-      summary: Retrieve first standalone server for a specific cluster
+      summary: Retrieve server by state and index for a specific cluster
       tags:
       - ClusterTopology
-  /api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName}:
+  /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName}:
     get:
       description: This endpoint retrieves the servers for the specified cluster.
       parameters:
@@ -9556,6 +10456,11 @@ paths:
       - description: Cluster Name
         in: path
         name: clusterName
+        required: true
+        type: string
+      - description: Server State
+        in: path
+        name: state
         required: true
         type: string
       - description: Index
@@ -9572,14 +10477,14 @@ paths:
       - application/json
       responses:
         "200":
-          description: Standalone Server (partial based on attrName)
+          description: Server (partial based on attrName)
           schema:
             $ref: '#/definitions/cluster.ServerMonitor'
         "500":
           description: Internal Server Error
           schema:
             type: string
-      summary: Retrieve first standalone server for a specific cluster
+      summary: Retrieve server attributes by state and index for a specific cluster
       tags:
       - ClusterTopology
   /api/clusters/{clusterName}/users/add:
@@ -9823,15 +10728,48 @@ paths:
           description: Cluster deleted successfully
           schema:
             type: string
-        "400":
-          description: Invalid cluster name
-          schema:
-            type: string
         "500":
-          description: Internal server error
+          description: Invalid cluster name" or "No Valid ACL
           schema:
             type: string
       summary: Delete a cluster
+      tags:
+      - Cluster
+  /api/clusters/actions/rename/{clusterName}/{newClusterName}:
+    post:
+      consumes:
+      - application/json
+      description: Renames a cluster identified by its name.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: New Cluster Name
+        in: path
+        name: newClusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cluster renamed successfully
+          schema:
+            type: string
+        "500":
+          description: Invalid cluster name" or "Cluster name already exists" or "No
+            Valid ACL
+          schema:
+            type: string
+      summary: Rename a cluster
       tags:
       - Cluster
   /api/clusters/for-sale:
@@ -9958,27 +10896,62 @@ paths:
             type: string
       summary: Set global settings for the server
       tags:
-      - ClusterSettings
+      - GlobalSetting
   /api/clusters/settings/actions/switch/{settingName}:
     post:
       consumes:
       - application/json
       description: This endpoint switches the global settings for the server.
       parameters:
-      - description: Setting Name
-        in: path
-        name: settingName
-        required: true
-        type: string
       - default: Bearer <Add access token here>
         description: Insert your access token
         in: header
         name: Authorization
         required: true
         type: string
-      - description: Cluster Name
+      - description: Setting Name
         in: path
-        name: clusterName
+        name: settingName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully switched setting
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Switch global settings for the server
+      tags:
+      - GlobalSetting
+  /api/clusters/settings/actions/switch/{settingName}/{state}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint switches the global settings for the server.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Setting Name
+        in: path
+        name: settingName
+        required: true
+        type: string
+      - description: Toggle state (on/off)
+        in: path
+        name: state
         type: string
       produces:
       - application/json
@@ -10017,6 +10990,42 @@ paths:
       summary: List Grafana files
       tags:
       - Public
+  /api/email/send:
+    post:
+      consumes:
+      - application/json
+      description: Sends an email to the specified recipient.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Email details
+        in: body
+        name: email
+        required: true
+        schema:
+          $ref: '#/definitions/mailer.Email'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email sent successfully
+          schema:
+            type: string
+        "400":
+          description: Error in request
+          schema:
+            type: string
+        "500":
+          description: Error sending email
+          schema:
+            type: string
+      summary: Send Email
+      tags:
+      - AlertMailer
   /api/heartbeat:
     get:
       consumes:
@@ -10154,6 +11163,256 @@ paths:
       summary: Get Replication Manager Status
       tags:
       - Public
+  /api/terminal/connect:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/servers/{serverName}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command}:
+    get:
+      consumes:
+      - application/json
+      description: Establishes a WebSocket connection for a terminal session.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Connected successfully
+          schema:
+            type: string
+        "400":
+          description: No user provided
+          schema:
+            type: string
+        "500":
+          description: No valid node" or "No valid cluster
+          schema:
+            type: string
+      summary: Terminal
+      tags:
+      - Terminal
+  /api/terminal/list:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of terminal sessions for a user.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of terminal sessions
+          schema:
+            items:
+              type: string
+            type: array
+        "403":
+          description: Terminal session is disabled
+          schema:
+            type: string
+        "500":
+          description: Error getting JWT claims" or "Error encoding JSON
+          schema:
+            type: string
+      summary: Get Terminal Session List
+      tags:
+      - Terminal
+  /api/terminal/list/clusters/{clusterName}:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of terminal sessions for a user.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of terminal sessions
+          schema:
+            items:
+              type: string
+            type: array
+        "403":
+          description: Terminal session is disabled
+          schema:
+            type: string
+        "500":
+          description: Error getting JWT claims" or "Error encoding JSON
+          schema:
+            type: string
+      summary: Get Terminal Session List
+      tags:
+      - Terminal
   /api/terms:
     get:
       description: This endpoint returns the terms managed by the replication manager.

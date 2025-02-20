@@ -67,6 +67,60 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/terminals", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/backups/stats", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStats)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/stats", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackupStats)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/fetch", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesFetch)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/purge", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesPurge)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/unlock", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesUnlock)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/init", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesInit)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/init/{force}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesInit)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetArchivesTaskQueue)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue/reset", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetArchivesTaskQueue)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -96,11 +150,19 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
 	))
+	router.Handle("/api/clusters/settings/actions/switch/{settingName}/{state}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchGlobalSettings)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
 	))
-	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSettings)),
+	))
+	router.Handle("/api/clusters/settings/actions/set/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
 	))
@@ -108,7 +170,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetGlobalSettings)),
 	))
-	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetSettings)),
 	))
@@ -184,6 +246,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxBootstrapReplicationCleanup)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/staging-refresh", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRefreshStagingCluster)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reload-script", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReloadStagingScript)),
+	))
 	router.Handle("/api/clusters/{clusterName}/services/actions/provision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServicesProvision)),
@@ -255,6 +325,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerRotatePasswords)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/send-email", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
@@ -316,6 +391,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterDelete)),
 	))
 
+	router.Handle("/api/clusters/actions/rename/{clusterName}/{newClusterName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRename)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/topology/servers", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServers)),
@@ -344,21 +424,21 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSlaveAttributeByIndex)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServers)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServersByState)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/count", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/count", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServersCount)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServersByStateCount)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/index/{index}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/index/{index}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneServerByIndex)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServerByStateAndIndex)),
 	))
-	router.Handle("/api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetStandaloneAttributeByIndex)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetServerAttributeByStateAndIndex)),
 	))
 	router.Handle("/api/clusters/{clusterName}/topology/logs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -411,6 +491,26 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/users/send-credentials", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendCredentials)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/subscribe", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSubscribeExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/quote", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxQuoteExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/accept", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAcceptExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/refuse", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRefuseExternalOps)),
+	))
+	router.Handle("/api/clusters/{clusterName}/ext-role/end", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRemoveExternalOps)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/sales/accept-subscription", negroni.New(
@@ -518,16 +618,17 @@ func (repman *ReplicationManager) handlerMuxServersCount(w http.ResponseWriter, 
 	}
 }
 
-// @Summary Retrieve all standalone server for a specific cluster
+// @Summary Retrieve all servers by state for a specific cluster
 // @Description This endpoint retrieves the servers for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} cluster.ServerMonitor "Standalone Server"
+// @Param state path string true "Server State"
+// @Success 200 {array} cluster.ServerMonitor "server by state"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state} [get]
+func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -543,7 +644,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.Response
 		res := ServersContainer{
 			servers: make([]map[string]interface{}, 0),
 		}
-		for _, srv := range mycluster.GetStandaloneServers() {
+		for _, srv := range mycluster.GetServersByState(vars["state"]) {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
 			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
@@ -580,10 +681,11 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServers(w http.Response
 // @Tags ClusterTopology
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Success 200 {string} string "Number of servers"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/count [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/count [get]
+func (repman *ReplicationManager) handlerMuxGetServersByStateCount(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -591,7 +693,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.Res
 	if mycluster != nil {
 		counter := 0
 		for _, srv := range mycluster.Servers {
-			if srv.IsStandAlone() {
+			if srv.State == vars["state"] {
 				counter++
 			}
 		}
@@ -603,17 +705,18 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServersCount(w http.Res
 	}
 }
 
-// @Summary Retrieve first standalone server for a specific cluster
-// @Description This endpoint retrieves the servers for the specified cluster.
+// @Summary Retrieve server by state and index for a specific cluster
+// @Description This endpoint retrieves the server for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Param index path string true "Index"
-// @Success 200 {object} cluster.ServerMonitor "Standalone Server"
+// @Success 200 {object} cluster.ServerMonitor "server by state"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/index/{index} [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index} [get]
+func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -627,7 +730,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.Re
 			return
 		}
 
-		srv, err := mycluster.GetStandaloneServerByIndex(index)
+		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -649,18 +752,19 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneServerByIndex(w http.Re
 	}
 }
 
-// @Summary Retrieve first standalone server for a specific cluster
+// @Summary Retrieve server attributes by state and index for a specific cluster
 // @Description This endpoint retrieves the servers for the specified cluster.
 // @Tags ClusterTopology
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param state path string true "Server State"
 // @Param index path string true "Index"
 // @Param attrName path string true "Attribute Name with dot notation"
-// @Success 200 {object} cluster.ServerMonitor "Standalone Server (partial based on attrName)"
+// @Success 200 {object} cluster.ServerMonitor "Server (partial based on attrName)"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/topology/standalones/index/{index}/attr/{attrName} [get]
-func (repman *ReplicationManager) handlerMuxGetStandaloneAttributeByIndex(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName} [get]
+func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w http.ResponseWriter, r *http.Request) {
 	//marshal unmarchal for ofuscation deep copy of struc
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -674,7 +778,7 @@ func (repman *ReplicationManager) handlerMuxGetStandaloneAttributeByIndex(w http
 			return
 		}
 
-		srv, err := mycluster.GetStandaloneServerByIndex(index)
+		srv, err := mycluster.GetServerByStateAndIndex(vars["state"], index)
 		if srv == nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -1607,6 +1711,7 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/backups [get]
+// @Router /api/clusters/{clusterName}/archives [get]
 func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1619,6 +1724,40 @@ func (repman *ReplicationManager) handlerMuxClusterBackups(w http.ResponseWriter
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
 		err := e.Encode(mycluster.GetBackups())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterBackupStats handles the retrieval of backup stats for a given cluster.
+// @Summary Retrieve backup stats for a specific cluster
+// @Description This endpoint retrieves the backup stats for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} archiver.BackupStat "List of backups"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/backups/stats [get]
+// @Router /api/clusters/{clusterName}/archives/stats [get]
+func (repman *ReplicationManager) handlerMuxClusterBackupStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetBackupStat())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1749,12 +1888,14 @@ func (repman *ReplicationManager) handlerMuxClusterTop(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param settingName path string true "Setting Name"
+// @Param state path string false "Toggle state (on/off)"
 // @Success 200 {string} string "Successfully switched setting"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName} [post]
+// @Router /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state} [post]
 func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter, r *http.Request) {
-
+	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	cName := vars["clusterName"]
@@ -1768,16 +1909,31 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 		return
 	}
 
+	if v, ok := vars["state"]; ok {
+		value = strings.ToLower(v)
+		if value != "on" && value != "off" {
+			http.Error(w, "Invalid state. Only accept on/off", 400)
+			return
+		}
+	}
+
 	mycluster := repman.getClusterByName(cName)
 	if mycluster != nil {
 		valid, _ := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch setting %s", setting)
-			//Set server scope
-			err := repman.switchClusterSettings(mycluster, setting)
-			if err != nil {
-				http.Error(w, "Setting Not Found", 501)
-				return
+			if value == "" {
+				err := repman.switchClusterSettings(mycluster, setting)
+				if err != nil {
+					http.Error(w, "Setting Not Found", 501)
+					return
+				}
+			} else {
+				err := repman.setClusterSetting(mycluster, setting, value)
+				if err != nil {
+					http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
+					return
+				}
 			}
 		} else {
 			http.Error(w, fmt.Sprintf("User doesn't have required ACL for %s in cluster %s", setting, vars["clusterName"]), 403)
@@ -1797,14 +1953,16 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 // @Tags GlobalSetting
 // @Accept json
 // @Produce json
-// @Param settingName path string true "Setting Name"
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string false "Cluster Name"
+// @Param settingName path string true "Setting Name"
+// @Param state path string false "Toggle state (on/off)"
 // @Success 200 {string} string "Successfully switched setting"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/settings/actions/switch/{settingName} [post]
+// @Router /api/clusters/settings/actions/switch/{settingName}/{state} [post]
 func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.ResponseWriter, r *http.Request) {
+	var value string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	setting := vars["settingName"]
@@ -1826,11 +1984,19 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 		}
 	}
 
+	if v, ok := vars["state"]; ok {
+		value = strings.ToLower(v)
+		if value != "on" && value != "off" {
+			http.Error(w, "Invalid state. Only accept on/off", 400)
+			return
+		}
+	}
+
 	if mycluster != nil {
 		valid, user := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive switch global setting %s", setting)
-			err := repman.switchServerSetting(user, r.URL.Path, setting)
+			err := repman.switchServerSetting(user, r.URL.Path, setting, value)
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Failed to set value for %s: %s", setting, err.Error()), 400)
 				return
@@ -2080,6 +2246,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCloud18SubscribedDbops()
 	case "cloud18-open-sysops":
 		mycluster.SwitchCloud18OpenSysops()
+	case "topology-staging":
+		mycluster.SwitchTopologyStaging()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2153,7 +2321,7 @@ func (repman *ReplicationManager) handlerMuxSetSettings(w http.ResponseWriter, r
 // handlerMuxSetGlobalSettings handles the setting of global settings for the server.
 // @Summary Set global settings for the server
 // @Description This endpoint sets the global settings for the server.
-// @Tags ClusterSettings
+// @Tags GlobalSetting
 // @Accept json
 // @Produce json
 // @Param settingName path string true "Setting Name"
@@ -2250,6 +2418,7 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 }
 
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
+	var isactive bool = strings.ToLower(value) == "on"
 	var err error
 	//not immutable
 	if !mycluster.Conf.IsVariableImmutable(name) {
@@ -2270,16 +2439,66 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "failover-limit":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetFailLimit(val)
+	case "backup-keep-last":
+		err = mycluster.SetBackupKeepLastN(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-hourly":
-		mycluster.SetBackupKeepHourly(value)
+		err = mycluster.SetBackupKeepHourly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-daily":
-		mycluster.SetBackupKeepDaily(value)
+		err = mycluster.SetBackupKeepDaily(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-monthly":
-		mycluster.SetBackupKeepMonthly(value)
+		err = mycluster.SetBackupKeepMonthly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-weekly":
-		mycluster.SetBackupKeepWeekly(value)
+		err = mycluster.SetBackupKeepWeekly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-keep-yearly":
-		mycluster.SetBackupKeepYearly(value)
+		err = mycluster.SetBackupKeepYearly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within":
+		err = mycluster.SetBackupKeepWithin(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-hourly":
+		err = mycluster.SetBackupKeepWithinHourly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-daily":
+		err = mycluster.SetBackupKeepWithinDaily(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-monthly":
+		err = mycluster.SetBackupKeepWithinMonthly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-weekly":
+		err = mycluster.SetBackupKeepWithinWeekly(value)
+		if err != nil {
+			return err
+		}
+	case "backup-keep-within-yearly":
+		err = mycluster.SetBackupKeepWithinYearly(value)
+		if err != nil {
+			return err
+		}
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
@@ -2456,10 +2675,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-binlog-purge-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBinlogPurgeLevel(val)
+	case "log-archive-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogArchiveLevel(val)
+	case "log-mailer-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogMailerLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
 	case "topology-target":
-		mycluster.SetTopologyTarget(value)
+		mycluster.BootstrapTopology(value)
 	case "log-task-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTaskLevel(val)
@@ -2616,25 +2841,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		cred := string(val)
-		dbauser, dbapass := misc.SplitPair(cred)
-		if dbauser != "" {
-			if dbapass == "" {
-				dbapass, _ = mycluster.GeneratePassword()
-			}
-			err = mycluster.SetDBAUserCredentials(dbauser, dbapass)
-			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
-				return err
-			}
+		err = mycluster.SetCloud18DbaUserCredentials(string(val))
+		if err != nil {
+			return err
 		}
-
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
-
-		mycluster.Conf.Cloud18DbaUserCredentials = cred
-		mycluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
 	case "cloud18-sponsor-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -2677,51 +2887,414 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 
 			mycluster.Conf.Cloud18DbOps = value
 		}
-	case "cloud18-external-sysops":
-		if value != "" && value != mycluster.Conf.Cloud18GitUser {
-			esys := repman.CreateExtSysopsForm(value)
-			if euser, ok := mycluster.APIUsers[value]; !ok {
-				err = mycluster.AddUser(esys, mycluster.Conf.Cloud18GitUser, true)
-			} else {
-				esys.Grants = mycluster.AppendGrants(esys.Grants, &euser)
-				esys.Roles = mycluster.AppendRoles(esys.Roles, &euser)
-				err = mycluster.UpdateUser(esys, mycluster.Conf.Cloud18GitUser, true)
-			}
-
-			if err != nil {
-				return err
-			}
-			mycluster.Conf.Cloud18ExternalSysOps = value
-		}
-	case "cloud18-external-dbops":
-		// If external dbops different from cloud18 dbops
-		if mycluster.Conf.Cloud18ExternalDbOps != "" && mycluster.Conf.Cloud18ExternalDbOps != mycluster.Conf.Cloud18DbOps {
-			edbops := repman.CreateExtDBOpsForm(mycluster.Conf.Cloud18ExternalDbOps)
-			if edbuser, ok := mycluster.APIUsers[mycluster.Conf.Cloud18ExternalDbOps]; !ok {
-				err = mycluster.AddUser(edbops, mycluster.Conf.Cloud18GitUser, true)
-			} else {
-				edbops.Grants = mycluster.AppendGrants(edbops.Grants, &edbuser)
-				edbops.Roles = mycluster.AppendRoles(edbops.Roles, &edbuser)
-				err = mycluster.UpdateUser(edbops, mycluster.Conf.Cloud18GitUser, true)
-			}
-
-			if err != nil {
-				return err
-			}
-			mycluster.Conf.Cloud18ExternalDbOps = value
-		}
 	case "backup-save-script":
-		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("Unable to decode")
-		}
-		mycluster.Conf.BackupSaveScript = string(val)
+		mycluster.Conf.BackupSaveScript = value
 	case "backup-load-script":
-		val, err := base64.StdEncoding.DecodeString(value)
-		if err != nil {
-			return errors.New("Unable to decode")
+		mycluster.Conf.BackupLoadScript = value
+	case "topology-staging-refresh-script":
+		mycluster.Conf.TopologyStagingRefreshScript = value
+	case "topology-staging-post-detach-script":
+		mycluster.Conf.TopologyStagingPostDetachScript = value
+
+	// Switches
+	case "verbose":
+		mycluster.Conf.Verbose = isactive
+	case "failover-mode":
+		mycluster.SetInteractive(strings.ToLower(value) == "on")
+	case "failover-readonly-state":
+		mycluster.SetReadOnly(strings.ToLower(value) == "on")
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "failover-restart-unsafe":
+		mycluster.Conf.FailRestartUnsafe = isactive
+	case "failover-at-sync":
+		mycluster.Conf.FailSync = isactive
+	case "force-slave-no-gtid-mode":
+		mycluster.Conf.ForceSlaveNoGtid = isactive
+	case "switchover-lower-release":
+		mycluster.Conf.SwitchLowerRelease = isactive
+	case "failover-event-status":
+		mycluster.Conf.FailEventStatus = isactive
+	case "failover-event-scheduler":
+		mycluster.Conf.FailEventScheduler = isactive
+	case "delay-stat-capture":
+		mycluster.Conf.DelayStatCapture = isactive
+		if !mycluster.Conf.DelayStatCapture {
+			mycluster.Conf.FailoverCheckDelayStat = false
+			mycluster.Conf.PrintDelayStat = false
+			mycluster.Conf.PrintDelayStatHistory = false
 		}
-		mycluster.Conf.BackupSaveScript = string(val)
+	case "print-delay-stat":
+		mycluster.Conf.PrintDelayStat = isactive
+	case "print-delay-stat-history":
+		mycluster.Conf.PrintDelayStatHistory = isactive
+	case "failover-check-delay-stat":
+		mycluster.Conf.FailoverCheckDelayStat = isactive
+	case "autorejoin":
+		mycluster.Conf.Autorejoin = isactive
+	case "autoseed":
+		mycluster.Conf.Autoseed = isactive
+	case "autorejoin-backup-binlog":
+		mycluster.Conf.AutorejoinBackupBinlog = isactive
+	case "autorejoin-flashback":
+		mycluster.Conf.AutorejoinFlashback = isactive
+	case "autorejoin-flashback-on-sync":
+		mycluster.Conf.AutorejoinSemisync = isactive
+	case "autorejoin-slave-positional-heartbeat":
+		mycluster.Conf.AutorejoinSlavePositionalHeartbeat = isactive
+	case "autorejoin-zfs-flashback":
+		mycluster.Conf.AutorejoinZFSFlashback = isactive
+	case "autorejoin-mysqldump":
+		mycluster.Conf.AutorejoinMysqldump = isactive
+	case "autorejoin-logical-backup":
+		mycluster.Conf.AutorejoinLogicalBackup = isactive
+	case "autorejoin-physical-backup":
+		mycluster.Conf.AutorejoinPhysicalBackup = isactive
+	case "autorejoin-force-restore":
+		mycluster.Conf.AutorejoinForceRestore = isactive
+	case "switchover-at-sync":
+		mycluster.Conf.SwitchSync = isactive
+	case "check-replication-filters":
+		mycluster.Conf.CheckReplFilter = isactive
+	case "check-replication-state":
+		mycluster.Conf.RplChecks = isactive
+	case "scheduler-db-servers-logical-backup":
+		if mycluster.Conf.SchedulerBackupLogical != isactive {
+			mycluster.Conf.SchedulerBackupLogical = isactive
+			mycluster.SetSchedulerBackupLogical()
+		}
+	case "scheduler-db-servers-physical-backup":
+		if mycluster.Conf.SchedulerBackupPhysical != isactive {
+			mycluster.Conf.SchedulerBackupPhysical = isactive
+			mycluster.SetSchedulerBackupPhysical()
+		}
+	case "scheduler-db-servers-logs":
+		if mycluster.Conf.SchedulerDatabaseLogs != isactive {
+			mycluster.Conf.SchedulerDatabaseLogs = isactive
+			mycluster.SetSchedulerBackupLogs()
+		}
+	case "scheduler-jobs-ssh":
+		if mycluster.Conf.SchedulerJobsSSH != isactive {
+			mycluster.Conf.SchedulerJobsSSH = isactive
+			mycluster.SetSchedulerDbJobsSsh()
+		}
+	case "scheduler-db-servers-logs-table-rotate":
+		if mycluster.Conf.SchedulerDatabaseLogsTableRotate != isactive {
+			mycluster.Conf.SchedulerDatabaseLogsTableRotate = isactive
+			mycluster.SetSchedulerLogsTableRotate()
+		}
+	case "scheduler-rolling-restart":
+		if mycluster.Conf.SchedulerRollingRestart != isactive {
+			mycluster.Conf.SchedulerRollingRestart = isactive
+			mycluster.SetSchedulerRollingRestart()
+		}
+	case "scheduler-rolling-reprov":
+		if mycluster.Conf.SchedulerRollingReprov != isactive {
+			mycluster.Conf.SchedulerRollingReprov = isactive
+			mycluster.SetSchedulerRollingReprov()
+		}
+	case "scheduler-db-servers-optimize":
+		if mycluster.Conf.SchedulerDatabaseOptimize != isactive {
+			mycluster.Conf.SchedulerDatabaseOptimize = isactive
+			mycluster.SetSchedulerOptimize()
+		}
+	case "scheduler-db-servers-analyze":
+		if mycluster.Conf.SchedulerDatabaseAnalyze != isactive {
+			mycluster.Conf.SchedulerDatabaseAnalyze = isactive
+			mycluster.SetSchedulerAnalyze()
+		}
+	case "scheduler-alert-disable":
+		mycluster.Conf.SchedulerAlertDisable = isactive
+	case "graphite-metrics":
+		mycluster.Conf.GraphiteMetrics = isactive
+	case "graphite-embedded":
+		mycluster.Conf.GraphiteEmbedded = isactive
+	case "graphite-whitelist":
+		mycluster.Conf.GraphiteWhitelist = isactive
+	case "graphite-blacklist":
+		mycluster.Conf.GraphiteBlacklist = isactive
+	case "shardproxy-copy-grants":
+		mycluster.Conf.MdbsProxyCopyGrants = isactive
+	case "proxysql-copy-grants", "proxysql-bootstrap-users":
+		mycluster.Conf.ProxysqlCopyGrants = isactive
+	case "proxysql-bootstrap-variables":
+		mycluster.Conf.ProxysqlBootstrapVariables = isactive
+	case "proxysql-bootstrap-hostgroups":
+		mycluster.Conf.ProxysqlBootstrapHG = isactive
+	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
+		mycluster.Conf.ProxysqlBootstrap = isactive
+	case "proxysql-bootstrap-query-rules":
+		mycluster.Conf.ProxysqlBootstrapQueryRules = isactive
+	case "proxysql":
+		mycluster.Conf.ProxysqlOn = isactive
+	case "proxy-servers-read-on-master":
+		mycluster.Conf.PRXServersReadOnMaster = isactive
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "proxy-servers-read-on-master-no-slave":
+		mycluster.Conf.PRXServersReadOnMasterNoSlave = isactive
+		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+	case "proxy-servers-backend-compression":
+		mycluster.Conf.PRXServersBackendCompression = isactive
+	case "database-heartbeat":
+		mycluster.Conf.TestInjectTraffic = isactive
+	case "test":
+		mycluster.Conf.Test = isactive
+	case "prov-net-cni":
+		mycluster.Conf.ProvNetCNI = isactive
+	case "prov-db-apply-dynamic-config":
+		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
+	case "prov-docker-daemon-private":
+		mycluster.Conf.ProvDockerDaemonPrivate = isactive
+	case "backup-restic-aws":
+		mycluster.Conf.BackupResticAws = isactive
+	case "backup-restic":
+		if mycluster.Conf.BackupRestic != isactive {
+			mycluster.Conf.BackupRestic = isactive
+			mycluster.CheckResticInstallation()
+		}
+	case "backup-binlogs":
+		if mycluster.Conf.BackupBinlogs != isactive {
+			mycluster.Conf.BackupBinlogs = isactive
+			if mycluster.Conf.BackupBinlogs {
+				for _, sv := range mycluster.GetServers() {
+					go sv.CheckBinaryLogs(true)
+				}
+			}
+		}
+	case "compress-backups":
+		mycluster.Conf.CompressBackups = isactive
+	case "monitoring-pause":
+		mycluster.Conf.MonitorPause = isactive
+	case "monitoring-save-config":
+		mycluster.Conf.ConfRewrite = isactive
+	case "monitoring-queries":
+		mycluster.Conf.MonitorQueries = isactive
+	case "monitoring-scheduler":
+		mycluster.SetMonitoringScheduler(isactive)
+	case "monitoring-schema-change":
+		mycluster.Conf.MonitorSchemaChange = isactive
+	case "monitoring-capture":
+		mycluster.Conf.MonitorCapture = isactive
+	case "monitoring-innodb-status":
+		mycluster.Conf.MonitorInnoDBStatus = isactive
+	case "monitoring-variable-diff":
+		mycluster.Conf.MonitorVariableDiff = isactive
+	case "monitoring-processlist":
+		mycluster.Conf.MonitorProcessList = isactive
+	case "force-slave-readonly":
+		mycluster.Conf.ForceSlaveReadOnly = isactive
+	case "force-binlog-row":
+		mycluster.Conf.ForceBinlogRow = isactive
+	case "force-slave-semisync":
+		mycluster.Conf.ForceSlaveSemisync = isactive
+	case "force-slave-Heartbeat":
+		mycluster.Conf.ForceSlaveHeartbeat = isactive
+	case "force-slave-gtid":
+		mycluster.Conf.ForceSlaveGtid = isactive
+	case "force-slave-gtid-mode-strict":
+		mycluster.Conf.ForceSlaveGtidStrict = isactive
+	case "force-slave-idempotent":
+		mycluster.Conf.ForceSlaveIdempotent = isactive
+	case "force-slave-strict":
+		mycluster.Conf.ForceSlaveStrict = isactive
+	case "force-slave-serialized":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "SERIALIZED"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-minimal":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "MINIMAL"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-conservative":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "CONSERVATIVE"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-optimistic":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "OPTIMISTIC"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-slave-aggressive":
+		if isactive {
+			mycluster.Conf.ForceSlaveParallelMode = "AGGRESSIVE"
+		} else {
+			mycluster.Conf.ForceSlaveParallelMode = ""
+		}
+	case "force-binlog-compress":
+		mycluster.Conf.ForceBinlogCompress = isactive
+	case "force-binlog-annotate":
+		mycluster.Conf.ForceBinlogAnnotate = isactive
+	case "force-binlog-slow-queries":
+		mycluster.Conf.ForceBinlogSlowqueries = isactive
+	case "log-sql-in-monitoring":
+		mycluster.Conf.LogSQLInMonitoring = isactive
+	case "log-writer-election":
+		if mycluster.Conf.LogWriterElection != isactive {
+			if isactive {
+				mycluster.Conf.LogWriterElectionLevel = 1
+			} else {
+				mycluster.Conf.LogWriterElectionLevel = 0
+			}
+			mycluster.Conf.LogWriterElection = isactive
+		}
+	case "log-sst":
+		if mycluster.Conf.LogSST != isactive {
+			if isactive {
+				mycluster.Conf.LogSSTLevel = 1
+			} else {
+				mycluster.Conf.LogSSTLevel = 0
+			}
+			mycluster.Conf.LogSST = isactive
+		}
+	case "log-heartbeat":
+		if mycluster.Conf.LogHeartbeat != isactive {
+			if isactive {
+				mycluster.Conf.LogHeartbeatLevel = 1
+			} else {
+				mycluster.Conf.LogHeartbeatLevel = 0
+			}
+			mycluster.Conf.LogHeartbeat = isactive
+		}
+	case "log-config-load":
+		if mycluster.Conf.LogConfigLoad != isactive {
+			if isactive {
+				mycluster.Conf.LogConfigLoadLevel = 1
+			} else {
+				mycluster.Conf.LogConfigLoadLevel = 0
+			}
+			mycluster.Conf.LogConfigLoad = isactive
+		}
+	case "log-git":
+		if mycluster.Conf.LogGit != isactive {
+			if isactive {
+				mycluster.Conf.LogGitLevel = 1
+			} else {
+				mycluster.Conf.LogGitLevel = 0
+			}
+			mycluster.Conf.LogGit = isactive
+		}
+	case "log-backup-stream":
+		if mycluster.Conf.LogBackupStream != isactive {
+			if isactive {
+				mycluster.Conf.LogBackupStreamLevel = 1
+			} else {
+				mycluster.Conf.LogBackupStreamLevel = 0
+			}
+			mycluster.Conf.LogBackupStream = isactive
+		}
+	case "log-orchestrator":
+		if mycluster.Conf.LogOrchestrator != isactive {
+			if isactive {
+				mycluster.Conf.LogOrchestratorLevel = 1
+			} else {
+				mycluster.Conf.LogOrchestratorLevel = 0
+			}
+			mycluster.Conf.LogOrchestrator = isactive
+		}
+	case "log-vault":
+		if mycluster.Conf.LogVault != isactive {
+			if isactive {
+				mycluster.Conf.LogVaultLevel = 1
+			} else {
+				mycluster.Conf.LogVaultLevel = 0
+			}
+			mycluster.Conf.LogVault = isactive
+		}
+	case "log-topology":
+		if mycluster.Conf.LogTopology != isactive {
+			if isactive {
+				mycluster.Conf.LogTopologyLevel = 1
+			} else {
+				mycluster.Conf.LogTopologyLevel = 0
+			}
+			mycluster.Conf.LogTopology = isactive
+		}
+	case "log-proxy":
+		if mycluster.Conf.LogProxy != isactive {
+			if isactive {
+				mycluster.Conf.LogProxyLevel = 1
+			} else {
+				mycluster.Conf.LogProxyLevel = 0
+			}
+			mycluster.Conf.LogProxy = isactive
+		}
+	case "proxysql-debug":
+		if mycluster.Conf.ProxysqlDebug != isactive {
+			if isactive {
+				mycluster.Conf.ProxysqlLogLevel = 1
+			} else {
+				mycluster.Conf.ProxysqlLogLevel = 0
+			}
+			mycluster.Conf.ProxysqlDebug = isactive
+		}
+	case "haproxy-debug":
+		if mycluster.Conf.HaproxyDebug != isactive {
+			if isactive {
+				mycluster.Conf.HaproxyLogLevel = 1
+			} else {
+				mycluster.Conf.HaproxyLogLevel = 0
+			}
+			mycluster.Conf.HaproxyDebug = isactive
+		}
+	case "proxyjanitor-debug":
+		if mycluster.Conf.ProxyJanitorDebug != isactive {
+			if isactive {
+				mycluster.Conf.ProxyJanitorLogLevel = 1
+			} else {
+				mycluster.Conf.ProxyJanitorLogLevel = 0
+			}
+			mycluster.Conf.ProxyJanitorDebug = isactive
+		}
+	case "maxscale-debug":
+		if mycluster.Conf.MxsDebug != isactive {
+			if isactive {
+				mycluster.Conf.MxsLogLevel = 1
+			} else {
+				mycluster.Conf.MxsLogLevel = 0
+			}
+			mycluster.Conf.MxsDebug = isactive
+		}
+	case "force-binlog-purge":
+		mycluster.Conf.ForceBinlogPurge = isactive
+	case "force-binlog-purge-on-restore":
+		mycluster.Conf.ForceBinlogPurgeOnRestore = isactive
+	case "force-binlog-purge-replicas":
+		mycluster.Conf.ForceBinlogPurgeReplicas = isactive
+	case "multi-master-concurrent-write":
+		mycluster.Conf.MultiMasterConcurrentWrite = isactive
+	case "multi-master-ring-unsafe":
+		mycluster.Conf.MultiMasterRingUnsafe = isactive
+	case "dynamic-topology":
+		mycluster.Conf.DynamicTopology = isactive
+	case "replication-no-relay":
+		mycluster.Conf.ReplicationNoRelay = isactive
+	case "prov-db-force-write-config":
+		if mycluster.Conf.ProvDBForceWriteConfig != isactive {
+			mycluster.Conf.ProvDBForceWriteConfig = isactive
+			if isactive {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files activated. Will replace config files on next provision.")
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files de-activated. Will create config files with suffix (.new) for conflicting files on next provision.")
+			}
+		}
+	case "backup-keep-until-valid":
+		mycluster.Conf.BackupKeepUntilValid = isactive
+	case "mail-smtp-tls-skip-verify":
+		mycluster.Conf.MailSMTPTLSSkipVerify = isactive
+	case "cloud18-shared":
+		mycluster.Conf.Cloud18Shared = isactive
+	case "cloud18-open-dbops":
+		mycluster.Conf.Cloud18OpenDbops = isactive
+	case "cloud18-open-sysops":
+		mycluster.Conf.Cloud18OpenSysops = isactive
+	case "topology-staging":
+		mycluster.Conf.TopologyStaging = isactive
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2730,6 +3303,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 }
 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
+	var isactive bool = strings.ToLower(value) == "on"
 	var v int
 	//not immutable
 	if !repman.Conf.IsVariableImmutable(name) {
@@ -2875,7 +3449,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetLogGitLevel(val)
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAddress(value)
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -2886,14 +3460,53 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.MailSMTPPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("mail-smtp-password")
 		repman.Conf.Secrets["mail-smtp-password"] = new_secret
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
 	case "mail-to":
 		repman.Conf.SetMailTo(value)
 	case "mail-from":
 		repman.Conf.SetMailFrom(value)
+	case "cloud18-shared":
+		if repman.Conf.Cloud18 {
+			repman.Conf.Cloud18Shared = isactive
+		}
+	case "api-https-bind":
+		repman.Conf.APIHttpsBind = isactive
+	case "api-server":
+		repman.Conf.ApiServ = isactive
+	case "api-swagger-enabled":
+		repman.Conf.ApiSwaggerEnabled = isactive
+	case "arbitration-external ":
+		repman.Conf.Arbitration = isactive
+	case "graphite-embedded":
+		repman.Conf.GraphiteEmbedded = isactive
+	case "graphite-blacklist  ":
+		repman.Conf.GraphiteBlacklist = isactive
+	case "graphite-metrics ":
+		repman.Conf.GraphiteMetrics = isactive
+	case "http-server":
+		repman.Conf.HttpServ = isactive
+	case "http-use-react ":
+		repman.Conf.HttpUseReact = isactive
+	case "monitoring-save-config  ":
+		repman.Conf.ConfRewrite = isactive
+	case "sysbench-v1":
+		repman.Conf.SysbenchV1 = isactive
+	case "scheduler-db-servers-receiver-use-ssl":
+		repman.Conf.SchedulerReceiverUseSSL = isactive
+	case "mail-smtp-tls-skip-verify":
+		repman.Conf.MailSMTPTLSSkipVerify = isactive
+		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
+	case "mail-max-pool":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.MailMaxPool = v
+		repman.Mailer.UpdateMaxPool(v)
+	case "mail-timeout":
+		v, _ = strconv.Atoi(value)
+		repman.Conf.MailTimeout = v
+		repman.Mailer.UpdateTimeout(v)
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2940,7 +3553,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 		repman.Conf.SchedulerReceiverUseSSL = !repman.Conf.SchedulerReceiverUseSSL
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.SwitchMailSmtpTlsSkipVerify()
-		repman.ReloadMailerConfig()
+		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
 	default:
 		return errors.New("Setting not found")
 	}
@@ -2964,15 +3577,30 @@ func (repman *ReplicationManager) setServerSetting(user string, URL string, name
 	return nil
 }
 
-func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string) error {
-	err := repman.switchRepmanSetting(name)
-	if err != nil {
-		return err
-	}
-	for cname, cl := range repman.Clusters {
-		//Don't print error with no valid ACL
-		if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
-			repman.switchClusterSettings(cl, name)
+func (repman *ReplicationManager) switchServerSetting(user string, URL string, name string, value string) error {
+	if value == "" {
+
+		err := repman.switchRepmanSetting(name)
+		if err != nil {
+			return err
+		}
+		for cname, cl := range repman.Clusters {
+			//Don't print error with no valid ACL
+			if cl.IsURLPassACL(user, fmt.Sprintf(URL, cname), false) {
+				repman.switchClusterSettings(cl, name)
+			}
+		}
+	} else {
+		err := repman.setRepmanSetting(name, value)
+		if err != nil {
+			return err
+		}
+
+		for _, cl := range repman.Clusters {
+			//Don't print error with no valid ACL
+			if cl.IsURLPassACL(user, URL, false) {
+				repman.setClusterSetting(cl, name, value)
+			}
 		}
 	}
 
@@ -4671,4 +5299,807 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Credentials sent to user!"))
+}
+
+// handlerMuxRefreshStagingCluster handles the HTTP request to refresh the staging cluster.
+// @Summary Refresh Staging Cluster
+// @Description Refreshes the staging cluster specified by the cluster name in the URL.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Staging cluster refresh initiated"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/staging-refresh [post]
+func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.RefreshStaging()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+// handlerMuxReloadStagingScript handles the HTTP request to reload the staging script.
+// @Summary Reload Staging Script
+// @Description Reloads the staging script specified by the cluster name in the URL.
+// @Tags ClusterActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Staging script reloaded"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/staging-reload-script [post]
+func (repman *ReplicationManager) handlerMuxReloadStagingScript(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		err := mycluster.ReloadStagingScript()
+		if err != nil {
+			http.Error(w, "Error reloading staging script :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Staging script reloaded"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+// handlerMuxSubscribeExternalOps handles the registration of external operations for a given cluster.
+// @Summary subscribe external operations for a specific cluster
+// @Description This endpoint subscribes external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Email sent to sponsor!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error subscribing external operations"
+// @Router /api/clusters/{clusterName}/ext-role/subscribe [post]
+func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Registering external operations for %s with %s as %s", mycluster.Name, userform.Username, userform.Roles)
+
+	err = repman.RegisterExternalOps(userform, mycluster, uinfomap["User"])
+	if err != nil {
+		http.Error(w, "Error subscribing external operations :"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendSponsorExternalOpsSubscriptionMail(mycluster, userform, partner)
+	if err != nil {
+		http.Error(w, "Error sending email to sponsor :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Partner %s requested as %s successfully", userform.Username, userform.Roles)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent to sponsor!"))
+}
+
+// handlerMuxQuoteExternalOps handles the quoting of external operations for a given cluster.
+// @Summary Quote external operations for a specific cluster
+// @Description This endpoint quotes external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Email sent to sponsor!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error accepting external operations"
+// @Router /api/clusters/{clusterName}/ext-role/quote [post]
+func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Update external operations for %s with %s as %s", mycluster.Name, userform.Username, userform.Roles)
+
+	err = repman.QuoteExternalOps(userform, mycluster, uinfomap["User"])
+	if err != nil {
+		http.Error(w, "Error accepting external operations :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending external ops quotation email to user %s", userform.Username)
+
+	err = repman.SendExternalOpsSubscriptionMail(mycluster, userform)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops quotation email to %s: %v", userform.Username, err)
+		http.Error(w, "Error sending email :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External quotation email sent to %s", userform.Username)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent to partner!"))
+}
+
+// handlerMuxAcceptExternalOps handles the acceptance of external operations for a given cluster.
+// @Summary Accept external operations for a specific cluster
+// @Description This endpoint accepts external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Email sent to sponsor!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error accepting subscription"
+// @Router /api/clusters/{clusterName}/ext-role/accept [post]
+func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Processing external operations for %s with %s as %s by user %s", mycluster.Name, userform.Username, userform.Roles, uinfomap["User"])
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting up db credentials for sponsor of cluster %s", mycluster.Name)
+
+	if userform.Roles == "extdbops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting up db credentials for dba of cluster %s", mycluster.Name)
+		duser, dpass := misc.SplitPair(mycluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		if duser == "" {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No dba database credentials found. Generating dba credentials")
+			duser = "dba"
+		}
+		if dpass == "" {
+			dpass, _ = mycluster.GeneratePassword()
+		}
+
+		// Set dba credentials, return error if failed
+		err = repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte(duser+":"+dpass)))
+		if err != nil {
+			http.Error(w, "Error setting dba db credentials :"+err.Error(), 500)
+			return
+		}
+	}
+
+	err = repman.AcceptExternalOps(userform, mycluster, uinfomap["User"])
+	if err != nil {
+		http.Error(w, "Error accepting external operations :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "User %s registered as %s successfully", userform.Username, userform.Roles)
+
+	if repman.Conf.Cloud18SalesExternalOpsValidateScript != "" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Executing script after external ops validated")
+		repman.BashScriptExternalOpsValidate(mycluster, userform.Username, userform.Roles, uinfomap["User"])
+	} else {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No script to execute after external ops validated")
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending external ops activation email to user %s", userform.Username)
+
+	err = repman.SendExternalOpsActivationMail(mycluster, userform)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", userform.Username, err)
+		http.Error(w, "Error sending email :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External activation email sent to %s", userform.Username)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending external ops activation email to sponsor %s", mycluster.GetSponsorEmail())
+
+	err = repman.SendSponsorExternalOpsActivationMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send external ops activation email to %s: %v", mycluster.GetSponsorEmail(), err)
+		http.Error(w, "Error sending email :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External activation email sent to %s", mycluster.GetSponsorEmail())
+
+	if userform.Roles == "extdbops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending dba db credentials to user %s", userform.Username)
+		err = repman.SendDBACredentialsMail(mycluster, userform.Username, uinfomap["User"])
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send dba db credentials to %s: %v", userform.Username, err)
+			http.Error(w, "Error sending email :"+err.Error(), 500)
+			return
+		}
+	} else if userform.Roles == "extsysops" {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending sysadm db credentials to user %s", userform.Username)
+		err = repman.SendSysAdmCredentialsMail(mycluster, userform.Username, uinfomap["User"])
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send sysadm db credentials to %s: %v", userform.Username, err)
+			http.Error(w, "Error sending email :"+err.Error(), 500)
+			return
+		}
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "External ops credentials sent!")
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent to sponsor!"))
+}
+
+// handlerMuxRefuseExternalOps handles the rejection of external operations for a given cluster.
+// @Summary Reject external operations for a specific cluster
+// @Description This endpoint rejects external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Subscription removed!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error removing subscription"
+// @Router /api/clusters/{clusterName}/ext-role/refuse [post]
+func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	if userform.Reason == "" {
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	// If user is not the submitter, check if he has the right to reject
+	if uinfomap["User"] != userform.Username {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+	}
+
+	err = repman.CancelExternalOps(userform, mycluster)
+	if err != nil {
+		http.Error(w, "Error removing partnership :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending partnership for %s is rejected!")
+
+	err = repman.SendSponsorPendingRejectionExternalOpsMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		http.Error(w, "Error sending rejection mail to sponsor:"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendPartnerPendingRejectionExternalOpsMail(mycluster, userform)
+	if err != nil {
+		http.Error(w, "Error sending rejection mail to partner:"+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Subscription removed!"))
+}
+
+// handlerMuxRemoveExternalOps handles the removal of external operations for a given cluster.
+// @Summary Remove external operations for a specific cluster
+// @Description This endpoint removes external operations for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body CloudUserForm true "User Form"
+// @Success 200 {string} string "Sponsor partnership removed!"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error removing sponsor partnership"
+// @Router /api/clusters/{clusterName}/sales/end-external-ops [post]
+func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No valid cluster", 500)
+		return
+	}
+
+	var userform CloudUserForm
+	//decode request into UserCredentials struct
+	err := json.NewDecoder(r.Body).Decode(&userform)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Error in request")
+		return
+	}
+
+	partner, ok := repman.GetPartnerByMail(userform.Username)
+	if !ok {
+		http.Error(w, "Invalid partner", 500)
+		return
+	}
+
+	if userform.Reason == "" {
+		http.Error(w, "A reason must be provided e.g. 'Subscription expired'", 500)
+		return
+	}
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		return
+	}
+
+	// If user is not the submitter, check if he has the right to remove sponsor
+	if uinfomap["User"] != userform.Username {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", http.StatusForbidden)
+			return
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Ending partnership with partner %s for cluster %s by %s", userform.Username, mycluster.Name, uinfomap["User"])
+	} else {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Partner %s ending their partnership for cluster %s", uinfomap["User"], mycluster.Name)
+	}
+
+	err = repman.EndExternalOps(userform, mycluster)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error removing external partnership: %s", err)
+		http.Error(w, "Error removing sponsor partnership :"+err.Error(), 500)
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Changing dba credentials for cluster %s", mycluster.Name)
+	dpass, _ := mycluster.GeneratePassword()
+	err = repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte("dba:"+dpass)))
+	// Not fatal because not affecting removal of external ops
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error setting dba db credentials : %s", err)
+		// Continue with the process
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "DBA credentials was not changed, please reset manually. Continuing with the process of removing external ops")
+	}
+
+	if repman.Conf.Cloud18SalesExternalOpsStopScript != "" {
+		repman.BashScriptSalesUnsubscribe(mycluster, userform.Username, uinfomap["User"])
+	}
+
+	err = repman.SendSponsorExternalOpsEndMail(mycluster, userform.Roles, partner)
+	if err != nil {
+		http.Error(w, "Error sending partnership end mail for sponsor :"+err.Error(), 500)
+		return
+	}
+
+	err = repman.SendPartnerExternalOpsEndMail(mycluster, userform)
+	if err != nil {
+		http.Error(w, "Error sending partnership end mail for partner :"+err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sponsor partnership removed!"))
+}
+
+// handlerMuxArchivesFetch handles the HTTP request to fetch the restic snapshots for a given cluster.
+// @Summary Fetch Archives
+// @Description Fetches the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives fetch queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/fetch [post]
+func (repman *ReplicationManager) handlerMuxArchivesFetch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		go mycluster.ResticFetchRepo()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives fetch queued"))
+}
+
+// handlerMuxArchivesPurge handles the HTTP request to purge the restic repo for a given cluster.
+// @Summary Purge Restic Backup
+// @Description Purges the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives purge queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/purge [post]
+func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		go mycluster.ResticPurgeRepo()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives purge queued"))
+}
+
+// handlerMuxArchivesUnlock handles the HTTP request to unlock restic repo for a given cluster.
+// @Summary Unlock Restic Backup
+// @Description Unlocks the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Archives purge queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/unlock [post]
+func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		err := mycluster.ResticUnlockRepo()
+		if err != nil {
+			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
+			return
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives unlock queued"))
+}
+
+// handlerMuxArchivesInit handles the HTTP request to init restic repo for a given cluster.
+// @Summary Init Restic Backup
+// @Description Inits the restic backup for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param force path string false "Force init" Enums(force)
+// @Success 200 {string} string "Archives purge queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/init [post]
+// @Router /api/clusters/{clusterName}/archives/init/{force} [post]
+func (repman *ReplicationManager) handlerMuxArchivesInit(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		var force bool
+		v, ok := vars["force"]
+		if ok && v == "force" {
+			force = true
+		}
+
+		err := mycluster.ResticInitRepo(force)
+		if err != nil {
+			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
+			return
+		}
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives unlock queued"))
+}
+
+// handlerMuxGetArchivesTaskQueue handles the HTTP request to get the restic task queue for a given cluster.
+// @Summary Get Archives Task Queue
+// @Description Gets the restic task queue for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} archiver.ResticTask "Task queue fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/task-queue [get]
+func (repman *ReplicationManager) handlerMuxGetArchivesTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		taskqueue, err := mycluster.ResticGetQueue()
+		if err != nil {
+			http.Error(w, "Error getting task queue :"+err.Error(), 500)
+			return
+		}
+
+		// Marshal provided interface into JSON structure
+		taskqueueJSON, err := json.Marshal(taskqueue)
+		if err != nil {
+			http.Error(w, "Error marshalling task queue :"+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write(taskqueueJSON)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxResetArchivesTaskQueue handles the HTTP request to reset the restic task queue for a given cluster.
+// @Summary Reset Archives Task Queue
+// @Description	Empty the restic task queue for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Task queue reset"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/task-queue/reset [get]
+func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		err := mycluster.ResticResetQueue()
+		if err != nil {
+			http.Error(w, "Error resetting task queue :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue reset"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }

@@ -40,6 +40,8 @@ import (
 	"os"
 	"strconv"
 
+	basiclog "log"
+
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -104,6 +106,7 @@ func (repman *ReplicationManager) httpserver() {
 			return
 		}
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/static/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
@@ -111,6 +114,7 @@ func (repman *ReplicationManager) httpserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/images/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
@@ -134,6 +138,8 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))
+
+	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
@@ -227,6 +233,10 @@ func (repman *ReplicationManager) httpserver() {
 			negroni.HandlerFunc(repman.validateSwaggerMiddleware),
 			negroni.Wrap(http.HandlerFunc(httpSwagger.Handler(httpSwagger.URL("/api-docs/doc.json")))),
 		))
+		router.Handle("/api/email/send", negroni.New(
+			negroni.HandlerFunc(repman.validateTokenMiddleware),
+			negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
+		))
 		repman.apiClusterProtectedHandler(router)
 		repman.apiDatabaseProtectedHandler(router)
 		repman.apiProxyProtectedHandler(router)
@@ -241,12 +251,18 @@ func (repman *ReplicationManager) httpserver() {
 
 	repman.IsHttpListenerReady = true
 
-	log.Fatal(http.ListenAndServe(repman.Conf.BindAddr+":"+repman.Conf.HttpPort, handlers.CORS(
-		handlers.AllowCredentials(),
-		handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
-		handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
-		handlers.AllowedOriginValidator(repman.handleOriginValidator),
-	)(router)))
+	server := &http.Server{
+		Addr: repman.Conf.BindAddr + ":" + repman.Conf.HttpPort,
+		Handler: handlers.CORS(
+			handlers.AllowCredentials(),
+			handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"}),
+			handlers.AllowedMethods([]string{"GET", "POST", "PUT", "HEAD", "OPTIONS"}),
+			handlers.AllowedOriginValidator(repman.handleOriginValidator),
+		)(router),
+		ErrorLog: basiclog.New(repman.ApiLogAdapter, "", 0),
+	}
+
+	log.Fatal(server.ListenAndServe())
 }
 
 func (repman *ReplicationManager) handlerApp(w http.ResponseWriter, r *http.Request) {

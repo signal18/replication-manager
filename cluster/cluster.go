@@ -34,13 +34,15 @@ import (
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
+	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
-	"github.com/signal18/replication-manager/utils/mailer"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 	clog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	logsql "github.com/sirupsen/logrus"
@@ -229,6 +231,9 @@ type Cluster struct {
 	InResticBackup            bool                        `json:"inResticBackup"`
 	InRollingRestart          bool                        `json:"inRollingRestart"`
 	Mailer                    *mailer.Mailer              `json:"-"`
+	ResticRepo                *archiver.ResticRepo        `json:"-"`
+	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
+	Partner                   *config.Partner             `json:"partner"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -236,7 +241,8 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	VersionsMap *config.VersionsMap
+	VersionsMap    *config.VersionsMap
+	SessionManager *tty.SessionManager `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -421,6 +427,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
 	cluster.GetPersitentState()
+	cluster.InitMailer()
 
 	cluster.LogPushover = log.New()
 	cluster.LogPushover.SetFormatter(&log.TextFormatter{FullTimestamp: true})
@@ -450,7 +457,7 @@ func (cluster *Cluster) InitFromConf() {
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
 		subj := "Replication-Manager started"
-		go cluster.SendMail(msg, subj, true, true, true)
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
@@ -513,6 +520,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.SetToolVersions()
+	cluster.StartResticRepo()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -588,6 +596,10 @@ func (cluster *Cluster) Run() {
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			go cluster.CheckDefaultUser(false)
 
+			if cluster.HasBadConfigMeasurement() {
+				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigMap), ErrFrom: "CONFIG"})
+			}
+
 			select {
 			case sig := <-cluster.switchoverChan:
 				if sig {
@@ -647,17 +659,17 @@ func (cluster *Cluster) Run() {
 							cluster.InjectProxiesTraffic()
 						}
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
+							// Check if restic repo is available
+							cluster.ResticFetchRepo()
 							go cluster.initOrchetratorNodes()
 							cluster.MonitorQueryRules()
 							cluster.MonitorVariablesDiff()
-							go cluster.ResticFetchRepo()
 							cluster.IsValidBackup = cluster.HasValidBackup()
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
-
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -675,7 +687,7 @@ func (cluster *Cluster) Run() {
 						} else {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
-							cluster.StateMachine.PreserveState("WARN0132")
+							cluster.StateMachine.PreserveState("WARN0132", "WARN0137")
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
@@ -854,7 +866,9 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
-	//	cluster.scheduler.Stop()
+	if cluster.ResticRepo != nil {
+		cluster.ResticRepo.ShutdownWorker()
+	}
 	cluster.Save()
 	cluster.exit = true
 }

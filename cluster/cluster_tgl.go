@@ -7,12 +7,10 @@
 package cluster
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
@@ -135,13 +133,9 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 
 func (cluster *Cluster) SwitchBackupRestic() {
 	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
-
-	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
-		if err := cluster.SetResticVersion(); err != nil {
-			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
-		}
+	cluster.CheckResticInstallation()
+	if cluster.ResticRepo == nil {
+		cluster.StartResticRepo()
 	}
 }
 
@@ -399,7 +393,6 @@ func (cluster *Cluster) SwitchMonitoringSaveConfig() {
 	cluster.Conf.ConfRewrite = !cluster.Conf.ConfRewrite
 	if !cluster.Conf.ConfRewrite {
 		os.Remove(cluster.Conf.WorkingDir + "/" + cluster.Name + "/config.toml")
-
 	}
 }
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
@@ -659,4 +652,8 @@ func (cluster *Cluster) SwitchCloud18SubscribedDbops() {
 
 func (cluster *Cluster) SwitchCloud18OpenSysops() {
 	cluster.Conf.Cloud18OpenSysops = !cluster.Conf.Cloud18OpenSysops
+}
+
+func (cluster *Cluster) SwitchTopologyStaging() {
+	cluster.Conf.TopologyStaging = !cluster.Conf.TopologyStaging
 }

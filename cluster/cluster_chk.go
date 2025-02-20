@@ -20,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
+	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -144,7 +145,7 @@ func (cluster *Cluster) isMasterFailed() bool {
 	/*if cluster.master == nil {
 		return false
 	}*/
-	if cluster.master.State == stateFailed {
+	if cluster.GetMaster().State == stateFailed {
 		return true
 	}
 	return false
@@ -383,7 +384,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// do not failover if master info is unknowned:
 	// - first replication-manager start on no topology
 	// - all cluster down
-	if cluster.master == nil {
+	if cluster.GetMaster() == nil {
 		cluster.SetState("ERR00026", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
 		return false
 	}
@@ -514,9 +515,10 @@ func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 	}
 
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
-		a := Alert{
-			State:    state.ErrDesc,
+		a := alert.Alert{
+			Instance: cluster.GetInstanceAddress(),
 			Cluster:  cluster.Name,
+			State:    state.ErrDesc,
 			Resolved: resolved,
 		}
 
@@ -528,13 +530,18 @@ func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 	}
 }
 
-func (cluster *Cluster) SendAlert(alert Alert) error {
+func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	if cluster.IsAlertDisable {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cancel alert caused by alert disabled from scheduler")
 		return nil
 	}
 	if cluster.Conf.MailTo != "" {
-		go cluster.SendMailFromAlert(alert, true, true)
+		if cluster.Mailer == nil {
+			if err := cluster.InitMailer(); err != nil {
+				return err
+			}
+		}
+		go alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
 	}
 	cluster.BashScriptAlert(alert)
 
@@ -707,11 +714,14 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 		return true
 	}
 	for _, s := range cluster.Servers {
-		if s.IsFailed() {
+		// if server is failed or ignored, skip comparison
+		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
+
 		for _, sothers := range cluster.Servers {
-			if sothers.IsFailed() || s.URL == sothers.URL {
+			// if other server is failed or ignored, skip comparison
+			if sothers.IsFailed() || s.URL == sothers.URL || sothers.IsIgnored() {
 				continue
 			}
 			if s.Status.Get("WSREP_CLUSTER_STATE_UUID") != sothers.Status.Get("WSREP_CLUSTER_STATE_UUID") {

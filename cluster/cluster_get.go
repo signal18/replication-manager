@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,11 +24,12 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
-	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 )
 
 func (cluster *Cluster) GetCrcTable() *crc64.Table {
@@ -85,6 +87,34 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
 	return misc.RemoveEmptyString(dumpargs)
+}
+
+// GetMySQLClientParams returns the parameters to connect to a MySQL server
+//   - server: the server to connect to
+//   - roleType: the type of authentication to use
+//   - interactive: if true, the password will be prompted and not included in the command line
+func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
+	args := []string{"--host=" + server.Host, "--port=" + server.Port, server.GetSSLClientParam("client")}
+	var passwd string
+	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
+		args = append(args, "--user="+cluster.GetDbUser())
+		passwd = "--password=" + cluster.GetDbPass()
+	} else if roleType == config.RoleSponsor {
+		args = append(args, "--user="+cluster.GetSponsorUser())
+		passwd = "--password=" + cluster.GetSponsorPass()
+	} else if slices.Contains([]string{config.RoleDBOps, config.RoleExtDBOps, "grant"}, roleType) {
+		args = append(args, "--user="+cluster.GetDbaUser())
+		passwd = "--password=" + cluster.GetDbaPass()
+	}
+
+	if !interactive {
+		args = append(args, passwd)
+	}
+
+	// Remove empty strings
+	args = misc.RemoveEmptyString(args)
+
+	return args
 }
 
 // This will use installed mysqldump first
@@ -243,6 +273,34 @@ func (cluster *Cluster) GetClusterName() string {
 
 func (cluster *Cluster) GetServers() serverList {
 	return cluster.Servers
+}
+
+func (cluster *Cluster) GetServersByState(state string) serverList {
+	var srvs serverList
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			srvs = append(srvs, server)
+		}
+	}
+	return srvs
+}
+
+func (cluster *Cluster) GetServerByStateAndIndex(state string, idx int) (*ServerMonitor, error) {
+	counter := 0
+	for _, server := range cluster.Servers {
+		if strings.ToLower(server.State) == strings.ToLower(state) {
+			if counter == idx {
+				return server, nil
+			}
+			counter++
+		}
+	}
+
+	if idx > counter {
+		return nil, errors.New("Invalid index")
+	}
+
+	return nil, errors.New("Server Not Found")
 }
 
 func (cluster *Cluster) GetStandaloneServers() serverList {
@@ -439,6 +497,15 @@ func (cluster *Cluster) GetDbaUser() string {
 func (cluster *Cluster) GetDbaPass() string {
 	_, pass := misc.SplitPair(cluster.Conf.Secrets["cloud18-dba-user-credentials"].Value)
 	return pass
+}
+
+func (cluster *Cluster) GetSponsorEmail() string {
+	for user, u := range cluster.APIUsers {
+		if u.Roles[config.RoleSponsor] {
+			return user
+		}
+	}
+	return ""
 }
 
 func (cluster *Cluster) GetSponsorUser() string {
@@ -792,7 +859,7 @@ func (cluster *Cluster) GetTopologyFromConf() string {
 	}
 
 	if cluster.Conf.TopologyTarget == "" || cluster.Conf.TopologyTarget == config.TopoUnknown {
-		cluster.Conf.TopologyTarget = cluster.Conf.Topology
+		cluster.SetTopologyTarget(cluster.Conf.Topology)
 	}
 
 	return cluster.Conf.Topology
@@ -986,8 +1053,20 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetBackups() []v3.Backup {
-	return cluster.Backups
+func (cluster *Cluster) GetBackups() []archiver.Backup {
+	if cluster.ResticRepo == nil {
+		return make([]archiver.Backup, 0)
+	}
+
+	return cluster.ResticRepo.Backups
+}
+
+func (cluster *Cluster) GetBackupStat() archiver.BackupStat {
+	if cluster.ResticRepo == nil {
+		return archiver.BackupStat{}
+	}
+
+	return cluster.ResticRepo.BackupStat
 }
 
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
@@ -1141,24 +1220,32 @@ func (cluster *Cluster) GetServicePlans() []config.ServicePlan {
 
 func (cluster *Cluster) GetClientCertificates() (map[string]string, error) {
 	certs := make(map[string]string)
-	clientCert, err := misc.ReadFile(cluster.WorkingDir + "/client-cert.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
+	if cluster.HaveDBTLSCert {
+		cliCertPath := cluster.WorkingDir + "/client-cert.pem"
+		clientCert, err := misc.ReadFile(cliCertPath)
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], cliCertPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+		cliKeyPath := cluster.WorkingDir + "/client-key.pem"
+		clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], cliKeyPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+		caCertPath := cluster.WorkingDir + "/ca-cert.pem"
+		caCert, err := misc.ReadFile(caCertPath)
+		if err != nil {
+			cluster.SetState("WARN0137", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0137"], caCertPath, err), ErrFrom: "TOPO"})
+			return certs, fmt.Errorf("Can't load certificate: %w", err)
+		}
+
+		certs["clientCert"] = clientCert
+		certs["clientKey"] = clientkey
+		certs["caCert"] = caCert
 	}
-	clientkey, err := misc.ReadFile(cluster.WorkingDir + "/client-key.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
-	}
-	caCert, err := misc.ReadFile(cluster.WorkingDir + "/ca-cert.pem")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Can't load certificate: %s", err)
-		return certs, fmt.Errorf("Can't load certificate: %w", err)
-	}
-	certs["clientCert"] = clientCert
-	certs["clientKey"] = clientkey
-	certs["caCert"] = caCert
+
+	cluster.GetStateMachine().DeleteState("WARN0137")
 	return certs, nil
 }
 
@@ -1353,4 +1440,39 @@ func (cluster *Cluster) GetVaultToken() {
 
 func (cluster *Cluster) GetResticLocalDir() string {
 	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+}
+
+func (cluster *Cluster) GetExecEnv() []string {
+	adminuser := "admin"
+	adminpassword := "repman"
+	if user, ok := cluster.APIUsers[adminuser]; ok {
+		adminpassword = user.Password
+	}
+	return append(
+		os.Environ(),
+		`REPLICATION_MANAGER_URL=https://`+cluster.Conf.MonitorAddress+`:`+cluster.Conf.APIPort,
+		`REPLICATION_MANAGER_USER=`+adminuser,
+		`REPLICATION_MANAGER_PASSWORD=`+adminpassword,
+		`REPLICATION_MANAGER_CLUSTER_NAME=`+cluster.Name,
+	)
+}
+
+func (cluster *Cluster) GetExternalCost(role string) float64 {
+	if role == config.RoleExtDBOps {
+		return cluster.Conf.Cloud18MonthlyExternalDbopsCost
+	} else if role == config.RoleExtSysOps {
+		return cluster.Conf.Cloud18MonthlyExternalSysopsCost
+	}
+	return 0
+}
+
+func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
+	var terminalMgr tty.TerminalManager
+	if cluster.Conf.TerminalSessionManager == "tmux" {
+		terminalMgr = &tty.TmuxManager{}
+	} else if cluster.Conf.TerminalSessionManager == "screen" {
+		terminalMgr = &tty.ScreenManager{}
+	}
+
+	return terminalMgr
 }

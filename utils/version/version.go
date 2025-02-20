@@ -290,10 +290,29 @@ func (mv *Version) IsMySQL57() bool {
 	return mv.Flavor == "MySQL" && mv.Major == 5 && mv.Minor > 6
 }
 
+// IsMySQLGreater57 checks if the version is MySQL or Percona 5.7 or greater
 func (mv *Version) IsMySQLOrPerconaGreater57() bool {
 	if mv == nil {
 		return false
 	}
 
 	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 5 && mv.Minor > 6) || mv.Major > 5)
+}
+
+// IsMySQLOrPerconaGreater84 checks if the version is MySQL or Percona 8.4 or greater
+func (mv *Version) IsMySQLOrPerconaGreater84() bool {
+	if mv == nil {
+		return false
+	}
+
+	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && ((mv.Major == 8 && mv.Minor >= 4) || mv.Major > 8)
+}
+
+// IsMariaDBGreater113 checks if the version is MariaDB 11.3 or greater which introduce breaking changes in SSL
+func (mv *Version) IsMariaDBGreater113() bool {
+	if mv == nil {
+		return false
+	}
+
+	return mv.Flavor == "MariaDB" && ((mv.Major == 11 && mv.Minor >= 3) || mv.Major > 11)
 }

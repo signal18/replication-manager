@@ -1,15 +1,21 @@
 package server
 
 import (
+	"crypto/md5"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
+	"regexp"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
+	apilog "github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -99,11 +105,25 @@ func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, l
 
 func (repman *ReplicationManager) LogPanicToFile() {
 	if r := recover(); r != nil {
-		repman.Logrus.WithFields(log.Fields{
+		fields := log.Fields{
 			"cluster":    "none",
 			"panic":      r,
 			"stacktrace": string(debug.Stack()),
-		}).Error("Application terminated unexpectedly")
+		}
+
+		repman.Logrus.WithFields(fields).Print("Application terminated unexpectedly")
+
+		// Convert to json
+		path := filepath.Join(repman.Conf.WorkingDir, "panic.log")
+		content, err := json.MarshalIndent(fields, "", "\t")
+		if err != nil {
+			repman.Logrus.Print("Unable to decode stacktrace")
+		}
+
+		if err = os.WriteFile(path, content, 0644); err != nil {
+			repman.Logrus.Print("Unable to write stacktrace to panic.log")
+		}
+
 	}
 }
 
@@ -161,4 +181,132 @@ func (repman *ReplicationManager) CheckAndRotateLog(logFile *lumberjack.Logger, 
 	} else {
 		fmt.Println("Log file is empty, no rotation performed.")
 	}
+}
+
+// ApiLogAdapter is a custom log adapter for http server using logrus
+// If suppress error enabled, it will suppress the log message if the hash is already written to the log more than MaxErrorWrite
+// The hash will be generated from the formatted message
+// The hash will be stored in the SuppressHashList
+// The hash will be reset after the ResetDuration
+type ApiLogAdapter struct {
+	logger           *apilog.Logger
+	SuppressError    bool                     // Suppress error after MaxErrorWrite
+	SuppressHashList map[string]*LogHashEntry // Suppress hash list
+	MaxErrorWrite    int                      // Maximum number of error write to log with same hash
+	ResetDuration    time.Duration            // Reset duration for hash list
+	DisregardPort    bool                     // Disregard port number, default is true
+}
+
+type LogHashEntry struct {
+	Hash      string
+	Printed   int
+	Timestamp time.Time
+}
+
+// NewApiLogAdapter creates a new ApiLogAdapter. Default setting is not to suppress error, with MaxErrorWrite of 5, and ResetDuration of 1 minute based on configuration
+// Default values:
+// SuppressError: false
+// MaxErrorWrite: 5
+// ResetDuration: 1 minutes
+// DisregardPort: true
+func NewApiLogAdapter(supress bool, limit, duration int, groupby bool) *ApiLogAdapter {
+	return &ApiLogAdapter{
+		logger:           apilog.New(),
+		SuppressError:    supress,
+		MaxErrorWrite:    limit,
+		SuppressHashList: make(map[string]*LogHashEntry),
+		ResetDuration:    time.Duration(duration) * time.Minute,
+		DisregardPort:    groupby,
+	}
+}
+
+func (la *ApiLogAdapter) SetOutput(w *os.File) {
+	la.logger.SetOutput(w)
+}
+
+func (la *ApiLogAdapter) SetFormatter(f apilog.Formatter) {
+	la.logger.SetFormatter(f)
+}
+
+func (la *ApiLogAdapter) SetLevel(l apilog.Level) {
+	la.logger.SetLevel(l)
+}
+
+func (la *ApiLogAdapter) SetSuppressError(b bool) {
+	la.SuppressError = b
+}
+
+func (la *ApiLogAdapter) SetMaxErrorWrite(n int) {
+	la.MaxErrorWrite = n
+}
+
+func (la *ApiLogAdapter) SetResetDuration(d time.Duration) {
+	la.ResetDuration = d
+}
+
+func (la *ApiLogAdapter) SetDisregardPort(b bool) {
+	la.DisregardPort = b
+}
+
+// stripPort checks if the message contains "error" and removes ports if found
+func stripPort(message string) string {
+
+	// Step 2: Remove ports from IP addresses and domain names
+	// Regex to match IPs or domains with ports
+	pattern := `\b((?:\d{1,3}\.){3}\d{1,3}|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}):\d{1,5}\b`
+	re := regexp.MustCompile(pattern)
+
+	// Replace matched IPs/domains with ports removed
+	processedMessage := re.ReplaceAllString(message, "$1")
+
+	return processedMessage
+}
+
+// Write writes the log message to logger without any modification
+// If suppress error enabled, it will suppress the log message if the hash is already written to the log more than MaxErrorWrite
+// The hash will be generated from the formatted message
+// The hash will be stored in the SuppressHashList
+// The hash will be reset after the ResetDuration
+func (la *ApiLogAdapter) Write(p []byte) (n int, err error) {
+	message := string(p)
+
+	// Step 1: Check if the message contains "error" (case-insensitive)
+	if strings.Contains(strings.ToLower(message), "error") && la.SuppressError {
+		if la.DisregardPort {
+			message = stripPort(message)
+		}
+
+		md5hash := md5.New()
+		md5hash.Write([]byte(message))
+		md5sum := fmt.Sprintf("%x", md5hash.Sum(nil))
+
+		entry, ok := la.SuppressHashList[md5sum]
+		if ok {
+			n := entry.Printed
+
+			// Reset the counter if the duration is exceeded
+			if time.Since(entry.Timestamp) > la.ResetDuration {
+				entry.Printed = 0
+				entry.Timestamp = time.Now()
+			}
+
+			if n >= la.MaxErrorWrite {
+				return 0, nil
+			}
+		} else {
+			entry = &LogHashEntry{
+				Hash:      md5sum,
+				Printed:   0,
+				Timestamp: time.Now(),
+			}
+
+			la.SuppressHashList[md5sum] = entry
+		}
+
+		entry.Printed++
+	}
+
+	la.logger.Out.Write(p)
+
+	return len(p), nil
 }

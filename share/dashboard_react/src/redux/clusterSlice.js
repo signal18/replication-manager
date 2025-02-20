@@ -85,6 +85,16 @@ export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', a
   }
 })
 
+export const getBackupStats = createAsyncThunk('cluster/getBackupStats', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getBackupStats(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getJobs = createAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -187,6 +197,21 @@ export const addServer = createAsyncThunk(
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while adding a new server', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const dropServer = createAsyncThunk(
+  'cluster/dropServer',
+  async ({ clusterName, host, port }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropServer(clusterName, host, port, baseURL)
+      showSuccessBanner('New server dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a new server', error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -1064,6 +1089,132 @@ export const endSubscription = createAsyncThunk(
   }
 )
 
+export const refreshStaging = createAsyncThunk(
+  'cluster/refreshStaging',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.refreshStaging(clusterName, baseURL)
+      showSuccessBanner(`Refresh staging initiated successfully!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Failed to initiate refresh staging!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const reloadStagingScript = createAsyncThunk(
+  'cluster/reloadStagingScript',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.reloadStagingScript(clusterName, baseURL)
+      showSuccessBanner(`Staging script reloaded successfully!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Failed to reload staging script!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const subscribeExternalRole = createAsyncThunk(
+  'cluster/subscribeExternalRole',
+  async ({ clusterName, username, roles }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.subscribeExternalRole(clusterName, username, roles, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is requested successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`request external role '${roles}' for '${username}' failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const quoteExternalRole = createAsyncThunk(
+  'cluster/quoteExternalRole',
+  async ({ clusterName, username, roles, cost }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.quoteExternalRole(clusterName, username, roles, cost, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is quoteed successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed sending quotation to external role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const acceptExternalRole = createAsyncThunk(
+  'cluster/acceptExternalRole',
+  async ({ clusterName, username, roles }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.acceptExternalRole(clusterName, username, roles, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is accepted successful!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to accept external role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const refuseExternalRole = createAsyncThunk(
+  'cluster/refuseExternalRole',
+  async ({ clusterName, username, roles, reason }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.refuseExternalRole(clusterName, username, roles, reason, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' for '${username}' is refused !`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to refuse role '${roles}' for '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+
+export const endExternalRole = createAsyncThunk(
+  'cluster/endExternalRole',
+  async ({ clusterName, username, roles, reason }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.endExternalRole(clusterName, username, roles, reason, baseURL)
+      if (status === 200) { 
+        showSuccessBanner(`Role '${roles}' is deactivated from '${username}'!`, status, thunkAPI)
+        return { data, status }
+      } else {
+        throw new Error(data)
+      }
+    } catch (error) {
+      showErrorBanner(`Failed to deactivate external role '${roles}' from '${username}'!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
@@ -1074,7 +1225,10 @@ const initialState = {
   clusterProxies: null,
   clusterCertificates: null,
   clusterStates: null,
-  backupSnapshots: null,
+  backups : {
+    snapshots: null,
+    stats: null
+  },
   topProcess: null,
   jobs: null,
   shardSchema: null,
@@ -1136,6 +1290,7 @@ export const clusterSlice = createSlice({
         getDatabaseService.fulfilled,
         getTopProcess.fulfilled,
         getBackupSnapshot.fulfilled,
+        getBackupStats.fulfilled,
         getShardSchema.fulfilled,
         getQueryRules.fulfilled,
         getJobs.fulfilled
@@ -1157,7 +1312,9 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getTopProcess')) {
           state.topProcess = action.payload.data
         } else if (action.type.includes('getBackupSnapshot')) {
-          state.backupSnapshots = action.payload.data
+          state.backups.snapshots = action.payload.data
+        } else if (action.type.includes('getBackupStats')) {
+          state.backups.stats = action.payload.data
         } else if (action.type.includes('getShardSchema')) {
           state.shardSchema = action.payload.data
         } else if (action.type.includes('getQueryRules')) {
@@ -1198,6 +1355,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.pending,
         resetSLA.pending,
         addServer.pending,
+        dropServer.pending,
         toggleTraffic.pending,
         provisionCluster.pending,
         unProvisionCluster.pending,
@@ -1245,7 +1403,8 @@ export const clusterSlice = createSlice({
         provisionProxy.pending,
         unprovisionProxy.pending,
         startProxy.pending,
-        stopProxy.pending
+        stopProxy.pending,
+        refreshStaging.pending,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1264,6 +1423,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.fulfilled,
         resetSLA.fulfilled,
         addServer.fulfilled,
+        dropServer.fulfilled,
         toggleTraffic.fulfilled,
         provisionCluster.fulfilled,
         unProvisionCluster.fulfilled,
@@ -1311,7 +1471,8 @@ export const clusterSlice = createSlice({
         provisionProxy.fulfilled,
         unprovisionProxy.fulfilled,
         startProxy.fulfilled,
-        stopProxy.fulfilled
+        stopProxy.fulfilled,
+        refreshStaging.fulfilled,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1330,6 +1491,7 @@ export const clusterSlice = createSlice({
         resetFailOverCounter.rejected,
         resetSLA.rejected,
         addServer.rejected,
+        dropServer.rejected,
         toggleTraffic.rejected,
         provisionCluster.rejected,
         unProvisionCluster.rejected,
@@ -1377,7 +1539,8 @@ export const clusterSlice = createSlice({
         provisionProxy.rejected,
         unprovisionProxy.rejected,
         startProxy.rejected,
-        stopProxy.rejected
+        stopProxy.rejected,
+        refreshStaging.rejected,
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

@@ -198,9 +198,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			if cluster.Conf.MailTo != "" {
 				msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
-				alert := Alert{}
-				alert.Cluster = cluster.Name
-				go cluster.SendMail(msg, subj, true, true, true)
+				go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 			}
 
 		}
@@ -311,9 +309,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			if cluster.Conf.MailTo != "" {
 				msg := "A password rotation has been made\nCheck the new password on " + cluster.Conf.VaultServerAddr + " website on path " + cluster.Conf.VaultMount + cluster.Conf.User + " and " + cluster.Conf.VaultMount + cluster.Conf.RplUser + "."
 				subj := "Password Rotation Replication-Manager"
-				alert := Alert{}
-				alert.Cluster = cluster.Name
-				go cluster.SendMail(msg, subj, true, true, true)
+				go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 			}
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Password rotation is done.")

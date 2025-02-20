@@ -48,10 +48,20 @@ monitoring-save-config=true
 #mail-from = "support@signal18.io"
 #mail-to = "stephane@signal18.io"
 #mail-smtp-addr = "in-v3.mailjet.com:587"
-mail-smtp-user = "53b0c2c80298023abf083a106261c789"
-mail-smtp-password = "hash_497b7124700d1a7ffaacbc88d672f92714a4bfda2f0ae3747a8647c8bf75db2809513f4f54463d081ab2813ac8c45e8d"
-alert-pushover-app-token="hash_046d7d15e81ebbfe4e6e55ac1a3bb3312612c2a52a32cf3fde26b49260b32d043f113904e8e124f9e01ea12e8fd0"
-alert-pushover-user-token="hash_d86ad53bf75115156e75cf9fb86f25659d62a2407972635e4a04ea630bdaf9366f7c9905433f343e2f8809ea5cb2"
+#mail-smtp-addr = "mailv6.signal18.io:465"
+#mail-smtp-user = "53b0c2c80298023abf083a106261c789"
+#mail-smtp-password = "hash_497b7124700d1a7ffaacbc88d672f92714a4bfda2f0ae3747a8647c8bf75db2809513f4f54463d081ab2813ac8c45e8d"
+
+
+mail-from = "stephane@signal18.io"
+mail-to = "stephane@signal18.io"
+mail-smtp-tls-skip-verify = true
+mail-smtp-user = "stephane@signal18.io"
+mail-smtp-password = "hash_dc356f2b47e03f5788bc76aa907d13e9b8fa499703f8eeab3d8088527a10199b"
+mail-smtp-addr = "[2a00:1450:400c:c00::6c]:587"
+
+#alert-pushover-app-token="hash_046d7d15e81ebbfe4e6e55ac1a3bb3312612c2a52a32cf3fde26b49260b32d043f113904e8e124f9e01ea12e8fd0"
+#alert-pushover-user-token="hash_d86ad53bf75115156e75cf9fb86f25659d62a2407972635e4a04ea630bdaf9366f7c9905433f343e2f8809ea5cb2"
 
 
 #arbitration-external= true

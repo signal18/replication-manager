@@ -29,7 +29,7 @@ func (cluster *Cluster) OnPremiseProvisionBootsrapProxy(server DatabaseProxy, cl
 	envs += " REPLICATION_MANAGER_HOST_NAME=\"" + server.GetHost() + "\""
 	envs += " REPLICATION_MANAGER_HOST_PORT=\"" + server.GetPort() + "\""
 	envs += " REPLICATION_MANAGER_CLUSTER_NAME=\"" + cluster.Name + "\""
-        cmd := envs + "&& "
+	cmd := envs + "&& "
 	cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/debian/" + server.GetType() + "/bootstrap | sh"
 	if cluster.Configurator.HaveDBTag("rpm") {
 		cmd += "wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/onpremise/repository/redhat/" + server.GetType() + "/bootstrap | sh"
@@ -51,13 +51,13 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise Provisioning cancel during connect")
 	}
-	if ! cluster.Conf.OnPremiseSSH {
+	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
 
 	user, password := misc.SplitPair(cluster.Conf.GetDecryptedValue("onpremise-ssh-credential"))
 
-	key := cluster.OnPremiseGetSSHKey(user)
+	key := cluster.OnPremiseGetSSHKey()
 	if password != "" {
 		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {

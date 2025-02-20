@@ -2,6 +2,7 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import {
+  dropServer,
   flushLogs,
   logicalBackup,
   optimizeServer,
@@ -29,6 +30,7 @@ import {
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 function ServerMenu({
   clusterName,
@@ -49,6 +51,7 @@ function ServerMenu({
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [serverName, setServerName] = useState('')
+  const navigate = useNavigate()
 
   useEffect(() => {
     if (row?.id) {
@@ -89,6 +92,26 @@ function ServerMenu({
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
+          ...(user?.grants['db-terminal'] ? [
+            { 
+              name: 'Web Terminal', 
+              subMenu: [
+                  { 
+                    name: 'MySQL Terminal', 
+                    onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mysql`) 
+                  },
+                  {
+                    name: 'MyTop Terminal',
+                    onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mytop`)
+                  },
+                  ...(user?.grants['global-terminal'] ? [
+                    { 
+                      name: 'Shell Terminal', 
+                      onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}`) 
+                    }
+                    ] : []),
+              ]}
+            ] : []),
           ...(user?.grants['cluster-switchover'] && row.isSlave
             ? [
                 {
@@ -209,7 +232,15 @@ function ServerMenu({
                       }
                     }
                   ]
-                : [])
+                : []),
+                {
+                  name: 'Run Remote Jobs',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
+                    setConfirmHandler(() => () => dispatch(runRemoteJobs({ clusterName, serverId: row.id })))
+                  }
+                }
             ]
           },
           {
@@ -261,16 +292,16 @@ function ServerMenu({
                         setConfirmHandler(() => () => dispatch(unprovisionDatabase({ clusterName, serverId: row.id })))
                       }
                     },
-                    {
-                      name: 'Run Remote Jobs',
-                      onClick: () => {
-                        openConfirmModal()
-                        setConfirmTitle(`Confirm running remote jobs for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(runRemoteJobs({ clusterName, serverId: row.id })))
-                      }
-                    }
                   ]
-                : [])
+                : []),
+                {
+                  name: 'Remove Monitor',
+                  onClick: () => {
+                    openConfirmModal()
+                    setConfirmTitle(`Confirm removing monitor for ${serverName}?`)
+                    setConfirmHandler(() => () => dispatch(dropServer({ clusterName, host: row.host, port: row.port })))
+                  }
+                },
             ]
           },
           {

@@ -973,7 +973,12 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.Read
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(binlogCmd.String(), cluster.GetRplPass(), "XXXX"))
 
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;"), iodumpreader)
+	cmdstring := "RESET MASTER;SET sql_log_bin=0;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;"
+	}
+
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), iodumpreader)
 
 	/*clientCmd.Stdin, err = dumpCmd.StdoutPipe()
 	if err != nil {

@@ -22,7 +22,7 @@ type APIUser struct {
 	Password   string          `json:"-"`
 	GitToken   string          `json:"-"`
 	GitUser    string          `json:"-"`
-	IsExternal bool            `json:"-"`
+	IsExternal bool            `json:"isExternal"`
 	Roles      map[string]bool `json:"roles"`
 	Grants     map[string]bool `json:"grants"`
 }
@@ -76,14 +76,14 @@ func (u *APIUser) Granted(grant string) error {
 
 func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL string, AuthMethod string) bool {
 	if user, ok := cluster.APIUsers[strUser]; ok {
-		//		fmt.Printf("password :" + user.Password)
 		if user.Password == cluster.Conf.GetDecryptedPassword("api-credentials", strPassword) || AuthMethod == "oidc" {
+			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL URL check for user %s ", strUser)
 			return cluster.IsURLPassACL(strUser, URL, true)
 		}
 		return false
 	}
-	//	for key, value := range cluster.Grants {
 
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL failed, user not found %s ", strUser)
 	return false
 }
 
@@ -105,9 +105,9 @@ func (cluster *Cluster) SaveUserAcls(user string) (string, string) {
 
 func (cluster *Cluster) SaveUserRoles(user string) string {
 	var aEnabledRoles []string
-	for grant, value := range cluster.APIUsers[user].Roles {
+	for role, value := range cluster.APIUsers[user].Roles {
 		if value {
-			aEnabledRoles = append(aEnabledRoles, grant)
+			aEnabledRoles = append(aEnabledRoles, role)
 		}
 	}
 	return strings.Join(aEnabledRoles, " ")
@@ -596,6 +596,21 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
+	// Terminal ACL
+	if strings.HasPrefix(URL, "/api/terminal") {
+		if URL == "/api/terminal/connect" || URL == "/api/terminal/list" {
+			return cluster.APIUsers[strUser].Grants[config.GrantGlobalTerminal]
+		}
+
+		if strings.Contains(URL, "clusters/"+cluster.Name+"/servers") {
+			return cluster.APIUsers[strUser].Grants[config.GrantDBTerminal]
+		}
+
+		if strings.Contains(URL, "clusters/"+cluster.Name+"/proxies") {
+			return cluster.APIUsers[strUser].Grants[config.GrantProxyTerminal]
+		}
+	}
+
 	if strings.Contains(URL, "/api/clusters/settings/actions/switch") {
 		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
 	}
@@ -638,6 +653,23 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowBackups] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
+			return true
+		}
+
+		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/archives") {
+			return true
+		}
+		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/archives/stats") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/archives") {
+			return true
+		}
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowRoutes] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/queryrules") {
 			return true
@@ -675,6 +707,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/switchover") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterAlert] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/send-email") {
 			return true
 		}
 	}
@@ -797,6 +834,17 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
+
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterStaging] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-refresh") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-reload-script") {
+			return true
+		}
+	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantProvClusterUnprovision] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/unprovision") {
 			return true
@@ -809,6 +857,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterDelete] {
 		if strings.Contains(URL, "/api/clusters/actions/delete") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/actions/rename") {
 			return true
 		}
 	}
@@ -851,14 +902,32 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
+	if cluster.APIUsers[strUser].Grants[config.GrantExternalRole] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/subscribe") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/accept") {
+			return true
+		}
+	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesValidate] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/accept-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/quote") {
 			return true
 		}
 	}
 
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesRefuse] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/refuse-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/refuse") {
 			return true
 		}
 
@@ -869,6 +938,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 
 	if cluster.APIUsers[strUser].Grants[config.GrantSalesUnsubscribe] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/end-subscription") {
+			return true
+		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/end") {
 			return true
 		}
 	}

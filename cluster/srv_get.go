@@ -271,6 +271,10 @@ func (server *ServerMonitor) GetTableFromDict(URI string) (*v3.Table, error) {
 }
 
 func (server *ServerMonitor) GetMetaDataLocks() []dbhelper.MetaDataLock {
+	if server.MetaDataLocks == nil {
+		return make([]dbhelper.MetaDataLock, 0)
+	}
+
 	return server.MetaDataLocks
 }
 
@@ -280,6 +284,9 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 	var err error
 	qrt, logs, err = dbhelper.GetQueryResponseTime(server.Conn, server.DBVersion)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Can't fetch Query Response Time ")
+	if qrt == nil {
+		qrt = make([]dbhelper.ResponseTime, 0)
+	}
 	return qrt
 }
 
@@ -432,7 +439,7 @@ func (server *ServerMonitor) GetPFSQueries() {
 }
 
 func (server *ServerMonitor) GetPFSStatements() []dbhelper.PFSQuery {
-	var rows []dbhelper.PFSQuery
+	rows := make([]dbhelper.PFSQuery, 0)
 	for _, v := range server.PFSQueries.ToNewMap() {
 		rows = append(rows, *v)
 	}
@@ -494,10 +501,10 @@ func (server *ServerMonitor) GetPFSStatementsSlowLog() []dbhelper.PFSQuery {
 }
 
 func (server *ServerMonitor) GetSlowLog() []dbhelper.PFSQuery {
-	var rows []dbhelper.PFSQuery
+	rows := make([]dbhelper.PFSQuery, 0)
+
 	for _, s := range server.SlowLog.Buffer {
 		if s.Query != "" {
-
 			var nval dbhelper.PFSQuery
 			nval.Digest_text = dbhelper.GetQueryDigest(s.Query)
 			nval.Digest = s.Digest
@@ -799,6 +806,21 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
+
+	if server.HasSSL() && cluster.Configurator.HaveDBTag("ssl") {
+		cacertfile := cluster.Conf.HostsTLSCA
+		clicertfile := cluster.Conf.HostsTlsCliCert
+		clikeyfile := cluster.Conf.HostsTlsCliKey
+
+		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
+			cacertfile = cluster.WorkingDir + "/ca-cert.pem"
+			clicertfile = cluster.WorkingDir + "/client-cert.pem"
+			clikeyfile = cluster.WorkingDir + "/client-key.pem"
+		}
+
+		return "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+	}
+
 	// Only add for client dist 11.3 onwards, and DB pre 11.3
 	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
 		switch tool {

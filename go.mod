@@ -25,6 +25,7 @@ require (
 	github.com/bluele/logrus_slack v0.0.0-20170812021752-74aa3c9b7cc3
 	github.com/bradfitz/gomemcache v0.0.0-20170208213004-1952afaa557d
 	github.com/codegangsta/negroni v0.3.0
+	github.com/creack/pty v1.1.24
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
 	github.com/dgryski/carbonzipper v0.0.0-20170426152955-d1a3cec4169b
 	github.com/dgryski/go-expirecache v0.0.0-20170314133854-743ef98b2adb
@@ -41,6 +42,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
+	github.com/gorilla/websocket v1.5.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3
 	github.com/gwenn/yacr v0.0.0-20180209192453-77093bdc7e72
@@ -52,7 +54,7 @@ require (
 	github.com/iu0v1/gelada v1.2.2
 	github.com/jacobsa/fuse v0.0.0-20211125163655-ffd6c474e806
 	github.com/jmoiron/sqlx v1.3.4
-	github.com/jordan-wright/email v0.0.0-20160301001728-a62870b0c368
+	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
 	github.com/juju/errors v0.0.0-20220203013757-bd733f3c86b9
 	github.com/kisielk/og-rek v0.0.0-20170425174049-dd41cde712de
 	github.com/klauspost/compress v1.15.9
@@ -141,7 +143,6 @@ require (
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
-	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/graph-gophers/graphql-go v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
@@ -283,7 +284,7 @@ require (
 	github.com/juju/testing v0.0.0-20220203020004-a0ff61f03494 // indirect
 	github.com/klauspost/pgzip v1.2.6
 	github.com/lestrrat/go-envload v0.0.0-20180220120943-6ed08b54a570 // indirect
-	github.com/mattn/go-runewidth v0.0.15 // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/pelletier/go-toml v1.9.5
 	github.com/pkg/xattr v0.4.6

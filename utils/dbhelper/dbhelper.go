@@ -180,17 +180,20 @@ type LogSlow struct {
 }
 
 type SlaveHosts struct {
-	Server_id uint64 `json:"serverId"`
-	Host      string `json:"host"`
-	Port      uint   `json:"port"`
-	Master_id uint64 `json:"masterId"`
+	Server_id    uint64 `json:"serverId"`
+	Host         string `json:"host"`
+	Port         uint   `json:"port"`
+	Master_id    uint64 `json:"masterId"`
+	Source_id    uint64 `json:"sourceId"`
+	Replica_UUID string `json:"replicaUUID"`
 }
 
 type MasterStatus struct {
-	File             string `json:"file"`
-	Position         uint   `json:"position"`
-	Binlog_Do_DB     string `json:"binlogDoDB"`
-	Binlog_Ignore_DB string `json:"binlogIgnoreDB"`
+	File              string `json:"file"`
+	Position          uint   `json:"position"`
+	Binlog_Do_DB      string `json:"binlogDoDB"`
+	Binlog_Ignore_DB  string `json:"binlogIgnoreDB"`
+	Executed_Gtid_Set string `json:"executedGtidSet"`
 }
 
 type SlaveStatus struct {
@@ -219,7 +222,7 @@ type SlaveStatus struct {
 	RetrievedGtidSet         sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 	SlaveSQLRunningState     sql.NullString `db:"Slave_SQL_Running_State" json:"slaveSQLRunningState"`
 	PGExternalID             sql.NullString `db:"external_id" json:"postgresExternalId"`
-	DoDomainIds              sql.NullString `db:"Replicate_Do_Domain_Ids" json:"eeplicateDoDomainIds"`
+	DoDomainIds              sql.NullString `db:"Replicate_Do_Domain_Ids" json:"replicateDoDomainIds"`
 	IgnoreDomainIds          sql.NullString `db:"Replicate_Ignore_Domain_Ids" json:"replicateIgnoreDomainIds"`
 	IgnoreServerIds          sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
 	ReplicateDoDB            sql.NullString `db:"Replicate_Do_DB" json:"replicateDoDb"`
@@ -228,6 +231,109 @@ type SlaveStatus struct {
 	ReplicateIgnoreTable     sql.NullString `db:"Replicate_Ignore_Table" json:"replicateIgnoreTable"`
 	ReplicateWildDoTable     sql.NullString `db:"Replicate_Do_Wild_Table" json:"replicateWildDoTable"`
 	ReplicateWildIgnoreTable sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
+	SQLDelay                 sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
+	SQLRemainingDelay        sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
+}
+
+func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
+	s.ConnectionName = rs.SourceHost
+	s.ChannelName = sql.NullString{String: rs.ChannelName.String, Valid: rs.ChannelName.Valid}
+	s.MasterHost = rs.SourceHost
+	s.MasterUser = rs.SourceUser
+	s.MasterPort = rs.SourcePort
+	s.MasterLogFile = rs.SourceLogFile
+	s.ReadMasterLogPos = rs.ReadSourceLogPos
+	s.RelayMasterLogFile = rs.RelayLogFile
+	s.SlaveIORunning = rs.ReplicaIORunning
+	s.SlaveSQLRunning = rs.ReplicaSQLRunning
+	s.ExecMasterLogPos = rs.ExecSourceLogPos
+	s.SecondsBehindMaster = sql.NullInt64{Int64: rs.SecondsBehindSource.Int64, Valid: rs.SecondsBehindSource.Valid}
+	s.LastIOErrno = rs.LastIOErrno
+	s.LastIOError = rs.LastIOError
+	s.LastSQLErrno = rs.LastSQLErrno
+	s.LastSQLError = rs.LastSQLError
+	s.MasterServerID = rs.SourceServerID
+	s.UsingGtid = rs.ExecutedGtidSet
+	s.GtidIOPos = rs.RetrievedGtidSet
+	s.GtidSlavePos = rs.RetrievedGtidSet
+	s.ExecutedGtidSet = rs.ExecutedGtidSet
+	s.RetrievedGtidSet = rs.RetrievedGtidSet
+	s.SlaveSQLRunningState = rs.ReplicaSQLRunningState
+	s.PGExternalID = rs.SourceUUID
+	s.DoDomainIds = rs.ReplicateDoDB
+	s.IgnoreDomainIds = rs.ReplicateIgnoreDB
+	s.IgnoreServerIds = rs.ReplicateIgnoreServerIds
+	s.ReplicateDoDB = rs.ReplicateDoDB
+	s.ReplicateIgnoreDB = rs.ReplicateIgnoreDB
+	s.ReplicateDoTable = rs.ReplicateDoTable
+	s.ReplicateIgnoreTable = rs.ReplicateIgnoreTable
+	s.ReplicateWildDoTable = rs.ReplicateWildDoTable
+	s.ReplicateWildIgnoreTable = rs.ReplicateWildIgnoreTable
+	s.SQLDelay = rs.SQLDelay
+	s.SQLRemainingDelay = rs.SQLRemainingDelay
+}
+
+type ReplicaStatus struct {
+	ReplicaIOState                 sql.NullString `db:"Replica_IO_State" json:"replicaIoState"`
+	SourceHost                     sql.NullString `db:"Source_Host" json:"sourceHost"`
+	SourceUser                     sql.NullString `db:"Source_User" json:"sourceUser"`
+	SourcePort                     sql.NullString `db:"Source_Port" json:"sourcePort"`
+	ConnectRetry                   sql.NullInt64  `db:"Connect_Retry" json:"connectRetry"`
+	SourceLogFile                  sql.NullString `db:"Source_Log_File" json:"sourceLogFile"`
+	ReadSourceLogPos               sql.NullString `db:"Read_Source_Log_Pos" json:"readSourceLogPos"`
+	RelayLogFile                   sql.NullString `db:"Relay_Log_File" json:"relayLogFile"`
+	RelayLogPos                    sql.NullString `db:"Relay_Log_Pos" json:"relayLogPos"`
+	RelaySourceLogFile             sql.NullString `db:"Relay_Source_Log_File" json:"relaySourceLogFile"`
+	ReplicaIORunning               sql.NullString `db:"Replica_IO_Running" json:"replicaIoRunning"`
+	ReplicaSQLRunning              sql.NullString `db:"Replica_SQL_Running" json:"replicaSqlRunning"`
+	ReplicateDoDB                  sql.NullString `db:"Replicate_Do_DB" json:"replicateDoDb"`
+	ReplicateIgnoreDB              sql.NullString `db:"Replicate_Ignore_DB" json:"replicateIgnoreDb"`
+	ReplicateDoTable               sql.NullString `db:"Replicate_Do_Table" json:"replicateDoTable"`
+	ReplicateIgnoreTable           sql.NullString `db:"Replicate_Ignore_Table" json:"replicateIgnoreTable"`
+	ReplicateWildDoTable           sql.NullString `db:"Replicate_Wild_Do_Table" json:"replicateWildDoTable"`
+	ReplicateWildIgnoreTable       sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
+	LastErrno                      sql.NullString `db:"Last_Errno" json:"lastErrno"`
+	LastError                      sql.NullString `db:"Last_Error" json:"lastError"`
+	SkipCounter                    sql.NullInt64  `db:"Skip_Counter" json:"skipCounter"`
+	ExecSourceLogPos               sql.NullString `db:"Exec_Source_Log_Pos" json:"execSourceLogPos"`
+	RelayLogSpace                  sql.NullInt64  `db:"Relay_Log_Space" json:"relayLogSpace"`
+	UntilCondition                 sql.NullString `db:"Until_Condition" json:"untilCondition"`
+	UntilLogFile                   sql.NullString `db:"Until_Log_File" json:"untilLogFile"`
+	UntilLogPos                    sql.NullString `db:"Until_Log_Pos" json:"untilLogPos"`
+	SourceSSLAllowed               sql.NullString `db:"Source_SSL_Allowed" json:"sourceSslAllowed"`
+	SourceSSLCaFile                sql.NullString `db:"Source_SSL_CA_File" json:"sourceSslCaFile"`
+	SourceSSLCaPath                sql.NullString `db:"Source_SSL_CA_Path" json:"sourceSslCaPath"`
+	SourceSSLCert                  sql.NullString `db:"Source_SSL_Cert" json:"sourceSslCert"`
+	SourceSSLCipher                sql.NullString `db:"Source_SSL_Cipher" json:"sourceSslCipher"`
+	SourceSSLKey                   sql.NullString `db:"Source_SSL_Key" json:"sourceSslKey"`
+	SecondsBehindSource            sql.NullInt64  `db:"Seconds_Behind_Source" json:"secondsBehindSource"`
+	SourceSSLVerifyServerCert      sql.NullString `db:"Source_SSL_Verify_Server_Cert" json:"sourceSslVerifyServerCert"`
+	LastIOErrno                    sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
+	LastIOError                    sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
+	LastSQLErrno                   sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
+	LastSQLError                   sql.NullString `db:"Last_SQL_Error" json:"lastSqlError"`
+	ReplicateIgnoreServerIds       sql.NullString `db:"Replicate_Ignore_Server_Ids" json:"replicateIgnoreServerIds"`
+	SourceServerID                 uint64         `db:"Source_Server_Id" json:"sourceServerId"`
+	SourceUUID                     sql.NullString `db:"Source_UUID" json:"sourceUuid"`
+	SourceInfoFile                 sql.NullString `db:"Source_Info_File" json:"sourceInfoFile"`
+	SQLDelay                       sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
+	SQLRemainingDelay              sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
+	ReplicaSQLRunningState         sql.NullString `db:"Replica_SQL_Running_State" json:"replicaSqlRunningState"`
+	SourceRetryCount               sql.NullInt64  `db:"Source_Retry_Count" json:"sourceRetryCount"`
+	SourceBind                     sql.NullString `db:"Source_Bind" json:"sourceBind"`
+	LastIOErrorTimestamp           sql.NullString `db:"Last_IO_Error_Timestamp" json:"lastIoErrorTimestamp"`
+	LastSQLExceptionErrorTimestamp sql.NullString `db:"Last_SQL_Error_Timestamp" json:"lastSqlErrorTimestamp"`
+	SourceSSLCrl                   sql.NullString `db:"Source_SSL_Crl" json:"sourceSslCrl"`
+	SourceSSLCrlpath               sql.NullString `db:"Source_SSL_Crlpath" json:"sourceSslCrlpath"`
+	RetrievedGtidSet               sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
+	ExecutedGtidSet                sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
+	AutoPosition                   sql.NullString `db:"Auto_Position" json:"autoPosition"`
+	ReplicateRewriteDB             sql.NullString `db:"Replicate_Rewrite_DB" json:"replicateRewriteDb"`
+	ChannelName                    sql.NullString `db:"Channel_Name" json:"channelName"`
+	SourceTLSVersion               sql.NullString `db:"Source_TLS_Version" json:"sourceTlsVersion"`
+	SourcePublicKeyPath            sql.NullString `db:"Source_public_key_path" json:"sourcePublicKeyPath"`
+	GetSourcePublicKey             sql.NullString `db:"Get_Source_public_key" json:"getSourcePublicKey"`
+	NetworkNamespace               sql.NullString `db:"Network_Namespace" json:"networkNamespace"`
 }
 
 type Privileges struct {
@@ -967,59 +1073,73 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 	var err error
 	udb := db.Unsafe()
 	ss := SlaveStatus{}
+	rs := ReplicaStatus{}
 	query := ""
 	if Channel == "" {
+		if myver.IsMySQLOrPerconaGreater84() {
+			query = "SHOW REPLICA STATUS"
+			err = udb.Get(&rs, query)
+		} else {
+			query = "SHOW SLAVE STATUS"
+			if myver.IsPostgreSQL() {
+				/*		query = `select
+							received_lsn ,subname "Connection_name",
+							pg_walfile_name(received_lsn) as "Master_Log_File",
+							(SELECT file_offset  FROM pg_walfile_name_offset(received_lsn)) as "Master_Log_Pos" ,
+							CASE WHEN latest_end_lsn = received_lsn   THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master"
+						from pg_catalog.pg_stat_subscription`
+				*/
+				query = `SELECT
+								ss.subname as "Connection_name",
+								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
+								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[4],'port=') as "Master_Port",
+								ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[3],'user=') as "Master_User",
+								'master.' || pg_walfile_name(ss.received_lsn) as "Master_Log_File",
+								(SELECT file_offset  FROM pg_walfile_name_offset(ss.received_lsn)) as "Read_Master_Log_Pos" ,
+								'master.' || pg_walfile_name(ss.latest_end_lsn) as "Relay_Master_Log_File",
+								CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_IO_Running"  ,
+								CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_SQL_Running",
+									(SELECT file_offset  FROM pg_walfile_name_offset(ss.latest_end_lsn)) as "Exec_Master_Log_Pos",
+								CASE WHEN latest_end_lsn = received_lsn  THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master",
+								'' as  "Last_IO_Errno",
+								'' as "Last_SQL_Errno",
+								'' as "Last_SQL_Error" ,
+								0 "Master_Server_Id",
+								'Slave_Pos' as  "Using_Gtid" ,
+								'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
+								'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
+								1 as "Slave_Heartbeat_Period" ,
+								'' as "Slave_SQL_Running_State",
+								ros.external_id
+							FROM pg_replication_origin_status ros
+								LEFT JOIN (
+									pg_catalog.pg_stat_subscription ss
+										INNER JOIN  pg_catalog.pg_subscription s
+										ON ss.subname =s.subname
+								) ON ros.external_id='pg_' || ss.subid::text ,
+								(SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+			}
 
-		query = "SHOW SLAVE STATUS"
-		if myver.IsPostgreSQL() {
-			/*		query = `select
-						received_lsn ,subname "Connection_name",
-						pg_walfile_name(received_lsn) as "Master_Log_File",
-						(SELECT file_offset  FROM pg_walfile_name_offset(received_lsn)) as "Master_Log_Pos" ,
-						CASE WHEN latest_end_lsn = received_lsn   THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master"
-					from pg_catalog.pg_stat_subscription`
-			*/
-			query = `SELECT
-							ss.subname as "Connection_name",
-							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[2],'host=') as "Master_Host",
-							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[4],'port=') as "Master_Port",
-							ltrim((regexp_split_to_array(s.subconninfo, '\s+'))[3],'user=') as "Master_User",
-							'master.' || pg_walfile_name(ss.received_lsn) as "Master_Log_File",
-							(SELECT file_offset  FROM pg_walfile_name_offset(ss.received_lsn)) as "Read_Master_Log_Pos" ,
-							'master.' || pg_walfile_name(ss.latest_end_lsn) as "Relay_Master_Log_File",
-							CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_IO_Running"  ,
-							CASE WHEN s.subenabled THEN 'Yes' ELSE 'No' END as "Slave_SQL_Running",
-								(SELECT file_offset  FROM pg_walfile_name_offset(ss.latest_end_lsn)) as "Exec_Master_Log_Pos",
-							CASE WHEN latest_end_lsn = received_lsn  THEN 0 ELSE EXTRACT(EPOCH FROM latest_end_time -last_msg_send_time) END AS "Seconds_Behind_Master",
-							'' as  "Last_IO_Errno",
-							'' as "Last_SQL_Errno",
-							'' as "Last_SQL_Error" ,
-							0 "Master_Server_Id",
-							'Slave_Pos' as  "Using_Gtid" ,
-							'0-0-' || ('x'|| replace(text(ss.received_lsn), '/' ,''))::bit(64)::bigint  as  "Gtid_IO_Pos" ,
-							'0-0-' || ('x'|| replace(text(ss.latest_end_lsn), '/' ,''))::bit(64)::bigint as "Gtid_Slave_Pos" ,
-							1 as "Slave_Heartbeat_Period" ,
-							'' as "Slave_SQL_Running_State",
-							ros.external_id
-						FROM pg_replication_origin_status ros
-							LEFT JOIN (
-								pg_catalog.pg_stat_subscription ss
-									INNER JOIN  pg_catalog.pg_subscription s
-									ON ss.subname =s.subname
-							) ON ros.external_id='pg_' || ss.subid::text ,
-							(SELECT count(*) as nbrep FROM pg_stat_subscription) AS sqt `
+			err = udb.Get(&ss, query)
 		}
-
-		err = udb.Get(&ss, query)
 
 	} else {
 		if myver.IsMariaDB() {
 			query = "SHOW SLAVE '" + Channel + "' STATUS"
 			err = udb.Get(&ss, query)
 		} else if myver.IsMySQLOrPercona() {
-			query = "SHOW SLAVE STATUS FOR CHANNEL '" + Channel + "'"
-			err = udb.Get(&ss, query)
+			if myver.GreaterEqual("8.4") {
+				query = "SHOW REPLICA STATUS"
+				err = udb.Get(&rs, query)
+			} else {
+				query = "SHOW SLAVE STATUS FOR CHANNEL '" + Channel + "'"
+				err = udb.Get(&ss, query)
+			}
 		}
+	}
+
+	if myver.IsMySQLOrPerconaGreater84() {
+		ss.ImportFromReplicaStatus(&rs)
 	}
 	//
 	if ss.ChannelName.Valid {
@@ -1033,24 +1153,40 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 }
 
 func GetChannelSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, string, error) {
+	var err error
 	db.MapperFunc(strings.Title)
 	udb := db.Unsafe()
+	rs := []ReplicaStatus{}
 	ss := []SlaveStatus{}
-	err := udb.Select(&ss, "SHOW SLAVE STATUS")
-	// Unified MariaDB MySQL ConnectionName and ChannelName
 	uniss := []SlaveStatus{}
-	if err == nil {
-		for _, s := range ss {
-			if s.ChannelName.Valid {
-				if s.ChannelName.String != "" {
-					s.ConnectionName.String = s.ChannelName.String
-					s.ConnectionName.Valid = true
-				}
+	query := "SHOW SLAVE STATUS"
+	if myver.IsMySQLOrPerconaGreater84() {
+		query = "SHOW REPLICA STATUS"
+		err = udb.Select(&rs, query)
+		if err == nil {
+			for _, r := range rs {
+				s := SlaveStatus{}
+				s.ImportFromReplicaStatus(&r)
+				uniss = append(uniss, s)
 			}
-			uniss = append(uniss, s)
+		}
+	} else {
+		err = udb.Select(&ss, query)
+		// Unified MariaDB MySQL ConnectionName and ChannelName
+		if err == nil {
+			for _, s := range ss {
+				if s.ChannelName.Valid {
+					if s.ChannelName.String != "" {
+						s.ConnectionName.String = s.ChannelName.String
+						s.ConnectionName.Valid = true
+					}
+				}
+				uniss = append(uniss, s)
+			}
 		}
 	}
-	return uniss, "SHOW SLAVE STATUS", err
+
+	return uniss, query, err
 }
 
 func GetPGSlaveStatus(db *sqlx.DB, myver *version.Version) ([]SlaveStatus, error) {
@@ -1460,6 +1596,8 @@ func GetMasterStatus(db *sqlx.DB, myver *version.Version) (MasterStatus, string,
 				'' as Binlog_Do_DB ,
 				'' as "Binlog_Ignore_DB"`
 
+	} else if myver.IsMySQLOrPerconaGreater84() {
+		query = "SHOW BINARY LOG STATUS"
 	}
 	err := udb.Get(&ms, query)
 	//Binlog can be off
@@ -1469,9 +1607,12 @@ func GetMasterStatus(db *sqlx.DB, myver *version.Version) (MasterStatus, string,
 	return ms, query, err
 }
 
-func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, string, error) {
+func GetSlaveHosts(db *sqlx.DB, myver *version.Version) (map[string]interface{}, string, error) {
 	query := "SHOW SLAVE HOSTS"
-	rows, err := db.Queryx(query)
+	if myver.IsMySQLOrPerconaGreater84() {
+		query = "SHOW REPLICAS"
+	}
+	rows, err := db.Unsafe().Queryx(query)
 	if err != nil {
 		return nil, query, errors.New("Could not get slave hosts")
 	}
@@ -1486,10 +1627,13 @@ func GetSlaveHosts(db *sqlx.DB) (map[string]interface{}, string, error) {
 	return results, query, nil
 }
 
-func GetSlaveHostsArray(db *sqlx.DB) ([]SlaveHosts, string, error) {
+func GetSlaveHostsArray(db *sqlx.DB, myver *version.Version) ([]SlaveHosts, string, error) {
 	sh := []SlaveHosts{}
 	query := "SHOW SLAVE HOSTS"
-	err := db.Select(&sh, query)
+	if myver.IsMySQLOrPerconaGreater84() {
+		query = "SHOW REPLICAS"
+	}
+	err := db.Unsafe().Select(&sh, query)
 	if err != nil {
 		return nil, query, errors.New("Could not get slave hosts array")
 	}
@@ -2061,7 +2205,11 @@ func StopSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, err
 		}
 		cmd += "ALTER SUBSCRIPTION " + Channel + " DISABLE"
 	} else {
-		cmd += "STOP SLAVE"
+		if myver.IsMySQLOrPerconaGreater84() {
+			cmd += "STOP REPLICA"
+		} else {
+			cmd += "STOP SLAVE"
+		}
 		if myver.IsMariaDB() && Channel != "" {
 			cmd += " '" + Channel + "'"
 		}
@@ -2075,6 +2223,10 @@ func StopSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, err
 
 func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := "STOP SLAVE IO_THREAD"
+	if myver.IsMySQLOrPerconaGreater84() {
+		cmd = "STOP REPLICA IO_THREAD"
+	}
+
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "'  IO_THREAD"
 	}
@@ -2086,6 +2238,10 @@ func StopSlaveIOThread(db *sqlx.DB, Channel string, myver *version.Version) (str
 }
 func StopSlaveSQLThread(db *sqlx.DB, Channel string, myver *version.Version) (string, error) {
 	cmd := "STOP SLAVE SQL_THREAD"
+	if myver.IsMySQLOrPerconaGreater84() {
+		cmd = "STOP REPLICA SQL_THREAD"
+	}
+
 	if myver.IsMariaDB() && Channel != "" {
 		cmd = "STOP SLAVE '" + Channel + "' SQL_THREAD"
 	}
@@ -2105,7 +2261,11 @@ func SetSlaveHeartbeat(db *sqlx.DB, interval string, Channel string, myver *vers
 	if err != nil {
 		return logs, err
 	}
-	stmt := "change master to MASTER_HEARTBEAT_PERIOD=" + interval
+
+	stmt := "CHANGE MASTER TO MASTER_HEARTBEAT_PERIOD=" + interval
+	if myver.IsMySQLOrPerconaGreater84() {
+		stmt = "CHANGE REPLICA SOURCE TO SOURCE_HEARTBEAT_PERIOD=" + interval
+	}
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 
@@ -2129,7 +2289,7 @@ func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *version.V
 	if err != nil {
 		return logs, err
 	}
-	stmt := "change master to master_use_gtid=" + mode
+	stmt := "CHANGE MASTER TO MASTER_USE_GTID=" + mode
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
@@ -2292,7 +2452,12 @@ func StartSlave(db *sqlx.DB, Channel string, myver *version.Version) (string, er
 		}
 		cmd += "ALTER SUBSCRIPTION " + Channel + " ENABLE"
 	} else {
-		cmd += "START SLAVE"
+		if myver.IsMySQLOrPerconaGreater84() {
+			cmd += "START REPLICA"
+		} else {
+			cmd += "START SLAVE"
+		}
+
 		if myver.IsMariaDB() && Channel != "" {
 			cmd += " '" + Channel + "'"
 		}
@@ -2334,7 +2499,11 @@ func ResetSlave(db *sqlx.DB, all bool, Channel string, myver *version.Version) (
 		}
 		stmt += "DROP SUBSCRIPTION " + Channel
 	} else {
-		stmt += "RESET SLAVE"
+		if myver.IsMySQLOrPerconaGreater84() {
+			stmt += "RESET REPLICA"
+		} else {
+			stmt += "RESET SLAVE"
+		}
 		if myver.IsMariaDB() && Channel != "" {
 			stmt += " '" + Channel + "'"
 		}
@@ -2356,6 +2525,8 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, e
 			Channel = "alltables"
 		}
 		stmt += "DROP PUBLICATION " + Channel
+	} else if myver.IsMySQLOrPerconaGreater84() {
+		stmt += "RESET BINARY LOGS AND GTIDS"
 	} else {
 		stmt += "RESET MASTER"
 	}

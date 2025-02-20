@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"context"
+	"crypto/md5"
 	cryptorand "crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -43,15 +44,18 @@ import (
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/golang-jwt/jwt/request"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/signal18/replication-manager/cert"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
 
@@ -254,6 +258,7 @@ func (repman *ReplicationManager) apiserver() {
 
 	if repman.Conf.Test {
 		router.HandleFunc("/", repman.handlerApp)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.handlerApp)
 		router.PathPrefix("/images/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 		router.PathPrefix("/assets/").Handler(http.FileServer(http.Dir(repman.Conf.HttpRoot)))
 
@@ -262,6 +267,7 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", http.FileServer(http.Dir(repman.Conf.ShareDir+"/grafana"))))
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
+		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
@@ -284,6 +290,12 @@ func (repman *ReplicationManager) apiserver() {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
 	})
+
+	router.Handle("/api/terminal/list", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
+	))
+
+	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 	router.Handle("/api/terms", negroni.New(
@@ -326,6 +338,11 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/monitor", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReplicationManager)),
+	))
+
+	router.Handle("/api/email/send", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
 
 	repman.apiDatabaseUnprotectedHandler(router)
@@ -461,30 +478,36 @@ func (repman *ReplicationManager) DecryptJWTPassword(r *http.Request) (string, e
 	return "", err
 }
 
-func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
+func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]string, error) {
+	claims := token.Claims.(jwt.MapClaims)
+	userinfo := claims["CustomUserInfo"]
+	mycutinfo := userinfo.(map[string]interface{})
+
 	UserInfoMap := make(map[string]string)
+	UserInfoMap["Password"] = mycutinfo["Password"].(string)
+	UserInfoMap["Role"] = mycutinfo["Role"].(string)
+	_, ok := mycutinfo["profile"]
+	if ok {
+		profile := mycutinfo["profile"].(string)
+		if strings.Contains(profile, repman.Conf.OAuthProvider) {
+			UserInfoMap["User"] = mycutinfo["email"].(string)
+			UserInfoMap["profile"] = profile
+			return UserInfoMap, nil
+		}
+		return nil, fmt.Errorf("invalid oauth provider")
+	}
+	UserInfoMap["User"] = mycutinfo["Name"].(string)
+	return UserInfoMap, nil
+}
+
+func (repman *ReplicationManager) GetJWTClaims(r *http.Request) (map[string]string, error) {
+
 	token, err := request.ParseFromRequest(r, request.AuthorizationHeaderExtractor, func(token *jwt.Token) (interface{}, error) {
 		vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 		return vk, nil
 	})
 	if err == nil {
-		claims := token.Claims.(jwt.MapClaims)
-		userinfo := claims["CustomUserInfo"]
-		mycutinfo := userinfo.(map[string]interface{})
-		UserInfoMap["Password"] = mycutinfo["Password"].(string)
-		UserInfoMap["Role"] = mycutinfo["Role"].(string)
-		_, ok := mycutinfo["profile"]
-		if ok {
-			profile := mycutinfo["profile"].(string)
-			if strings.Contains(profile, repman.Conf.OAuthProvider) {
-				UserInfoMap["User"] = mycutinfo["email"].(string)
-				UserInfoMap["profile"] = profile
-				return UserInfoMap, nil
-			}
-			return nil, fmt.Errorf("invalid oauth provider")
-		}
-		UserInfoMap["User"] = mycutinfo["Name"].(string)
-		return UserInfoMap, nil
+		return repman.GetUserInfoMap(token)
 	}
 	return nil, err
 }
@@ -1343,14 +1366,74 @@ func (repman *ReplicationManager) handlerMuxClusterAdd(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {string} string "Cluster deleted successfully"
-// @Failure 400 {string} string "Invalid cluster name"
-// @Failure 500 {string} string "Internal server error"
+// @Failure 500 {string} string "Invalid cluster name" or "No Valid ACL"
 // @Router /api/clusters/actions/delete/{clusterName} [delete]
 func (repman *ReplicationManager) handlerMuxClusterDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.DeleteCluster(vars["clusterName"])
 
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Invalid cluster name", 500)
+		return
+	}
+
+	valid, _ := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, "No Valid ACL", 500)
+		return
+	}
+
+	repman.DeleteCluster(vars["clusterName"])
+}
+
+// handlerMuxClusterRename handles the HTTP request to rename a cluster.
+// @Summary Rename a cluster
+// @Description Renames a cluster identified by its name.
+// @Tags Cluster
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param newClusterName path string true "New Cluster Name"
+// @Success 200 {string} string "Cluster renamed successfully"
+// @Failure 500 {string} string "Invalid cluster name" or "Cluster name already exists" or "No Valid ACL"
+// @Router /api/clusters/actions/rename/{clusterName}/{newClusterName} [post]
+func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "Invalid cluster name", 500)
+		return
+	}
+
+	if slices.Contains(repman.ImmutableClusterList, mycluster.Name) {
+		http.Error(w, "Cluster is not dynamic", 500)
+		return
+	}
+
+	valid, _ := repman.IsValidClusterACL(r, mycluster)
+	if !valid {
+		http.Error(w, "No Valid ACL", 500)
+		return
+	}
+
+	// Check if new cluster name is already exist
+	if newcluster := repman.getClusterByName(vars["newClusterName"]); newcluster != nil {
+		http.Error(w, "Cluster name already exists", 500)
+		return
+	}
+
+	err := mycluster.RenameCluster(vars["newClusterName"])
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Cluster renamed successfully"))
 }
 
 // handlerMuxPrometheus handles HTTP requests to fetch Prometheus metrics for all servers in all clusters.
@@ -1492,11 +1575,12 @@ func (repman *ReplicationManager) RecoveryMiddleware(next http.Handler) http.Han
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if err := recover(); err != nil {
-				logrus.WithFields(logrus.Fields{
+				// Capture error and stack trace
+				repman.Logrus.WithFields(logrus.Fields{
 					"error":      err,
 					"stacktrace": string(debug.Stack()),
 					"url":        r.URL.String(),
-				}).Error("Recovered from panic")
+				}).Print("Recovered from panic")
 
 				http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			}
@@ -2173,4 +2257,324 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 		http.Error(w, "Error sending download file data to front", http.StatusBadRequest)
 		return
 	}
+}
+
+// handlerTerminal handles the WebSocket connection for a terminal session.
+// @Summary Terminal
+// @Description	Establishes a WebSocket connection for a terminal session.
+// @Tags Terminal
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string false "Cluster Name"
+// @Param serverName path string false "Server Name"
+// @Success 200 {string} string "Connected successfully"
+// @Failure 400 {string} string "No user provided"
+// @Failure 500 {string} string "No valid node" or "No valid cluster"
+// @Router /api/terminal/connect [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command} [get]
+// @Router /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command} [get]
+func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http.Request) {
+	defer repman.LogPanicToFile()
+
+	var err error
+	var mycluster *cluster.Cluster
+	var node *cluster.ServerMonitor
+	var proxy cluster.DatabaseProxy
+
+	vars := mux.Vars(r)
+	path := r.URL.Path
+
+	if !repman.Conf.TerminalSessionEnabled {
+		http.Error(w, "Terminal session is disabled", 403)
+		return
+	}
+
+	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
+	// Upgrade the HTTP connection to a WebSocket.
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error upgrading connection: %v", err)
+		http.Error(w, "Failed to upgrade connection", 500)
+		return
+	}
+	defer conn.Close()
+
+	session := repman.SessionManager.CreateSession(conn)
+
+	// Upgrade successful, create a new session
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Connected. Waiting for token...\n"))
+
+	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+
+	// Handle the message
+	token := session.HandleWebToken(ctx)
+	if ctx.Err() == context.DeadlineExceeded {
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Timeout waiting for token\n"))
+		return
+	}
+
+	if token == "" {
+		session.SafeWriteMessage(websocket.TextMessage, []byte("No valid token received\n"))
+		return
+	}
+
+	session.SafeWriteMessage(websocket.TextMessage, []byte("Token received. Validating...\n"))
+
+	// Validate the token
+	uinfomap, err := repman.ParseWebSocketJWT(token)
+	if err != nil {
+		session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid token\n"))
+		return
+	}
+
+	// uinfo, err := json.Marshal(uinfomap)
+	// if err != nil {
+	// 	session.SafeWriteMessage(websocket.TextMessage, []byte("Error encoding JSON"))
+	// 	return
+	// }
+
+	// Send uinfomap to the client
+	// session.SafeWriteMessage(websocket.TextMessage, bytes.Join([][]byte{[]byte("User info:"), uinfo}, []byte(" ")))
+
+	plainuser := uinfomap["User"]
+	username := plainuser
+	md5h := md5.New()
+	md5h.Write([]byte(username))
+	username = string(md5h.Sum(nil))
+
+	sessionID := "global"
+
+	if vars["clusterName"] == "" {
+		// Check if the user is allowed to access the terminal
+		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
+			return
+		}
+
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s", plainuser)
+	} else {
+		mycluster = repman.getClusterByName(vars["clusterName"])
+		if mycluster == nil {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid cluster\n"))
+			return
+		}
+
+		method := "password"
+		if _, ok := uinfomap["profile"]; ok {
+			method = "oidc"
+		}
+
+		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], path, method) {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid ACL\n"))
+			return
+		}
+
+		node = mycluster.GetServerFromName(vars["serverName"])
+		proxy = mycluster.GetProxyFromName(vars["serverName"])
+		if node != nil {
+			sessionID = mycluster.Name + "-" + node.Name
+		} else if proxy != nil {
+			sessionID = mycluster.Name + "-" + proxy.GetName()
+		} else {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid node\n"))
+			return
+		}
+
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
+	}
+
+	finalID := username + "-" + sessionID
+
+	session.Owner = uinfomap["User"]
+	session.ID = finalID
+	session.AllowResume = repman.Conf.TerminalSessionResume
+	session.TerminalMgr = repman.GetTerminalManager()
+
+	if sessionID == "global" {
+		session.WorkingDir = repman.OsUser.HomeDir
+		// Create a new session or resume the existing session by ID
+		session, err = repman.SessionManager.RunSession(session)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming session: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume session\n"))
+			return
+		}
+	} else {
+		cmdstring, ok := vars["command"]
+		if ok {
+			session.CmdType, err = tty.GetTerminalCommandType(cmdstring)
+			if err != nil {
+				session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
+				return
+			}
+
+			if cmdstring == "" {
+				cmdstring = "SSH"
+			}
+		}
+
+		if node != nil {
+			err = repman.SetSessionValuesFromNode(session, node)
+		} else if proxy != nil {
+			err = repman.SetSessionValuesFromProxy(session, proxy)
+		}
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error setting session values from node: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from node\n"))
+			return
+		}
+
+		if session.CmdType == tty.TerminalBash {
+			session, err = repman.SessionManager.RunSSHSession(session)
+		} else if session.CmdType == tty.TerminalMySQL {
+			session.Arguments = append(session.Arguments, "-p")
+			session, err = repman.SessionManager.RunSession(session)
+		} else if session.CmdType == tty.TerminalMyTop {
+			session.Arguments = append(session.Arguments, "--prompt")
+			session, err = repman.SessionManager.RunSession(session)
+		} else {
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Invalid command\n"))
+			return
+		}
+
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error creating or resuming SSH session: %v", err)
+			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to create or resume '"+cmdstring+"' session\n"))
+			return
+		}
+	}
+
+	// Wait for the session to finish (or be closed).
+	session.WG.Wait()
+}
+
+// handlerGetTerminalSessionList handles the HTTP request to retrieve a list of terminal sessions.
+// @Summary Get Terminal Session List
+// @Description Returns a list of terminal sessions for a user.
+// @Tags Terminal
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string false "Cluster Name"
+// @Success 200 {array} string "List of terminal sessions"
+// @Failure 403 {string} string "Terminal session is disabled"
+// @Failure 500 {string} string "Error getting JWT claims" or "Error encoding JSON"
+// @Router /api/terminal/list [get]
+// @Router /api/terminal/list/clusters/{clusterName} [get]
+func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+
+	claims, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error getting JWT claims", 500)
+		return
+	}
+
+	if !repman.Conf.TerminalSessionEnabled {
+		http.Error(w, "Terminal session is disabled", 403)
+		return
+	}
+
+	username := claims["User"]
+	md5h := md5.New()
+	md5h.Write([]byte(username))
+	username = string(md5h.Sum(nil))
+
+	sessionID := "global"
+
+	if vars["clusterName"] != "" {
+		sessionID = vars["clusterName"]
+	}
+
+	finalID := username + "-" + sessionID
+
+	sessions := repman.SessionManager.GetSessions(finalID)
+
+	// Return the list of sessions as JSON
+	jsonSessions, err := json.Marshal(sessions)
+	if err != nil {
+		http.Error(w, "Error encoding JSON", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(jsonSessions)
+}
+
+// handlerMuxSendEmail handles the HTTP request to send an email.
+// @Summary Send Email
+// @Description Sends an email to the specified recipient.
+// @Tags AlertMailer
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string false "Cluster Name"
+// @Param email body mailer.Email true "Email details"
+// @Success 200 {string} string "Email sent successfully"
+// @Failure 400 {string} string "Error in request"
+// @Failure 500 {string} string "Error sending email"
+// @Router /api/email/send [post]
+// @Router /api/clusters/{clusterName}/actions/send-email [post]
+func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *http.Request) {
+	var email mailer.Email
+	vars := mux.Vars(r)
+
+	uinfomap, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error getting JWT claims", 500)
+		return
+	}
+
+	// Decode the request body into the Email struct
+	err = json.NewDecoder(r.Body).Decode(&email)
+	if err != nil {
+		http.Error(w, "Error in request", 400)
+		return
+	}
+
+	clusterName := vars["clusterName"]
+	if clusterName != "" {
+		mycluster := repman.getClusterByName(clusterName)
+		if mycluster == nil {
+			http.Error(w, "Invalid cluster name", 500)
+			return
+		}
+
+		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], r.URL.Path, "oidc") {
+			http.Error(w, "No valid ACL", 500)
+			return
+		}
+
+		// Send the email in the cluster scope
+		err = mycluster.SendMail(email)
+		if err != nil {
+			http.Error(w, "Error sending email: "+err.Error(), 500)
+			return
+		}
+
+	} else {
+		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
+			http.Error(w, "No valid ACL", 500)
+			return
+		}
+
+		// Send the email in global scope
+		err = repman.SendMail(email)
+		if err != nil {
+			http.Error(w, "Error sending email: "+err.Error(), 500)
+			return
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Email sent successfully"))
 }

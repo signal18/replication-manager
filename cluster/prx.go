@@ -350,7 +350,6 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				pr.SetState(stateProxyRunning)
 				if pr.HasWaitStartCookie() {
 					pr.DelWaitStartCookie()
-					pr.DelProvisionCookie()
 				}
 			} else {
 				pr.SetFailCount(pr.GetFailCount() + 1)

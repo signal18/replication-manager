@@ -22,9 +22,9 @@ func (cluster *Cluster) OpenSVCGetMaxscaleContainerSection(server *MaxscaleProxy
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/etc/maxscale:/etc/maxscale.d:rw`
+			svccontainer["run_args"] = `-v {env.base_dir}/pod01/etc/maxscale:/etc/maxscale.d:rw ` + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 		} else {
-			svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvProxDockerRunArgs
 			svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/etc/maxscale/maxscale.cnf:/etc/maxscale.cnf:rw`
 		}
 	}
@@ -63,7 +63,7 @@ func (cluster *Cluster) GetPodDockerMaxscaleTemplate(collector opensvc.Collector
 		vm = vm + `
 [container#00` + pod + `]
 type = docker
-run_image = google/pause
+run_image = ghcr.io/opensvc/pause
 hostname={svcname}.{namespace}.svc.{clustername}
 rm = true
 

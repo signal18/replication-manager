@@ -32,6 +32,8 @@ import (
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 
+	basiclog "log"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -143,7 +145,7 @@ func (s *ReplicationManager) StartServerV3(debug bool, router *mux.Router) error
 			)(router),
 		),
 
-		// ErrorLog: zap.NewStdLog(s.log),
+		ErrorLog: basiclog.New(s.ApiLogAdapter, "", 0),
 	}
 
 	s.grpcWrapped = grpcweb.WrapServer(s.grpcServer, grpcweb.WithOriginFunc(func(origin string) bool {

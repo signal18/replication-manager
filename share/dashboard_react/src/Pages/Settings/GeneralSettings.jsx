@@ -7,8 +7,12 @@ import { convertObjectToArrayForDropdown } from '../../utility/common'
 import { useDispatch, useSelector } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { changeTopology, switchSetting } from '../../redux/settingsSlice'
+import { dropCluster, renameCluster } from '../../redux/globalClustersSlice'
+import { TbTrash } from 'react-icons/tb'
+import RMIconButton from '../../components/RMIconButton'
+import TextForm from '../../components/TextForm'
 
-function GeneralSettings({ selectedCluster, user }) {
+function GeneralSettings({ selectedCluster, user, openConfirmModal, onTabChange }) {
   const [topologyOptions, setTopologyOptions] = useState([])
   const dispatch = useDispatch()
 
@@ -113,6 +117,28 @@ function GeneralSettings({ selectedCluster, user }) {
           confirmTitle={'Confirm switch settings for test?'}
           onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'test' }))}
         />
+      )
+    },
+    {
+      key: 'Cluster Name (alpha-numeric)',
+      value: (
+        <TextForm
+          value={selectedCluster?.name}
+          confirmTitle={`Confirm rename cluster to `}
+          regexPattern={'^[a-zA-Z0-9_-]*$'}
+          onSave={(value) => {
+            dispatch(renameCluster({ clusterName: selectedCluster?.name, newClusterName: value })).then(() => { onTabChange(0)})
+          }}
+        />
+      )
+    },
+    {
+      key: 'Drop Cluster',
+      value: (
+        <RMIconButton icon={TbTrash} onClick={() => {
+          openConfirmModal(`Confirm drop cluster? This action can not be undone!`, () => () => { dispatch(dropCluster({ clusterName: selectedCluster?.name })).then(() => { onTabChange(0)})
+          })
+        }} />
       )
     }
   ]

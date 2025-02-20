@@ -10,12 +10,13 @@ import RejoinSettings from './RejoinSettings'
 import ProxySettings from './ProxySettings'
 import GraphSettings from './GraphSettings'
 import CloudSettings from './CloudSettings'
-import GlobalSettings from './GlobalSettings'
+import GlobalSettings from './StagingSettings'
 import RepFailOverSettings from './RepFailOverSettings'
 import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
+import StagingSettings from './StagingSettings'
 
-function Settings({ selectedCluster, user }) {
+function Settings({ selectedCluster, user, onTabChange }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -50,8 +51,8 @@ function Settings({ selectedCluster, user }) {
   const { isOpen: isCloud18Open, onToggle: onCloud18Toggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isCloud18Open')) || false
   })
-  const { isOpen: isGlobalOpen, onToggle: onGlobalToggle } = useDisclosure({
-    defaultIsOpen: JSON.parse(localStorage.getItem('isGlobalOpen')) || false
+  const { isOpen: isStagingOpen, onToggle: onStagingToggle } = useDisclosure({
+    defaultIsOpen: JSON.parse(localStorage.getItem('isStagingOpen')) || false
   })
 
   useEffect(() => {
@@ -89,8 +90,8 @@ function Settings({ selectedCluster, user }) {
   }, [isCloud18Open])
 
   useEffect(() => {
-    localStorage.setItem('isGlobalOpen', JSON.stringify(isGlobalOpen))
-  }, [isGlobalOpen])
+    localStorage.setItem('isStagingOpen', JSON.stringify(isStagingOpen))
+  }, [isStagingOpen])
 
   const openConfirmModal = (title, handler) => {
     setIsConfirmModalOpen(true)
@@ -110,7 +111,7 @@ function Settings({ selectedCluster, user }) {
         isOpen={isGeneralOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+        body={<GeneralSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} onTabChange={onTabChange} />}
       />
       <AccordionComponent
         heading={'Replication Failover Constraints'}
@@ -185,12 +186,12 @@ function Settings({ selectedCluster, user }) {
         body={<CloudSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
       <AccordionComponent
-        heading={'Global'}
-        onToggle={onGlobalToggle}
-        isOpen={isGlobalOpen}
+        heading={'Staging'}
+        onToggle={onStagingToggle}
+        isOpen={isStagingOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<GlobalSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+        body={<StagingSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
       />
 
       {isConfirmModalOpen && (

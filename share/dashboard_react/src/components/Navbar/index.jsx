@@ -1,4 +1,4 @@
-import { Box, Flex, Image, Spacer, Text, HStack, Button, useDisclosure } from '@chakra-ui/react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
 import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
@@ -28,6 +28,8 @@ function Navbar({ username }) {
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
   const { meetInfo, unreadMessagesByChannel } = useSelector((state) => state?.meet)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
+  const [showImageLogo, setShowImageLogo] = useState(true)
+  const [logoText, setLogoText] = useState('REPLICATION MANAGER')
 
   const {
     common: { isMobile, isDesktop },
@@ -56,6 +58,20 @@ function Navbar({ username }) {
     setIsChatOpen(prevState => !prevState);
   };
   //
+  useEffect(() => {
+    let text = logoText;
+    if (clusterData?.partner?.Name) {
+      text = clusterData?.partner?.Name?.toUpperCase()
+    } else if (monitor?.partner?.Name) {
+      text = monitor?.partner?.Name?.toUpperCase()
+    }
+
+    text = text === "SIGNAL18" ? "REPLICATION MANAGER" : text;
+
+    if (text !== logoText) {
+      setLogoText(text)
+    }
+  }, [clusterData?.partner?.Name, monitor?.partner?.Name])
 
   const openAlertModal = (type) => {
     setAlertModalType(type)
@@ -94,16 +110,10 @@ function Navbar({ username }) {
         gap='2'
         align='center'>
         <Link to='/'>
-          <Image
-            loading='lazy'
-            height='50px'
-            width={isMobile ? '180px' : 'fit-content'}
-            className={`${styles.logo}`}
-            objectFit='contain'
-            src='/images/logo.png'
-            alt='Replication
-           Manager'
-          />
+          <HStack>
+            {showImageLogo && <Image loading='lazy' height='50px' width={'fit-content'} className={`${styles.logo}`} objectFit='contain' src={`${theme === 'light' ? '/images/logo-no-text.png' : '/images/logo-no-text-dark.png'}`} onError={() => { setShowImageLogo(false) }} />}
+            <TextLogo className={`${styles.logo} ${theme === 'light' ? styles.lightTextLogo : styles.darkTextLogo}`} text={logoText} />
+          </HStack>
         </Link>
         <Spacer />
 
@@ -197,3 +207,51 @@ function Navbar({ username }) {
 }
 
 export default Navbar
+
+export function TextLogo({ className, text = "REPLICATION MANAGER", height = "50px" }) {
+  // Split the text by space to create an array of words
+  const words = text?.split(' ');
+
+  // If only one word is present, apply styling for that case
+  if (words.length === 1) {
+    return (
+      <VStack height={height} className={className} gap={0} alignItems={'flex-start'}>
+        <Text className={`${styles.singleWord}`} fontSize="3xl" height={height} fontWeight="bold">
+          {text}
+        </Text>
+      </VStack>
+    );
+  }
+
+  // If only one word is present, apply styling for that case
+  if (words.length === 2) {
+    return (
+      <VStack height={height} className={className} gap={0} alignItems={'flex-start'}>
+        <Text className={`${className} ${styles.line1}`} fontSize="2xl" fontWeight="bold">
+          {words[0]}
+        </Text>
+        <Text className={`${className} ${styles.line2}`} fontSize="2xl" fontWeight="bold">
+          {words[1]}
+        </Text>
+      </VStack>
+    );
+  }
+
+
+  // Count and split into two lines if there are more than two words
+  if (words.length > 2) {
+    words[1] = words.slice(1).join(' '); // Join the words from index 1 to the end
+    words.splice(2); // Remove the words from index 2 to the end
+  }
+
+  return (
+    <VStack height={height} className={className} gap={0} alignItems={'flex-start'}>
+      <Text className={`${className} ${styles.line1}`} fontSize="2xl" fontWeight="bold">
+        {words[0]}
+      </Text>
+      <Text className={`${className} ${styles.line2}`} fontSize="xl" fontWeight="bold">
+        {words[1]}
+      </Text>
+    </VStack>
+  );
+}

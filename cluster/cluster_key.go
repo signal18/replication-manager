@@ -118,7 +118,7 @@ func (cluster *Cluster) createKeys() error {
 	// start generate key
 	var notBefore time.Time
 	notBefore = time.Now()
-	notAfter := notBefore.Add(365 * 24 * time.Hour * 2)
+	notAfter := notBefore.Add(365 * 24 * time.Hour * 100)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {

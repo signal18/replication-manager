@@ -16,7 +16,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (cluster *Cluster) OnPremiseGetSSHKey(user string) string {
+func (cluster *Cluster) OnPremiseGetSSHKey() string {
 
 	// repmanuser := os.Getenv("HOME")
 	// if repmanuser == "" {
@@ -45,7 +45,7 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	}
 	user, password := misc.SplitPair(cluster.Conf.GetDecryptedValue("onpremise-ssh-credential"))
 
-	key := cluster.OnPremiseGetSSHKey(user)
+	key := cluster.OnPremiseGetSSHKey()
 	if password != "" {
 		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {
@@ -114,6 +114,7 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 		client, err := cluster.OnPremiseConnect(server)
 		if err != nil {
 			cluster.errorChan <- err
+			continue
 		}
 		defer client.Close()
 

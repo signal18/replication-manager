@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"regexp"
 	"slices"
 
 	"os"
@@ -141,6 +142,8 @@ type Config struct {
 	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
 	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
+	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
+	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -295,6 +298,8 @@ type Config struct {
 	MailSMTPUser                              string                 `scope:"server" mapstructure:"mail-smtp-user" toml:"mail-smtp-user" json:"mailSmtpUser"`
 	MailSMTPPassword                          string                 `scope:"server" mapstructure:"mail-smtp-password" toml:"mail-smtp-password" json:"mailSmtpPassword"`
 	MailSMTPTLSSkipVerify                     bool                   `scope:"server" mapstructure:"mail-smtp-tls-skip-verify" toml:"mail-smtp-tls-skip-verify" json:"mailSmtpTlsSkipVerify"`
+	MailMaxPool                               int                    `scope:"server" mapstructure:"mail-max-pool" toml:"mail-max-pool" json:"mailMaxPool"`
+	MailTimeout                               int                    `scope:"server" mapstructure:"mail-timeout" toml:"mail-timeout" json:"mailTimeout"`
 	SlackURL                                  string                 `mapstructure:"alert-slack-url" toml:"alert-slack-url" json:"alertSlackUrl"`
 	SlackChannel                              string                 `mapstructure:"alert-slack-channel" toml:"alert-slack-channel" json:"alertSlackChannel"`
 	SlackUser                                 string                 `mapstructure:"alert-slack-user" toml:"alert-slack-user" json:"alertSlackUser"`
@@ -425,8 +430,8 @@ type Config struct {
 	Topology                                  string                 `mapstructure:"topology" toml:"-" json:"-"` // use by bootstrap
 	TopologyTarget                            string                 `mapstructure:"topology-target" toml:"topology-target" json:"topologyTarget"`
 	TopologyStaging                           bool                   `mapstructure:"topology-staging" toml:"topology-staging" json:"topologyStaging"`
-	TopologyStagingRefreshScript              string                 `mapstructure:"staging-refresh-script" toml:"staging-refresh-script" json:"stagingRefreshScript"`
-	TopologyStagingPostDetachScript           string                 `mapstructure:"staging-post-detach-script" toml:"staging-refresh-script" json:"stagingPostDetachScript"`
+	TopologyStagingRefreshScript              string                 `mapstructure:"topology-staging-refresh-script" toml:"topology-staging-refresh-script" json:"topologyStagingRefreshScript"`
+	TopologyStagingPostDetachScript           string                 `mapstructure:"topology-staging-post-detach-script" toml:"topology-staging-post-detach-script" json:"topologyStagingPostDetachScript"`
 	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
@@ -495,7 +500,7 @@ type Config struct {
 	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
-	ProvMem                                   string                 `mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
+	ProvMem                                   string                 `measurement:"M,bytes,required" mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
 	ProvMemSharedPct                          string                 `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
 	ProvMemThreadedPct                        string                 `mapstructure:"prov-db-memory-threaded-pct" toml:"prov-db-memory-threaded-pct" json:"provDbMemoryThreadedPct"`
 	ProvIops                                  string                 `mapstructure:"prov-db-disk-iops" toml:"prov-db-disk-iops" json:"provDbDiskIops"`
@@ -507,10 +512,10 @@ type Config struct {
 	ProvBinaryInTarball                       bool                   `mapstructure:"prov-db-binary-in-tarball" toml:"prov-db-binary-in-tarball" json:"provDbBinaryInTarball"`
 	ProvBinaryTarballName                     string                 `mapstructure:"prov-db-binary-tarball-name" toml:"prov-db-binary-tarball-name" json:"provDbBinaryTarballName"`
 	ProvDomain                                string                 `mapstructure:"prov-db-domain" toml:"prov-db-domain" json:"provDbDomain"`
-	ProvDisk                                  string                 `mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
-	ProvDiskSystemSize                        string                 `mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
-	ProvDiskTempSize                          string                 `mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
-	ProvDiskDockerSize                        string                 `mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
+	ProvDisk                                  string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-size" toml:"prov-db-disk-size" json:"provDbDiskSize"`
+	ProvDiskSystemSize                        string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-system-size" toml:"prov-db-disk-system-size" json:"provDbDiskSystemSize"`
+	ProvDiskTempSize                          string                 `measurement:"M,bytes,required" mapstructure:"prov-db-disk-temp-size" toml:"prov-db-disk-temp-size" json:"provDbDiskTempSize"`
+	ProvDiskDockerSize                        string                 `measurement:"G,bytes,required" mapstructure:"prov-db-disk-docker-size" toml:"prov-db-disk-docker-size" json:"provDbDiskDockerSize"`
 	ProvVolumeDocker                          string                 `mapstructure:"prov-db-volume-docker" toml:"prov-db-volume-docker" json:"provDbVolumeDocker"`
 	ProvVolumeData                            string                 `mapstructure:"prov-db-volume-data" toml:"prov-db-volume-data" json:"provDbVolumeData"`
 	ProvDiskFS                                string                 `mapstructure:"prov-db-disk-fs" toml:"prov-db-disk-fs" json:"provDbDiskFs"`
@@ -524,15 +529,18 @@ type Config struct {
 	ProvNetmask                               string                 `mapstructure:"prov-db-net-mask" toml:"prov-db-net-mask" json:"provDbNetMask"`
 	ProvGateway                               string                 `mapstructure:"prov-db-net-gateway" toml:"prov-db-net-gateway" json:"provDbNetGateway"`
 	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
+	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
+	ProvDBDockerRunArgs                       string                 `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
+	ProvDBJobsDockerRunArgs                   string                 `mapstructure:"prov-db-jobs-docker-run-args" toml:"prov-db-jobs-docker-run-args" json:"provDbJobsDockerRunArgs"`
 	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
 	ProvDBLoadCSV                             string                 `mapstructure:"prov-db-load-csv" toml:"prov-db-load-csv" json:"provDbLoadCsv"`
 	ProvProxType                              string                 `mapstructure:"prov-proxy-service-type" toml:"prov-proxy-service-type" json:"provProxyServiceType"`
 	ProvProxAgents                            string                 `mapstructure:"prov-proxy-agents" toml:"prov-proxy-agents" json:"provProxyAgents"`
 	ProvProxAgentsFailover                    string                 `mapstructure:"prov-proxy-agents-failover" toml:"prov-proxy-agents-failover" json:"provProxyAgentsFailover"`
-	ProvProxMem                               string                 `mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
+	ProvProxMem                               string                 `measurement:"M,bytes,required" mapstructure:"prov-proxy-memory" toml:"prov-proxy-memory" json:"provProxyMemory"`
 	ProvProxCores                             string                 `mapstructure:"prov-proxy-cpu-cores" toml:"prov-proxy-cpu-cores" json:"provProxyCpuCores"`
-	ProvProxDisk                              string                 `mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
+	ProvProxDisk                              string                 `measurement:"G,bytes,required" mapstructure:"prov-proxy-disk-size" toml:"prov-proxy-disk-size" json:"provProxyDiskSize"`
 	ProvProxDiskFS                            string                 `mapstructure:"prov-proxy-disk-fs" toml:"prov-proxy-disk-fs" json:"provProxyDiskFs"`
 	ProvProxDiskPool                          string                 `mapstructure:"prov-proxy-disk-pool" toml:"prov-proxy-disk-pool" json:"provProxyDiskPool"`
 	ProvProxDiskDevice                        string                 `mapstructure:"prov-proxy-disk-device" toml:"prov-proxy-disk-device" json:"provProxyDiskDevice"`
@@ -550,11 +558,12 @@ type Config struct {
 	ProvProxHaproxyImg                        string                 `mapstructure:"prov-proxy-docker-haproxy-img" toml:"prov-proxy-docker-haproxy-img" json:"provProxyDockerHaproxyImg"`
 	ProvProxProxysqlImg                       string                 `mapstructure:"prov-proxy-docker-proxysql-img" toml:"prov-proxy-docker-proxysql-img" json:"provProxyDockerProxysqlImg"`
 	ProvProxMysqlRouterImg                    string                 `mapstructure:"prov-proxy-docker-mysqlrouter-img" toml:"prov-proxy-docker-mysqlrouter-img" json:"provProxyDockerMysqlrouterImg"`
+	ProvProxDockerRunArgs                     string                 `mapstructure:"prov-proxy-docker-run-args" toml:"prov-proxy-docker-run-args" json:"provProxyDockerRunArgs"`
 	ProvProxTags                              string                 `mapstructure:"prov-proxy-tags" toml:"prov-proxy-tags" json:"provProxyTags"`
 	ProvSphinxAgents                          string                 `mapstructure:"prov-sphinx-agents" toml:"prov-sphinx-agents" json:"provSphinxAgents"`
 	ProvSphinxImg                             string                 `mapstructure:"prov-sphinx-docker-img" toml:"prov-sphinx-docker-img" json:"provSphinxDockerImg"`
-	ProvSphinxMem                             string                 `mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
-	ProvSphinxDisk                            string                 `mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
+	ProvSphinxMem                             string                 `measurement:"M,bytes,required" mapstructure:"prov-sphinx-memory" toml:"prov-sphinx-memory" json:"provSphinxMemory"`
+	ProvSphinxDisk                            string                 `measurement:"G,bytes,required" mapstructure:"prov-sphinx-disk-size" toml:"prov-sphinx-disk-size" json:"provSphinxDiskSize"`
 	ProvSphinxCores                           string                 `mapstructure:"prov-sphinx-cpu-cores" toml:"prov-sphinx-cpu-cores" json:"provSphinxCpuCores"`
 	ProvSphinxMaxChildren                     string                 `mapstructure:"prov-sphinx-max-childrens" toml:"prov-sphinx-max-childrens" json:"provSphinxMaxChildrens"`
 	ProvSphinxDiskPool                        string                 `mapstructure:"prov-sphinx-disk-pool" toml:"prov-sphinx-disk-pool" json:"provSphinxDiskPool"`
@@ -572,6 +581,7 @@ type Config struct {
 	ProvSSLKeyUUID                            string                 `mapstructure:"prov-tls-server-key-uuid" toml:"-" json:"-"`
 	ProvNetCNI                                bool                   `mapstructure:"prov-net-cni" toml:"prov-net-cni" json:"provNetCni"`
 	ProvNetCNICluster                         string                 `mapstructure:"prov-net-cni-cluster" toml:"prov-net-cni-cluster" json:"provNetCniCluster"`
+	ProvNetDockerRunArgs                      string                 `mapstructure:"prov-net-docker-run-args" toml:"prov-net-docker-run-args" json:"provNetDockerRunArgs"`
 	ProvDockerDaemonPrivate                   bool                   `mapstructure:"prov-docker-daemon-private" toml:"prov-docker-daemon-private" json:"provDockerDaemonPrivate"`
 	ProvServicePlan                           string                 `mapstructure:"prov-service-plan" toml:"prov-service-plan" json:"provServicePlan"`
 	ProvServicePlanRegistry                   string                 `scope:"server" mapstructure:"prov-service-plan-registry" toml:"prov-service-plan-registry" json:"provServicePlanRegistry"`
@@ -596,6 +606,10 @@ type Config struct {
 	APIBind                                   string                 `scope:"server" mapstructure:"api-bind" toml:"api-bind" json:"apiBind"`
 	APIPublicURL                              string                 `scope:"server" mapstructure:"api-public-url" toml:"api-public-url" json:"apiPublicUrl"`
 	APIHttpsBind                              bool                   `scope:"server" mapstructure:"api-https-bind" toml:"api-secure" json:"apiHttpsBind"`
+	APIErrorSuppress                          bool                   `scope:"server" mapstructure:"api-error-suppress" toml:"api-error-suppress" json:"apiErrorSuppress"`
+	APIErrorLimit                             int                    `scope:"server" mapstructure:"api-error-limit" toml:"api-error-limit" json:"apiErrorLimit"`
+	APIErrorLimitDuration                     int                    `scope:"server" mapstructure:"api-error-limit-duration" toml:"api-error-limit-duration" json:"apiErrorLimitDuration"`
+	APIErrorDisregardPort                     bool                   `scope:"server" mapstructure:"api-error-disregard-port" toml:"api-error-disregard-port" json:"apiErrorDisregardPort"`
 	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
 	MonitorScheduler                          bool                   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
@@ -637,11 +651,18 @@ type Config struct {
 	BackupLogicalDumpSystemTables             bool                   `mapstructure:"backup-logical-dump-system-tables" toml:"backup-logical-dump-system-tables" json:"backupLogicalDumpSystemTables"`
 	BackupPhysicalType                        string                 `mapstructure:"backup-physical-type" toml:"backup-physical-type" json:"backupPhysicalType"`
 	BackupKeepUntilValid                      bool                   `mapstructure:"backup-keep-until-valid" toml:"backup-keep-until-valid" json:"backupKeepUntilValid"`
+	BackupKeepLast                            int                    `mapstructure:"backup-keep-last" toml:"backup-keep-last" json:"backupKeepLast"`
 	BackupKeepHourly                          int                    `mapstructure:"backup-keep-hourly" toml:"backup-keep-hourly" json:"backupKeepHourly"`
 	BackupKeepDaily                           int                    `mapstructure:"backup-keep-daily" toml:"backup-keep-daily" json:"backupKeepDaily"`
 	BackupKeepWeekly                          int                    `mapstructure:"backup-keep-weekly" toml:"backup-keep-weekly" json:"backupKeepWeekly"`
 	BackupKeepMonthly                         int                    `mapstructure:"backup-keep-monthly" toml:"backup-keep-monthly" json:"backupKeepMonthly"`
 	BackupKeepYearly                          int                    `mapstructure:"backup-keep-yearly" toml:"backup-keep-yearly" json:"backupKeepYearly"`
+	BackupKeepWithin                          string                 `mapstructure:"backup-keep-within" toml:"backup-keep-within" json:"backupKeepWithin"`
+	BackupKeepWithinHourly                    string                 `mapstructure:"backup-keep-within-hourly" toml:"backup-keep-within-hourly" json:"backupKeepWithinHourly"`
+	BackupKeepWithinDaily                     string                 `mapstructure:"backup-keep-within-daily" toml:"backup-keep-within-daily" json:"backupKeepWithinDaily"`
+	BackupKeepWithinWeekly                    string                 `mapstructure:"backup-keep-within-weekly" toml:"backup-keep-within-weekly" json:"backupKeepWithinWeekly"`
+	BackupKeepWithinMonthly                   string                 `mapstructure:"backup-keep-within-monthly" toml:"backup-keep-within-monthly" json:"backupKeepWithinMonthly"`
+	BackupKeepWithinYearly                    string                 `mapstructure:"backup-keep-within-yearly" toml:"backup-keep-within-yearly" json:"backupKeepWithinYearly"`
 	BackupRestic                              bool                   `mapstructure:"backup-restic" toml:"backup-restic" json:"backupRestic"`
 	BackupResticBinaryPath                    string                 `mapstructure:"backup-restic-binary-path" toml:"backup-restic-binary-path" json:"backupResticBinaryPath"`
 	BackupResticAwsAccessKeyId                string                 `mapstructure:"backup-restic-aws-access-key-id" toml:"backup-restic-aws-access-key-id" json:"backupResticAwsAccessKeyId"`
@@ -649,6 +670,7 @@ type Config struct {
 	BackupResticRepository                    string                 `mapstructure:"backup-restic-repository" toml:"backup-restic-repository" json:"backupResticRepository"`
 	BackupResticPassword                      string                 `mapstructure:"backup-restic-password"  toml:"backup-restic-password" json:"-"`
 	BackupResticAws                           bool                   `mapstructure:"backup-restic-aws"  toml:"backup-restic-aws" json:"backupResticAws"`
+	BackupResticTimeout                       int                    `mapstructure:"backup-restic-timeout"  toml:"backup-restic-timeout" json:"backupResticTimeout"`
 	BackupStreaming                           bool                   `mapstructure:"backup-streaming" toml:"backup-streaming" json:"backupStreaming"`
 	BackupStreamingDebug                      bool                   `mapstructure:"backup-streaming-debug" toml:"backup-streaming-debug" json:"backupStreamingDebug"`
 	BackupStreamingAwsAccessKeyId             string                 `mapstructure:"backup-streaming-aws-access-key-id" toml:"backup-streaming-aws-access-key-id" json:"-"`
@@ -699,6 +721,8 @@ type Config struct {
 	Cloud18MonthlyLicenseCost                 float64                `mapstructure:"cloud18-monthly-license-cost"  toml:"cloud18-monthly-license-cost" json:"cloud18MonthlyLicenseCost"`
 	Cloud18MonthlySysopsCost                  float64                `mapstructure:"cloud18-monthly-sysops-cost"  toml:"cloud18-monthly-sysops-cost" json:"cloud18MonthlySysopsCost"`
 	Cloud18MonthlyDbopsCost                   float64                `mapstructure:"cloud18-monthly-dbops-cost"  toml:"cloud18-monthly-dbops-cost" json:"cloud18MonthlyDbopsCost"`
+	Cloud18MonthlyExternalSysopsCost          float64                `mapstructure:"cloud18-monthly-external-sysops-cost" toml:"cloud18-monthly-external-sysops-cost" json:"cloud18MonthlyExternalSysopsCost"`
+	Cloud18MonthlyExternalDbopsCost           float64                `mapstructure:"cloud18-monthly-external-dbops-cost" toml:"cloud18-monthly-external-dbops-cost" json:"cloud18MonthlyExternalDbopsCost"`
 	Cloud18PromotionPct                       float64                `mapstructure:"cloud18-promotion-pct"  toml:"cloud18-promotion-pct" json:"cloud18PromotionPct"`
 	Cloud18SlaResponseTime                    float64                `mapstructure:"cloud18-sla-response-time"  toml:"cloud18-sla-response-time" json:"cloud18SlaResponseTime"`
 	Cloud18SlaRepairTime                      float64                `mapstructure:"cloud18-sla-repair-time"  toml:"cloud18-sla-repair-time" json:"cloud18SlaRepairTime"`
@@ -712,7 +736,9 @@ type Config struct {
 	Cloud18InfraGeoLocalizations              string                 `mapstructure:"cloud18-infra-geo-localizations"  toml:"cloud18-infra-geo-localizations" json:"cloud18InfraGeoLocalizations"`
 	Cloud18DbOps                              string                 `mapstructure:"cloud18-dbops"  toml:"cloud18-dbops" json:"cloud18DbOps"`
 	Cloud18ExternalDbOps                      string                 `mapstructure:"cloud18-external-dbops"  toml:"cloud18-external-dbops" json:"cloud18ExternalDbOps"`
+	Cloud18ExternalDbOpsStatus                string                 `mapstructure:"cloud18-external-dbops-status"  toml:"cloud18-external-dbops-status" json:"cloud18ExternalDbOpsStatus"`
 	Cloud18ExternalSysOps                     string                 `mapstructure:"cloud18-external-sysops" toml:"cloud18-external-sysops" json:"cloud18ExternalSysOps"`
+	Cloud18ExternalSysOpsStatus               string                 `mapstructure:"cloud18-external-sysops-status" toml:"cloud18-external-sysops-status" json:"cloud18ExternalSysOpsStatus"`
 	Cloud18InfraCertifications                string                 `mapstructure:"cloud18-infra-certifications"  toml:"cloud18-infra-certifications" json:"cloud18InfraCertifications"`
 	Cloud18OpenDbops                          bool                   `mapstructure:"cloud18-open-dbops"  toml:"cloud18-open-dbops" json:"cloud18OpenDbops"`
 	Cloud18SubscribedDbops                    bool                   `mapstructure:"cloud18-subscribed-dbops"  toml:"cloud18-subscribed-dbops" json:"cloud18SubscribedDbops"`
@@ -725,6 +751,9 @@ type Config struct {
 	Cloud18SalesSubscriptionScript            string                 `mapstructure:"cloud18-sales-subscription-script"  toml:"cloud18-sales-subscription-script" json:"cloud18SalesSubscriptionScript"`
 	Cloud18SalesSubscriptionValidateScript    string                 `mapstructure:"cloud18-sales-subscription-validate-script"  toml:"cloud18-sales-subscription-validate-script" json:"cloud18SalesSubscriptionValidateScript"`
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
+	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
+	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
@@ -738,10 +767,12 @@ type Config struct {
 	TokenTimeout                              int                    `scope:"server" mapstructure:"api-token-timeout" toml:"api-token-timeout" json:"apiTokenTimeout"`
 	JobLogBatchSize                           int                    `mapstructure:"job-log-batch-size" toml:"job-log-batch-size" json:"jobLogBatchSize"`
 	ApiSwaggerEnabled                         bool                   `scope:"server" mapstructure:"api-swagger-enabled" toml:"api-swagger-enabled" json:"apiSwaggerEnabled"`
+	TerminalSessionEnabled                    bool                   `scope:"server" mapstructure:"terminal-session-enabled" toml:"terminal-session-enabled" json:"terminalSessionEnabled"`
+	TerminalSessionResume                     bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
+	TerminalSessionManager                    string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
-
 }
 
 type WorkLoad struct {
@@ -999,14 +1030,26 @@ type Role struct {
 }
 
 const (
-	RoleSysOps       string = "sysops"
-	RoleDBOps        string = "dbops"
-	RoleExtSysOps    string = "extsysops"
-	RoleExtDBOps     string = "extdbops"
-	RoleSponsor      string = "sponsor"
-	RoleUnsubscribed string = "unsubscribed"
-	RolePending      string = "pending"
-	RoleVisitor      string = "visitor"
+	ExternalActive  string = "active"
+	ExternalPending string = "pending"
+	ExternalQuote   string = "quote"
+)
+
+const (
+	RoleSysOps                string = "sysops"
+	RoleDBOps                 string = "dbops"
+	RoleExtSysOps             string = "extsysops"
+	RoleExtDBOps              string = "extdbops"
+	RoleSponsor               string = "sponsor"
+	RoleUnsubscribed          string = "unsubscribed"
+	RoleUnsubscribedExtDBOps  string = "unsubscribed-extdbops"
+	RoleUnsubscribedExtSysOps string = "unsubscribed-extsysops"
+	RolePending               string = "pending"
+	RolePendingExtDBOps       string = "pending-extdbops"
+	RolePendingExtSysOps      string = "pending-extsysops"
+	RoleQuoteExtDBOps         string = "quote-extdbops"
+	RoleQuoteExtSysOps        string = "quote-extsysops"
+	RoleVisitor               string = "visitor"
 )
 
 const (
@@ -1031,10 +1074,9 @@ const (
 	GrantDBConfigRessource         string = "db-config-ressource"
 	GrantDBConfigFlag              string = "db-config-flag"
 	GrantDBConfigGet               string = "db-config-get"
-	GrantDBDebug                   string = "db-debug"
+	GrantDBTerminal                string = "db-terminal"
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
-	GrantClusterDrop               string = "cluster-drop"
 	GrantClusterCreateMonitor      string = "cluster-create-monitor"
 	GrantClusterDropMonitor        string = "cluster-drop-monitor"
 	GrantClusterFailover           string = "cluster-failover"
@@ -1060,6 +1102,8 @@ const (
 	GrantClusterRotatePasswords    string = "cluster-rotate-passwords"
 	GrantClusterResetSLA           string = "cluster-reset-sla"
 	GrantClusterDebug              string = "cluster-debug"
+	GrantClusterStaging            string = "cluster-staging"
+	GrantClusterAlert              string = "cluster-alert"
 
 	GrantProxyConfigCreate      string = "proxy-config-create"
 	GrantProxyConfigGet         string = "proxy-config-get"
@@ -1067,6 +1111,7 @@ const (
 	GrantProxyConfigFlag        string = "proxy-config-flag"
 	GrantProxyStart             string = "proxy-start"
 	GrantProxyStop              string = "proxy-stop"
+	GrantProxyTerminal          string = "proxy-terminal"
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
 	GrantProvProxyProvision     string = "prov-proxy-provision"
@@ -1078,6 +1123,7 @@ const (
 
 	GrantGlobalSettings string = "global-settings" // Can update global settings
 	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
+	GrantGlobalTerminal string = "global-terminal" // Can use global terminal
 
 	GrantGrantShow   string = "grant-show"   // Can show users settings
 	GrantGrantAdd    string = "grant-add"    // Can add new user
@@ -1085,11 +1131,12 @@ const (
 	GrantGrantModify string = "grant-modify" // Can modify user ACL
 	GrantGrantGlobal string = "grant-global" // Can grant global acl
 
-	GrantShow string = "show" // Can show basic view
+	GrantShow         string = "show"    // Can show basic view
+	GrantExternalRole string = "extrole" // Can manage external ops
 
-	GrantSalesValidate    string = "sales-validate"    // Can update sales settings
-	GrantSalesRefuse      string = "sales-refuse"      // Can grant sales settings
-	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can grant sales settings
+	GrantSalesValidate    string = "sales-validate"    // Can validate sales
+	GrantSalesRefuse      string = "sales-refuse"      // Can refuse sales
+	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can unsubscribe sales
 )
 
 const (
@@ -1141,6 +1188,8 @@ const (
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
 	ConstLogModTask           = 17
+	ConstLogModArchive        = 18
+	ConstLogModMailer         = 19
 )
 
 /*
@@ -1165,6 +1214,8 @@ const (
 	ConstLogNameGraphite       string = "log-graphite"
 	ConstLogNamePurge          string = "log-binlog-purge"
 	ConstLogNameTask           string = "log-task"
+	ConstLogNameArchive        string = "log-archive"
+	ConstLogNameMailer         string = "log-mailer"
 )
 
 /*
@@ -2125,9 +2176,9 @@ func GetGrantType() map[string]string {
 		GrantDBShowSchema:              GrantDBShowSchema,
 		GrantDBShowProcess:             GrantDBShowProcess,
 		GrantDBShowLogs:                GrantDBShowLogs,
-		GrantDBDebug:                   GrantDBDebug,
+		GrantDBTerminal:                GrantDBTerminal,
 		GrantClusterCreate:             GrantClusterCreate,
-		GrantClusterDrop:               GrantClusterDrop,
+		GrantClusterDelete:             GrantClusterDelete,
 		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
 		GrantClusterDropMonitor:        GrantClusterDropMonitor,
 		GrantClusterFailover:           GrantClusterFailover,
@@ -2153,12 +2204,15 @@ func GetGrantType() map[string]string {
 		GrantClusterShowCertificates:   GrantClusterShowCertificates,
 		GrantClusterResetSLA:           GrantClusterResetSLA,
 		GrantClusterRotatePasswords:    GrantClusterRotatePasswords,
+		GrantClusterStaging:            GrantClusterStaging,
+		GrantClusterAlert:              GrantClusterAlert,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
 		GrantProxyConfigFlag:           GrantProxyConfigFlag,
 		GrantProxyStart:                GrantProxyStart,
 		GrantProxyStop:                 GrantProxyStop,
+		GrantProxyTerminal:             GrantProxyTerminal,
 		GrantProvSettings:              GrantProvSettings,
 		GrantProvCluster:               GrantProvCluster,
 		GrantProvClusterProvision:      GrantProvClusterProvision,
@@ -2169,9 +2223,11 @@ func GetGrantType() map[string]string {
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
+		GrantGlobalTerminal:            GrantGlobalTerminal,
 		GrantSalesValidate:             GrantSalesValidate,
 		GrantSalesRefuse:               GrantSalesRefuse,
 		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
+		GrantExternalRole:              GrantExternalRole,
 		GrantGrantShow:                 GrantGrantShow,
 		GrantGrantAdd:                  GrantGrantAdd,
 		GrantGrantModify:               GrantGrantModify,
@@ -2204,7 +2260,7 @@ func GetGrantDB() []string {
 		GrantDBShowSchema,
 		GrantDBShowProcess,
 		GrantDBShowLogs,
-		GrantDBDebug,
+		GrantDBTerminal,
 	}
 }
 
@@ -2220,7 +2276,7 @@ func HasAllDBGrants(grants map[string]bool) bool {
 func GetGrantCluster() []string {
 	return []string{
 		GrantClusterCreate,
-		GrantClusterDrop,
+		GrantClusterDelete,
 		GrantClusterCreateMonitor,
 		GrantClusterDropMonitor,
 		GrantClusterFailover,
@@ -2246,6 +2302,8 @@ func GetGrantCluster() []string {
 		GrantClusterShowCertificates,
 		GrantClusterResetSLA,
 		GrantClusterRotatePasswords,
+		GrantClusterStaging,
+		GrantClusterAlert,
 	}
 }
 
@@ -2266,6 +2324,7 @@ func GetGrantProxy() []string {
 		GrantProxyConfigFlag,
 		GrantProxyStart,
 		GrantProxyStop,
+		GrantProxyTerminal,
 	}
 }
 
@@ -2304,6 +2363,7 @@ func GetGrantGlobal() []string {
 	return []string{
 		GrantGlobalGrant,
 		GrantGlobalSettings,
+		GrantGlobalTerminal,
 	}
 }
 
@@ -2509,19 +2569,31 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		compactDiscardGrants = append(compactDiscardGrants, "show")
 	}
 
+	if grants["extrole"] {
+		compactGrants = append(compactGrants, "extrole")
+	} else {
+		compactDiscardGrants = append(compactDiscardGrants, "extrole")
+	}
+
 	return compactGrants, compactDiscardGrants
 }
 
 func GetRoleType() map[string]string {
 	return map[string]string{
-		RoleSysOps:       RoleSysOps,
-		RoleDBOps:        RoleDBOps,
-		RoleExtSysOps:    RoleExtSysOps,
-		RoleExtDBOps:     RoleExtDBOps,
-		RoleSponsor:      RoleSponsor,
-		RolePending:      RolePending,
-		RoleUnsubscribed: RoleUnsubscribed,
-		RoleVisitor:      RoleVisitor,
+		RoleSysOps:                RoleSysOps,
+		RoleDBOps:                 RoleDBOps,
+		RoleExtSysOps:             RoleExtSysOps,
+		RoleExtDBOps:              RoleExtDBOps,
+		RoleSponsor:               RoleSponsor,
+		RolePending:               RolePending,
+		RolePendingExtDBOps:       RolePendingExtDBOps,
+		RolePendingExtSysOps:      RolePendingExtSysOps,
+		RoleQuoteExtDBOps:         RoleQuoteExtDBOps,
+		RoleQuoteExtSysOps:        RoleQuoteExtSysOps,
+		RoleUnsubscribed:          RoleUnsubscribed,
+		RoleUnsubscribedExtDBOps:  RoleUnsubscribedExtDBOps,
+		RoleUnsubscribedExtSysOps: RoleUnsubscribedExtSysOps,
+		RoleVisitor:               RoleVisitor,
 	}
 }
 
@@ -2541,13 +2613,13 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleSysOps:
 		return "*", ""
 	case RoleExtSysOps:
-		return "*", "sales global"
+		return "*", "sales global extrole"
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
 		return "db show proxy grant extrole sales-unsubscribe", ""
 	case RoleExtDBOps:
-		return "db show proxy grant", ""
+		return "db show proxy grant", "extrole"
 	default:
 		return "show", ""
 	}
@@ -2967,6 +3039,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogTask {
 				return conf.LogTaskLevel >= lvl
 			}
+		case module == ConstLogModArchive:
+			return conf.LogArchiveLevel >= lvl
+		case module == ConstLogModMailer:
+			return conf.LogMailerLevel >= lvl
 		}
 	}
 
@@ -2978,6 +3054,9 @@ func (conf *Config) SetLogOutput(out io.Writer) {
 }
 
 func ToLogrusLevel(l int) log.Level {
+	if l > 4 {
+		l = 4
+	}
 	switch l {
 	case 2:
 		return log.WarnLevel
@@ -3331,4 +3410,273 @@ func (conf *Config) SetMailTo(value string) {
 
 func (conf *Config) SwitchMailSmtpTlsSkipVerify() {
 	conf.MailSMTPTLSSkipVerify = !conf.MailSMTPTLSSkipVerify
+}
+
+// ResticDurationChecker checks if the duration string is valid for restic retention
+// The duration string should be in the format of "1y2m3d4h"
+func ResticDurationChecker(keep string) bool {
+	keep = strings.ToLower(keep)
+	r := regexp.MustCompile(`^(\d+y)?(\d+m)?(\d+d)?(\d+h)?$`)
+
+	return r.MatchString(keep)
+}
+
+// ResticDurationChecker checks if the duration string is valid for restic retention
+// The duration string should be in the format of "1y2m3d4h"
+func (conf *Config) CheckKeepWithin() error {
+	if !ResticDurationChecker(conf.BackupKeepWithin) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within': %s", conf.BackupKeepWithin)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinHourly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-hourly': %s", conf.BackupKeepWithinHourly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinDaily) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-daily': %s", conf.BackupKeepWithinDaily)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinWeekly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-weekly': %s", conf.BackupKeepWithinWeekly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinMonthly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-monthly': %s", conf.BackupKeepWithinMonthly)
+	}
+
+	if !ResticDurationChecker(conf.BackupKeepWithinYearly) {
+		return fmt.Errorf("Invalid duration format 'backup-keep-within-yearly': %s", conf.BackupKeepWithinYearly)
+	}
+
+	return nil
+}
+
+var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
+
+type ErrorMeasurement struct {
+	Old     string
+	New     string
+	Message string
+}
+
+type ErrorConfigMap map[string]ErrorMeasurement
+
+func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) ErrorConfigMap {
+	errormap := make(ErrorConfigMap)
+	to := reflect.TypeOf(conf).Elem()
+	vo := reflect.ValueOf(conf).Elem()
+
+	for i := 0; i < to.NumField(); i++ {
+		f := to.Field(i)
+		// Not measured field
+		tag, ok := f.Tag.Lookup("measurement")
+		if !ok {
+			continue
+		}
+
+		// Not string field, no need to parse
+		v, ok := vo.Field(i).Interface().(string)
+		if !ok {
+			continue
+		}
+
+		// Parse unit measurement
+		val, err := ParseUnitMeasurement(tag, v, conf.MeasurementAutoClampLimit)
+		if err != nil {
+			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
+			if !ok {
+				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprint("error parsing %s with no default: %s", f.Name, err)}
+				continue
+			}
+
+			// fallback to default value
+			val = dvalue.(string)
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: val, Message: fmt.Sprintf("error parsing %s: %s", f.Name, err)}
+		}
+
+		if !vo.Field(i).CanSet() {
+			errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("field %s is not settable", f.Name)}
+			continue
+		}
+
+		vo.Field(i).SetString(val)
+	}
+
+	return errormap
+}
+
+// GetMeasurementTag returns the measurement tag of the field by the toml key
+// The measurement tag is defined in the struct tag with the key "measurement"
+// The measurement tag is used to convert the value to the base unit
+// The format of the measurement tag is "base, [required, bytes]"
+func GetMeasurementTag(s interface{}, tag string, list ...string) (map[string]string, error) {
+	m := make(map[string]string)
+
+	to := reflect.TypeOf(s)
+	if to.Kind() == reflect.Ptr {
+		to = to.Elem()
+	}
+
+	if tag == "name" {
+		for _, fname := range list {
+			f, ok := to.FieldByName(fname)
+			if ok {
+				m[fname] = f.Tag.Get("measurement")
+			} else {
+				return m, fmt.Errorf("field %s not found", fname)
+			}
+		}
+	} else {
+		for i := 0; i < to.NumField(); i++ {
+			f := to.Field(i)
+			ftag := strings.Split(f.Tag.Get(tag), ",")[0]
+			if slices.Contains(list, ftag) {
+				m[ftag] = f.Tag.Get("measurement")
+			}
+		}
+
+		for _, fname := range list {
+			if _, ok := m[fname]; !ok {
+				return m, fmt.Errorf("field %s not found", fname)
+			}
+		}
+	}
+
+	return m, nil
+}
+
+func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
+	var base, unit string
+	var isBytes, isRequired bool
+	var idx, vidx, min, max int
+	var step int = 1000
+	var result string = vstr
+
+	/* Tag format: base, [required, bytes, min:, max:] */
+	// measurement tag should have value
+	if tag == "" {
+		return result, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
+	}
+
+	// split tag into base and optional parts
+	parts := strings.Split(tag, ",")
+	if parts[0] == "" {
+		return result, fmt.Errorf("base cannot be empty, use 0 for default")
+	}
+
+	// get base unit
+	base = strings.ToUpper(strings.TrimSpace(parts[0]))
+	if slices.Contains(mUnits, base) {
+		idx = slices.Index(mUnits, base)
+	} else {
+		return result, fmt.Errorf("invalid unit: %s", base)
+	}
+
+	if len(parts) > 1 {
+		for _, p := range parts[1:] {
+			trimmed := strings.TrimSpace(p)
+			if trimmed == "bytes" {
+				isBytes = true
+			}
+			if trimmed == "required" {
+				isRequired = true
+			}
+			if strings.HasPrefix(trimmed, "min:") {
+				min, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if min < 0 {
+					return result, fmt.Errorf("min value should be bigger than 0")
+				}
+			}
+			if strings.HasPrefix(trimmed, "max:") {
+				max, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				if max < 0 {
+					return result, fmt.Errorf("max value should be bigger than 0")
+				}
+			}
+		}
+	}
+
+	// check if value is empty
+	if vstr == "" {
+		if isRequired {
+			return result, fmt.Errorf("value is required")
+		} else {
+			return result, nil
+		}
+	}
+
+	// convert value to upper case
+	vstr = strings.ToUpper(strings.TrimSpace(vstr))
+
+	/* Value format: <number>[<unit>] */
+	// split value into number and unit
+	// 1. (\d+) : number (required)
+	// 2. ([K|M|G|T|P|E|Z|Y])? : unit (optional)
+	// 3. (B)? : bytes (optional)
+	r := regexp.MustCompile(`^(\d+)([K|M|G|T|P|E|Z|Y])?(B)?$`)
+	matches := r.FindStringSubmatch(vstr)
+	if len(matches) < 2 {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get value
+	vstr = matches[1]
+	// convert value to integer
+	val, err := strconv.Atoi(vstr)
+	if err != nil {
+		return result, fmt.Errorf("invalid value: %s", vstr)
+	}
+
+	// get unit
+	unit = matches[2]
+
+	// check if unit is empty
+	if unit == "" {
+		return vstr, nil
+	}
+
+	// check if unit is valid
+	if !slices.Contains(mUnits, unit) {
+		return result, fmt.Errorf("invalid unit: %s", unit)
+	}
+
+	// get unit index
+	vidx = slices.Index(mUnits, unit)
+
+	// unit should bigger than base
+	if vidx < idx {
+		return result, fmt.Errorf("invalid minimum unit '%s': %s", base, unit)
+	}
+
+	// convert step to 1024 if bytes
+	if isBytes {
+		step = 1024
+	}
+
+	// convert value to base unit
+	if vidx > idx {
+		for i := 0; i < vidx-idx; i++ {
+			val *= step
+		}
+	}
+
+	if val < min {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be bigger than %d", min)
+		}
+
+		val = min
+	}
+
+	if max > 0 && val > max {
+		if !clampToLimit {
+			return result, fmt.Errorf("value should be smaller than %d", max)
+		}
+
+		val = max
+	}
+
+	result = strconv.Itoa(val)
+
+	return result, nil
 }

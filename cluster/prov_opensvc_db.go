@@ -274,7 +274,11 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
-		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
+		if server.ClusterGroup.Conf.ProvDBDockerTmpfsSize != "0" {
+			svccontainer["run_args"] = fmt.Sprintf("--tmpfs=/tmp:size=%sm %s", server.ClusterGroup.Conf.ProvDBDockerTmpfsSize, server.ClusterGroup.Conf.ProvDBDockerRunArgs)
+		} else {
+			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBDockerRunArgs
+		}
 		svccontainer["#run_args"] = "--user mysql --cap-add SYS_PTRACE --ulimit nofile=262144:262144"
 		svccontainer["#command"] = "gdb -ex r -ex thread apply all bt -frame-arguments all full --args mariadbd"
 		svccontainer["##docker_image"] = "quay.io/mariadb-foundation/mariadb-debug:10.11-mdev-33798-knielsen-pkgtest"
@@ -302,8 +306,8 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
-		svccontainer["run_args"] = "--ulimit nofile=262144:262144"
-		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
+		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
+		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
 		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher"
 		svccontainer["entrypoint"] = "/bin/bash"
@@ -360,9 +364,10 @@ func (cluster *Cluster) OpenSVCGetNamespaceContainerSection() map[string]string 
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["type"] = "docker"
-		svccontainer["image"] = "google/pause"
+		svccontainer["image"] = "ghcr.io/opensvc/pause"
 		svccontainer["hostname"] = "{svcname}.{namespace}.svc.{clustername}"
 		svccontainer["rm"] = "true"
+		svccontainer["run_args"] = cluster.Conf.ProvNetDockerRunArgs
 	}
 	return svccontainer
 }
@@ -807,7 +812,7 @@ func (server *ServerMonitor) GetPodDockerDBTemplate(collector opensvc.Collector,
 [container#00` + pod + `]
 type = docker
 hostname = {svcname}.{namespace}.svc.{clustername}
-image = google/pause
+image = ghcr.io/opensvc/pause
 rm = true
 
 

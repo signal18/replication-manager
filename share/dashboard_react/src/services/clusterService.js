@@ -10,6 +10,7 @@ export const clusterService = {
   getClusterCertificates,
   getTopProcess,
   getBackupSnapshot,
+  getBackupStats,
   getJobs,
   getShardSchema,
   getQueryRules,
@@ -22,6 +23,7 @@ export const clusterService = {
   resetSLA,
   toggleTraffic,
   addServer,
+  dropServer,
   provisionCluster,
   unProvisionCluster,
   setCredentials,
@@ -40,6 +42,8 @@ export const clusterService = {
   configReload,
   configDiscoverDB,
   configDynamic,
+  refreshStaging,
+  reloadStagingScript,
 
   // Server management APIs
   setMaintenanceMode,
@@ -94,7 +98,13 @@ export const clusterService = {
   acceptSubscription,
   rejectSubscription,
   sendCredentials,
-  endSubscription
+  endSubscription,
+
+  subscribeExternalRole,
+  quoteExternalRole,
+  acceptExternalRole,
+  refuseExternalRole,
+  endExternalRole,
 }
 
 //#region Cluster data APIs
@@ -128,6 +138,10 @@ function getTopProcess(clusterName, baseURL) {
 
 function getBackupSnapshot(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups`)
+}
+
+function getBackupStats(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
 }
 
 function getJobs(clusterName, baseURL) {
@@ -170,6 +184,10 @@ function toggleTraffic(clusterName, baseURL) {
 
 function addServer(clusterName, host, port, dbType, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${dbType}`)
+}
+
+function dropServer(clusterName, host, port, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}`)
 }
 
 function provisionCluster(clusterName, baseURL) {
@@ -242,6 +260,14 @@ function configDiscoverDB(clusterName, baseURL) {
 
 function configDynamic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/apply-dynamic-config`)
+}
+
+function refreshStaging(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-refresh`)
+}
+
+function reloadStagingScript(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-reload-script`)
 }
 //#endregion Cluster management APIs
 
@@ -335,7 +361,7 @@ function stopSlave(clusterName, serverId, baseURL) {
 }
 
 function toggleReadOnly(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/set-readonly`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/toogle-read-only`)
 }
 
 function resetMaster(clusterName, serverId, baseURL) {
@@ -352,30 +378,30 @@ function cancelServerJob(clusterName, serverId, baseURL) {
 //#endregion Server management APIs
 
 //#region Proxy management APIs
-function provisionProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/provision`)
+function provisionProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/provision`)
 }
 
-function unprovisionProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/unprovision`)
+function unprovisionProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
 }
 
-function startProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/start`)
+function startProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
 }
 
-function stopProxy(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/actions/stop`)
+function stopProxy(clusterName, proxyId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
 }
 //#endregion Proxy management APIs
 
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
-  return getApi(baseURL).getRequest(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {
-  return getApi(baseURL).getRequest(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/actions/set-long-query-time/${time}`)
 }
 
 function toggleDatabaseActions(clusterName, serviceName, dbId, baseURL) {
@@ -434,6 +460,26 @@ function rejectSubscription(clusterName, username, baseURL) {
 
 function endSubscription(clusterName, username, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/sales/end-subscription`,{username})
+}
+
+function subscribeExternalRole(clusterName, username, roles, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/subscribe`, {username, roles})
+}
+
+function quoteExternalRole(clusterName, username, roles, cost, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/quote`, {username, roles, cost})
+}
+
+function acceptExternalRole(clusterName, username, roles, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/accept`, {username, roles})
+}
+
+function refuseExternalRole(clusterName, username, roles, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/refuse`, {username, roles, reason})
+}
+
+function endExternalRole(clusterName, username, roles, reason, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, {username, roles, reason})
 }
 
 //#endregion User management APIs

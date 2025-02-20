@@ -9,6 +9,7 @@ import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
 import { TbApi } from 'react-icons/tb'
 import RMIconButton from '../../components/RMIconButton'
+import NumberInput from '../../components/NumberInput'
 
 function GlobalSettings({ config }) {
   const dispatch = useDispatch()
@@ -18,6 +19,19 @@ function GlobalSettings({ config }) {
   }, [config]);
 
   const dataObject = [
+    {
+      key: 'API Token Timeout in Hours',
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.apiTokenTimeout}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'api-token-timeout' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'api-token-timeout', value: value }))}
+        />
+      )
+    },
     {
       key: 'API Public URL',
       value: (
@@ -97,6 +111,32 @@ function GlobalSettings({ config }) {
           confirmTitle={'Confirm switch global settings for Mail SMTP TLS?'}
           onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'mail-smtp-tls-skip-verify', setRefresh }))}
           isChecked={config?.mailSmtpTlsSkipVerify}
+        />
+      )
+    },
+    {
+      key: 'Max Pool Connections',
+      value: (
+        <NumberInput
+          min={1}
+          value={config?.mailMaxPool}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'mail-max-pool' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'mail-max-pool', value: value }))}
+        />
+      )
+    },
+    {
+      key: 'Mail Timeout in Seconds (0 = no timeout)',
+      value: (
+        <NumberInput
+          min={0}
+          value={config?.mailTimeout}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'mail-timeout' to: `}
+          onConfirm={(value) => dispatch(setGlobalSetting({ setting: 'mail-timeout', value: value }))}
         />
       )
     },

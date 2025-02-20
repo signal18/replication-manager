@@ -814,14 +814,6 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	server.SetInReseedBackup(task)
 
-	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
-	if err != nil {
-		if server.HasReseedingState(task) {
-			server.SetInReseedBackup("")
-		}
-		return err
-	}
-
 	logs, err := server.StopSlave()
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
@@ -848,6 +840,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
 	if cluster.Conf.BackupLoadScript != "" {
+		server.SetInReseedBackup("script")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
 		go server.JobReseedBackupScript()
 	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
@@ -1141,7 +1134,12 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;set long_query_time=10;"), &buf)
+
+	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
+	}
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), &buf)
 
 	stderr, _ := clientCmd.StdoutPipe()
 	clientCmd.Stderr = clientCmd.Stdout
@@ -1677,6 +1675,13 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	binlogRegex := regexp.MustCompile(`CHANGE MASTER TO MASTER_LOG_FILE='(.+)', MASTER_LOG_POS=(\d+)`)
 	gtidRegex := regexp.MustCompile(`SET GLOBAL gtid_slave_pos='(.+)'`)
 
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		binlogRegex = regexp.MustCompile(`CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='(.+)', SOURCE_LOG_POS=(\d+)`)
+	}
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
+		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=(\/\*!.+\*\/)?\s*'(.+)'`)
+	}
+
 	var bfile, bgtid string
 	var bpos uint64
 
@@ -1950,7 +1955,8 @@ func (server *ServerMonitor) JobBackupRiver() error {
 	cfg.MyHost = server.URL
 	cfg.MyUser = server.User
 	cfg.MyPassword = server.Pass
-	cfg.MyFlavor = "mariadb"
+	cfg.MyFlavor = server.DBVersion.Flavor
+	cfg.MyVersion = server.DBVersion
 
 	//	cfg.ESAddr = *es_addr
 	cfg.StatAddr = "127.0.0.1:12800"
@@ -2043,18 +2049,31 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
-		server.LastBackupMeta.Logical.BackupTool = "script"
-		server.LastBackupMeta.Logical.Dest = cluster.Conf.BackupSaveScript
+		task := "script"
+		filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+
+		// Override backup tool and destination
+		server.LastBackupMeta.Logical.BackupTool = task
+		server.LastBackupMeta.Logical.Dest = filename
+
+		// Record task for metadata check
+		server.JobsUpdateState(task, "", 1, 0)
+
 		err = server.JobBackupScript()
 		if err == nil {
+			server.JobsUpdateState(task, "Backup completed", 3, 1)
 			server.LastBackupMeta.Logical.Completed = true
-			server.SetBackupLogicalCookie("script")
+			server.SetBackupLogicalCookie(task)
+		} else {
+			server.JobsUpdateState(task, err.Error(), 5, 1)
 		}
 	} else {
 		task := cluster.Conf.BackupLogicalType
+
 		if cluster.Conf.MonitorScheduler {
-			//Only for record
 			server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		} else {
+			server.JobsUpdateState(task, "", 0, 0)
 		}
 
 		//Change to switch since we only allow one type of backup (for now)
@@ -2590,7 +2609,12 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 
 	iodumpreader, _ := dumpCmd.StdoutPipe()
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString("reset master;set sql_log_bin=0;set long_query_time=10;"), iodumpreader)
+
+	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
+	if dest.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
+	}
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), iodumpreader)
 
 	if err := dumpCmd.Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), cluster.GetDbPass(), "XXXX", -1))

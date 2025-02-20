@@ -9,7 +9,6 @@ package server
 import (
 	"bytes"
 	"crypto/md5"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -57,43 +56,45 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
-	"github.com/signal18/replication-manager/utils/mailer"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/peerclient"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/spf13/pflag"
 )
 
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	OpenSVC          opensvc.Collector                 `json:"-"`
-	Version          string                            `json:"version"`
-	Fullversion      string                            `json:"fullVersion"`
-	Os               string                            `json:"os"`
-	OsUser           *user.User                        `json:"osUser"`
-	Arch             string                            `json:"arch"`
-	MemProfile       string                            `json:"memprofile"`
-	CpuProfile       string                            `json:"cpuprofile"`
-	Clusters         map[string]*cluster.Cluster       `json:"-"`
-	PeerClusters     []config.PeerCluster              `json:"-"`
-	PeerBooked       map[string]string                 `json:"-"`
-	Partners         []config.Partner                  `json:"partners"`
-	Partner          config.Partner                    `json:"partner"`
-	Agents           []opensvc.Host                    `json:"agents"`
-	UUID             string                            `json:"uuid"`
-	Hostname         string                            `json:"hostname"`
-	Status           string                            `json:"status"`
-	SplitBrain       bool                              `json:"spitBrain"`
-	ClusterList      []string                          `json:"clusters"`
-	Tests            []string                          `json:"tests"`
-	Conf             config.Config                     `json:"config"`
-	ImmuableFlagMaps map[string]map[string]interface{} `json:"-"`
-	DynamicFlagMaps  map[string]map[string]interface{} `json:"-"`
-	DefaultFlagMap   map[string]interface{}            `json:"-"`
+	OpenSVC              opensvc.Collector                 `json:"-"`
+	Version              string                            `json:"version"`
+	Fullversion          string                            `json:"fullVersion"`
+	Os                   string                            `json:"os"`
+	OsUser               *user.User                        `json:"osUser"`
+	Arch                 string                            `json:"arch"`
+	MemProfile           string                            `json:"memprofile"`
+	CpuProfile           string                            `json:"cpuprofile"`
+	Clusters             map[string]*cluster.Cluster       `json:"-"`
+	PeerClusters         []config.PeerCluster              `json:"-"`
+	PeerBooked           map[string]string                 `json:"-"`
+	Partners             []config.Partner                  `json:"partners"`
+	Partner              config.Partner                    `json:"partner"`
+	Agents               []opensvc.Host                    `json:"agents"`
+	UUID                 string                            `json:"uuid"`
+	Hostname             string                            `json:"hostname"`
+	Status               string                            `json:"status"`
+	SplitBrain           bool                              `json:"spitBrain"`
+	ClusterList          []string                          `json:"clusters"`
+	ImmutableClusterList []string                          `json:"-"`
+	Tests                []string                          `json:"tests"`
+	Conf                 config.Config                     `json:"config"`
+	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
+	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
+	DefaultFlagMap       map[string]interface{}            `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
@@ -133,10 +134,12 @@ type ReplicationManager struct {
 	clog                                             *clog.Logger                      `json:"-"`
 	cApiLog                                          *clog.Logger                      `json:"-"`
 	Logrus                                           *log.Logger                       `json:"-"`
+	ApiLogAdapter                                    *ApiLogAdapter                    `json:"-"`
 	IsSavingConfig                                   bool                              `json:"isSavingConfig"`
 	HasSavingConfigQueue                             bool                              `json:"hasSavingConfigQueue"`
 	IsGitPull                                        bool                              `json:"isGitPull"`
 	IsGitPush                                        bool                              `json:"isGitPush"`
+	GitPushLock                                      sync.Mutex                        `json:"-"`
 	IsNeedGitPush                                    bool                              `json:"-"`
 	CanConnectVault                                  bool                              `json:"canConnectVault"`
 	IsExportPush                                     bool                              `json:"-"`
@@ -150,6 +153,7 @@ type ReplicationManager struct {
 	Terms                                            []byte                            `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
 	TermsDT                                          time.Time                         `json:"termsDT"`
 	ModTimes                                         map[string]time.Time              `json:"termsDT"`
+	SessionManager                                   *tty.SessionManager               `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -386,6 +390,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogTask, "log-task", true, "To log DB job process")
 	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
 
+	flags.IntVar(&conf.LogArchiveLevel, "log-archive-level", 2, "Log Level for backup archive (restic)")
+	flags.IntVar(&conf.LogMailerLevel, "log-mailer-level", 3, "Log Level for mailer")
+
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
 	flags.StringVar(&conf.Hosts, "db-servers-hosts", "", "Database hosts list to monitor, IP and port (optional), specified in the host:[port] format and separated by commas")
@@ -439,6 +446,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.ReplicationNoRelay, "replication-master-slave-never-relay", true, "Do not allow relay server MSS MXS XXM RSM")
 	flags.StringVar(&conf.ReplicationErrorScript, "replication-error-script", "", "Replication error script")
 	flags.StringVar(&conf.ReplicationRestartOnSQLErrorMatch, "replication-restart-on-sqlerror-match", "", "Auto restart replication on SQL Error regexep")
+
+	flags.BoolVar(&conf.TopologyStaging, "topology-staging", false, "Use topology staging")
+	flags.StringVar(&conf.TopologyStagingRefreshScript, "topology-staging-refresh-script", "", "Topology staging refresh script path. Empty will use copy of embedded template in working directory")
+	flags.StringVar(&conf.TopologyStagingPostDetachScript, "topology-staging-post-detach-script", "", "Topology staging post detach script path. Empty will not execute anything")
 
 	flags.StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
@@ -508,7 +519,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:global cluster proxy db prov,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole,dba:cluster proxy db,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLAllowExternal, "api-credentials-acl-allow-external", "", "User dynamic acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
@@ -519,6 +530,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.OAuthProvider, "api-oauth-provider-url", "https://gitlab.signal18.io", "API OAuth Provider URL")
 	flags.StringVar(&conf.OAuthClientID, "api-oauth-client-id", "", "API OAuth Client ID")
 	flags.StringVar(&conf.OAuthClientSecret, "api-oauth-client-secret", "", "API OAuth Client Secret")
+
+	// To prevent flooding of same error message in stderr
+	flags.BoolVar(&conf.APIErrorSuppress, "api-error-suppress", false, "Suppress same error message in API response beyond limit")
+	flags.IntVar(&conf.APIErrorLimit, "api-error-limit", 5, "Limit of same error message in API response")
+	flags.IntVar(&conf.APIErrorLimitDuration, "api-error-limit-duration", 1, "Time in minutes before reseting error limit")
+	flags.BoolVar(&conf.APIErrorDisregardPort, "api-error-disregard-port", true, "Use same hash for error message with or without port")
 
 	//vault
 	flags.StringVar(&conf.VaultServerAddr, "vault-server-addr", "", "Vault server address")
@@ -595,6 +612,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
 		flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
 		flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
+		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 0, "Max pool of SMTP connection. 0 means no pool")
+		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds when using pool. 0 means no timeout, default 5")
 	}
 
 	flags.BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
@@ -736,11 +755,19 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupStreamingBucket, "backup-streaming-bucket", "repman", "Backup AWS bucket")
 
 	//flags.StringVar(&conf.BackupResticStoragePolicy, "backup-restic-storage-policy", "--prune --keep-last 10 --keep-hourly 24 --keep-daily 7 --keep-weekly 52 --keep-monthly 120 --keep-yearly 102", "Restic keep backup policy")
-	flags.IntVar(&conf.BackupKeepHourly, "backup-keep-hourly", 1, "Keep this number of hourly backup")
-	flags.IntVar(&conf.BackupKeepDaily, "backup-keep-daily", 1, "Keep this number of daily backup")
-	flags.IntVar(&conf.BackupKeepWeekly, "backup-keep-weekly", 4, "Keep this number of weekly backup")
-	flags.IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 12, "Keep this number of monthly backup")
-	flags.IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 2, "Keep this number of yearly backup")
+	flags.IntVar(&conf.BackupKeepLast, "backup-keep-last", 10, "Keep this number of last recent backup. Zero value will be omitted from the policy")
+	flags.IntVar(&conf.BackupKeepHourly, "backup-keep-hourly", 1, "Keep this number of hourly backup. Zero value will be omitted from the policy")
+	flags.IntVar(&conf.BackupKeepDaily, "backup-keep-daily", 1, "Keep this number of daily backup. Zero value will be omitted from the policy")
+	flags.IntVar(&conf.BackupKeepWeekly, "backup-keep-weekly", 4, "Keep this number of weekly backup. Zero value will be omitted from the policy")
+	flags.IntVar(&conf.BackupKeepMonthly, "backup-keep-monthly", 12, "Keep this number of monthly backup. Zero value will be omitted from the policy")
+	flags.IntVar(&conf.BackupKeepYearly, "backup-keep-yearly", 2, "Keep this number of yearly backup. Zero value will be omitted from the policy")
+
+	flags.StringVar(&conf.BackupKeepWithin, "backup-keep-within", "", "Only for compatible version. Keep this duration of last recent backup, example '2y5m7d3h'.  Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepWithinHourly, "backup-keep-within-hourly", "", "Only for compatible version. Keep this duration of hourly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepWithinDaily, "backup-keep-within-daily", "", "Only for compatible version. Keep this duration of daily backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepWithinWeekly, "backup-keep-within-weekly", "", "Only for compatible version. Keep this duration of weekly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepWithinMonthly, "backup-keep-within-monthly", "", "Only for compatible version. Keep this duration of monthly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupKeepWithinYearly, "backup-keep-within-yearly", "", "Only for compatible version. Keep this duration of yearly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
@@ -859,6 +886,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.Float64Var(&conf.Cloud18MonthlyInfraCost, "cloud18-monthly-infra-cost", 0, "Monthly infrastructure cost")
 	flags.Float64Var(&conf.Cloud18MonthlyLicenseCost, "cloud18-monthly-license-cost", 0, "Monthly license cost")
 	flags.Float64Var(&conf.Cloud18MonthlySysopsCost, "cloud18-monthly-sysops-cost", 0, "Monthly sysops cost")
+	flags.Float64Var(&conf.Cloud18MonthlyDbopsCost, "cloud18-monthly-dbops-cost", 0, "Monthly dbops cost")
+	flags.Float64Var(&conf.Cloud18MonthlyExternalDbopsCost, "cloud18-monthly-external-dbops-cost", 0, "Monthly external dbops cost")
+	flags.Float64Var(&conf.Cloud18MonthlyExternalSysopsCost, "cloud18-monthly-external-sysops-cost", 0, "Monthly external sysops cost")
 	flags.Float64Var(&conf.Cloud18SlaResponseTime, "cloud18-sla-response-time", 0, "Time to response in hours")
 	flags.Float64Var(&conf.Cloud18SlaRepairTime, "cloud18-sla-repair-time", 0, "Time to repair in hours")
 	flags.Float64Var(&conf.Cloud18SlaProvisionTime, "cloud18-sla-provision-time", 0, "Time to provision in hours")
@@ -873,17 +903,25 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18CostCurrency, "cloud18-cost-currency", "", "Cost currency")
 	flags.StringVar(&conf.Cloud18DbOps, "cloud18-dbops", "", "Email for infrastucure dba")
 	flags.StringVar(&conf.Cloud18ExternalDbOps, "cloud18-external-dbops", "", "Email for external partner dba")
+	flags.StringVar(&conf.Cloud18ExternalDbOpsStatus, "cloud18-external-dbops-status", "", "Status for external dbops subscription, default empty. Valid values: [pending|active|expired]")
 	flags.StringVar(&conf.Cloud18ExternalSysOps, "cloud18-external-sysops", "", "Email for external partner sysadmin")
+	flags.StringVar(&conf.Cloud18ExternalSysOpsStatus, "cloud18-external-sysops-status", "", "Status for external sysadmin subscription, default empty. Valid values: [pending|active|expired]")
 	flags.StringVar(&conf.Cloud18InfraCertifications, "cloud18-infra-certifications", "", "The type of auditing certificats made on the infrastructure")
 	flags.StringVar(&conf.Cloud18SalesSubscriptionScript, "cloud18-sales-subscription-script", "", "Script when user subscribe to the cloud18 service")
 	flags.StringVar(&conf.Cloud18SalesSubscriptionValidateScript, "cloud18-sales-subscription-validate-script", "", "Script when admin validate the subscription")
 	flags.StringVar(&conf.Cloud18SalesUnsubscribeScript, "cloud18-sales-unsubscribe-script", "", "Script when user unsubscribe to the cloud18 service")
+	flags.StringVar(&conf.Cloud18SalesExternalOpsValidateScript, "cloud18-sales-external-ops-validate-script", "", "Script when admin validate external ops")
+	flags.StringVar(&conf.Cloud18SalesExternalOpsStopScript, "cloud18-sales-external-ops-stop-script", "", "Script when partnership with external ops ended")
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
 		flags.StringVar(&conf.ProvDiskDockerSize, "prov-db-disk-docker-size", "2", "Disk in g for Docker Private per micro service VM")
 		flags.StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
+		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
+		flags.StringVar(&conf.ProvDBDockerRunArgs, "prov-db-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for db")
+		flags.StringVar(&conf.ProvDBJobsDockerRunArgs, "prov-db-jobs-docker-run-args", "--ulimit nofile=262144:262144", "Additional docker run arguments for db jobs")
+		flags.StringVar(&conf.ProvProxDockerRunArgs, "prov-proxy-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for proxy")
 		flags.StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
 		flags.StringVar(&conf.ProvAgents, "prov-db-agents", "", "Comma seperated list of agents for micro services provisionning")
 		flags.StringVar(&conf.ProvDiskFS, "prov-db-disk-fs", "ext4", "[zfs|xfs|ext4]")
@@ -937,9 +975,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvSSLKey, "prov-tls-server-key", "", "server TLS key")
 		flags.BoolVar(&conf.ProvNetCNI, "prov-net-cni", false, "Networking use CNI")
 		flags.StringVar(&conf.ProvNetCNICluster, "prov-net-cni-cluster", "default", "Name of of the OpenSVC network")
+		flags.StringVar(&conf.ProvNetDockerRunArgs, "prov-net-docker-run-args", "--sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for netns container")
 		flags.BoolVar(&conf.ProvDockerDaemonPrivate, "prov-docker-daemon-private", true, "Use global or private registry per service")
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
+		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 
 		if WithOpenSVC == "ON" {
 
@@ -969,6 +1009,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
+	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
+	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -1236,6 +1279,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Warning("No include directory in default section")
 	}
 
+	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
+
 	tmp_read := fistRead.Sub("Default")
 	if tmp_read != nil {
 		tmp_read.Unmarshal(&conf)
@@ -1415,11 +1460,10 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	//add config from cluster to the config map
-	for _, cluster := range repman.ClusterList {
+	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
-		confs[cluster] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cluster, conf)
+		confs[cl] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cl, conf)
 		cfgGroupIndex++
-
 	}
 
 	cfgGroupIndex--
@@ -1768,6 +1812,8 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 func (repman *ReplicationManager) Run() error {
 	var err error
 
+	repman.InitMailer()
+
 	// Defer to recover and log panics
 	defer repman.LogPanicToFile()
 	repman.globalScheduler = cron.New()
@@ -1784,11 +1830,11 @@ func (repman *ReplicationManager) Run() error {
 	repman.clog = clog.New()
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.PeerBooked = make(map[string]string)
+	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
+	repman.InitWebTTY()
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
-
-	repman.InitMailer()
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -2108,7 +2154,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
-	repman.currentCluster.Mailer = repman.Mailer
+	repman.currentCluster.Partner = &repman.Partner
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
@@ -2140,6 +2186,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	}
 
 	repman.currentCluster.OsUser = repman.OsUser
+	repman.currentCluster.SessionManager = repman.SessionManager
+	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
@@ -2842,28 +2890,4 @@ func (repman *ReplicationManager) Save() error {
 	repman.IsNeedGitPush = has_changed
 
 	return nil
-}
-
-func (repman *ReplicationManager) InitMailer() {
-	repman.Mailer = new(mailer.Mailer)
-
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
-}
-
-func (repman *ReplicationManager) ReloadMailerConfig() {
-	repman.Mailer.SetAddress(repman.Conf.MailSMTPAddr)
-	if repman.Conf.MailSMTPUser != "" {
-		repman.Mailer.SetSmtpAuth("", repman.Conf.MailSMTPUser, repman.Conf.Secrets["mail-smtp-password"].Value, strings.Split(repman.Conf.MailSMTPAddr, ":")[0])
-	}
-
-	if repman.Conf.MailSMTPTLSSkipVerify {
-		repman.Mailer.SetTlsConfig(&tls.Config{InsecureSkipVerify: true})
-	}
 }

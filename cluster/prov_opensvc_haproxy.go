@@ -22,10 +22,10 @@ func (cluster *Cluster) OpenSVCGetHaproxyContainerSection(server *HaproxyProxy) 
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		if server.ClusterGroup.Conf.ProvProxDiskType != "volume" {
-			svccontainer["run_args"] = `--ulimit nofile=262144:262144 -v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/haproxy:/usr/local/etc/haproxy:rw`
+			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/haproxy:/usr/local/etc/haproxy:rw ` + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 		} else {
 			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
-			svccontainer["run_args"] = "--ulimit nofile=262144:262144 --sysctl net.ipv4.ip_unprivileged_port_start=0"
+			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.ClusterGroup.Conf.ProvProxDockerRunArgs
 			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/haproxy:/usr/local/etc/haproxy:rw`
 		}
 	}
@@ -67,7 +67,7 @@ func (cluster *Cluster) GetPodDockerHaproxyTemplate(collector opensvc.Collector,
 [container#00` + pod + `]
 type = docker
 hostname = {svcname}.{namespace}.svc.{clustername}
-image = google/pause
+image = ghcr.io/opensvc/pause
 rm = true
 
 [container#20` + pod + `]

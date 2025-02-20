@@ -52,6 +52,7 @@ type ServerMonitor struct {
 	URL                         string                     `json:"url"`
 	DSN                         string                     `json:"-"`
 	Host                        string                     `json:"host"`
+	HostCnf                     string                     `json:"-"` // used to store host from config file
 	Port                        string                     `json:"port"`
 	TunnelPort                  string                     `json:"tunnelPort"`
 	IP                          string                     `json:"ip"`
@@ -260,6 +261,7 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
+	server.HostCnf = url // store host from config file
 	server.QPS = 0
 	server.IsCompute = compute
 	server.Domain = domain
@@ -536,9 +538,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if server.PrevState == stateFailed {
 		server.DelWaitStartCookie()
 		server.DelRestartCookie()
-		server.DelProvisionCookie()
 		server.DelReprovisionCookie()
-
 	}
 
 	// reaffect a global DB pool object if we never get it , ex dynamic seeding
@@ -650,6 +650,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				server.SetState(stateMaster)
 			}
 		} else if server.State != stateMaster && server.PrevState == stateSlaveErr { // if not master and was slave error
+			server.SetState(stateUnconn)
+		} else if server.GetCluster().GetTopology() == config.TopoMasterSlave && server.GetCluster().GetMaster() != nil && server.GetCluster().GetMaster().Id != server.Id && server.PrevState == stateSuspect && !server.HaveWsrep && !cluster.IsInFailover() {
 			server.SetState(stateUnconn)
 		}
 	} else if cluster.IsActive() && errss == nil && (server.PrevState == stateFailed) {
