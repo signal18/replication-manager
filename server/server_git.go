@@ -859,6 +859,7 @@ func (repman *ReplicationManager) ShallowClone() error {
 		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 		Auth:              auth,
 		Depth:             1, // Shallow clone
+		NoCheckout:        true,
 	})
 
 	return err
