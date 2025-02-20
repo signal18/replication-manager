@@ -2145,6 +2145,10 @@ func (cluster *Cluster) SetLogArchiveLevel(value int) {
 	}
 }
 
+func (cluster *Cluster) SetLogMailerLevel(value int) {
+	cluster.Conf.LogMailerLevel = value
+}
+
 func (cluster *Cluster) SetInPhysicalBackupState(value bool) {
 	cluster.InPhysicalBackup = value
 }

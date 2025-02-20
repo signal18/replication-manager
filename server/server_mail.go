@@ -11,7 +11,13 @@ import (
 )
 
 func (repman *ReplicationManager) InitMailer() error {
-	m, err := mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailMaxPool, repman.Conf.MailTimeout)
+	var m *mailer.Mailer
+	var err error
+	if repman.Conf.MailMaxPool > 0 {
+		m, err = mailer.NewMailerWithPool(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailMaxPool, repman.Conf.MailTimeout)
+	} else {
+		m, err = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify)
+	}
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
 		return err
@@ -26,12 +32,20 @@ func (repman *ReplicationManager) InitMailer() error {
 // SendEmail sends an email based on the provided email struct
 func (repman *ReplicationManager) SendMail(email mailer.Email) error {
 	if repman.Mailer == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Mailer not found. Initializing mailer")
 		if err := repman.InitMailer(); err != nil {
 			return err
 		}
 	}
 
-	return repman.Mailer.SendEmailMessage(email)
+	err := repman.Mailer.SendEmailMessage(email)
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Error sending email: %v", err)
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Email with subject %s sent to %s", email.Subject, email.To)
+
+	return err
 }
 
 // SendEmailMessage sends an email based on the provided parameters
@@ -42,7 +56,14 @@ func (repman *ReplicationManager) SendEmailMessage(msg, subj, to string, isHTML 
 		}
 	}
 
-	return repman.Mailer.SendEmailMessage(mailer.Email{Message: msg, Subject: subj, To: to, IsHTML: isHTML, Attachments: attachments})
+	err := repman.Mailer.SendEmailMessage(mailer.Email{Message: msg, Subject: subj, To: to, IsHTML: isHTML, Attachments: attachments})
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Error sending email: %v", err)
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Email with subject %s sent to %s", subj, to)
+
+	return err
 }
 
 func (repman *ReplicationManager) SendCloud18ClusterSubscriptionMail(clustername string, userform cluster.UserForm) error {

@@ -10,7 +10,13 @@ import (
 )
 
 func (cluster *Cluster) InitMailer() error {
-	m, err := mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify, cluster.Conf.MailMaxPool, cluster.Conf.MailTimeout)
+	var m *mailer.Mailer
+	var err error
+	if cluster.Conf.MailMaxPool > 0 {
+		m, err = mailer.NewMailerWithPool(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify, cluster.Conf.MailMaxPool, cluster.Conf.MailTimeout)
+	} else {
+		m, err = mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify)
+	}
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
 		return err
@@ -55,6 +61,7 @@ func (cluster *Cluster) ToAlertMessage(msg string) string {
 
 func (cluster *Cluster) SendMail(em mailer.Email) error {
 	if cluster.Mailer == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Mailer not initialized. Initializing...")
 		if err := cluster.InitMailer(); err != nil {
 			return err
 		}
@@ -66,7 +73,7 @@ func (cluster *Cluster) SendMail(em mailer.Email) error {
 
 	err := cluster.Mailer.SendEmailMessage(em)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error sending email for with subject %s. Err: %v", em.Subject, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Error sending email with subject %s. Err: %v", em.Subject, err)
 		return err
 	}
 

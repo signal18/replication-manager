@@ -282,6 +282,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               }
             />
           )
+        },
+        {
+          key: 'Log Mailer Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logMailerLevel}
+              confirmTitle={`Confirm change 'log-mailer-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-mailer-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
         }
       ]
     },

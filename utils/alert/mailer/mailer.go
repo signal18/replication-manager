@@ -10,14 +10,30 @@ import (
 	"github.com/jordan-wright/email"
 )
 
+type TLSConfig struct {
+	InsecureSkipVerify bool   `json:"insecure_skip_verify"`
+	ServerName         string `json:"server_name"`
+}
+
+func (t TLSConfig) ToTLSConfig() *tls.Config {
+	return &tls.Config{
+		InsecureSkipVerify: t.InsecureSkipVerify,
+		ServerName:         t.ServerName,
+	}
+}
+
+// Write all to json for debugging
 type Mailer struct {
-	Address string
-	Auth    smtp.Auth
-	TLS     *tls.Config
-	From    string
-	Pool    *email.Pool
-	MaxConn int
-	Timeout time.Duration
+	Address  string      `json:"address"`
+	Username string      `json:"username"`
+	Password string      `json:"-"`
+	Auth     smtp.Auth   `json:"-"`
+	TLS      *TLSConfig  `json:"-"`
+	From     string      `json:"from"`
+	UsePool  bool        `json:"use_pool"`
+	Pool     *email.Pool `json:"pool"`
+	MaxConn  int         `json:"max_conn"`
+	Timeout  int         `json:"timeout"`
 }
 
 type Email struct {
@@ -28,12 +44,12 @@ type Email struct {
 	Attachments []string `json:"attachments"`
 }
 
-func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool, maxConn, timeout int) (*Mailer, error) {
+func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool) (*Mailer, error) {
 	m := &Mailer{
-		Address: smtpAddr,
-		From:    mailFrom,
-		MaxConn: maxConn,
-		Timeout: time.Duration(timeout) * time.Second,
+		Username: smtpUser,
+		Password: smtpPassword,
+		Address:  smtpAddr,
+		From:     mailFrom,
 	}
 
 	if smtpUser != "" {
@@ -42,10 +58,36 @@ func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify 
 			return nil, err
 		}
 		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
+
+		if tlsSkipVerify {
+			m.TLS = &TLSConfig{InsecureSkipVerify: true, ServerName: host}
+		}
 	}
 
-	if tlsSkipVerify {
-		m.TLS = &tls.Config{InsecureSkipVerify: true}
+	return m, nil
+}
+
+func NewMailerWithPool(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool, maxConn, timeout int) (*Mailer, error) {
+	m := &Mailer{
+		Username: smtpUser,
+		Password: smtpPassword,
+		Address:  smtpAddr,
+		From:     mailFrom,
+		MaxConn:  maxConn,
+		Timeout:  timeout,
+		UsePool:  true,
+	}
+
+	if smtpUser != "" {
+		host, _, err := net.SplitHostPort(smtpAddr)
+		if err != nil {
+			return nil, err
+		}
+		m.Auth = smtp.PlainAuth("", smtpUser, smtpPassword, host)
+
+		if tlsSkipVerify {
+			m.TLS = &TLSConfig{InsecureSkipVerify: true, ServerName: host}
+		}
 	}
 
 	m.ReinitPool()
@@ -60,6 +102,10 @@ func (m *Mailer) Close() {
 }
 
 func (m *Mailer) ReinitPool() error {
+	if !m.UsePool {
+		return nil
+	}
+
 	var err error
 	var pool *email.Pool
 	if m.Pool != nil {
@@ -67,7 +113,7 @@ func (m *Mailer) ReinitPool() error {
 	}
 
 	if m.TLS != nil {
-		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS)
+		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS.ToTLSConfig())
 	} else {
 		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth)
 	}
@@ -94,7 +140,7 @@ func (m *Mailer) UpdateMaxPool(maxPool int) {
 // which means no timeout
 func (m *Mailer) UpdateTimeout(timeout int) {
 	if timeout > 0 {
-		m.Timeout = time.Duration(timeout) * time.Second
+		m.Timeout = timeout
 	} else {
 		m.Timeout = -1
 	}
@@ -105,8 +151,13 @@ func (m *Mailer) UpdateFrom(mailFrom string) {
 }
 
 func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) error {
+	host, _, err := net.SplitHostPort(m.Address)
+	if err != nil {
+		return err
+	}
+
 	if tlsSkipVerify {
-		m.TLS = &tls.Config{InsecureSkipVerify: true}
+		m.TLS = &TLSConfig{InsecureSkipVerify: true, ServerName: host}
 	} else {
 		m.TLS = nil
 	}
@@ -134,8 +185,15 @@ func (m *Mailer) UpdateAddress(smtpAddr string) error {
 }
 
 func (m *Mailer) Send(e *email.Email) error {
+	if m.UsePool && m.Pool != nil {
+		err := m.Pool.Send(e, time.Duration(m.Timeout)*time.Second)
+		if err != nil {
+			return err
+		}
+	}
+
 	if m.TLS != nil {
-		err := e.SendWithTLS(m.Address, m.Auth, m.TLS)
+		err := e.SendWithTLS(m.Address, m.Auth, m.TLS.ToTLSConfig())
 		if err != nil {
 			return err
 		}
