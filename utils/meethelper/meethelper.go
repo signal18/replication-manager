@@ -231,9 +231,12 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 			channelsMapP[channel.Name] = channel.Id
 		}
 		if channel.Type == "D" && channel.DeleteAt == 0 {
-			directChannelName := strings.Replace(channel.Name, "__", "", 1)
-			directChannelName = strings.Replace(directChannelName, c.UserID, "", 1)
-			channelsMapD[c.AllUser[directChannelName]] = channel.Id
+			directChannelId := strings.Replace(channel.Name, "__", "", 1)
+			directChannelId = strings.Replace(directChannelId, c.UserID, "", 1)
+			channelName := c.AllUser[directChannelId]
+			if channelName != "" {
+				channelsMapD[channelName] = channel.Id
+			}
 		}
 		unReadMessages := c.GetUnReadMessages(channel.Id)
 		unReadMessagesByChannel[channel.Id] = unReadMessages

@@ -54,9 +54,9 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         const interval = setInterval(() => {
             if (selectedChannel) {
                 setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
-                dispatch(fetchNewMessages({ channelId: selectedChannel }));
-                dispatch(getMeetInfo());
+                dispatch(fetchNewMessages({ channelId: selectedChannel })); 
             }
+            dispatch(getMeetInfo());
         }, 1000);
 
         return () => clearInterval(interval);

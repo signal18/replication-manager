@@ -78,7 +78,7 @@ const MessageRender = ({messages, allUsers}) => {
         }
 
         return (
-            <React.Fragment key={index}>
+            <React.Fragment key={index} className={styles.messagesRender}>
                 {shouldShowDate && (
                     <Box className={styles.dateSeparator}>
                         {messageDate}

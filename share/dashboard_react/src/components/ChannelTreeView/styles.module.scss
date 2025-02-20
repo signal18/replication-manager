@@ -1,5 +1,5 @@
 .channelsContainer {
-    max-height: 400px;
+    max-height: 1000px;
     overflow-y: auto;
     padding: 10px;
     border: 1px solid #ccc;
@@ -12,19 +12,35 @@
             font-weight: 700;
         }
 
+        .channelsType {
+            font-weight: bold;
+        }
+
+        .channelsTypeButton {
+            color-scheme: teal;
+            size: small;
+        }
+
         .channelsGroup {
             .channelsType {
                 font-weight: bold;
             }
+            .channelsTypeButton {
+                color-scheme: teal;
+                size: small;
+            }
             .channelsOfAGroup {
                 .channel {
                     display: flex;
-                    justify-content: row;
                     margin-bottom: 2px;
+                    justify-content: space-between;
+                    width: 100%;
+                    align-items: center;
+                    padding: 8px;
 
-                    .channelName {
+                    .channelContent {
                         display: flex;
-                        justify-content: space-around;
+                        justify-content: space-between;
                     }
 
                     .channelUnreadMessages {
