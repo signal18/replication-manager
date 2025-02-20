@@ -11,7 +11,7 @@ import data from "@emoji-mart/data";
 
 
 
-const MattermostIntegration = memo(({ isOpen, onClose }) => {
+const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
     if (!isOpen) return null;
     const dispatch = useDispatch();
     const { meetInfo, messages, loading, error } = useSelector((state) => state.meet, shallowEqual);
@@ -25,6 +25,18 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
+    useEffect(() => {
+        if (selectedChannel) {
+            localStorage.setItem('selectedChannel', selectedChannel);
+        }
+    }, [selectedChannel]);
+
+    useEffect(() => {
+        const savedChannel = localStorage.getItem('selectedChannel');
+        if (savedChannel) {
+            setSelectedChannel(savedChannel);
+        }
+    }, []);
 
     //to set messages for selected channel for the fist time
     useEffect(() => {
@@ -62,6 +74,7 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);
 
+      
     //to handle the scroll event when user reaches the top 
     const handleScroll = () => {
         const container = messagesContainerRef.current;
@@ -109,9 +122,15 @@ const MattermostIntegration = memo(({ isOpen, onClose }) => {
         }
     };
 
+    const handleCloseChat = () => {
+        setIsChatOpen(false); 
+        localStorage.setItem('chatOpen', false);
+        onClose();
+    };
+
 
     return (
-        <Drawer isOpen={isOpen} placement="right" onClose={onClose} size="lg">
+        <Drawer isOpen={isOpen} placement="right" onClose={handleCloseChat} size="lg">
             <DrawerOverlay />
             <DrawerContent className={styles.mattermostDrawerContent}> 
                 <DrawerCloseButton />

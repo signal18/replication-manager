@@ -39,6 +39,11 @@
     background: var(--warning-primary-color);
     color: var(--white-color) !important;
   }
+  &.support {
+    background: green;
+    color: var(--white-color) !important;
+  }
+
 }
 
 .blinking {

@@ -1,22 +1,22 @@
 import { Badge, Box } from '@chakra-ui/react'
 import React from 'react'
-import { HiBan, HiExclamation } from 'react-icons/hi'
+import { HiBan, HiExclamation, HiChatAlt2 } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import CustomIcon from '../Icons/CustomIcon'
 
-function AlertBadge({ isBlocking = false, count, text, onClick, showText }) {
+function AlertBadge({ isBlocking = false, count, text, onClick, showText, isSupport = false }) {
   return (
     <Badge
       as={'button'}
       {...(onClick ? { onClick: onClick } : {})}
-      colorScheme={isBlocking ? 'red' : 'orange'}
+      colorScheme={isBlocking ? 'red' : isSupport ? 'green' : 'orange'}
       className={styles.badge}>
       <Box
         as='span'
-        className={`alertCount ${styles.alertCount} ${isBlocking ? styles.blocker : styles.warning} ${isBlocking && count > 0 ? styles.blinking : {}}`}>
+        className={`alertCount ${styles.alertCount} ${isBlocking ? styles.blocker : isSupport ? styles.support : styles.warning} ${isBlocking && count > 0 ? styles.blinking : {}}`}>
         {count}
       </Box>
-      <CustomIcon icon={isBlocking ? HiBan : HiExclamation} />
+      <CustomIcon icon={isBlocking ? HiBan : isSupport ? HiChatAlt2 :  HiExclamation} />
       {showText ? text : ''}
     </Badge>
   )

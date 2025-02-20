@@ -21,20 +21,23 @@ import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
-  const { isOpen, onOpen, onClose } = useDisclosure()
   const { theme } = useTheme()
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
-  //ajout pour le compteur de messages non lus
   const { meetInfo, unreadMessagesByChannel } = useSelector((state) => state?.meet)
+  const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
 
   const {
     common: { isMobile, isDesktop },
     globalClusters: { monitor },
     cluster: { clusterAlerts, clusterData }
   } = useSelector((state) => state)
+
+  useEffect(() => {
+    localStorage.setItem('chatOpen', isChatOpen);
+  }, [isChatOpen]);
 
   //to get the meet info
   useEffect(() => {
@@ -47,6 +50,11 @@ function Navbar({ username }) {
       setUnreadMessagesCount(totalUnreadMessages)
     }
   }, [unreadMessagesByChannel]);
+
+  //to toggle chat and save state
+  const toggleChat = () => {
+    setIsChatOpen(prevState => !prevState);
+  };
   //
 
   const openAlertModal = (type) => {
@@ -65,6 +73,8 @@ function Navbar({ username }) {
 
   const handleLogout = () => {
     dispatch(logoutFromMeet())
+    localStorage.removeItem('chatOpen');
+    localStorage.removeItem('selectedChannel');
     dispatch(logout())
     dispatch(clearCluster())
   }
@@ -128,22 +138,15 @@ function Navbar({ username }) {
               {username && isDesktop && (
                   <>
                       <Text>{`Welcome, ${username}`}</Text>
-                      <Button onClick={onOpen} className={styles.navButton}>
-                        Support
-                        {unreadMessagesCount > 0 && (
-                          <Box
-                            as="span"
-                            bg="red.500"
-                            color="white"
-                            borderRadius="full"
-                            px="2"
-                            py="1"
-                            ml="2"
-                          >
-                            {unreadMessagesCount}
-                          </Box>
-                        )}
-                      </Button>
+                      <Flex className={styles.chatIcon}>
+                        <AlertBadge
+                          isSupport={true}
+                          text='Support'
+                          count={unreadMessagesCount || 0}
+                          onClick={toggleChat}
+                          showText={!isMobile}
+                        />
+                      </Flex>
                   </>
               )}
               {isMobile ? (
@@ -168,7 +171,7 @@ function Navbar({ username }) {
         </HStack>
       </Flex>
 
-      <MattermostIntegration isOpen={isOpen} onClose={onClose} />
+      <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)}  />
 
       {isAuthorized() && !isDesktop && (
         <Box mx='auto' p='8px' marginTop='60px'>
