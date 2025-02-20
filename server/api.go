@@ -1717,7 +1717,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
 	meetClient, err := meethelper.GetMeetClient()
-	if err != nil {
+	if err != nil || meetClient == nil || meetClient.UserID == "" {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		return
 	}
