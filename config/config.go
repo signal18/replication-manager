@@ -143,6 +143,7 @@ type Config struct {
 	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
+	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1188,6 +1189,7 @@ const (
 	ConstLogModPurge          = 16
 	ConstLogModTask           = 17
 	ConstLogModArchive        = 18
+	ConstLogModMailer         = 19
 )
 
 /*
@@ -1212,6 +1214,8 @@ const (
 	ConstLogNameGraphite       string = "log-graphite"
 	ConstLogNamePurge          string = "log-binlog-purge"
 	ConstLogNameTask           string = "log-task"
+	ConstLogNameArchive        string = "log-archive"
+	ConstLogNameMailer         string = "log-mailer"
 )
 
 /*
@@ -3036,6 +3040,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			}
 		case module == ConstLogModArchive:
 			return conf.LogArchiveLevel >= lvl
+		case module == ConstLogModMailer:
+			return conf.LogMailerLevel >= lvl
 		}
 	}
 

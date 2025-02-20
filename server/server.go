@@ -391,6 +391,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
 
 	flags.IntVar(&conf.LogArchiveLevel, "log-archive-level", 2, "Log Level for backup archive (restic)")
+	flags.IntVar(&conf.LogMailerLevel, "log-mailer-level", 3, "Log Level for mailer")
 
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
@@ -611,8 +612,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.MailSMTPUser, "mail-smtp-user", "", "SMTP user")
 		flags.StringVar(&conf.MailSMTPPassword, "mail-smtp-password", "", "SMTP password")
 		flags.BoolVar(&conf.MailSMTPTLSSkipVerify, "mail-smtp-tls-skip-verify", false, "Use TLS with skip verify")
-		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 10, "Max pool of SMTP connection")
-		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds. 0 means no timeout, default 5")
+		flags.IntVar(&conf.MailMaxPool, "mail-max-pool", 0, "Max pool of SMTP connection. 0 means no pool")
+		flags.IntVar(&conf.MailTimeout, "mail-timeout", 5, "Mail timeout in seconds when using pool. 0 means no timeout, default 5")
 	}
 
 	flags.BoolVar(&conf.PRXServersReadOnMaster, "proxy-servers-read-on-master", false, "Should RO route via proxies point to master")
