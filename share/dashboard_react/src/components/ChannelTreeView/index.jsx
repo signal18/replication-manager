@@ -70,23 +70,32 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
         <Accordion multiple className={styles.channelsContainer} allowMultiple allowToggle index={selectedAccordionIndex} onChange={(index) => setSelectedAccordionIndex(index.length ? index : [])}>
                 <AccordionItem className={styles.channelsTreeView}>
                     <AccordionButton className={styles.channelsTreeViewTitle} onClick={() => setSelectedAccordionIndex([0])}>
-                    <Box className={styles.channelsType}>
-                        <p>
-                            Channels {selectedChannel && `: ${channels.find(c => c.id === selectedChannel)?.name || ""}`}
-                        </p>
-                        {selectedChannel && (
-                            <Box className={styles.channelsTypeButton}>
-                                {channels.find(c => c.id === selectedChannel)?.type === 'P' && (
+                        <AccordionIcon />
+
+                        <Box className={styles.channelsType}>
+                            <p className={styles.channelName}>
+                                Channels {selectedChannel && `: ${channels.find(c => c.id === selectedChannel)?.name || ""}`}
+                            </p>
+                            {selectedChannel && (
+                                <Box className={styles.channelsTypeButton}>
+                                    {channels.find(c => c.id === selectedChannel)?.type === 'P' && (
+                                        <>
+                                            <LeaveUserChannelButton selectedChannel={selectedChannel} onSelectChannel={onSelectChannel} />
+                                            <AddUserChannelButton selectedChannel={selectedChannel} allUsers={allUsers} usersStatus={usersStatus}/>
+                                        </>
+                                    )}
+                                    {channels.find(c => c.id === selectedChannel)?.type === 'D' && (
                                     <>
-                                        <LeaveUserChannelButton selectedChannel={selectedChannel} onSelectChannel={onSelectChannel} />
-                                        <AddUserChannelButton selectedChannel={selectedChannel} allUsers={allUsers} usersStatus={usersStatus}/>
+                                        <FaCircle
+                                            color={usersStatus[channels.find(c => c.id === selectedChannel)?.name] === 'online' ? 'green' : 'gray'}
+                                            style={{ marginRight: '8px' }}
+                                        />
                                     </>
                                 )}
-                            </Box>
-                        )}
-                    </Box>
-
-                        <AccordionIcon />
+                                </Box>
+                            )}
+                        </Box>
+                        
                     </AccordionButton>
 
                     <AccordionPanel className={styles.channelsTreeViewContent}>
@@ -160,9 +169,10 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                             <div className={styles.channelUnreadMessages}>{unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}</div>
                                             {type === 'P' && (
                                                 <>
-                                                <LeaveUserChannelButton selectedChannel={channel.id} />
-                                                <AddUserChannelButton selectedChannel={channel.id} allUsers={allUsers} usersStatus={usersStatus}/>
-
+                                                <Box className={styles.channelActionsButtons}>
+                                                    <LeaveUserChannelButton selectedChannel={channel.id} />
+                                                    <AddUserChannelButton selectedChannel={channel.id} allUsers={allUsers} usersStatus={usersStatus}/>
+                                                </Box>
                                                 </>
                                             )}
                                         </Box>

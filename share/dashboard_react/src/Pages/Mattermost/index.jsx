@@ -35,6 +35,11 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
         const savedChannel = localStorage.getItem('selectedChannel');
         if (savedChannel) {
             setSelectedChannel(savedChannel);
+            setTimeout(() => {
+                if (messagesContainerRef.current) {
+                    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                }
+            }, 100);
         }
     }, []);
 
@@ -69,7 +74,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                 dispatch(fetchNewMessages({ channelId: selectedChannel })); 
             }
             dispatch(getMeetInfo());
-        }, 1000);
+        }, 500);
 
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);
@@ -125,6 +130,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
     const handleCloseChat = () => {
         setIsChatOpen(false); 
         localStorage.setItem('chatOpen', false);
+        setScrollPosition(null);
         onClose();
     };
 
@@ -167,17 +173,15 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                                             />
                                         </Box>
                                     )}
-                                    <FileUploadButton onFileSelected={handleFileSelected} />
-                                    {selectedFile && (
-                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
-                                    )}   
+                                    <FileUploadButton onFileSelected={handleFileSelected} />  
                                     <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
                                         <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
                                             <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
                                         </svg>
                                     </Button>
-                                    
-                                    
+                                    {selectedFile && (
+                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
+                                    )} 
                                 </Box>
                             </Box>
                         )}
