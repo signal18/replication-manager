@@ -416,13 +416,12 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
-
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
-		//	os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
-		os.MkdirAll(cluster.Conf.WorkingDir, os.ModePerm)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
+		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
+
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
