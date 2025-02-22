@@ -454,7 +454,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
-		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
+		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version + "\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05")
 		subj := "Replication-Manager started"
 		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
