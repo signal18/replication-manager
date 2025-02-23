@@ -106,8 +106,10 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 
 		// Wait until there is at least one task in the queue
 		for len(cm.clusterData[cluster].tasks) == 0 {
+			cm.clusterData[cluster].mutex.Unlock()
 			// Wait for the condition variable to be signaled when a task is added
 			cm.clusterData[cluster].cond.Wait()
+			cm.clusterData[cluster].mutex.Lock()
 		}
 
 		// Check for the stop signal before processing
@@ -183,8 +185,10 @@ func (cm *ConfigManager) processGitPush() {
 
 		// Wait until there is at least one task in the queue
 		for len(cm.pushManager.tasks) == 0 {
+			cm.pushManager.mutex.Unlock()
 			// Wait for the condition variable to be signaled when a task is added
 			cm.pushManager.cond.Wait()
+			cm.pushManager.mutex.Lock()
 		}
 
 		// Check for the stop signal before processing
