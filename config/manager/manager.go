@@ -209,6 +209,7 @@ func (cm *ConfigManager) processGitPush() {
 			fmt.Println("Waiting for active saves to finish...")
 			cm.configWg.Wait() // Ensure all active saves finish
 
+			fmt.Println("[Git] Starting Git push...")
 			// Execute the save function and handle potential errors
 			if err := configPushTask.PushFunc(); err != nil {
 				// Execute the Git push function and handle potential errors
