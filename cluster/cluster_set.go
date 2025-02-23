@@ -933,7 +933,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 
 		cluster.dbPass = cluster.GetDecryptedPassword("db-servers-credential", cluster.dbPass)*/
 	cluster.LoadAPIUsers()
-	cluster.Save()
+	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
@@ -1481,7 +1481,7 @@ func (cluster *Cluster) SetServicePlanInfos(theplan string) error {
 			cluster.SetCloud18SlaRepairTime(plan.RepairTime)
 			cluster.SetCloud18SlaProvisionTime(plan.ProvisionTime)
 			cluster.SetCloud18PromotionPct(plan.PromotionPct)
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 			return nil
 		}
 	}
@@ -1612,7 +1612,7 @@ func (cluster *Cluster) SetServicePlan(theplan string) error {
 						}
 					}
 				} // No need to add database server
-				cluster.Save()
+				cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 			} // End of cluster not already prov
 			if srvcount == srvcountnow {
 				cluster.SetServicePlanInfos(theplan)
@@ -2394,7 +2394,7 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 	cluster.Lock()
 	defer func() {
 		cluster.Unlock()
-		cluster.Save()
+		cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 	}()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Initiate rename cluster %s to %s", cluster.Name, newClusterName)

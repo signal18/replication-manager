@@ -20,6 +20,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/spf13/cobra"
@@ -85,6 +86,7 @@ For interacting with this daemon use,
 		//	fmt.Println("monitor cmd")
 		RepMan.SetDefaultFlags(viper.GetViper())
 		RepMan.CommandLineFlag = GetCommandLineFlag(cmd)
+		RepMan.ConfigManager = manager.NewConfigManager()
 		//	RepMan.DefaultFlagMap = defaultFlagMap
 
 		err := RepMan.MergeOnStart(conf)

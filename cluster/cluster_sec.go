@@ -313,7 +313,7 @@ func (cluster *Cluster) RotatePasswords() error {
 			}
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Password rotation is done.")
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 		return nil
 		//cas sans vault
