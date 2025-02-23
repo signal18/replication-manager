@@ -2130,7 +2130,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 			if repman.Conf.GitUrl != "" {
-				repman.ConfigManager.GitPush(repman.PushAllConfigsToGit, true)
+				repman.ConfigManager.GitPush(func() error { return repman.PushAllConfigsToGit() }, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
