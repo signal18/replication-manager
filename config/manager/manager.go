@@ -20,7 +20,7 @@ type ConfigPushTask struct {
 // ClusterManager holds the necessary fields for each cluster
 type ClusterManager struct {
 	tasks  []ConfigSaveTask // Slice of tasks for the cluster
-	mutex  sync.Mutex       // Mutex for safe access to tasks
+	mutex  *sync.Mutex      // Mutex for safe access to tasks
 	cond   *sync.Cond       // Condition variable for waiting and notifying tasks
 	stopCh chan struct{}    // Stop channel to signal the goroutine to stop
 }
@@ -28,15 +28,15 @@ type ClusterManager struct {
 // Push Manager
 type PushManager struct {
 	tasks  []ConfigPushTask // Slice of tasks for the push queue
-	mutex  sync.Mutex       // Mutex for safe access to tasks
+	mutex  *sync.Mutex      // Mutex for safe access to tasks
 	cond   *sync.Cond       // Condition variable for waiting and notifying tasks
 	stopCh chan struct{}    // Stop channel to signal the goroutine to stop
 }
 
 // ConfigManager controls config saves & Git push
 type ConfigManager struct {
-	configWg    sync.WaitGroup             // Tracks ongoing config saves
-	gitMutex    sync.Mutex                 // Blocks new saves during Git push
+	configWg    *sync.WaitGroup            // Tracks ongoing config saves
+	gitMutex    *sync.Mutex                // Blocks new saves during Git push
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
 	isStopping  bool                       // Prevents new saves after stopping
 	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
@@ -47,14 +47,16 @@ type ConfigManager struct {
 func NewConfigManager() *ConfigManager {
 	newcm := &ConfigManager{
 		clusterData: make(map[string]*ClusterManager),
+		gitMutex:    &sync.Mutex{},
+		configWg:    &sync.WaitGroup{},
 		pushManager: PushManager{
 			tasks:  []ConfigPushTask{},
+			mutex:  &sync.Mutex{},
 			stopCh: make(chan struct{}), // Initialize stop channel for the push manager
 		},
 	}
 
-	newcm.pushManager.cond = sync.NewCond(&newcm.pushManager.mutex)
-	go newcm.processGitPush() // Start the persistent goroutine for the push manager
+	newcm.pushManager.cond = sync.NewCond(newcm.pushManager.mutex)
 
 	return newcm
 }
@@ -66,6 +68,7 @@ func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, w
 	if wait {
 		wg := sync.WaitGroup{}
 		configSaveTask.WaitGroup = &wg
+		configSaveTask.WaitGroup.Add(1)
 	}
 
 	if cm.isStopping {
@@ -77,10 +80,11 @@ func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, w
 	if _, exists := cm.clusterData[configSaveTask.Cluster]; !exists {
 		cm.clusterData[configSaveTask.Cluster] = &ClusterManager{
 			tasks:  []ConfigSaveTask{},
+			mutex:  &sync.Mutex{},
 			stopCh: make(chan struct{}), // Initialize stop channel for the cluster
 		}
 		// Initialize the condition variable with the mutex
-		cm.clusterData[configSaveTask.Cluster].cond = sync.NewCond(&cm.clusterData[configSaveTask.Cluster].mutex)
+		cm.clusterData[configSaveTask.Cluster].cond = sync.NewCond(cm.clusterData[configSaveTask.Cluster].mutex)
 		go cm.processClusterQueue(configSaveTask.Cluster) // Start the persistent goroutine for the cluster
 	}
 
@@ -93,7 +97,6 @@ func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, w
 
 	// If a WaitGroup pointer is provided, add to the wait group
 	if configSaveTask.WaitGroup != nil {
-		configSaveTask.WaitGroup.Add(1)
 		configSaveTask.WaitGroup.Wait()
 	}
 }
@@ -157,6 +160,7 @@ func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
 	if wait {
 		wg := sync.WaitGroup{}
 		configPushTask.WaitGroup = &wg
+		configPushTask.WaitGroup.Add(1)
 	}
 
 	fmt.Println("Locking push mutex")
@@ -170,7 +174,6 @@ func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
 
 	// If a WaitGroup pointer is provided, add to the wait group
 	if configPushTask.WaitGroup != nil {
-		configPushTask.WaitGroup.Add(1)
 		configPushTask.WaitGroup.Wait()
 	}
 }
