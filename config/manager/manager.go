@@ -146,6 +146,7 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 			}
 
 			cm.configWg.Done()
+			cm.pushManager.cond.Signal()
 		}
 	}
 }
