@@ -2213,14 +2213,17 @@ func (cluster *Cluster) SetAlertScript(value string) {
 
 func (cluster *Cluster) SetAlertSlackChannel(value string) {
 	cluster.Conf.SlackChannel = value
+	cluster.LogSlack.SetChannel(value)
 }
 
 func (cluster *Cluster) SetAlertSlackUrl(value string) {
 	cluster.Conf.SlackURL = value
+	cluster.LogSlack.SetURL(value)
 }
 
 func (cluster *Cluster) SetAlertSlackUser(value string) {
 	cluster.Conf.SlackUser = value
+	cluster.LogSlack.SetUser(value)
 }
 
 func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {
