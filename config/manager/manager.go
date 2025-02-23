@@ -211,7 +211,10 @@ func (cm *ConfigManager) processGitPush() {
 
 			fmt.Println("[Git] Starting Git push...")
 			// Execute the save function and handle potential errors
-			if err := configPushTask.PushFunc(); err != nil {
+			if configPushTask.PushFunc == nil {
+				fmt.Println("[Git] No push function provided.")
+				return
+			} else if err := configPushTask.PushFunc(); err != nil {
 				// Execute the Git push function and handle potential errors
 				fmt.Printf("[Git] Error during push: %v\n", err)
 			} else {
