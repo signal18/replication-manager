@@ -58,6 +58,8 @@ func NewConfigManager() *ConfigManager {
 
 	newcm.pushManager.cond = sync.NewCond(newcm.pushManager.mutex)
 
+	go newcm.processGitPush() // Start the persistent goroutine for the push manager
+
 	return newcm
 }
 
