@@ -40,7 +40,7 @@ type ConfigManager struct {
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
 	isStopping  bool                       // Prevents new saves after stopping
 	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
-	pushManager PushManager                // Push manager
+	pushManager *PushManager               // Push manager
 }
 
 // NewConfigManager initializes the manager
@@ -49,7 +49,7 @@ func NewConfigManager() *ConfigManager {
 		clusterData: make(map[string]*ClusterManager),
 		gitMutex:    &sync.Mutex{},
 		configWg:    &sync.WaitGroup{},
-		pushManager: PushManager{
+		pushManager: &PushManager{
 			tasks:  []ConfigPushTask{},
 			mutex:  &sync.Mutex{},
 			stopCh: make(chan struct{}), // Initialize stop channel for the push manager
