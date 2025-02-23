@@ -158,8 +158,11 @@ func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
 		wg := sync.WaitGroup{}
 		configPushTask.WaitGroup = &wg
 	}
+
+	fmt.Println("Locking push mutex")
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.pushManager.mutex.Lock()
+	fmt.Println("Appending to push queue")
 	cm.pushManager.tasks = append(cm.pushManager.tasks, configPushTask)
 	// Signal the goroutine that a new task is available
 	cm.pushManager.mutex.Unlock()
@@ -175,13 +178,12 @@ func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
 // processClusterQueue processes the tasks in the slice for a given cluster
 func (cm *ConfigManager) processGitPush() {
 	for {
-		fmt.Println("[Git] Waiting for ongoing config saves to finish...")
-
 		cm.pushManager.mutex.Lock()
 
 		// Wait until there is at least one task in the queue
 		for len(cm.pushManager.tasks) == 0 {
 			cm.pushManager.cond.Wait()
+			fmt.Println("[Git] Waking up goroutine.")
 		}
 
 		// Check for the stop signal before processing
@@ -197,7 +199,9 @@ func (cm *ConfigManager) processGitPush() {
 			cm.pushManager.tasks = make([]ConfigPushTask, 0) // remove the current batch since they doing the same thing
 			cm.pushManager.mutex.Unlock()
 
+			fmt.Println("Locking git mutex")
 			cm.gitMutex.Lock() // Block new config saves
+			fmt.Println("Waiting for active saves to finish...")
 			cm.configWg.Wait() // Ensure all active saves finish
 
 			// Execute the save function and handle potential errors
