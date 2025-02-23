@@ -2130,10 +2130,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 			if repman.Conf.GitUrl != "" {
-				gitwg := sync.WaitGroup{}
-				gitwg.Add(1)
-				repman.ConfigManager.GitPush(func() error { defer gitwg.Done(); return repman.PushAllConfigsToGit() }, true)
-				gitwg.Wait()
+				repman.ConfigManager.GitPush(repman.PushAllConfigsToGit, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
