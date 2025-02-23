@@ -88,8 +88,8 @@ func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, w
 	cm.clusterData[configSaveTask.Cluster].mutex.Lock()
 	cm.clusterData[configSaveTask.Cluster].tasks = append(cm.clusterData[configSaveTask.Cluster].tasks, configSaveTask)
 	// Signal the goroutine that a new task is available
-	cm.clusterData[configSaveTask.Cluster].cond.Signal()
 	cm.clusterData[configSaveTask.Cluster].mutex.Unlock()
+	cm.clusterData[configSaveTask.Cluster].cond.Signal()
 
 	// If a WaitGroup pointer is provided, add to the wait group
 	if configSaveTask.WaitGroup != nil {
@@ -145,7 +145,6 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 			}
 
 			cm.configWg.Done()
-			cm.pushManager.cond.Signal()
 		}
 	}
 }
@@ -163,8 +162,8 @@ func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
 	cm.pushManager.mutex.Lock()
 	cm.pushManager.tasks = append(cm.pushManager.tasks, configPushTask)
 	// Signal the goroutine that a new task is available
-	cm.pushManager.cond.Signal()
 	cm.pushManager.mutex.Unlock()
+	cm.pushManager.cond.Signal()
 
 	// If a WaitGroup pointer is provided, add to the wait group
 	if configPushTask.WaitGroup != nil {
