@@ -176,6 +176,12 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 }
 
 func (repman *ReplicationManager) PushAllConfigsToGit() error {
+	defer func() {
+		if r := recover(); r != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pushing to git: %v", r)
+		}
+	}()
+
 	if repman.Conf.GitUrl == "" {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "No Git URL provided, skipping push")
 		return nil
