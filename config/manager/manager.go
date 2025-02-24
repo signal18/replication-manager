@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -30,9 +31,10 @@ type ConfigPushTask struct {
 }
 
 type GitAddTask struct {
-	Cluster  string
-	Filename string
-	W        *git.Worktree
+	Cluster   string
+	Filename  string
+	W         *git.Worktree
+	WaitGroup *sync.WaitGroup
 }
 
 // ClusterManager holds the necessary fields for each cluster
@@ -73,7 +75,8 @@ type CommitManager struct {
 	wg            sync.WaitGroup
 	workerLimit   int
 	workerMin     int
-	currentWorker int
+	currentWorker atomic.Int32
+	IsStopping    bool
 }
 
 func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) *CommitManager {
@@ -92,20 +95,8 @@ func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) 
 func (cmm *CommitManager) Start() {
 	for i := 0; i < cmm.workerMin; i++ {
 		cmm.wg.Add(1)
-		cmm.currentWorker++
+		cmm.currentWorker.Add(1)
 		go cmm.processCommitQueue()
-	}
-}
-
-func (cmm *CommitManager) WaitUntilQueueEmpty() {
-	for {
-		cmm.mu.Lock()
-		if len(cmm.commitQueue) == 0 {
-			cmm.mu.Unlock()
-			break
-		}
-		cmm.mu.Unlock()
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -116,11 +107,14 @@ func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
 	select {
 	case <-cmm.stopCh:
 		cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping, rejecting task: %s", task.Filename)
+		if task.WaitGroup != nil {
+			task.WaitGroup.Done()
+		}
 	default:
 		cmm.commitQueue = append(cmm.commitQueue, task)
 		// Start a new worker if the queue is not empty and the current worker count is less than the limit
-		if len(cmm.commitQueue) > cmm.currentWorker && cmm.currentWorker < cmm.workerLimit {
-			cmm.currentWorker++
+		if len(cmm.commitQueue) > int(cmm.currentWorker.Load()) && int(cmm.currentWorker.Load()) < cmm.workerLimit {
+			cmm.currentWorker.Add(1)
 			cmm.wg.Add(1)
 			go cmm.processCommitQueue()
 		}
@@ -133,14 +127,15 @@ func (cmm *CommitManager) processCommitQueue() {
 	for {
 		select {
 		case <-cmm.stopCh:
+			cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping.")
 			return
 		default:
 			cmm.mu.Lock()
 			if len(cmm.commitQueue) == 0 {
 				cmm.mu.Unlock()
 
-				if cmm.currentWorker > cmm.workerMin {
-					cmm.currentWorker--
+				if int(cmm.currentWorker.Load()) > cmm.workerMin {
+					cmm.currentWorker.Add(-1)
 					return
 				}
 
@@ -159,6 +154,10 @@ func (cmm *CommitManager) processCommitQueue() {
 }
 
 func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
+	if task.WaitGroup != nil {
+		defer task.WaitGroup.Done()
+	}
+
 	start := time.Now()
 	if _, err := task.W.Add(task.Filename); err == nil {
 		cmm.logger.Debugf("default", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
@@ -169,6 +168,12 @@ func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 
 func (cmm *CommitManager) Stop() {
 	close(cmm.stopCh)
+	cmm.IsStopping = true
+	for _, task := range cmm.commitQueue {
+		if task.WaitGroup != nil {
+			task.WaitGroup.Done()
+		}
+	}
 	cmm.wg.Wait()
 	cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager stopped.")
 }
@@ -609,6 +614,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	}
 
 	allstart := time.Now()
+	cwg := sync.WaitGroup{}
 	// Add specific files without using AddGlob
 	for _, name := range clusterList {
 		dirPath := filepath.Join(path, name)
@@ -621,8 +627,9 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
+				cwg.Add(1)
 				fpath := filepath.Join(name, file.Name())
-				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w})
+				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
 			}
 		}
 
@@ -630,7 +637,8 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
-				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w})
+				cwg.Add(1)
+				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
 			}
 		}
 	}
@@ -638,13 +646,18 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	// Add default.toml if it exists
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
-		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w})
+		cwg.Add(1)
+		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w, WaitGroup: &cwg})
 	}
 
-	// Wait until the commit queue is empty
-	cm.pushManager.CommitManager.WaitUntilQueueEmpty()
+	cwg.Wait()
 
 	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
+
+	if cm.pushManager.CommitManager.IsStopping {
+		cm.logger.Info("default", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
+		return nil
+	}
 
 	// Commit the changes
 	commitStart := time.Now()
