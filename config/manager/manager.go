@@ -585,14 +585,8 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
-				addstart := time.Now()
 				fpath := filepath.Join(name, file.Name())
-				if _, err := w.Add(fpath); err == nil {
-					changedFiles = append(changedFiles, fpath)
-					cm.logger.Debugf("default", config.ConstLogModGit, "File %s add took: %s", fpath, time.Since(addstart))
-				} else {
-					cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", fpath, err)
-				}
+				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w})
 			}
 		}
 
