@@ -221,6 +221,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/meet/post/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.PostMeetHandler)),
 	))
+	router.Handle("/meet/post/jitsi/{channelId}/{meetingId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.PostJitsiMeetingHandler)),
+	))
 	router.Handle("/meet/view/{channelId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.ViewMeetHandler)),
 	))
@@ -1931,6 +1934,59 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	}
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to post message on channel %s", channelID)
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+		}
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+		}
+		return
+	}
+
+	meetingID := vars["meetingId"]
+	if channelID == "" {
+		http.Error(w, "Jitsi Meeting ID is required", http.StatusBadRequest)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+		}
+		return
+	}
+
+	message_id, err := meetClient.PostMeetingLink(channelID, meetingID)
+	if err != nil {
+		http.Error(w, "Error posting message API", http.StatusInternalServerError)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error posting meeting link to channel %s", channelID)
+		}
+		return
+	}
+
+	response := map[string]string{
+		"status":     "success",
+		"channel":    channelID,
+		"user":       meetClient.UserID,
+		"message_id": message_id,
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to post meeting link on channel %s", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }

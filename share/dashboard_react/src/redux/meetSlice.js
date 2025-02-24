@@ -31,6 +31,19 @@ export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({
   }
 });
 
+export const postJitsiMeeting = createAsyncThunk('meet/postJitsiMeeting', async ({ channelId, meetingId }, thunkAPI) => {
+  try {
+    const response = await meetService.postJitsiMeetingOnChannel(channelId, meetingId);
+    return {
+      response
+    };
+  } catch (error) {
+    handleError(error, thunkAPI);
+    showErrorBanner("Error while sending jitsi meeting", thunkAPI);
+    throw error; // Ensure the error is thrown to trigger the rejected state
+  }
+});
+
 //to load messages the first time when selected a channel
 export const fetchMessages = createAsyncThunk(
   'meet/fetchMessages',

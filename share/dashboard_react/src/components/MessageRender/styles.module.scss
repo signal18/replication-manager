@@ -76,5 +76,38 @@
                 }
             }
         }
+
+        .alerts {
+            display:flex;
+            flex-direction: column;
+            margin-bottom: 5px;
+
+            .alert {
+                
+
+                .alertFields {
+                    display: flex;
+                    flex-direction: row;
+                    border-left: solid 8px;
+                    border-color: red;
+
+                    .content {
+                        display:flex;
+                        flex-direction: row;
+                        justify-content: space-around;
+                        flex-grow: 1;
+                        
+                        .field {
+                            
+                            .fieldTitle {
+                                font-weight: 600;
+                            }
+
+                        }
+                    }
+                }
+
+            }
+        }
     }
 }

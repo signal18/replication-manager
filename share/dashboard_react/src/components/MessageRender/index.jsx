@@ -100,9 +100,9 @@ const MessageRender = ({messages, allUsers}) => {
                             </div>
                         </div>
                         <div className={styles.postContent}>{msg.Message}</div>
-                        {msg?.Metadata && msg?.Metadata.length > 0 && (
+                        {msg?.FileMetadata && msg?.FileMetadata.length > 0 && (
                             <Box className={styles.fileAttachments}>
-                            {msg.Metadata.map((fileInfo, fileIndex) => (
+                            {msg.FileMetadata.map((fileInfo, fileIndex) => (
                                 <Box key={fileIndex} className={styles.fileAttachment}>
                                     <Box className={styles.fileLogo}>
                                         {fileInfo.Extension == "pdf" && (
@@ -143,6 +143,27 @@ const MessageRender = ({messages, allUsers}) => {
                                         </Box>
                                     </Box>
                                 </Box>
+                                ))}
+                            </Box>
+                        )}
+                        {msg?.AlertMetadata && msg?.AlertMetadata.length > 0 && (
+                            <Box className={styles.alerts}>
+                                {msg.AlertMetadata.map((alertInfo, alertIndex) => (
+                                    <Box className={styles.alert}>
+                                        <div className={styles.alertInfoText}>{alertInfo.Text}</div>
+                                        {alertInfo?.Fields && alertInfo.Fields.length > 0 && (
+                                            <Box className={styles.alertFields}>
+                                                <Box className={styles.content}>
+                                                    {alertInfo.Fields.map((field, fieldIndex) => (
+                                                        <Box className={styles.field}>
+                                                            <div className={styles.fieldTitle}>{field.Title}</div>
+                                                            <div className={styles.fieldContent}>{field?.Value}</div>
+                                                        </Box>
+                                                    ))}
+                                                </Box>
+                                            </Box>
+                                        )}
+                                    </Box>
                                 ))}
                             </Box>
                         )}

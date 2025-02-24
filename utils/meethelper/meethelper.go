@@ -419,6 +419,38 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 	return post_mod.Id, nil
 }
 
+func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, error) {
+
+	fallback := "Video Meeting started at [" + meetingId + "](https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22).\n\n[Join Meeting](https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22)\n\n"
+	meetingLink := "https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22"
+
+	post := &model.Post{
+		ChannelId: channelID,
+		UserId:    c.UserID,
+		Type:      "custom_jitsi",
+		Props: map[string]interface{}{
+			"meeting_link":          meetingLink,
+			"default_meeting_topic": "Jitsi Meeting",
+			"attachments": []model.SlackAttachment{
+				{Fallback: fallback},
+			},
+		},
+	}
+
+	post_mod, resp, err := c.Client.CreatePost(post)
+	if err != nil {
+		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
+		return "", err
+	}
+
+	//fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
+
+	//if a user post a message, it means he read the channel
+	c.ViewMessages(channelID)
+
+	return post_mod.Id, nil
+}
+
 func (c *MeetChatClient) GetAllUsers() map[string]string {
 	users, resp, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
 

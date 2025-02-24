@@ -3,6 +3,7 @@ import { meetApi } from './apiHelper';
 export const meetService = {
     getMeetInfo,
     postMeetMessageOnChannel,
+    postJitsiMeetingOnChannel,
     getMeetMessageFromChannel,
     setMessageViewOnChannel,
     logoutFromMeet,
@@ -30,12 +31,22 @@ async function getMeetInfo() {
 async function postMeetMessageOnChannel(channelId, message) {
     try {
         const response = await meetApi.post(`post/${channelId}`, { message });
-        // Vérifier si la réponse est valide
         if (!response.data || !response.data.message || !response.data.user || !response.data.channel) {
             throw new Error('Invalid response from API');
         }
+        return response.data;
+    } catch (error) {
+        console.error('Error posting meet message:', error);
+        throw error;
+    }
+}
 
-        console.log('Response from API:', response.data);
+async function postJitsiMeetingOnChannel(channelId, meetingId) {
+    try {
+        const response = await meetApi.post(`post/jitsi/${channelId}/${meetingId}`);
+        if (!response.data || !response.data.user || !response.data.channel) {
+            throw new Error('Invalid response from API');
+        }
         return response.data;
     } catch (error) {
         console.error('Error posting meet message:', error);
