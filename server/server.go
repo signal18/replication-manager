@@ -2383,7 +2383,7 @@ func (repman *ReplicationManager) Stop() {
 
 		if isNeedPush {
 			repman.IsNeedGitPush = false
-			repman.PushAllConfigsToGit()
+			repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 		}
 	}
 
