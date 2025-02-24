@@ -2113,9 +2113,17 @@ func (repman *ReplicationManager) Run() error {
 		s := <-sigs
 		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
 		repman.UnMountS3()
+
+		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
-			cl.Stop()
+			stopwg.Add(1)
+			go func() {
+				defer stopwg.Done()
+				cl.Stop()
+			}()
 		}
+		// Wait for cluster close
+		stopwg.Wait()
 
 		repman.exit = true
 
