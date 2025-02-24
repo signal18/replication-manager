@@ -2143,7 +2143,7 @@ func (repman *ReplicationManager) Run() error {
 		if counter%60 == 0 {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
-			if repman.Conf.GitUrl != "" {
+			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
 				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
 
