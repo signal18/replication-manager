@@ -8,7 +8,6 @@ import { FaUserPlus, FaCircle} from 'react-icons/fa';
 const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
     const dispatch = useDispatch();
     const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-    const [channelToAddUser, setChannelToAddUser] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     const allUsersArray = Object.entries(allUsers).map(([userId, userName]) => ({ id: userId, name: userName }));
@@ -17,15 +16,13 @@ const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
         user.name.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
-    const handleAddUserToChannel = (channelId) => {
-        setChannelToAddUser(channelId);
+    const handleAddUserToChannel = () => {
         setIsAddUserOpen(true);
     };
 
     const confirmAddUserToChannel = (userId) => {
-        const channelId = channelToAddUser || "";
-        if (channelId) {
-            dispatch(addUserChannel({ ChannelId: channelId, UserId: userId }));
+        if (selectedChannel) {
+            dispatch(addUserChannel({ ChannelId: selectedChannel, UserId: userId }));
         } else {
             console.error("Erreur : channelId est vide !");
         }
@@ -43,7 +40,7 @@ const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
             size="sm"
             onClick={(e) => {
                 e.stopPropagation();
-                handleAddUserToChannel(selectedChannel);
+                handleAddUserToChannel();
             }}
             ml={2}
         >
@@ -75,7 +72,7 @@ const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
                                         >
                                             <Box display="flex" alignItems="center">
                                                 <FaCircle
-                                                    color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
+                                                    color={usersStatus?.[user.name] === 'online' ? 'green' : 'gray'}
                                                     style={{ marginRight: '8px' }}
                                                 />
                                                 {user.name}

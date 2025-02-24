@@ -519,6 +519,15 @@ func (cluster *Cluster) SwitchLogGit() {
 	cluster.Conf.LogGit = !cluster.Conf.LogGit
 }
 
+func (cluster *Cluster) SwitchLogSupport() {
+	if cluster.Conf.LogSupport {
+		cluster.Conf.LogSupportLevel = 0
+	} else {
+		cluster.Conf.LogSupportLevel = 1
+	}
+	cluster.Conf.LogSupport = !cluster.Conf.LogSupport
+}
+
 func (cluster *Cluster) SwitchLogBackupStream() {
 	if cluster.Conf.LogBackupStream {
 		cluster.Conf.LogBackupStreamLevel = 0

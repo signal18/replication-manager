@@ -41,17 +41,27 @@ function Navbar({ username }) {
     localStorage.setItem('chatOpen', isChatOpen);
   }, [isChatOpen]);
 
+  useEffect(() => {
+    if (!username){
+      localStorage.removeItem('chatOpen');
+      localStorage.removeItem('selectedChannel');
+    }
+    
+  }, [isChatOpen, username]);
+
   //to get the meet info
   useEffect(() => {
-    if (isAuthorized() && isDesktop) dispatch(getMeetInfo());
-  }, [dispatch]);
+    if (username) {
+      dispatch(getMeetInfo());
+    }
+  }, [ username, dispatch]);
 
   useEffect(() => {
-    if (meetInfo && isAuthorized()) {
+    if (meetInfo) {
       const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
       setUnreadMessagesCount(totalUnreadMessages)
     }
-  }, [unreadMessagesByChannel]);
+  }, [unreadMessagesByChannel, meetInfo, username]);
 
   //to toggle chat and save state
   const toggleChat = () => {

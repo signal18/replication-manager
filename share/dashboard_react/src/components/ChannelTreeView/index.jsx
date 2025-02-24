@@ -109,15 +109,16 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                     {type !== 'D' && (
                                         <Button
                                             onClick={() => handleCreateChannel(type)}
+                                            className={styles.channelsTypeButton}
                                         >
                                             <FaPlus />
                                         </Button>
                                     )}
                                     {type === 'D' && (
-                                        <Box display="flex" alignItems="center">
+                                        <Box >
                                             <Menu>
                                                 <MenuButton as={Button} className={styles.channelsTypeButton}>
-                                                    <FaPlus />
+                                                    <FaPlus/>
                                                 </MenuButton>
                                                 <MenuList>
                                                     <Input

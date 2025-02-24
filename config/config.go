@@ -144,6 +144,8 @@ type Config struct {
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
 	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
+	LogSupport                                bool                   `scope:"server" mapstructure:"log-support" toml:"log-support" json:"logSupport"`
+	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1190,6 +1192,7 @@ const (
 	ConstLogModTask           = 17
 	ConstLogModArchive        = 18
 	ConstLogModMailer         = 19
+	ConstLogModSupport        = 20
 )
 
 /*
@@ -3043,6 +3046,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogArchiveLevel >= lvl
 		case module == ConstLogModMailer:
 			return conf.LogMailerLevel >= lvl
+		case module == ConstLogModSupport:
+			return conf.LogSupportLevel >= lvl
 		}
 	}
 
@@ -3314,6 +3319,15 @@ func (conf *Config) SetLogGitLevel(value int) {
 		conf.GitMonitoringTicker = 30
 	} else {
 		conf.GitMonitoringTicker = 300
+	}
+}
+
+func (conf *Config) SetLogSupportLevel(value int) {
+	conf.LogSupportLevel = value
+	if value > 0 {
+		conf.LogSupport = true
+	} else {
+		conf.LogSupport = false
 	}
 }
 

@@ -32,15 +32,8 @@ function Login(props) {
   }, [])
 
   useEffect(() => {
-      const savedChannel = localStorage.getItem('selectedChannel');
-      if (savedChannel) {
-        localStorage.removeItem('selectedChannel');
-      }
-
-      const savedOpenChat = localStorage.getItem('chatOpen');
-      if (savedOpenChat) {
-        localStorage.removeItem('chatOpen');
-      }
+    localStorage.removeItem('selectedChannel');
+    localStorage.removeItem('chatOpen');
   }, [])
 
   useEffect(() => {

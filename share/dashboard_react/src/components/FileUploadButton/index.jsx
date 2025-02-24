@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import styles from './styles.module.scss';
 import { Input, Button } from '@chakra-ui/react';
 import { FaPaperclip } from 'react-icons/fa';
 
@@ -28,8 +29,8 @@ const FileUploadButton = ({ onFileSelected }) => {
                 onChange={handleFileChange}
                 style={{ display: 'none' }} // Hide the file input
             />
-            <Button onClick={handleButtonClick}>
-                <FaPaperclip />
+            <Button onClick={handleButtonClick} className={styles.attachFileButton}>
+                <FaPaperclip className={styles.attachFileButton}/>
             </Button>
         </>
     );

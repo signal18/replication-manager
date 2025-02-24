@@ -3,6 +3,7 @@ import React, { useEffect, useState, useRef, memo } from 'react';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import { Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
 import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
+import { FaPaperPlane } from 'react-icons/fa';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
 import MessageRender from '../../components/MessageRender';
@@ -11,10 +12,11 @@ import data from "@emoji-mart/data";
 
 
 
+
+// eslint-disable-next-line react/display-name, react/prop-types
 const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
-    if (!isOpen) return null;
     const dispatch = useDispatch();
-    const { meetInfo, messages, loading, error } = useSelector((state) => state.meet, shallowEqual);
+    const { meetInfo, messages, loading} = useSelector((state) => state.meet, shallowEqual);
     const [message, setMessage] = useState('');
     const [selectedChannel, setSelectedChannel] = useState('');
     const [selectedAccordionIndex, setSelectedAccordionIndex] = useState([0]);
@@ -24,6 +26,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
     const [scrollPosition, setScrollPosition] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+    
 
     useEffect(() => {
         if (selectedChannel) {
@@ -64,7 +67,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
             // Si c'est le premier chargement, scroll en bas
             messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
         }
-    }, [messages]);
+    }, [messages, page, scrollPosition]);
 
     //to update messages every 2 seconds
     useEffect(() => {
@@ -79,6 +82,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel]);
 
+    if (!isOpen) return null;   
       
     //to handle the scroll event when user reaches the top 
     const handleScroll = () => {
@@ -175,9 +179,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                                     )}
                                     <FileUploadButton onFileSelected={handleFileSelected} />  
                                     <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
-                                        <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="18" height="18" fill="currentColor" viewBox="0 0 24 24">
-                                            <path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path>
-                                        </svg>
+                                        <FaPaperPlane />
                                     </Button>
                                     {selectedFile && (
                                         <Text>Fichier sélectionné: {selectedFile.name}</Text>

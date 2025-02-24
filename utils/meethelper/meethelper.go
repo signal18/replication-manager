@@ -80,14 +80,17 @@ type MeetFile struct {
 }
 
 // create a client for mattermost and set user info
-func GetMeetClient() (*MeetChatClient, error) {
+func GetMeetClient(isLogSupport bool) (*MeetChatClient, error) {
+	if meetToken == "" {
+		return nil, fmt.Errorf("Meet token is not set")
+	}
 	//to recreate the client if undefined or if the user session is expired
 	if meetClient == nil || meetClient.Client == nil || meetClient.UserID == "" {
 		meetClient = CreateMeetClient()
 	}
 	var err error
 	meetClient.UserID, err = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
-	if err != nil {
+	if (err != nil || meetClient.UserID == "") && isLogSupport {
 		fmt.Println("GetMeetClient Error:", err)
 		return nil, err
 	}
@@ -101,18 +104,21 @@ func GetMeetClient() (*MeetChatClient, error) {
 
 func CreateMeetClient() *MeetChatClient {
 	//to recreate the client if undefined or if the user session is expired
-	client := model.NewAPIv4Client(meetUrl)
-	client.SetOAuthToken(meetToken)
-	meetClient = &MeetChatClient{
-		Client: client,
-		URL:    meetUrl,
-		Token:  meetToken,
+	if meetToken != "" {
+		client := model.NewAPIv4Client(meetUrl)
+		client.SetOAuthToken(meetToken)
+		meetClient = &MeetChatClient{
+			Client: client,
+			URL:    meetUrl,
+			Token:  meetToken,
+		}
+		return meetClient
 	}
-	return meetClient
+	return nil
 }
 
 // Follow the flow of the browser: log to mm using your gitlab account
-func GetMeetToken(gitlabUser string, gitlabPassword string) {
+func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) error {
 	gitlabHost := "https://gitlab.signal18.io"
 
 	//cookie jar
@@ -125,13 +131,13 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 
 	body, err := misc.GetRequest(client, gitlabLoginPageURL)
 	if err != nil {
-		return
+		return err
 	}
 
 	gitCsrfToken, err := misc.ExtractValue(body, "name=\"authenticity_token\" value=\"([^\"]+)\"")
-	if err != nil {
+	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot extract CSFR token from gitlab:", err)
-		return
+		return err
 	}
 
 	//1.2 Send login credentials
@@ -141,9 +147,9 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 		"authenticity_token": {gitCsrfToken},
 	}
 	_, err = misc.PostRequest(client, gitlabLoginPageURL, form, nil)
-	if err != nil {
+	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot post gitlab login credentials:", err)
-		return
+		return err
 	}
 
 	// 2. Login meet
@@ -151,16 +157,16 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=/signal18/channels/test", meetUrl)
 
 	body, err = misc.GetRequest(client, meetLoginPageURL)
-	if err != nil {
+	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
-		return
+		return err
 	}
 
 	// 2.2 Extract RedirectUrl and unescape it
 	redirectUrl, err := misc.ExtractValue(body, "href=\"([^\"]+)")
-	if err != nil {
+	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot extract redirectUrl from mattermost login request", err)
-		return
+		return err
 	}
 
 	decodedValue, _ := url.QueryUnescape(redirectUrl)
@@ -168,9 +174,9 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 
 	// 2.3 Forward Oauth code to meet
 	_, err = misc.GetRequest(client, meetAuthURL)
-	if err != nil {
+	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
-		return
+		return err
 	}
 
 	// 2.4 Get MMAUTHTOKEN from cookies
@@ -181,9 +187,11 @@ func GetMeetToken(gitlabUser string, gitlabPassword string) {
 		}
 	}
 
-	if meetToken == "" {
+	if meetToken == "" && isLogSupport {
 		fmt.Println("GetMeetToken: Failed to retrieve meet token")
+		return fmt.Errorf("Failed to retrieve meet token")
 	}
+	return nil
 }
 
 func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
@@ -540,6 +548,8 @@ func (c *MeetChatClient) GetStatusUsers() map[string]string {
 
 func ClearMeetClient() {
 	meetClient = nil
+	meetToken = ""
+	return
 }
 
 // to upload a file on a channel

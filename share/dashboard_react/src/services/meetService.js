@@ -1,4 +1,3 @@
-import { create } from 'lodash';
 import { meetApi } from './apiHelper';
 
 export const meetService = {

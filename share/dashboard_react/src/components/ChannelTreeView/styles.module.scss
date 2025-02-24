@@ -37,7 +37,8 @@
                 font-weight: bold;
 
                 .channelsTypeButton {
-                    color-scheme: teal;
+                    background-color: inherit;
+                    color: var(--text-color);
                     size: small;
                 }
             }
