@@ -280,9 +280,9 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 
 			// Execute the save function and handle potential errors
 			if err := configSaveTask.SaveFunc(); err != nil {
-				cm.logger.Errorf(cluster, config.ConstLogModGeneral, "[%s] Error during save: %v\n", cluster, err)
+				cm.logger.Errorf(cluster, config.ConstLogModConfigLoad, "Error during save: %v", err)
 			} else {
-				cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Config saved successfully.\n", cluster)
+				cm.logger.Infof(cluster, config.ConstLogModConfigLoad, "Config saved successfully.")
 			}
 
 			// If a WaitGroup pointer is provided, mark the task as done
