@@ -692,6 +692,8 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 		Password: tok,
 	}
 
+	clonestart := time.Now()
+
 	// Perform shallow clone for better performance
 	_, err := git.PlainClone(path, false, &git.CloneOptions{
 		URL:               url,
@@ -700,6 +702,8 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 		Depth:             1, // Shallow clone
 		NoCheckout:        true,
 	})
+
+	cm.logger.Debugf("default", config.ConstLogModGit, "Shallow clone took: %s", time.Since(clonestart))
 
 	return err
 }
