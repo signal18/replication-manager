@@ -58,14 +58,16 @@ type MeetChannelMessages struct {
 }
 
 type MeetMessage struct {
-	ID            string
-	UserId        string
-	ChannelID     string
-	Message       string
-	CreateAt      int64
-	FileIds       []string
-	FileMetadata  []MeetFile
-	AlertMetadata []MeetAlert
+	ID               string
+	UserId           string
+	OverriveUserName string
+	ChannelID        string
+	Message          string
+	CreateAt         int64
+	FileIds          []string
+	FileMetadata     []MeetFile
+	AlertMetadata    []MeetAlert
+	MeetingMetadata  []MeetingData
 }
 
 type MeetFile struct {
@@ -77,15 +79,21 @@ type MeetFile struct {
 	Extension string
 	Size      int
 	MimeType  string
-	FileLink  string
 }
 
 type MeetAlert struct {
 	ID       string
 	Color    string
 	Text     string
-	Field    []MeetAlertField
+	Fields   []MeetAlertField
 	UserName string
+}
+
+type MeetingData struct {
+	ID       string
+	MeetLink string
+	MeetName string
+	Text     string
 }
 
 type MeetAlertField struct {
@@ -282,10 +290,6 @@ func (c *MeetChatClient) GetFilesMessagesMetadata(metadata []MeetFile, fileId st
 			MimeType:  fileInfo.MimeType,
 			Size:      int(fileInfo.Size),
 		}
-		fileLink, _, err := c.Client.GetFileLink(fileId)
-		if err == nil {
-			fileInfo.FileLink = fileLink
-		}
 		metadata = append(metadata, fileInfo)
 	}
 	return metadata
@@ -329,11 +333,27 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 						Title: field.Title,
 						Value: field.Value.(string),
 					}
-					alert.Field = append(alert.Field, alertField)
+					alert.Fields = append(alert.Fields, alertField)
 				}
+				message.OverriveUserName = props["override_username"].(string)
 				message.AlertMetadata = append(message.AlertMetadata, alert)
 			}
 
+		}
+		if post.Type == "custom_jitsi" {
+			attachments := post.Attachments()
+			props := post.GetProps()
+
+			for _, attachment := range attachments {
+				meetingData := MeetingData{
+					ID:       props["meeting_id"].(string),
+					Text:     attachment.Fallback,
+					MeetLink: props["meeting_link"].(string),
+					MeetName: props["default_meeting_topic"].(string),
+				}
+
+				message.MeetingMetadata = append(message.MeetingMetadata, meetingData)
+			}
 		}
 		messages = append(messages, message)
 
