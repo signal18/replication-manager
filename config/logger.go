@@ -1,6 +1,8 @@
 package config
 
-import "github.com/sirupsen/logrus"
+import (
+	"github.com/sirupsen/logrus"
+)
 
 type LogrusWrapper struct {
 	configs map[string]*Config
@@ -33,20 +35,20 @@ func (l *LogrusWrapper) GetConfig(clustername string) *Config {
 
 func (l *LogrusWrapper) Infof(clustername string, module int, format string, args ...interface{}) {
 	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlInfo)
-	l.Logger.WithField("cluster", clustername).Infof(format, args...)
+	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Infof(format, args...)
 }
 
 func (l *LogrusWrapper) Debugf(clustername string, module int, format string, args ...interface{}) {
 	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlDbg)
-	l.Logger.WithField("cluster", clustername).Debugf(format, args...)
+	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Debugf(format, args...)
 }
 
 func (l *LogrusWrapper) Errorf(clustername string, module int, format string, args ...interface{}) {
 	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlErr)
-	l.Logger.WithField("cluster", clustername).Errorf(format, args...)
+	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Errorf(format, args...)
 }
 
 func (l *LogrusWrapper) Warnf(clustername string, module int, format string, args ...interface{}) {
 	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlWarn)
-	l.Logger.WithField("cluster", clustername).Warnf(format, args...)
+	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Warnf(format, args...)
 }
