@@ -498,7 +498,7 @@ type Config struct {
 	ProvDBClientBasedir                       string                 `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
 	ProvDBBinaryBasedir                       string                 `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
 	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
- 	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
+	ProvType                                  string                 `mapstructure:"prov-db-service-type" toml:"prov-db-service-type" json:"provDbServiceType"`
 	ProvAgents                                string                 `mapstructure:"prov-db-agents" toml:"prov-db-agents" json:"provDbAgents"`
 	ProvMem                                   string                 `measurement:"M,bytes,required" mapstructure:"prov-db-memory" toml:"prov-db-memory" json:"provDbMemory"`
 	ProvMemSharedPct                          string                 `mapstructure:"prov-db-memory-shared-pct" toml:"prov-db-memory-shared-pct" json:"provDbMemorySharedPct"`
@@ -531,7 +531,7 @@ type Config struct {
 	ProvDbImg                                 string                 `mapstructure:"prov-db-docker-img" toml:"prov-db-docker-img" json:"provDbDockerImg"`
 	ProvDBDockerTmpfsSize                     string                 `measurement:"M,bytes" mapstructure:"prov-db-docker-tmpfs-size" toml:"prov-db-docker-tmpfs-size" json:"provDbDockerTmpfsSize"`
 	ProvDBDockerRunArgs                       string                 `mapstructure:"prov-db-docker-run-args" toml:"prov-db-docker-run-args" json:"provDbDockerRunArgs"`
-	ProvDBDockerRunArgsLimit                  bool                	 `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`
+	ProvDBDockerRunArgsLimit                  bool                   `mapstructure:"prov-db-docker-run-args-limit" toml:"prov-db-docker-run-args-limit" json:"provDbDockerRunArgsLimit"`
 	ProvDBJobsDockerRunArgs                   string                 `mapstructure:"prov-db-jobs-docker-run-args" toml:"prov-db-jobs-docker-run-args" json:"provDbJobsDockerRunArgs"`
 	ProvDatadirVersion                        string                 `mapstructure:"prov-db-datadir-version" toml:"prov-db-datadir-version" json:"provDbDatadirVersion"`
 	ProvDBLoadSQL                             string                 `mapstructure:"prov-db-load-sql" toml:"prov-db-load-sql" json:"provDbLoadSql"`
@@ -710,6 +710,8 @@ type Config struct {
 	GitUsername                               string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
+	GitMinWorker                              int                    `scope:"server" mapstructure:"git-min-worker" toml:"git-min-worker" json:"gitMinWorker"`
+	GitMaxWorker                              int                    `scope:"server" mapstructure:"git-max-worker" toml:"git-max-worker" json:"gitMaxWorker"`
 	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
 	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`

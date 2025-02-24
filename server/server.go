@@ -554,6 +554,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
+	flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
 	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
 
@@ -1142,7 +1144,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus = log.New()
 	}
 	if repman.ConfigManager == nil {
-		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus))
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
 	}
 	repman.PeerClusters = make([]config.PeerCluster, 0)
 	repman.ModTimes = make(map[string]time.Time)
@@ -1483,6 +1485,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.Conf = conf
 	repman.ViperConfig = fistRead
 	repman.ConfigManager.UpdateLoggerConfig("default", &repman.Conf)
+	repman.ConfigManager.SetWorker(repman.Conf.GitMinWorker, repman.Conf.GitMaxWorker)
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {

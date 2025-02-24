@@ -190,7 +190,7 @@ type ConfigManager struct {
 }
 
 // NewConfigManager initializes the manager
-func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
+func NewConfigManager(logger *config.LogrusWrapper, minWorker, maxWorker int) *ConfigManager {
 	newcm := &ConfigManager{
 		logger:      logger,
 		clusterData: make(map[string]*ClusterManager),
@@ -201,9 +201,16 @@ func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 
 	newcm.pushManager.cond = sync.NewCond(newcm.pushManager.mutex)
 
+	newcm.SetWorker(minWorker, maxWorker)
+
 	go newcm.processGitPush() // Start the persistent goroutine for the push manager
 
 	return newcm
+}
+
+func (cm *ConfigManager) SetWorker(min, max int) {
+	cm.pushManager.CommitManager.workerMin = min
+	cm.pushManager.CommitManager.workerLimit = max
 }
 
 func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Config) {
