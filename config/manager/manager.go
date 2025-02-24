@@ -149,7 +149,7 @@ func (cmm *CommitManager) processCommitQueue() {
 func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 	start := time.Now()
 	if _, err := task.W.Add(task.Filename); err == nil {
-		cmm.logger.Infof("default", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
+		cmm.logger.Debugf("default", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
 	} else {
 		cmm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", task.Filename, err)
 	}
