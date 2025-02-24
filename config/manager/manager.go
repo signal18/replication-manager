@@ -60,25 +60,29 @@ func NewPushManager(logger *config.LogrusWrapper) *PushManager {
 		tasks:         []ConfigPushTask{},
 		mutex:         &sync.Mutex{},
 		stopCh:        make(chan struct{}), // Initialize stop channel for the push manager
-		CommitManager: NewCommitManager(10, 5, logger),
+		CommitManager: NewCommitManager(1, 10, logger),
 	}
 }
 
 type CommitManager struct {
-	logger      *config.LogrusWrapper
-	W           *git.Worktree
-	commitQueue chan GitAddTask // Buffered channel for commit tasks
-	stopCh      chan struct{}   // Stop signal for workers
-	wg          sync.WaitGroup
-	workerLimit int // Maximum concurrent workers
+	logger        *config.LogrusWrapper
+	W             *git.Worktree
+	commitQueue   []GitAddTask // Slice for commit tasks
+	mu            sync.Mutex   // Mutex to protect commitQueue
+	stopCh        chan struct{}
+	wg            sync.WaitGroup
+	workerLimit   int
+	workerMin     int
+	currentWorker int
 }
 
-func NewCommitManager(queueSize, workerLimit int, logger *config.LogrusWrapper) *CommitManager {
+func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) *CommitManager {
 	cmm := &CommitManager{
 		logger:      logger,
-		commitQueue: make(chan GitAddTask, queueSize),
+		commitQueue: []GitAddTask{},
 		stopCh:      make(chan struct{}),
 		workerLimit: workerLimit,
+		workerMin:   workerMin,
 	}
 
 	cmm.Start()
@@ -86,36 +90,58 @@ func NewCommitManager(queueSize, workerLimit int, logger *config.LogrusWrapper) 
 }
 
 func (cmm *CommitManager) Start() {
-	for i := 0; i < cmm.workerLimit; i++ {
+	for i := 0; i < cmm.workerMin; i++ {
 		cmm.wg.Add(1)
+		cmm.currentWorker++
 		go cmm.processCommitQueue()
 	}
 }
 
 func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
+	cmm.mu.Lock()
+	defer cmm.mu.Unlock()
+
 	select {
-	case cmm.commitQueue <- task:
-		// Task successfully added to queue
 	case <-cmm.stopCh:
-		// CommitManager is shutting down, reject new tasks
-		cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping, rejecting task:", task.Filename)
+		cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping, rejecting task: %s", task.Filename)
+	default:
+		cmm.commitQueue = append(cmm.commitQueue, task)
+		// Start a new worker if the queue is not empty and the current worker count is less than the limit
+		if len(cmm.commitQueue) > cmm.currentWorker && cmm.currentWorker < cmm.workerLimit {
+			cmm.currentWorker++
+			cmm.wg.Add(1)
+			go cmm.processCommitQueue()
+		}
 	}
 }
 
 func (cmm *CommitManager) processCommitQueue() {
-	defer cmm.wg.Done() // Mark worker as done when it exits
+	defer cmm.wg.Done()
 
 	for {
 		select {
-		case task, ok := <-cmm.commitQueue:
-			if !ok {
-				// Channel closed, exit worker
-				return
-			}
-			cmm.addFileToCommit(task)
 		case <-cmm.stopCh:
-			// Stop signal received, exit worker
 			return
+		default:
+			cmm.mu.Lock()
+			if len(cmm.commitQueue) == 0 {
+				cmm.mu.Unlock()
+
+				if cmm.currentWorker > cmm.workerMin {
+					cmm.currentWorker--
+					return
+				}
+
+				time.Sleep(100 * time.Millisecond) // Avoid busy waiting
+				continue
+			}
+
+			// Fetch and remove the first task
+			task := cmm.commitQueue[0]
+			cmm.commitQueue = cmm.commitQueue[1:]
+			cmm.mu.Unlock()
+
+			cmm.addFileToCommit(task)
 		}
 	}
 }
@@ -123,16 +149,15 @@ func (cmm *CommitManager) processCommitQueue() {
 func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 	start := time.Now()
 	if _, err := task.W.Add(task.Filename); err == nil {
-		cmm.logger.Infof("default", config.ConstLogModGit, "File %s added in: %s\n", task.Filename, time.Since(start))
+		cmm.logger.Infof("default", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
 	} else {
-		cmm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s\n", task.Filename, err)
+		cmm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", task.Filename, err)
 	}
 }
 
 func (cmm *CommitManager) Stop() {
-	close(cmm.stopCh)      // Signal workers to stop
-	close(cmm.commitQueue) // Close queue (workers will exit after processing remaining tasks)
-	cmm.wg.Wait()          // Wait for all workers to finish
+	close(cmm.stopCh)
+	cmm.wg.Wait()
 	cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager stopped.")
 }
 
@@ -594,13 +619,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
-				addstart := time.Now()
-				if _, err := w.Add(jsonPath); err == nil {
-					changedFiles = append(changedFiles, jsonPath)
-					cm.logger.Debugf("default", config.ConstLogModGit, "File %s add took: %s", jsonPath, time.Since(addstart))
-				} else {
-					cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", jsonPath, err)
-				}
+				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w})
 			}
 		}
 	}
@@ -608,13 +627,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	// Add default.toml if it exists
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
-		addstart := time.Now()
-		if _, err := w.Add(defaultToml); err == nil {
-			changedFiles = append(changedFiles, defaultToml)
-			cm.logger.Debugf("default", config.ConstLogModGit, "File %s add took: %s", defaultToml, time.Since(addstart))
-		} else {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", defaultToml, err)
-		}
+		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w})
 	}
 
 	// Skip commit if no files were changed
@@ -624,8 +637,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		return nil
 	}
 
-	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", defaultToml, time.Since(allstart))
-	cm.logger.Debugf("default", config.ConstLogModGit, "Files changed: %v", changedFiles)
+	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
 
 	// Commit the changes
 	commitStart := time.Now()

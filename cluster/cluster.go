@@ -865,14 +865,14 @@ func (cluster *Cluster) StateProcessing() {
 }
 
 func (cluster *Cluster) Stop() {
-	// prevent new cycle
-	cluster.exit = true
 	cluster.Lock()
 	defer cluster.Unlock()
 	if cluster.ResticRepo != nil {
 		cluster.ResticRepo.ShutdownWorker()
 	}
 	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	// prevent new cycle
+	cluster.exit = true
 }
 
 func (cluster *Cluster) SetIsSavingConfig(val bool) {
