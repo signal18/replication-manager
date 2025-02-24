@@ -97,6 +97,18 @@ func (cmm *CommitManager) Start() {
 	}
 }
 
+func (cmm *CommitManager) WaitUntilQueueEmpty() {
+	for {
+		cmm.mu.Lock()
+		if len(cmm.commitQueue) == 0 {
+			cmm.mu.Unlock()
+			break
+		}
+		cmm.mu.Unlock()
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
 	cmm.mu.Lock()
 	defer cmm.mu.Unlock()
@@ -628,6 +640,9 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
 		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w})
 	}
+
+	// Wait until the commit queue is empty
+	cm.pushManager.CommitManager.WaitUntilQueueEmpty()
 
 	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
 
