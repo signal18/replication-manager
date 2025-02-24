@@ -58,13 +58,14 @@ type MeetChannelMessages struct {
 }
 
 type MeetMessage struct {
-	ID        string
-	UserId    string
-	ChannelID string
-	Message   string
-	CreateAt  int64
-	FileIds   []string
-	Metadata  []MeetFile
+	ID            string
+	UserId        string
+	ChannelID     string
+	Message       string
+	CreateAt      int64
+	FileIds       []string
+	FileMetadata  []MeetFile
+	AlertMetadata []MeetAlert
 }
 
 type MeetFile struct {
@@ -77,6 +78,19 @@ type MeetFile struct {
 	Size      int
 	MimeType  string
 	FileLink  string
+}
+
+type MeetAlert struct {
+	ID       string
+	Color    string
+	Text     string
+	Field    []MeetAlertField
+	UserName string
+}
+
+type MeetAlertField struct {
+	Title string
+	Value string
 }
 
 // create a client for mattermost and set user info
@@ -295,8 +309,31 @@ func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelM
 		}
 		if len(post.FileIds) > 0 {
 			for _, fileId := range post.FileIds {
-				message.Metadata = c.GetFilesMessagesMetadata(message.Metadata, fileId)
+				message.FileMetadata = c.GetFilesMessagesMetadata(message.FileMetadata, fileId)
 			}
+		}
+		if post.Type == "slack_attachment" {
+			attachments := post.Attachments()
+			props := post.GetProps()
+
+			for _, attachment := range attachments {
+				alert := MeetAlert{
+					ID:       post.Id,
+					Color:    attachment.Color,
+					Text:     attachment.Fallback,
+					UserName: props["override_username"].(string),
+				}
+				fields := attachment.Fields
+				for _, field := range fields {
+					alertField := MeetAlertField{
+						Title: field.Title,
+						Value: field.Value.(string),
+					}
+					alert.Field = append(alert.Field, alertField)
+				}
+				message.AlertMetadata = append(message.AlertMetadata, alert)
+			}
+
 		}
 		messages = append(messages, message)
 
