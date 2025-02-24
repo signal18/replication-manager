@@ -2588,6 +2588,20 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvProxyDiskDevice(value)
 	case "prov-proxy-service-type":
 		mycluster.SetProvProxyServiceType(value)
+	case "prov-app-docker-img":
+		mycluster.SetProvAppImage(value)
+	case "prov-app-agents":
+		mycluster.SetProvAppAgents(value)
+	case "prov-app-disk-size":
+		mycluster.SetAppDiskSize(value)
+	case "prov-app-cpu-cores":
+		mycluster.SetAppCores(value)
+	case "prov-app-memory":
+		mycluster.SetAppMemorySize(value)
+	case "prov-app-volume-data":
+		mycluster.SetAppVolumeData(value)
+	case "prov-app-docker-run-args":
+		mycluster.SetAppDockerRunArgs(value)
 	case "monitoring-address":
 		mycluster.SetMonitoringAddress(value)
 	case "scheduler-db-servers-logical-backup-cron":

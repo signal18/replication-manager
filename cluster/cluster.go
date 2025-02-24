@@ -82,6 +82,7 @@ type Cluster struct {
 	Crashes                       crashList            `json:"dbServersCrashes"` //This will be purged on all db node up
 	FailoverHistory               crashList            `json:"failoverHistory"`  //This will be used for PITR
 	Proxies                       proxyList            `json:"-"`
+	Apps                          AppList              `json:"-"`
 	ProxyIdList                   []string             `json:"proxyServers"`
 	FailoverCtr                   int                  `json:"failoverCounter"`
 	FailoverTs                    int64                `json:"failoverLastTime"`

@@ -1329,6 +1329,12 @@ func (cluster *Cluster) SetProxiesReprovCookie() {
 	}
 }
 
+func (cluster *Cluster) SetAppsReprovCookie() {
+	for _, app := range cluster.Apps {
+		app.SetReprovCookie()
+	}
+}
+
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential
 	cluster.SetClusterReplicationCredentialsFromConfig()
@@ -1869,6 +1875,42 @@ func (cluster *Cluster) SetProvProxyDiskDevice(value string) error {
 func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	cluster.Conf.ProvProxType = value
 	cluster.SetProxiesReprovCookie()
+	return nil
+}
+
+func (cluster *Cluster) SetProvAppImage(value string) error {
+	cluster.Conf.ProvAppDockerImg = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetProvAppAgents(value string) error {
+	cluster.Conf.ProvAppAgents = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetAppDiskSize(value string) error {
+	cluster.Conf.ProvAppDiskSize = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetAppCores(value string) error {
+	cluster.Conf.ProvAppCpuCores = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetAppMemorySize(value string) error {
+	cluster.Conf.ProvAppMemory = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetAppVolumeData(value string) error {
+	cluster.Conf.ProvAppVolumeData = value
+	cluster.SetAppsReprovCookie()
+	return nil
+}
+func (cluster *Cluster) SetAppDockerRunArgs(value string) error {
+	cluster.Conf.ProvAppDockerRunArgs = value
+	cluster.SetAppsReprovCookie()
 	return nil
 }
 

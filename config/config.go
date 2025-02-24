@@ -574,6 +574,13 @@ type Config struct {
 	ProvSphinxTags                            string                 `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
 	ProvSphinxCron                            string                 `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
 	ProvSphinxType                            string                 `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
+	ProvAppDockerImg                          string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppDiskSize                           string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppMemory                             string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppDockerRunArgs                      string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
 	ProvSSLCa                                 string                 `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
 	ProvSSLCert                               string                 `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
 	ProvSSLKey                                string                 `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`
