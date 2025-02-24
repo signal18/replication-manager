@@ -1142,7 +1142,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus = log.New()
 	}
 	if repman.ConfigManager == nil {
-		repman.ConfigManager = manager.NewConfigManager(repman.Logrus)
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus))
 	}
 	repman.PeerClusters = make([]config.PeerCluster, 0)
 	repman.ModTimes = make(map[string]time.Time)
@@ -1482,6 +1482,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.Confs = confs
 	repman.Conf = conf
 	repman.ViperConfig = fistRead
+	repman.ConfigManager.UpdateLoggerConfig("default", &repman.Conf)
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
@@ -2223,6 +2224,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
+	repman.ConfigManager.UpdateLoggerConfig(clusterName, &repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
 
 	go repman.currentCluster.Run()
