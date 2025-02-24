@@ -2251,7 +2251,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	default:
 		return errors.New("Setting not found")
 	}
-	mycluster.Save()
+	mycluster.ConfigManager.SaveConfig(mycluster.Name, mycluster.Save, true)
 	return nil
 }
 
@@ -3298,7 +3298,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	default:
 		return errors.New("Setting not found")
 	}
-	mycluster.Save()
+	mycluster.ConfigManager.SaveConfig(mycluster.Name, mycluster.Save, true)
 	return nil
 }
 
@@ -3511,7 +3511,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		return errors.New("Setting not found")
 	}
 
-	repman.Save()
+	repman.ConfigManager.SaveConfig("default", repman.Save, true)
 	return nil
 }
 
@@ -3557,7 +3557,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	default:
 		return errors.New("Setting not found")
 	}
-	repman.Save()
+	repman.ConfigManager.SaveConfig("default", repman.Save, true)
 	return nil
 }
 

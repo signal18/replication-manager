@@ -32,6 +32,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
@@ -234,6 +235,7 @@ type Cluster struct {
 	ResticRepo                *archiver.ResticRepo        `json:"-"`
 	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner"`
+	ConfigManager             *manager.ConfigManager      `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -856,7 +858,7 @@ func (cluster *Cluster) StateProcessing() {
 
 		cluster.StateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 
 	}
@@ -868,7 +870,8 @@ func (cluster *Cluster) Stop() {
 	if cluster.ResticRepo != nil {
 		cluster.ResticRepo.ShutdownWorker()
 	}
-	cluster.Save()
+	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	// prevent new cycle
 	cluster.exit = true
 }
 
@@ -877,26 +880,12 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 }
 
 func (cluster *Cluster) Save() error {
-	// //Needed to preserve diretory before Pull
-	// if !cluster.IsGitPull && cluster.Conf.Cloud18 {
-	// 	return nil
-	// }
-
-	if cluster.IsGitPush {
-		return nil
-	}
-
-	if cluster.IsSavingConfig {
-		return nil
-	}
-
-	cluster.SetIsSavingConfig(true)
-	defer cluster.SetIsSavingConfig(false)
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
+
 	type Save struct {
 		Servers    string      `json:"servers"`
 		Crashes    crashList   `json:"crashes"`

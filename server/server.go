@@ -51,6 +51,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
@@ -154,6 +155,7 @@ type ReplicationManager struct {
 	TermsDT                                          time.Time                         `json:"termsDT"`
 	ModTimes                                         map[string]time.Time              `json:"termsDT"`
 	SessionManager                                   *tty.SessionManager               `json:"-"`
+	ConfigManager                                    *manager.ConfigManager            `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -552,6 +554,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
+	flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
+	flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
 	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
 
@@ -921,7 +925,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDbImg, "prov-db-docker-img", "mariadb:latest", "Docker image for database")
 		flags.StringVar(&conf.ProvDBDockerTmpfsSize, "prov-db-docker-tmpfs-size", "256", "Docker tmpfs size in megabytes. If 0 or not set, no tmpfs will be used. Please note that tmpfs is a memory filesystem and will use memory from the host.")
 		flags.StringVar(&conf.ProvDBDockerRunArgs, "prov-db-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for db")
-		flags.BoolVar(&conf.ProvDBDockerRunArgsLimit ,"prov-db-docker-run-args-limit" , true , "Limit Cores and Memory according to configurator")
+		flags.BoolVar(&conf.ProvDBDockerRunArgsLimit, "prov-db-docker-run-args-limit", true, "Limit Cores and Memory according to configurator")
 		flags.StringVar(&conf.ProvDBJobsDockerRunArgs, "prov-db-jobs-docker-run-args", "--ulimit nofile=262144:262144", "Additional docker run arguments for db jobs")
 		flags.StringVar(&conf.ProvProxDockerRunArgs, "prov-proxy-docker-run-args", "--ulimit nofile=262144:262144 --sysctl net.ipv4.tcp_tw_reuse=1 --sysctl net.core.somaxconn=1024  --sysctl net.ipv4.tcp_fin_timeout=10", "Additional docker run arguments for proxy")
 		flags.StringVar(&conf.ProvType, "prov-db-service-type ", "package", "[package|docker|podman|oci|kvm|zone|lxc]")
@@ -1136,7 +1140,12 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
-	repman.Logrus = log.New()
+	if repman.Logrus == nil {
+		repman.Logrus = log.New()
+	}
+	if repman.ConfigManager == nil {
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
+	}
 	repman.PeerClusters = make([]config.PeerCluster, 0)
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
@@ -1146,8 +1155,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.Partners = make([]config.Partner, 0)
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
-	// repman.UserAuthTry = make(map[string]authTry)
 	repman.cloud18CheckSum = nil
+
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
@@ -1475,6 +1484,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.Confs = confs
 	repman.Conf = conf
 	repman.ViperConfig = fistRead
+	repman.ConfigManager.UpdateLoggerConfig("default", &repman.Conf)
+	repman.ConfigManager.SetWorker(repman.Conf.GitMinWorker, repman.Conf.GitMaxWorker)
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
@@ -2106,9 +2117,17 @@ func (repman *ReplicationManager) Run() error {
 		s := <-sigs
 		repman.Logrus.Printf("RECEIVED SIGNAL: %s", s)
 		repman.UnMountS3()
+
+		stopwg := sync.WaitGroup{}
 		for _, cl := range repman.Clusters {
-			cl.Stop()
+			stopwg.Add(1)
+			go func() {
+				defer stopwg.Done()
+				cl.Stop()
+			}()
 		}
+		// Wait for cluster close
+		stopwg.Wait()
 
 		repman.exit = true
 
@@ -2125,10 +2144,10 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			repman.Save()
+			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
-			if repman.Conf.GitUrl != "" {
-				repman.PushAllConfigsToGit()
+			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
+				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
@@ -2157,6 +2176,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster = new(cluster.Cluster)
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.Partner = &repman.Partner
+	repman.currentCluster.ConfigManager = repman.ConfigManager
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
@@ -2207,7 +2227,8 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
-	repman.currentCluster.Save()
+	repman.ConfigManager.UpdateLoggerConfig(clusterName, &repman.currentCluster.Conf)
+	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
 
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
@@ -2348,7 +2369,7 @@ func (repman *ReplicationManager) Stop() {
 		time.Sleep(time.Second)
 	}
 
-	repman.Save()
+	repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 	if repman.Conf.GitUrl != "" {
 		isNeedPush := repman.IsNeedGitPush
@@ -2365,9 +2386,11 @@ func (repman *ReplicationManager) Stop() {
 
 		if isNeedPush {
 			repman.IsNeedGitPush = false
-			repman.PushAllConfigsToGit()
+			repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 		}
 	}
+
+	repman.ConfigManager.Stop()
 
 	if !repman.IsExportPush {
 		go repman.PushConfigToBackupDir()
@@ -2664,18 +2687,6 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 	return has_changed, nil
 }
 
-// Prevent unsaved config while also prevent too many queue
-func (repman *ReplicationManager) WaitAndSave() {
-	defer func() {
-		repman.HasSavingConfigQueue = false
-		repman.Save()
-	}()
-
-	for repman.IsSavingConfig {
-		time.Sleep(time.Second)
-	}
-}
-
 func (repman *ReplicationManager) SaveDynamic() (bool, error) {
 	var has_changed bool
 
@@ -2821,16 +2832,6 @@ func (repman *ReplicationManager) SetIsSavingConfig(val bool) {
 
 func (repman *ReplicationManager) Save() error {
 	var err error
-	// if !repman.IsGitPull && repman.Conf.Cloud18 {
-	// 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Cannot save repman config, cloud18 active but config is not pulled yet.")
-	// 	return nil
-	// }
-
-	if repman.IsSavingConfig {
-		return nil
-	}
-	repman.SetIsSavingConfig(true)
-	defer repman.SetIsSavingConfig(false)
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {

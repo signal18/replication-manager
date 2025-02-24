@@ -541,8 +541,15 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 				return err
 			}
 		}
-		go alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
+
+		go func() {
+			err := alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
+			}
+		}()
 	}
+
 	cluster.BashScriptAlert(alert)
 
 	return nil

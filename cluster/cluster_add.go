@@ -238,7 +238,7 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 		if reloadACL {
 			cluster.LoadAPIUsers()
 			cluster.SaveAcls()
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 	}
 
@@ -306,7 +306,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 		if reloadACL {
 			cluster.LoadAPIUsers()
 			cluster.SaveAcls()
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 	}
 
@@ -333,7 +333,7 @@ func (cluster *Cluster) DropUser(userform UserForm, reloadACL bool) error {
 		cluster.Conf.APIUsersExternal = strings.Join(new_cred, ",")
 		if reloadACL {
 			cluster.SaveAcls()
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 	}
 
