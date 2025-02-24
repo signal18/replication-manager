@@ -453,8 +453,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Perform shallow clone for better performance
 		r, err = git.PlainClone(path, false, cloneopt)
 
-		cm.logger.Debugf(
-			"Clone took: %s", time.Since(start))
+		cm.logger.Debugf("Clone took: %s", time.Since(start))
 
 		// Handle repository not found
 		if err != nil {
@@ -471,7 +470,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Open existing repository
 		r, err = git.PlainOpen(path)
 		if err != nil {
-			cm.logger.Errorf("Git error: cannot open repo: %s", err)
+			cm.logger.Errorf("Git error: cannot open repo: %s\n", err)
 			return err
 		}
 	}
@@ -484,7 +483,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	}
 
 	var changedFiles []string
-
+	allstart := time.Now()
 	// Add specific files without using AddGlob
 	for _, name := range clusterList {
 		dirPath := filepath.Join(path, name)
@@ -497,11 +496,13 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
-				filePath := filepath.Join(name, file.Name())
-				if _, err := w.Add(filePath); err == nil {
-					changedFiles = append(changedFiles, filePath)
+				addstart := time.Now()
+				fpath := filepath.Join(name, file.Name())
+				if _, err := w.Add(fpath); err == nil {
+					changedFiles = append(changedFiles, fpath)
+					cm.logger.Debugf("File %s add took: %s", fpath, time.Since(addstart))
 				} else {
-					cm.logger.Errorf("Git error: cannot add %s: %s", filePath, err)
+					cm.logger.Errorf("Git error: cannot add %s: %s", fpath, err)
 				}
 			}
 		}
@@ -510,8 +511,10 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
+				addstart := time.Now()
 				if _, err := w.Add(jsonPath); err == nil {
 					changedFiles = append(changedFiles, jsonPath)
+					cm.logger.Debugf("File %s add took: %s", jsonPath, time.Since(addstart))
 				} else {
 					cm.logger.Errorf("Git error: cannot add %s: %s", jsonPath, err)
 				}
@@ -522,8 +525,10 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	// Add default.toml if it exists
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
+		addstart := time.Now()
 		if _, err := w.Add(defaultToml); err == nil {
 			changedFiles = append(changedFiles, defaultToml)
+			cm.logger.Debugf("File %s add took: %s", defaultToml, time.Since(addstart))
 		} else {
 			cm.logger.Errorf("Git error: cannot add %s: %s", defaultToml, err)
 		}
@@ -536,8 +541,8 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		return nil
 	}
 
-	cm.logger.Debugf(
-		"Files changed: %v", changedFiles)
+	cm.logger.Debugf("Total file add took: %s", defaultToml, time.Since(allstart))
+	cm.logger.Debugf("Files changed: %v", changedFiles)
 
 	// Commit the changes
 	commitStart := time.Now()
@@ -547,8 +552,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			When: time.Now(),
 		},
 	})
-	cm.logger.Debugf(
-		"Commit took: %s", time.Since(commitStart))
+	cm.logger.Debugf("Commit took: %s", time.Since(commitStart))
 
 	if err != nil {
 		cm.logger.Errorf("Git error: cannot commit: %s", err)
