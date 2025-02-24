@@ -175,46 +175,55 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	return nil
 }
 
-func (repman *ReplicationManager) PushAllConfigsToGit() {
-	if repman.GetIsGitPush() {
-		return
-	}
-
-	// Set Flag as Git Push, prevent new cluster save is processed
-	repman.SetIsGitPush(true)
-	defer repman.SetIsGitPush(false)
-
-	// Wait if any cluster is saving config
-	for _, cl := range repman.Clusters {
-		for cl.IsSavingConfig {
-			time.Sleep(100 * time.Millisecond)
+func (repman *ReplicationManager) PushAllConfigsToGit() error {
+	defer func() {
+		if r := recover(); r != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pushing to git: %v", r)
 		}
-	}
+	}()
 
 	if repman.Conf.GitUrl == "" {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "No Git URL provided, skipping push")
-		return
+		return nil
 	}
+
+	repman.IsGitPush = true
+	defer func() {
+		repman.IsGitPush = false
+	}()
+
 	repman.AddPullToGitignore()
 	repman.AddTempDirToGitignore()
+
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlInfo, "Pushing All Configs To Git")
+
 	err := repman.PushConfigToGit()
 	if err != nil && err == transport.ErrRepositoryNotFound {
 		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
-		repman.PushConfigToGit()
+		err := repman.PushConfigToGit()
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error pushing to git: %v", err)
+			return err
+		}
 	}
 
 	// Count the commits
 	commits, err := repman.CountAllCommits()
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlWarn, "Error counting commits: %v", err)
-		return
+		return err
 	}
 
 	if commits >= 10 {
 		os.RemoveAll(repman.Conf.WorkingDir + "/.git")
-		repman.ShallowClone()
+		err := repman.ShallowClone()
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Error shallow cloning: %v", err)
+			return err
+		}
 	}
+
+	return nil
 }
 
 func (repman *ReplicationManager) PullCloud18Configs() {
@@ -674,17 +683,19 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 
 	// Check if .git directory exists
 	if _, err := os.Stat(filepath.Join(path, ".git")); os.IsNotExist(err) {
-		if !repman.Conf.ConfRestoreOnStart {
-			repman.MoveConfigsToTmpDir(path)
-		}
-
-		// Perform shallow clone for better performance
-		r, err = git.PlainClone(path, false, &git.CloneOptions{
+		cloneopt := &git.CloneOptions{
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
 			Depth:             1, // Shallow clone
-		})
+		}
+
+		if !repman.Conf.ConfRestoreOnStart {
+			cloneopt.NoCheckout = true
+		}
+
+		// Perform shallow clone for better performance
+		r, err = git.PlainClone(path, false, cloneopt)
 
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlDbg,
 			"Clone took: %s", time.Since(start))
@@ -700,7 +711,6 @@ func (repman *ReplicationManager) PushConfigToGit() error {
 					Depth:             1,
 				})
 			}
-			repman.RestoreConfigsFromTmpDir(path)
 			if err != nil {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr,
 					"Git error: cannot clone %s: %s", url, err)

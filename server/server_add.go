@@ -39,7 +39,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	//cluster.SetClusterHead(clusterHead)
 	//cluster.SetClusterHead(clusterName)
 	//cluster.SetClusterList(repman.Clusters)
-	cluster.Save()
+	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 	return nil
 
 }
