@@ -596,7 +596,6 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		return err
 	}
 
-	var changedFiles []string
 	allstart := time.Now()
 	// Add specific files without using AddGlob
 	for _, name := range clusterList {
@@ -628,13 +627,6 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
 		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w})
-	}
-
-	// Skip commit if no files were changed
-	if len(changedFiles) == 0 {
-		cm.logger.Debugf("default", config.ConstLogModGit,
-			"No changes detected, skipping commit.")
-		return nil
 	}
 
 	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
