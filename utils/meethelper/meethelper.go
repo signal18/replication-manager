@@ -430,6 +430,7 @@ func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, e
 		Type:      "custom_jitsi",
 		Props: map[string]interface{}{
 			"meeting_link":          meetingLink,
+			"meeting_id":            meetingId,
 			"default_meeting_topic": "Jitsi Meeting",
 			"attachments": []model.SlackAttachment{
 				{Fallback: fallback},

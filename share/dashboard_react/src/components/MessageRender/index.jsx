@@ -93,7 +93,7 @@ const MessageRender = ({messages, allUsers}) => {
                     <Box key={index} className={styles.post}>
                         <div className={styles.postInfo}>
                             <div className={styles.postUser}>
-                                {getUserName(msg.UserId)}
+                                { msg.OverriveUserName !== ""? msg.OverriveUserName: getUserName(msg.UserId) }
                             </div>
                             <div className={styles.postTime}>
                                 {formatTime(msg.CreateAt)}
@@ -152,8 +152,13 @@ const MessageRender = ({messages, allUsers}) => {
                                     <Box className={styles.alert}>
                                         <div className={styles.alertInfoText}>{alertInfo.Text}</div>
                                         {alertInfo?.Fields && alertInfo.Fields.length > 0 && (
-                                            <Box className={styles.alertFields}>
-                                                <Box className={styles.content}>
+                                            <Box 
+                                                className={styles.alertFields}
+                                                style={{'border-color' : `${alertInfo.Color === "danger" ? 'red' : alertInfo.Color === "warning" ? 'orange': 'green'}`}}
+                                            >
+                                                <Box 
+                                                    className={styles.content} 
+                                                >
                                                     {alertInfo.Fields.map((field, fieldIndex) => (
                                                         <Box className={styles.field}>
                                                             <div className={styles.fieldTitle}>{field.Title}</div>

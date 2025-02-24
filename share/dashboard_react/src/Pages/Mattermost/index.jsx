@@ -2,7 +2,7 @@ import styles from './styles.module.scss';
 import React, { useEffect, useState, useRef, memo } from 'react';
 import { useDispatch, useSelector, shallowEqual } from 'react-redux';
 import { Box, Textarea, Button, Drawer, DrawerBody, DrawerHeader, DrawerOverlay, DrawerContent, DrawerCloseButton, Text } from '@chakra-ui/react';
-import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel } from '../../redux/meetSlice';
+import { getMeetInfo, postMeetMessage, fetchMessages, fetchNewMessages, loadHistoryMessages, viewMessagesOnChannel, uploadFileOnChannel, postJitsiMeeting } from '../../redux/meetSlice';
 import { FaPaperPlane } from 'react-icons/fa';
 import ChannelTreeView from '../../components/ChannelTreeView';
 import FileUploadButton from '../../components/FileUploadButton';
@@ -138,6 +138,13 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
         onClose();
     };
 
+    const handleCreateMeeting = () => {
+        if (!selectedChannel) return;
+        const meetingId = `meet-${Math.random().toString(36).substring(7)}`;
+        dispatch(postJitsiMeeting({ channelId: selectedChannel, meetingId: meetingId }));
+    };
+    
+
 
     return (
         <Drawer isOpen={isOpen} placement="right" onClose={handleCloseChat} size="lg">
@@ -178,6 +185,9 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                                         </Box>
                                     )}
                                     <FileUploadButton onFileSelected={handleFileSelected} />  
+                                    <Button onClick={handleCreateMeeting} className={styles.meetingButton}>
+                                        📹
+                                    </Button>
                                     <Button onClick={handleSendMessage} className={styles.newPostSendButton}>
                                         <FaPaperPlane />
                                     </Button>
