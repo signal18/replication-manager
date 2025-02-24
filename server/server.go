@@ -1138,7 +1138,12 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
-	repman.Logrus = log.New()
+	if repman.Logrus == nil {
+		repman.Logrus = log.New()
+	}
+	if repman.ConfigManager == nil {
+		repman.ConfigManager = manager.NewConfigManager(repman.Logrus)
+	}
 	repman.PeerClusters = make([]config.PeerCluster, 0)
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
@@ -1148,8 +1153,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.Partners = make([]config.Partner, 0)
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
-	// repman.UserAuthTry = make(map[string]authTry)
 	repman.cloud18CheckSum = nil
+
 	// call after init if configuration file is provide
 
 	//if repman is embed, create folders and load missing embedded files
@@ -2130,7 +2135,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 			if repman.Conf.GitUrl != "" {
-				repman.ConfigManager.GitPush(repman.PushAllConfigsToGit, true)
+				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {

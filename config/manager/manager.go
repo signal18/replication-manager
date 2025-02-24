@@ -1,8 +1,20 @@
 package manager
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
+	"time"
+
+	"github.com/go-git/go-git/v5"
+	git_obj "github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
+	"github.com/signal18/replication-manager/config"
+	"github.com/sirupsen/logrus"
 )
 
 // ConfigSaveTask holds the parameters for saving a config and additional waiting functionality
@@ -13,8 +25,9 @@ type ConfigSaveTask struct {
 }
 
 type ConfigPushTask struct {
-	PushFunc  func() error    // The function that performs the save
-	WaitGroup *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
+	conf        config.Config
+	clusterList []string
+	WaitGroup   *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
 }
 
 // ClusterManager holds the necessary fields for each cluster
@@ -27,14 +40,16 @@ type ClusterManager struct {
 
 // Push Manager
 type PushManager struct {
-	tasks  []ConfigPushTask // Slice of tasks for the push queue
-	mutex  *sync.Mutex      // Mutex for safe access to tasks
-	cond   *sync.Cond       // Condition variable for waiting and notifying tasks
-	stopCh chan struct{}    // Stop channel to signal the goroutine to stop
+	IsPushing bool             // Flag to indicate if a push is in progress
+	tasks     []ConfigPushTask // Slice of tasks for the push queue
+	mutex     *sync.Mutex      // Mutex for safe access to tasks
+	cond      *sync.Cond       // Condition variable for waiting and notifying tasks
+	stopCh    chan struct{}    // Stop channel to signal the goroutine to stop
 }
 
 // ConfigManager controls config saves & Git push
 type ConfigManager struct {
+	logger      *logrus.Logger
 	configWg    *sync.WaitGroup            // Tracks ongoing config saves
 	gitMutex    *sync.Mutex                // Blocks new saves during Git push
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
@@ -44,8 +59,9 @@ type ConfigManager struct {
 }
 
 // NewConfigManager initializes the manager
-func NewConfigManager() *ConfigManager {
+func NewConfigManager(logger *logrus.Logger) *ConfigManager {
 	newcm := &ConfigManager{
+		logger:      logger,
 		clusterData: make(map[string]*ClusterManager),
 		gitMutex:    &sync.Mutex{},
 		configWg:    &sync.WaitGroup{},
@@ -155,9 +171,9 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 }
 
 // GitPush waits for active saves, blocks new ones, and pushes changes
-func (cm *ConfigManager) GitPush(pushFunc func() error, wait bool) {
+func (cm *ConfigManager) GitPush(conf config.Config, clusterList []string, wait bool) {
 
-	configPushTask := ConfigPushTask{PushFunc: pushFunc}
+	configPushTask := ConfigPushTask{conf: conf, clusterList: clusterList}
 
 	if wait {
 		wg := sync.WaitGroup{}
@@ -211,10 +227,7 @@ func (cm *ConfigManager) processGitPush() {
 
 			fmt.Println("[Git] Starting Git push...")
 			// Execute the save function and handle potential errors
-			if configPushTask.PushFunc == nil {
-				fmt.Println("[Git] No push function provided.")
-				return
-			} else if err := configPushTask.PushFunc(); err != nil {
+			if err := cm.PushAllConfigsToGit(configPushTask.conf, configPushTask.clusterList); err != nil {
 				// Execute the Git push function and handle potential errors
 				fmt.Printf("[Git] Error during push: %v\n", err)
 			} else {
@@ -260,4 +273,346 @@ func (cm *ConfigManager) Stop() {
 		cm.pushManager.cond.Signal() // Wake up the push manager
 		fmt.Println("[Shutdown] Config manager stopped.")
 	})
+}
+
+func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []string) error {
+	defer func() {
+		if r := recover(); r != nil {
+			cm.logger.Errorf("Error pushing to git: %v", r)
+		}
+	}()
+
+	cm.pushManager.IsPushing = true
+	defer func() {
+		cm.pushManager.IsPushing = false
+	}()
+
+	if conf.GitUrl == "" {
+		cm.logger.Infof("No Git URL provided, skipping push")
+		return nil
+	}
+
+	cm.AddPullToGitignore(&conf)
+	cm.AddTempDirToGitignore(&conf)
+
+	cm.logger.Infof("Pushing All Configs To Git")
+
+	err := cm.PushConfigToGit(&conf, clusterList)
+	if err != nil && err == transport.ErrRepositoryNotFound {
+		os.RemoveAll(conf.WorkingDir + "/.git")
+		err := cm.PushConfigToGit(&conf, clusterList)
+		if err != nil {
+			cm.logger.Errorf("Error pushing to git: %v", err)
+			return err
+		}
+	}
+
+	// Count the commits
+	commits, err := cm.CountAllCommits(&conf)
+	if err != nil {
+		cm.logger.Warnf("Error counting commits: %v", err)
+		return err
+	}
+
+	if commits >= 10 {
+		os.RemoveAll(conf.WorkingDir + "/.git")
+		err := cm.ShallowClone(&conf)
+		if err != nil {
+			cm.logger.Errorf("Error shallow cloning: %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+// Ensures ".pull/" is in .gitignore.
+func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
+	gitignoreFile := conf.WorkingDir + "/.gitignore"
+	lineToAdd := ".pull/"
+
+	// Check if .gitignore exists
+	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
+		// If .gitignore doesn't exist, create it and write the line
+		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
+		if err != nil {
+			fmt.Println("Error creating .gitignore:", err)
+		}
+		return
+	}
+
+	// Open .gitignore for reading and appending
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Println("Error opening .gitignore:", err)
+		return
+	}
+	defer file.Close()
+
+	// Check if the line already exists
+	scanner := bufio.NewScanner(file)
+	lineExists := false
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == lineToAdd {
+			lineExists = true
+			break
+		}
+	}
+
+	if scanner.Err() != nil {
+		fmt.Println("Error reading .gitignore:", scanner.Err())
+		return
+	}
+
+	// Append the line if it doesn't already exist
+	if !lineExists {
+		_, err := file.WriteString(lineToAdd + "\n")
+		if err != nil {
+			fmt.Println("Error appending to .gitignore:", err)
+		}
+	}
+}
+
+// Ensures ".tmp/" is in .gitignore.
+func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
+	gitignoreFile := conf.WorkingDir + "/.gitignore"
+	lineToAdd := ".tmp/"
+
+	// Check if .gitignore exists
+	if _, err := os.Stat(gitignoreFile); os.IsNotExist(err) {
+		// If .gitignore doesn't exist, create it and write the line
+		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
+		if err != nil {
+			fmt.Println("Error creating .gitignore:", err)
+		}
+		return
+	}
+
+	// Open .gitignore for reading and appending
+	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
+	if err != nil {
+		fmt.Println("Error opening .gitignore:", err)
+		return
+	}
+	defer file.Close()
+
+	// Check if the line already exists
+	scanner := bufio.NewScanner(file)
+	lineExists := false
+	for scanner.Scan() {
+		if strings.TrimSpace(scanner.Text()) == lineToAdd {
+			lineExists = true
+			break
+		}
+	}
+
+	if scanner.Err() != nil {
+		fmt.Println("Error reading .gitignore:", scanner.Err())
+		return
+	}
+
+	// Append the line if it doesn't already exist
+	if !lineExists {
+		_, err := file.WriteString(lineToAdd + "\n")
+		if err != nil {
+			fmt.Println("Error appending to .gitignore:", err)
+		}
+	}
+}
+
+func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []string) error {
+	url := conf.GitUrl
+	tok := conf.GetDecryptedValue("git-acces-token")
+	user := conf.GitUsername
+	path := conf.WorkingDir
+
+	// Log basic information
+	cm.logger.Debugf("Push to git: user=%s, dir=%s, clusters=%v", user, path, clusterList)
+
+	auth := &git_https.BasicAuth{
+		Username: user, // Can be any non-empty string
+		Password: tok,
+	}
+
+	var r *git.Repository
+	start := time.Now()
+
+	// Check if .git directory exists
+	if _, err := os.Stat(filepath.Join(path, ".git")); os.IsNotExist(err) {
+		cloneopt := &git.CloneOptions{
+			URL:               url,
+			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			Auth:              auth,
+			Depth:             1, // Shallow clone
+		}
+
+		if !conf.ConfRestoreOnStart {
+			cloneopt.NoCheckout = true
+		}
+
+		// Perform shallow clone for better performance
+		r, err = git.PlainClone(path, false, cloneopt)
+
+		cm.logger.Debugf(
+			"Clone took: %s", time.Since(start))
+
+		// Handle repository not found
+		if err != nil {
+			if err == transport.ErrRepositoryNotFound {
+				conf.CreateGitlabProjects()
+				r, err = git.PlainClone(path, false, cloneopt)
+			}
+			if err != nil {
+				cm.logger.Errorf("Git error: cannot clone %s: %s", url, err)
+				return err
+			}
+		}
+	} else {
+		// Open existing repository
+		r, err = git.PlainOpen(path)
+		if err != nil {
+			cm.logger.Errorf("Git error: cannot open repo: %s", err)
+			return err
+		}
+	}
+
+	// Open the worktree
+	w, err := r.Worktree()
+	if err != nil {
+		cm.logger.Errorf("Git error: cannot get worktree: %s", err)
+		return err
+	}
+
+	var changedFiles []string
+
+	// Add specific files without using AddGlob
+	for _, name := range clusterList {
+		dirPath := filepath.Join(path, name)
+		files, err := os.ReadDir(dirPath)
+		if err != nil {
+			cm.logger.Errorf("Error reading directory %s: %s", dirPath, err)
+			continue
+		}
+
+		// Add .toml files
+		for _, file := range files {
+			if filepath.Ext(file.Name()) == ".toml" {
+				filePath := filepath.Join(name, file.Name())
+				if _, err := w.Add(filePath); err == nil {
+					changedFiles = append(changedFiles, filePath)
+				} else {
+					cm.logger.Errorf("Git error: cannot add %s: %s", filePath, err)
+				}
+			}
+		}
+
+		// Add agents.json and queryrules.json if they exist
+		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
+			jsonPath := filepath.Join(name, jsonFile)
+			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
+				if _, err := w.Add(jsonPath); err == nil {
+					changedFiles = append(changedFiles, jsonPath)
+				} else {
+					cm.logger.Errorf("Git error: cannot add %s: %s", jsonPath, err)
+				}
+			}
+		}
+	}
+
+	// Add default.toml if it exists
+	defaultToml := "default.toml"
+	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
+		if _, err := w.Add(defaultToml); err == nil {
+			changedFiles = append(changedFiles, defaultToml)
+		} else {
+			cm.logger.Errorf("Git error: cannot add %s: %s", defaultToml, err)
+		}
+	}
+
+	// Skip commit if no files were changed
+	if len(changedFiles) == 0 {
+		cm.logger.Debugf(
+			"No changes detected, skipping commit.")
+		return nil
+	}
+
+	cm.logger.Debugf(
+		"Files changed: %v", changedFiles)
+
+	// Commit the changes
+	commitStart := time.Now()
+	_, err = w.Commit("Update configuration", &git.CommitOptions{
+		Author: &git_obj.Signature{
+			Name: "Replication Manager",
+			When: time.Now(),
+		},
+	})
+	cm.logger.Debugf(
+		"Commit took: %s", time.Since(commitStart))
+
+	if err != nil {
+		cm.logger.Errorf("Git error: cannot commit: %s", err)
+		return err
+	}
+
+	// Push changes
+	pushStart := time.Now()
+	err = r.Push(&git.PushOptions{Auth: auth})
+	cm.logger.Debugf(
+		"Push took: %s", time.Since(pushStart))
+
+	if err != nil {
+		cm.logger.Errorf("Git error: cannot push: %s", err)
+	}
+
+	return err
+}
+
+func (cm *ConfigManager) CountAllCommits(conf *config.Config) (int, error) {
+	mainPath := conf.WorkingDir
+
+	// Open the repository
+	r, err := git.PlainOpen(mainPath)
+	if err != nil {
+		return 0, fmt.Errorf("failed to open repository at %s: %w", mainPath, err)
+	}
+
+	r.Fetch(&git.FetchOptions{Force: true, Auth: &git_https.BasicAuth{Username: conf.GitUsername, Password: conf.GetDecryptedValue("git-acces-token")}})
+
+	commitIter, err := r.Log(&git.LogOptions{All: true})
+	if err != nil {
+		return 0, fmt.Errorf("failed to get commit iterator: %w", err)
+	}
+
+	commitCount := 0
+	// Count commits for this branch/tag
+	err = commitIter.ForEach(func(c *git_obj.Commit) error {
+		commitCount++
+		return nil
+	})
+
+	return commitCount, nil
+}
+
+func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
+	url := conf.GitUrl
+	tok := conf.GetDecryptedValue("git-acces-token")
+	user := conf.GitUsername
+	path := conf.WorkingDir
+
+	auth := &git_https.BasicAuth{
+		Username: user, // Can be any non-empty string
+		Password: tok,
+	}
+
+	// Perform shallow clone for better performance
+	_, err := git.PlainClone(path, false, &git.CloneOptions{
+		URL:               url,
+		RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+		Auth:              auth,
+		Depth:             1, // Shallow clone
+		NoCheckout:        true,
+	})
+
+	return err
 }
