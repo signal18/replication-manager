@@ -29,6 +29,8 @@ import (
 	vault "github.com/hashicorp/vault/api"
 
 	"github.com/pelletier/go-toml"
+	"github.com/signal18/replication-manager/cluster/app"
+	"github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
@@ -82,7 +84,7 @@ type Cluster struct {
 	Crashes                       crashList            `json:"dbServersCrashes"` //This will be purged on all db node up
 	FailoverHistory               crashList            `json:"failoverHistory"`  //This will be used for PITR
 	Proxies                       proxyList            `json:"-"`
-	Apps                          appList              `json:"-"`
+	Apps                          app.AppList          `json:"-"`
 	ProxyIdList                   []string             `json:"proxyServers"`
 	FailoverCtr                   int                  `json:"failoverCounter"`
 	FailoverTs                    int64                `json:"failoverLastTime"`
@@ -196,7 +198,7 @@ type Cluster struct {
 	BackupStat                v3.BackupStat               `json:"backupStat"`
 	BackupMetaMap             *config.BackupMetaMap       `json:"backupList"`
 	SLAHistory                []state.Sla                 `json:"slaHistory"`
-	APIUsers                  map[string]APIUser          `json:"apiUsers"`
+	APIUsers                  map[string]auth.APIUser     `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
 	scheduler                 *cron.Cron                  `json:"-"`
 	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
@@ -1237,8 +1239,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials"].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
-			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
+			if APIUser, ok := cluster.APIUsers[user_pass[0]]; ok {
+				tab_ApiUser = append(tab_ApiUser, APIUser.User+":"+cluster.Conf.GetEncryptedString(APIUser.Password))
 			}
 		}
 		return strings.Join(tab_ApiUser, ",")
@@ -1247,8 +1249,8 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 		lst_Users := strings.Split(cluster.Conf.Secrets["api-credentials-external"].Value, ",")
 		for ind := range lst_Users {
 			user_pass := strings.Split(lst_Users[ind], ":")
-			if APIuser, ok := cluster.APIUsers[user_pass[0]]; ok {
-				tab_ApiUser = append(tab_ApiUser, APIuser.User+":"+cluster.Conf.GetEncryptedString(APIuser.Password))
+			if APIUser, ok := cluster.APIUsers[user_pass[0]]; ok {
+				tab_ApiUser = append(tab_ApiUser, APIUser.User+":"+cluster.Conf.GetEncryptedString(APIUser.Password))
 			}
 		}
 		return strings.Join(tab_ApiUser, ",")

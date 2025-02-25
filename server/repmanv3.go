@@ -17,6 +17,7 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"golang.org/x/net/http2"
@@ -231,30 +232,30 @@ func (s *ReplicationManager) getClusterFromFromRequest(req v3.ContainsClusterMes
 type ContextKey string
 
 // getClusterAndUser checks if the cluster exists and if the token has a valid user
-func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.ContainsClusterMessage) (cluster.APIUser, *cluster.Cluster, error) {
+func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.ContainsClusterMessage) (auth.APIUser, *cluster.Cluster, error) {
 	mycluster, err := s.getClusterFromFromRequest(req)
 	if err != nil {
-		return cluster.APIUser{}, nil, err
+		return auth.APIUser{}, nil, err
 	}
 
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
-		return cluster.APIUser{}, nil, fmt.Errorf("metadata missing")
+		return auth.APIUser{}, nil, fmt.Errorf("metadata missing")
 	}
 	log.Info("md", md)
 
-	auth := md.Get("authorization")
-	if len(auth) == 0 {
-		return cluster.APIUser{}, nil, fmt.Errorf("authorization header missing")
+	mdauth := md.Get("authorization")
+	if len(mdauth) == 0 {
+		return auth.APIUser{}, nil, fmt.Errorf("authorization header missing")
 	}
 
-	if len(auth[0]) > 6 && strings.ToUpper(auth[0][0:7]) == "BEARER " {
-		token, err := jwt.Parse(auth[0][7:], func(token *jwt.Token) (interface{}, error) {
+	if len(mdauth[0]) > 6 && strings.ToUpper(mdauth[0][0:7]) == "BEARER " {
+		token, err := jwt.Parse(mdauth[0][7:], func(token *jwt.Token) (interface{}, error) {
 			vk, _ := jwt.ParseRSAPublicKeyFromPEM(verificationKey)
 			return vk, nil
 		})
 		if err != nil {
-			return cluster.APIUser{}, nil, fmt.Errorf("failed to parse jwt token: %w", err)
+			return auth.APIUser{}, nil, fmt.Errorf("failed to parse jwt token: %w", err)
 		}
 
 		claims := token.Claims.(jwt.MapClaims)
@@ -263,13 +264,13 @@ func (s *ReplicationManager) getClusterAndUser(ctx context.Context, req v3.Conta
 
 		user, err := mycluster.GetAPIUser(mycutinfo["Name"].(string), mycutinfo["Password"].(string))
 		if err != nil {
-			return cluster.APIUser{}, nil, err
+			return auth.APIUser{}, nil, err
 		}
 
 		return user, mycluster, nil
 	}
 
-	return cluster.APIUser{}, nil, fmt.Errorf("bearer is missing")
+	return auth.APIUser{}, nil, fmt.Errorf("bearer is missing")
 }
 
 func (s *ReplicationManager) getCredentials() (opts []grpc.ServerOption, dopts []grpc.DialOption, tlsConfig *tls.Config, err error) {

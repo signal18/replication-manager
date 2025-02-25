@@ -23,6 +23,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
@@ -713,6 +714,15 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 		}
 	}
 
+	return nil
+}
+
+func (cluster *Cluster) GetAppFromName(name string) app.AppInterface {
+	for _, pr := range cluster.Apps {
+		if pr.GetId() == name {
+			return pr
+		}
+	}
 	return nil
 }
 

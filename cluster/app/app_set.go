@@ -8,7 +8,7 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package app
 
 import (
 	"hash/crc64"
@@ -19,10 +19,9 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-func (app *App) SetID() {
-	cluster := app.ClusterGroup
+func (app *App) SetID(crctable *crc64.Table) {
 	app.Id = "app" + strconv.FormatUint(
-		crc64.Checksum([]byte(cluster.Name+app.Name+":"+app.Port), cluster.crcTable),
+		crc64.Checksum([]byte(app.Clustername+app.Name+":"+app.Port), crctable),
 		10)
 }
 
@@ -57,7 +56,7 @@ func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string
 
 func (app *App) SetDataDir() {
 	if app.Host != "" {
-		app.Datadir = app.ClusterGroup.Conf.WorkingDir + "/" + app.ClusterGroup.Name + "/" + app.Host + "_" + app.Port
+		app.Datadir = app.ClusterConfig.WorkingDir + "/" + app.Clustername + "/" + app.Host + "_" + app.Port
 		if _, err := os.Stat(app.Datadir); os.IsNotExist(err) {
 			os.MkdirAll(app.Datadir, os.ModePerm)
 			os.MkdirAll(app.Datadir+"/log", os.ModePerm)
@@ -70,10 +69,9 @@ func (app *App) SetDataDir() {
 
 func (app *App) createCookie(key string) error {
 	newFile, err := os.Create(app.Datadir + "/@" + key)
-	cluster := app.ClusterGroup
 	defer newFile.Close()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
+		app.Logger.Debugf(app.Clustername, config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }
@@ -122,6 +120,35 @@ func (app *App) SetState(v string) {
 	app.State = v
 }
 
-func (app *App) SetCluster(c *Cluster) {
-	app.ClusterGroup = c
+func (app *App) SetClustername(c string) {
+	app.Clustername = c
+}
+
+func (app *App) SetProvAppImage(value string) error {
+	app.AppConfig.ProvAppDockerImg = value
+	return nil
+}
+func (app *App) SetProvAppAgents(value string) error {
+	app.AppConfig.ProvAppAgents = value
+	return nil
+}
+func (app *App) SetAppDiskSize(value string) error {
+	app.AppConfig.ProvAppDiskSize = value
+	return nil
+}
+func (app *App) SetAppCores(value string) error {
+	app.AppConfig.ProvAppCpuCores = value
+	return nil
+}
+func (app *App) SetAppMemorySize(value string) error {
+	app.AppConfig.ProvAppMemory = value
+	return nil
+}
+func (app *App) SetAppVolumeData(value string) error {
+	app.AppConfig.ProvAppVolumeData = value
+	return nil
+}
+func (app *App) SetAppDockerRunArgs(value string) error {
+	app.AppConfig.ProvAppDockerRunArgs = value
+	return nil
 }

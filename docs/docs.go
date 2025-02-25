@@ -12332,7 +12332,7 @@ const docTemplate = `{
                 "UnlockTask"
             ]
         },
-        "cluster.APIUser": {
+        "auth.APIUser": {
             "type": "object",
             "properties": {
                 "grants": {
@@ -12460,7 +12460,7 @@ const docTemplate = `{
                 "apiUsers": {
                     "type": "object",
                     "additionalProperties": {
-                        "$ref": "#/definitions/cluster.APIUser"
+                        "$ref": "#/definitions/auth.APIUser"
                     }
                 },
                 "backupList": {
@@ -14361,6 +14361,51 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "appNginxConfigEnvVariable": {
+                    "type": "string"
+                },
+                "appNginxConfigGitBranch": {
+                    "type": "string"
+                },
+                "appNginxConfigGitCloneUrl": {
+                    "type": "string"
+                },
+                "appNginxConfigGitPassword": {
+                    "type": "string"
+                },
+                "appNginxConfigGitUser": {
+                    "type": "string"
+                },
+                "appNginxConfigSecretVariables": {
+                    "type": "string"
+                },
+                "appNginxConfigVolumes": {
+                    "type": "string"
+                },
+                "appNginxDataBranch": {
+                    "type": "string"
+                },
+                "appNginxDataGitCloneUrl": {
+                    "type": "string"
+                },
+                "appNginxDataGitPassword": {
+                    "type": "string"
+                },
+                "appNginxDataGitUser": {
+                    "type": "string"
+                },
+                "appNginxDataVolumes": {
+                    "type": "string"
+                },
+                "appNginxHosts": {
+                    "type": "string"
+                },
+                "appNginxLogVolumes": {
+                    "type": "string"
+                },
+                "appNginxRunCommand": {
+                    "type": "string"
+                },
                 "arbitrationExternal": {
                     "type": "boolean"
                 },
@@ -14956,6 +15001,12 @@ const docTemplate = `{
                 "fullVersion": {
                     "type": "string"
                 },
+                "gitMaxWorker": {
+                    "type": "integer"
+                },
+                "gitMinWorker": {
+                    "type": "integer"
+                },
                 "gitMonitoringTicker": {
                     "type": "integer"
                 },
@@ -15158,6 +15209,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "logLevel": {
+                    "type": "integer"
+                },
+                "logMailerLevel": {
                     "type": "integer"
                 },
                 "logOrchestrator": {
@@ -15570,6 +15624,114 @@ const docTemplate = `{
                 "printDelayStatInterval": {
                     "type": "integer"
                 },
+                "provAppAgents": {
+                    "type": "string"
+                },
+                "provAppAgentsFailover": {
+                    "type": "string"
+                },
+                "provAppCpuCores": {
+                    "type": "string"
+                },
+                "provAppDiskPool": {
+                    "type": "string"
+                },
+                "provAppDiskSize": {
+                    "type": "string"
+                },
+                "provAppDiskType": {
+                    "type": "string"
+                },
+                "provAppDockerImg": {
+                    "type": "string"
+                },
+                "provAppDockerRunArgs": {
+                    "type": "string"
+                },
+                "provAppMemory": {
+                    "type": "string"
+                },
+                "provAppNetGateway": {
+                    "type": "string"
+                },
+                "provAppNetIface": {
+                    "type": "string"
+                },
+                "provAppNetMask": {
+                    "type": "string"
+                },
+                "provAppNginxAgents": {
+                    "type": "string"
+                },
+                "provAppNginxAgentsFailover": {
+                    "type": "string"
+                },
+                "provAppNginxCpuCores": {
+                    "type": "string"
+                },
+                "provAppNginxDiskPool": {
+                    "type": "string"
+                },
+                "provAppNginxDiskSize": {
+                    "type": "string"
+                },
+                "provAppNginxDiskType": {
+                    "type": "string"
+                },
+                "provAppNginxDockerImg": {
+                    "type": "string"
+                },
+                "provAppNginxDockerRunArgs": {
+                    "type": "string"
+                },
+                "provAppNginxMemory": {
+                    "type": "string"
+                },
+                "provAppNginxNetGateway": {
+                    "type": "string"
+                },
+                "provAppNginxNetIface": {
+                    "type": "string"
+                },
+                "provAppNginxNetMask": {
+                    "type": "string"
+                },
+                "provAppNginxRouteAddr": {
+                    "type": "string"
+                },
+                "provAppNginxRouteMask": {
+                    "type": "string"
+                },
+                "provAppNginxRoutePolicy": {
+                    "type": "string"
+                },
+                "provAppNginxRoutePort": {
+                    "type": "string"
+                },
+                "provAppNginxServiceType": {
+                    "type": "string"
+                },
+                "provAppNginxVolumeData": {
+                    "type": "string"
+                },
+                "provAppRouteAddr": {
+                    "type": "string"
+                },
+                "provAppRouteMask": {
+                    "type": "string"
+                },
+                "provAppRoutePolicy": {
+                    "type": "string"
+                },
+                "provAppRoutePort": {
+                    "type": "string"
+                },
+                "provAppServiceType": {
+                    "type": "string"
+                },
+                "provAppVolumeData": {
+                    "type": "string"
+                },
                 "provDBApplyDynamicConfig": {
                     "type": "boolean"
                 },
@@ -15653,6 +15815,9 @@ const docTemplate = `{
                 },
                 "provDbDockerRunArgs": {
                     "type": "string"
+                },
+                "provDbDockerRunArgsLimit": {
+                    "type": "boolean"
                 },
                 "provDbDockerTmpfsSize": {
                     "type": "string"

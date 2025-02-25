@@ -24,6 +24,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -2381,6 +2382,62 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	}
 }
 
+func (repman *ReplicationManager) handlerMuxSetClusterAppSetting(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app == nil {
+			http.Error(w, "App not found", 404)
+			return
+		}
+
+		setting := vars["settingName"]
+		cronValue, err := url.QueryUnescape(vars["settingValue"])
+		if err != nil {
+			http.Error(w, "Bad cron pattern", http.StatusBadRequest)
+		}
+		repman.setClusterAppSetting(mycluster, app, setting, cronValue)
+		return
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) setClusterAppSetting(mycluster *cluster.Cluster, app app.AppInterface, name, value string) error {
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+
+	switch name {
+	case "prov-app-docker-img":
+		mycluster.SetProvAppImage(app.GetName(), value)
+	case "prov-app-agents":
+		mycluster.SetProvAppAgents(app.GetName(), value)
+	case "prov-app-disk-size":
+		mycluster.SetAppDiskSize(app.GetName(), value)
+	case "prov-app-cpu-cores":
+		mycluster.SetAppCores(app.GetName(), value)
+	case "prov-app-memory":
+		mycluster.SetAppMemorySize(app.GetName(), value)
+	case "prov-app-volume-data":
+		mycluster.SetAppVolumeData(app.GetName(), value)
+	case "prov-app-docker-run-args":
+		mycluster.SetAppDockerRunArgs(app.GetName(), value)
+	default:
+		return errors.New("Setting not found")
+	}
+
+	mycluster.ConfigManager.SaveConfig(mycluster.Name, mycluster.Save, true)
+	return nil
+}
+
 // handlerMuxSetCron handles the setting of cron jobs for a given cluster.
 // @Summary Set cron jobs for a specific cluster
 // @Description This endpoint sets the cron jobs for the specified cluster.
@@ -2588,20 +2645,6 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetProvProxyDiskDevice(value)
 	case "prov-proxy-service-type":
 		mycluster.SetProvProxyServiceType(value)
-	case "prov-app-docker-img":
-		mycluster.SetProvAppImage(value)
-	case "prov-app-agents":
-		mycluster.SetProvAppAgents(value)
-	case "prov-app-disk-size":
-		mycluster.SetAppDiskSize(value)
-	case "prov-app-cpu-cores":
-		mycluster.SetAppCores(value)
-	case "prov-app-memory":
-		mycluster.SetAppMemorySize(value)
-	case "prov-app-volume-data":
-		mycluster.SetAppVolumeData(value)
-	case "prov-app-docker-run-args":
-		mycluster.SetAppDockerRunArgs(value)
 	case "monitoring-address":
 		mycluster.SetMonitoringAddress(value)
 	case "scheduler-db-servers-logical-backup-cron":
@@ -3641,12 +3684,12 @@ func (repman *ReplicationManager) handlerMuxReloadPlans(w http.ResponseWriter, r
 	}
 
 	if mycluster != nil {
-		valid, apiuser := repman.IsValidClusterACL(r, mycluster)
+		valid, APIUser := repman.IsValidClusterACL(r, mycluster)
 		if valid {
 			repman.InitServicePlans()
 			for _, cl := range repman.Clusters {
 				//Don't print error with no valid ACL
-				if cl.IsURLPassACL(apiuser, r.URL.Path, false) {
+				if cl.IsURLPassACL(APIUser, r.URL.Path, false) {
 					cl.SetServicePlan(cl.Conf.ProvServicePlan)
 				}
 			}

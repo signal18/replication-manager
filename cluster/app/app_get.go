@@ -8,32 +8,23 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package app
 
 import (
+	"github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
-
-func (cluster *Cluster) GetAppFromName(name string) AppInterface {
-	for _, app := range cluster.Apps {
-		if app.GetId() == name {
-			return app
-		}
-	}
-	return nil
-}
 
 func (app *App) GetJanitorWeight() string {
 	return app.Weight
 }
 
 func (app *App) GetAppConfig() string {
-	cluster := app.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Aoo Config generation "+app.Datadir+"/config.tar.gz")
-	err := cluster.Configurator.GenerateAppConfig(app.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, app.GetEnv(), cluster.RepMgrVersion)
+	app.Logger.Infof(app.Clustername, config.ConstLogModApp, "Aoo Config generation "+app.Datadir+"/config.tar.gz")
+	err := app.Configurator.GenerateAppConfig(app.Datadir, app.ClusterConfig.WorkingDir+"/"+app.Clustername, app.GetEnv(), app.RepMgrVersion)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, " "+app.Datadir+"/config.tar.gz error: %s", err)
+		app.Logger.Infof(app.Clustername, config.ConstLogModApp, config.LvlErr, " "+app.Datadir+"/config.tar.gz error: %s", err)
 	}
 	return ""
 }
@@ -99,19 +90,26 @@ func (p *App) GetPrevState() string {
 }
 
 func (p *App) GetOrchestrator() string {
-	return p.GetCluster().Conf.ProvOrchestrator
+	return p.ClusterConfig.ProvOrchestrator
 }
 
 func (p *App) GetServiceName() string {
-	return p.GetCluster().GetName() + "/svc/" + p.GetName()
-}
-
-func (p *App) GetCluster() *Cluster {
-	return p.ClusterGroup
+	return p.Clustername + "/svc/" + p.GetName()
 }
 
 func (p *App) GetURL() string {
 	return p.GetHost() + ":" + p.GetPort()
+}
+
+func (p *App) GetClusterUser(user string) *auth.APIUser {
+	if p.ClusterUsers != nil {
+		users := *p.ClusterUsers
+		if user, ok := users[user]; ok {
+			return &user
+		}
+	}
+
+	return nil
 }
 
 func (app *App) GetSshEnv() string {
@@ -128,8 +126,8 @@ func (app *App) GetSshEnv() string {
 	*/
 	adminuser := "admin"
 	adminpassword := "repman"
-	if user, ok := app.ClusterGroup.APIUsers[adminuser]; ok {
+	if user := app.GetClusterUser(adminuser); user != nil {
 		adminpassword = user.Password
 	}
-	return "export REPLICATION_MANAGER_URL=\"https://" + app.ClusterGroup.Conf.MonitorAddress + ":" + app.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + app.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + app.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + app.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + app.ClusterGroup.Name + "\"\n"
+	return "export REPLICATION_MANAGER_URL=\"https://" + app.ClusterConfig.MonitorAddress + ":" + app.ClusterConfig.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + app.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + app.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + app.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + app.Clustername + "\"\n"
 }

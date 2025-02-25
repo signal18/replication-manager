@@ -574,57 +574,6 @@ type Config struct {
 	ProvSphinxTags                            string                 `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
 	ProvSphinxCron                            string                 `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
 	ProvSphinxType                            string                 `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
-	ProvAppType                               string                 `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
-	ProvAppDiskPool                           string                 `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
-	ProvAppDiskType                           string                 `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
-	ProvAppDockerImg                          string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppDiskSize                           string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
-	ProvAppMemory                             string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDockerRunArgs                      string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
-	ProvAppAgentsFailover                     string                 `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppNetIface                           string                 `mapstructure:"prov-app-net-iface" toml:"prov-app-net-iface" json:"provAppNetIface"`
-	ProvAppNetmask                            string                 `mapstructure:"prov-app-net-mask" toml:"prov-app-net-mask" json:"provAppNetMask"`
-	ProvAppGateway                            string                 `mapstructure:"prov-app-net-gateway" toml:"prov-app-net-gateway" json:"provAppNetGateway"`
-	ProvAppRouteAddr                          string                 `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
-	ProvAppRoutePort                          string                 `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
-	ProvAppRouteMask                          string                 `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppRoutePolicy                        string                 `mapstructure:"prov-app-route-policy" toml:"prov-app-route-policy" json:"provAppRoutePolicy"`
-	ProvAppNginxType                          string                 `mapstructure:"prov-app-nginx-service-type" toml:"prov-app-nginx-service-type" json:"provAppNginxServiceType"`
-	ProvAppNginxDiskPool                      string                 `mapstructure:"prov-app-nginx-disk-pool" toml:"prov-app-nginx-disk-pool" json:"provAppNginxDiskPool"`
-	ProvAppNginxDiskType                      string                 `mapstructure:"prov-app-nginx-disk-type" toml:"prov-app-nginx-disk-type" json:"provAppNginxDiskType"`
-	ProvAppNginxDockerImg                     string                 `mapstructure:"prov-app-nginx-docker-img" toml:"prov-app-nginx-docker-img" json:"provAppNginxDockerImg"`
-	ProvAppNginxAgents                        string                 `mapstructure:"prov-app-nginx-agents" toml:"prov-app-nginx-agents" json:"provAppNginxAgents"`
-	ProvAppNginxDiskSize                      string                 `measurement:"G,bytes,required" mapstructure:"prov-app-nginx-disk-size" toml:"prov-app-nginx-disk-size" json:"provAppNginxDiskSize"`
-	ProvAppNginxCpuCores                      string                 `mapstructure:"prov-app-nginx-cpu-cores" toml:"prov-app-nginx-cpu-cores" json:"provAppNginxCpuCores"`
-	ProvAppNginxMemory                        string                 `measurement:"M,bytes,required" mapstructure:"prov-app-nginx-memory" toml:"prov-app-nginx-memory" json:"provAppNginxMemory"`
-	ProvAppNginxVolumeData                    string                 `mapstructure:"prov-app-nginx-volume-data" toml:"prov-app-nginx-volume-data" json:"provAppNginxVolumeData"`
-	ProvAppNginxDockerRunArgs                 string                 `mapstructure:"prov-app-nginx-docker-run-args" toml:"prov-app-nginx-docker-run-args" json:"provAppNginxDockerRunArgs"`
-	ProvAppNginxAgentsFailover                string                 `mapstructure:"prov-app-nginx-agents-failover" toml:"prov-app-nginx-agents-failover" json:"provAppNginxAgentsFailover"`
-	ProvAppNginxNetIface                      string                 `mapstructure:"prov-app-nginx-net-iface" toml:"prov-app-nginx-net-iface" json:"provAppNginxNetIface"`
-	ProvAppNginxNetmask                       string                 `mapstructure:"prov-app-nginx-net-mask" toml:"prov-app-nginx-net-mask" json:"provAppNginxNetMask"`
-	ProvAppNginxGateway                       string                 `mapstructure:"prov-app-nginx-net-gateway" toml:"prov-app-nginx-net-gateway" json:"provAppNginxNetGateway"`
-	ProvAppNginxRouteAddr                     string                 `mapstructure:"prov-app-nginx-route-addr" toml:"prov-app-nginx-route-addr" json:"provAppNginxRouteAddr"`
-	ProvAppNginxRoutePort                     string                 `mapstructure:"prov-app-nginx-route-port" toml:"prov-app-nginx-route-port" json:"provAppNginxRoutePort"`
-	ProvAppNginxRouteMask                     string                 `mapstructure:"prov-app-nginx-route-mask" toml:"prov-app-nginx-route-mask" json:"provAppNginxRouteMask"`
-	ProvAppNginxRoutePolicy                   string                 `mapstructure:"prov-app-nginx-route-policy" toml:"prov-app-nginx-route-policy" json:"provAppNginxRoutePolicy"`
-	AppNginxHosts                             string                 `mapstructure:"app-nginx-hosts" toml:"app-nginx-Hosts" json:"appNginxHosts"`
-	AppNginxRunCommand                        string                 `mapstructure:"app-nginx-run-command" toml:"app-nginx-run-command" json:"appNginxRunCommand"`
-	AppNginxConfigGitCloneUrl                 string                 `mapstructure:"app-nginx-config-git-clone-url" toml:"app-nginx-config-git-clone-url" json:"appNginxConfigGitCloneUrl"`
-	AppNginxConfigGitUser                     string                 `mapstructure:"app-nginx-config-git-user" toml:"app-nginx-config-git-user" json:"appNginxConfigGitUser"`
-	AppNginxConfigGitPassword                 string                 `mapstructure:"app-nginx-config-git-password" toml:"app-nginx-config-git-password" json:"appNginxConfigGitPassword"`
-	AppNginxConfigGitBranch                   string                 `mapstructure:"app-nginx-config-git-branch" toml:"app-nginx-config-git-branch" json:"appNginxConfigGitBranch"`
-	AppNginxConfigSecretVariables             string                 `mapstructure:"app-nginx-config-secret-variables" toml:"app-nginx-config-secret-variables" json:"appNginxConfigSecretVariables"`
-	AppNginxConfigEnvVariables                string                 `mapstructure:"app-nginx-config-env-variables" toml:"app-nginx-config-env-variables" json:"appNginxConfigEnvVariable"`
-	AppNginxConfigVolumes                     string                 `mapstructure:"app-nginx-config-volumes" toml:"app-nginx-config-volumes" json:"appNginxConfigVolumes"`
-	AppNginxDataGitCloneUrl                   string                 `mapstructure:"app-nginx-data-git-clone-url" toml:"app-nginx-data-git-clone-url" json:"appNginxDataGitCloneUrl"`
-	AppNginxDataGitUser                       string                 `mapstructure:"app-nginx-data-git-user" toml:"app-nginx-data-git-user" json:"appNginxDataGitUser"`
-	AppNginxDataGitPassword                   string                 `mapstructure:"app-nginx-data-git-password" toml:"app-nginx-data-git-password" json:"appNginxDataGitPassword"`
-	AppNginxDataGitBranch                     string                 `mapstructure:"app-nginx-data-git-branch" toml:"app-nginx-data-git-branch" json:"appNginxDataBranch"`
-	AppNginxDataVolumes                       string                 `mapstructure:"app-nginx-data-volumes" toml:"app-nginx-data-volumes" json:"appNginxDataVolumes"`
-	AppNginxLogVolumes                        string                 `mapstructure:"app-nginx-log-volumes" toml:"app-nginx-log-volumes" json:"appNginxLogVolumes"`
 	ProvSSLCa                                 string                 `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
 	ProvSSLCert                               string                 `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
 	ProvSSLKey                                string                 `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`

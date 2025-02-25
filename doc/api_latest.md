@@ -10733,7 +10733,7 @@ Status: Internal Server Error
 
 ## Models
 
-### <span id="cluster-api-user"></span> cluster.APIUser
+### <span id="cluster-api-user"></span> cluster.auth.APIUser
 
 
   

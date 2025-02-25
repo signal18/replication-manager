@@ -1878,38 +1878,73 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetProvAppImage(value string) error {
-	cluster.Conf.ProvAppDockerImg = value
+func (cluster *Cluster) SetProvAppImage(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppImage(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetProvAppAgents(value string) error {
-	cluster.Conf.ProvAppAgents = value
+func (cluster *Cluster) SetProvAppAgents(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppAgents(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppDiskSize(value string) error {
-	cluster.Conf.ProvAppDiskSize = value
+func (cluster *Cluster) SetAppDiskSize(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppDiskSize(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppCores(value string) error {
-	cluster.Conf.ProvAppCpuCores = value
+func (cluster *Cluster) SetAppCores(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppCpuCores(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppMemorySize(value string) error {
-	cluster.Conf.ProvAppMemory = value
+func (cluster *Cluster) SetAppMemorySize(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppMemory(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppVolumeData(value string) error {
-	cluster.Conf.ProvAppVolumeData = value
+func (cluster *Cluster) SetAppVolumeData(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppVolumeData(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppDockerRunArgs(value string) error {
-	cluster.Conf.ProvAppDockerRunArgs = value
+func (cluster *Cluster) SetAppDockerRunArgs(name, value string) error {
+	app := cluster.GetAppFromName(name)
+	if app == nil {
+		return errors.New("App not found")
+	}
+
+	app.SetProvAppDockerRunArgs(value)
 	cluster.SetAppsReprovCookie()
 	return nil
 }

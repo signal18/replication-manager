@@ -31,6 +31,7 @@ type Configurator struct {
 	ClusterConfigDiscover config.Config     `json:"-"`
 	DBModule              config.Compliance `json:"-"`
 	ProxyModule           config.Compliance `json:"-"`
+	AppModule             config.Compliance `json:"-"`
 	Logger                *logrus.Logger    `json:"-"`
 	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
 	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
@@ -825,6 +826,77 @@ func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateE
 			}
 		}
 	}
+
+	return nil
+}
+
+func (configurator *Configurator) GenerateAppConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string) error {
+
+	os.RemoveAll(Datadir + "/init")
+	// Extract files
+	for _, rule := range configurator.AppModule.Rulesets {
+
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.app.cnf") {
+
+			for _, variable := range rule.Variables {
+				if variable.Class == "file" || variable.Class == "fileprop" {
+					err := configurator.WriteProxyConfigFile(Datadir, TemplateEnv, RepMgrVersion, &rule, &variable)
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+	}
+	// processing symlink
+	type Link struct {
+		Symlink string `json:"symlink"`
+		Target  string `json:"target"`
+	}
+	for _, rule := range configurator.AppModule.Rulesets {
+		if strings.Contains(rule.Name, "mariadb.svc.mrm.proxy.cnf") {
+			for _, variable := range rule.Variables {
+				if variable.Class == "symlink" {
+					if configurator.IsFilterInProxyTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.proxy.cnf" {
+						var f Link
+						json.Unmarshal([]byte(variable.Value), &f)
+						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
+							configurator.Logger.Debugf("Config symlink %s", fpath)
+						}
+						os.Symlink(f.Target, fpath)
+
+					}
+				}
+			}
+		}
+	}
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/proxysql/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/proxysql/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/proxysql/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/proxysql/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/proxysql/ssl/client-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/data/proxysql-ca.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/data/proxysql-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/data/proxysql-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/maxscale/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/maxscale/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/maxscale/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/maxscale/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/maxscale/ssl/client-key.pem")
+	misc.CopyFile(ClusterDir+"/ca-cert.pem", Datadir+"/init/etc/haproxy/ssl/ca-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-cert.pem", Datadir+"/init/etc/haproxy/ssl/server-cert.pem")
+	misc.CopyFile(ClusterDir+"/server-key.pem", Datadir+"/init/etc/haproxy/ssl/server-key.pem")
+	misc.CopyFile(ClusterDir+"/client-cert.pem", Datadir+"/init/etc/haproxy/ssl/client-cert.pem")
+	misc.CopyFile(ClusterDir+"/client-key.pem", Datadir+"/init/etc/haproxy/ssl/client-key.pem")
+
+	/*if configurator.HaveProxyTag("docker") {
+		err := misc.ChownR(Datadir+"/init/data", 999, 999)
+		if err != nil {
+			return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
+		}
+	}*/
+	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
 }

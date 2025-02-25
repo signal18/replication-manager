@@ -8,7 +8,7 @@
 // Redistribution/Reuse of this code is permitted under the GNU v3 license, as
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
-package cluster
+package app
 
 import (
 	"os"
@@ -22,9 +22,8 @@ func (app *App) DelLock() {
 
 func (app *App) delCookie(key string) error {
 	err := os.Remove(app.Datadir + "/@" + key)
-	cluster := app.ClusterGroup
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "Remove cookie (%s) %s", key, err)
+		app.Logger.Debugf(app.Clustername, config.ConstLogModApp, config.LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
 
 	return err

@@ -11,16 +11,18 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) OpenSVCUnprovisionAppService(prx AppInterface) {
+func (cluster *Cluster) OpenSVCUnprovisionAppService(prx app.AppInterface) {
 	opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
@@ -49,7 +51,7 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(prx AppInterface) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OpenSVCStopAppService(server AppInterface) error {
+func (cluster *Cluster) OpenSVCStopAppService(server app.AppInterface) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
@@ -71,7 +73,7 @@ func (cluster *Cluster) OpenSVCStopAppService(server AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartAppService(server AppInterface) error {
+func (cluster *Cluster) OpenSVCStartAppService(server app.AppInterface) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
@@ -93,7 +95,7 @@ func (cluster *Cluster) OpenSVCStartAppService(server AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCProvisionAppService(pri AppInterface) error {
+func (cluster *Cluster) OpenSVCProvisionAppService(pri app.AppInterface) error {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.FoundAppAgent(pri)
 	if err != nil {
@@ -139,7 +141,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(pri AppInterface) error {
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
-	if prx, ok := pri.(*AppNginx); ok {
+	if prx, ok := pri.(*app.App); ok {
 		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 			res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), prx)
 			if err != nil {
@@ -179,11 +181,11 @@ func (cluster *Cluster) OpenSVCProvisionAppService(pri AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri AppInterface) (string, error) {
+func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri app.AppInterface) (string, error) {
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = pri.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	if cluster.Conf.ProvAppDiskType != "volume" {
+	if pri.OpenSVCGetAppDiskType() != "volume" {
 		svcsection["disk#0000"] = cluster.OpenSVCGetDiskZpoolDockerPrivateSection()
 		svcsection["disk#00"] = cluster.OpenSVCGetDiskLoopbackDockerPrivateSection()
 		svcsection["disk#01"] = cluster.OpenSVCGetDiskLoopbackPodSection()
@@ -194,14 +196,14 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri AppInterface
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
 		}
-		svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(pri.GetType())
+		svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(pri)
 	}
 
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
 
-	if app, ok := pri.(*AppNginx); ok {
-		svcsection["container# app"] = cluster.OpenSVCGetNginxContainerSection(app)
+	if app, ok := pri.(*app.App); ok {
+		svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(app)
 	}
 
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, pri)
@@ -215,7 +217,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri AppInterface
 
 }
 
-func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi app.AppInterface) map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = appi.GetAgent()
 	if appi.OpenSVCGetAppDiskPool() == "zpool" && appi.OpenSVCGetAppAgentsFailover() != "" {
@@ -251,21 +253,16 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi AppInterface) map[strin
 	return svcdefault
 }
 
-func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(apptype string) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appi app.AppInterface) map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
 	svcvol["size"] = "{env.size}"
+	svcvol["pool"] = appi.OpenSVCGetAppDiskPool()
 
-	switch apptype {
-	case config.ConstAppNginx:
-		svcvol["pool"] = cluster.Conf.AppNginxDataVolumes
-	default:
-		svcvol["pool"] = cluster.Conf.ProvAppVolumeData
-	}
 	return svcvol
 }
 
-func (cluster *Cluster) FoundAppAgent(app AppInterface) (opensvc.Host, error) {
+func (cluster *Cluster) FoundAppAgent(app app.AppInterface) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	agents, err := svc.GetNodes()
 	if err != nil {
@@ -289,7 +286,7 @@ func (cluster *Cluster) FoundAppAgent(app AppInterface) (opensvc.Host, error) {
 	return agent, errors.New("Indice not found in apps agent list")
 }
 
-func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app app.AppInterface) map[string]string {
 	ips := strings.Split(app.OpenSVCGetAppGateway(), ".")
 	masks := strings.Split(app.OpenSVCGetAppNetMask(), ".")
 	for i, mask := range masks {
@@ -311,8 +308,8 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app AppInterface
 	svcenv["ip_pod01"] = app.GetHost()
 	svcenv["port_pod01"] = app.GetPort()
 	svcenv["network"] = network
-	svcenv["gateway"] = cluster.Conf.ProvAppGateway
-	svcenv["netmask"] = cluster.Conf.ProvAppNetmask
+	svcenv["gateway"] = app.OpenSVCGetAppGateway()
+	svcenv["netmask"] = app.OpenSVCGetAppNetMask()
 	svcenv["vip_addr"] = app.OpenSVCGetRouteAddr()
 	svcenv["vip_port"] = app.OpenSVCGetRoutePort()
 	svcenv["vip_netmask"] = app.OpenSVCGetRouteMask()
@@ -328,7 +325,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app AppInterface
 	return svcenv
 }
 
-func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app AppInterface) string {
+func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app app.AppInterface) string {
 	i := 0
 	ipPods := ""
 	//if !cluster.Conf.ProvNetCNI {
@@ -377,4 +374,86 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
 
 	return conf
+}
+
+func (cluster *Cluster) OpenSVCGetAppContainerSection(server app.AppInterface) map[string]string {
+	svccontainer := make(map[string]string)
+	if slices.Contains([]string{"docker", "podman", "oci"}, server.OpenSVCGetAppServiceType()) {
+		svccontainer["tags"] = ""
+		svccontainer["netns"] = "container#01"
+		svccontainer["image"] = "{env.nginx_img}"
+		svccontainer["rm"] = "true"
+		svccontainer["type"] = server.OpenSVCGetAppServiceType()
+		if server.OpenSVCGetAppDiskType() != "volume" {
+			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/nginx:/usr/local/etc/nginx:rw ` + server.OpenSVCGetAppDockerRunArgs()
+		} else {
+			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
+			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.OpenSVCGetAppDockerRunArgs()
+			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/nginx:/usr/local/etc/nginx:rw`
+		}
+	}
+
+	return svccontainer
+}
+
+func (cluster *Cluster) GetNginxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi app.AppInterface) (string, error) {
+
+	conf := `
+[DEFAULT]
+nodes = {env.nodes}
+flex_primary = {env.nodes[0]}
+topology = flex
+rollback = false
+orchestrate = start
+`
+	conf += "app = " + cluster.Conf.ProvCodeApp
+	conf = conf + cluster.GetDockerDiskTemplate(collector)
+	i := 0
+	pod := fmt.Sprintf("%02d", i+1)
+	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
+
+	//conf = conf + `post_provision = {svcmgr} -s {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.app
+	//`
+	conf = conf + appi.GetInitContainer(collector)
+	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
+	conf = conf + cluster.GetPodDockerNginxTemplate(collector, pod)
+	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
+	conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
+	log.Println(conf)
+	return conf, nil
+}
+
+func (cluster *Cluster) GetPodDockerNginxTemplate(collector opensvc.Collector, pod string) string {
+	var vm string
+	if collector.ProvAppMicroSrv == "docker" {
+		vm = vm + `
+[container#00` + pod + `]
+type = docker
+hostname = {svcname}.{namespace}.svc.{clustername}
+image = ghcr.io/opensvc/pause
+rm = true
+
+[container#20` + pod + `]
+tags = pod` + pod + `
+type = docker
+run_image = {env.nginx_img}
+netns = container#00` + pod + `
+rm = true
+run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
+		-v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
+    -v /etc/localtime:/etc/localtime:ro
+    -v {env.base_dir}/pod` + pod + `/etc:/usr/local/etc/nginx:rw
+`
+		if dockerMinusRm {
+			vm = vm + ` --rm
+`
+		}
+	}
+	return vm
+}
+
+func (cluster *Cluster) OpenSVCProvisionReloadNginxConf(Conf string) string {
+	svc := cluster.OpenSVCConnect()
+	svc.SetRulesetVariableValue("mariadb.svc.mrm.app.cnf.nginx", "app_cnf_nginx", Conf)
+	return ""
 }
