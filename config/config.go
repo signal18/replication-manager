@@ -574,13 +574,28 @@ type Config struct {
 	ProvSphinxTags                            string                 `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
 	ProvSphinxCron                            string                 `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
 	ProvSphinxType                            string                 `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
-	ProvAppDockerImg                          string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppDiskSize                           string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
-	ProvAppMemory                             string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDockerRunArgs                      string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
+	ProvAppSlot1DockerImg                     string                 `mapstructure:"prov-app-slot1-docker-img" toml:"prov-app-slot1-docker-img" json:"provAppSlot1DockerImg"`
+	ProvAppSlot1Agents                        string                 `mapstructure:"prov-app-slot1-agents" toml:"prov-app-slot1-agents" json:"provAppSlot1Agents"`
+	ProvAppSlot1DiskSize                      string                 `measurement:"G,bytes,required" mapstructure:"prov-app-slot1-disk-size" toml:"prov-app-slot1-disk-size" json:"provAppDiskSize"`
+	ProvAppSlot1CpuCores                      string                 `mapstructure:"prov-app-slot1-cpu-cores" toml:"prov-app-slot1-cpu-cores" json:"provAppSlot1CpuCores"`
+	ProvAppSlot1Memory                        string                 `measurement:"M,bytes,required" mapstructure:"prov-app-slot1-memory" toml:"prov-app-slot1-memory" json:"provAppMemory"`
+	ProvAppSlot1VolumeData                    string                 `mapstructure:"prov-app-slot1-volume-data" toml:"prov-app-slot1-volume-data" json:"provAppSlot1VolumeData"`
+	ProvAppSlot1DockerRunArgs                 string                 `mapstructure:"prov-app-slot1-docker-run-args" toml:"prov-app-slot1-docker-run-args" json:"provAppSlot1DockerRunArgs"`
+	AppSlot1Hosts                             string                 `mapstructure:"app-slot1-hosts" toml:"app-slot1-Hosts" json:"appSlot1Hosts"`
+	AppSlot1RunCommand                        string                 `mapstructure:"app-slot1-run-command" toml:"app-slot1-run-command" json:"appSlot1RunCommand"`
+	AppSlot1ConfigGitCloneUrl                 string                 `mapstructure:"app-slot1-config-git-clone-url" toml:"app-slot1-config-git-clone-url" json:"appSlot1ConfigGitCloneUrl"`
+	AppSlot1ConfigGitUser                     string                 `mapstructure:"app-slot1-config-git-user" toml:"app-slot1-config-git-user" json:"appSlot1ConfigGitUser"`
+	AppSlot1ConfigGitPassword                 string                 `mapstructure:"app-slot1-config-git-password" toml:"app-slot1-config-git-password" json:"appSlot1ConfigGitPassword"`
+	AppSlot1ConfigGitBranch                   string                 `mapstructure:"app-slot1-config-git-branch" toml:"app-slot1-config-git-branch" json:"appSlot1ConfigGitBranch"`
+	AppSlot1ConfigSecretVariables             string                 `mapstructure:"app-slot1-config-secret-variables" toml:"app-slot1-config-secret-variables" json:"appSlot1ConfigSecretVariables"`
+	AppSlot1ConfigEnvVariables                string                 `mapstructure:"app-slot1-config-env-variables" toml:"app-slot1-config-env-variables" json:"appSlot1ConfigEnvVariable"`
+	AppSlot1ConfigVolumes                     string                 `mapstructure:"app-slot1-config-volumes" toml:"app-slot1-config-volumes" json:"appSlot1ConfigVolumes"`
+	AppSlot1DataGitCloneUrl                   string                 `mapstructure:"app-slot1-data-git-clone-url" toml:"app-slot1-data-git-clone-url" json:"appSlot1DataGitCloneUrl"`
+	AppSlot1DataGitUser                       string                 `mapstructure:"app-slot1-data-git-user" toml:"app-slot1-data-git-user" json:"appSlot1DataGitUser"`
+	AppSlot1DataGitPassword                   string                 `mapstructure:"app-slot1-data-git-password" toml:"app-slot1-data-git-password" json:"appSlot1DataGitPassword"`
+	AppSlot1DataGitBranch                     string                 `mapstructure:"app-slot1-data-git-branch" toml:"app-slot1-data-git-branch" json:"appSlot1DataBranch"`
+	AppSlot1DataVolumes                       string                 `mapstructure:"app-slot1-data-volumes" toml:"app-slot1-data-volumes" json:"appSlot1DataVolumes"`
+	AppSlot1LogVolumes                        string                 `mapstructure:"app-slot1-log-volumes" toml:"app-slot1-log-volumes" json:"appSlot1LogVolumes"`
 	ProvSSLCa                                 string                 `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
 	ProvSSLCert                               string                 `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
 	ProvSSLKey                                string                 `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`
@@ -1200,6 +1215,7 @@ const (
 	ConstLogModTask           = 17
 	ConstLogModArchive        = 18
 	ConstLogModMailer         = 19
+	ConstLogModApp            = 21
 )
 
 /*
