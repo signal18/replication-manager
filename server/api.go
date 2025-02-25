@@ -594,6 +594,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	var tok string
 	var userInfo interface{}
+	var userID string
 
 	if repman.Conf.Cloud18 && strings.Contains(user.Username, "@") {
 		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
@@ -602,7 +603,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			return
 		}
 
-		err = meethelper.GetMeetToken(user.Username, user.Password, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		userID, err = meethelper.CreateMeetUserClient(user.Username, user.Password, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 		if err != nil && repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Error retrieving meet token: %s", err)
 		}
@@ -666,7 +667,16 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	//create a token instance using the token string
 	specs := r.Header.Get("Accept")
-	resp := token{tokenString}
+	//resp := token{tokenString}
+
+	resp := struct {
+		Token  string `json:"token"`
+		UserID string `json:"user_id"`
+	}{
+		Token:  tokenString,
+		UserID: userID,
+	}
+
 	if strings.Contains(specs, "text/html") {
 		w.Write([]byte(tokenString))
 		return
@@ -1807,7 +1817,15 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil || meetClient == nil || meetClient.UserID == "" {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
@@ -1845,7 +1863,15 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil || meetClient == nil {
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "MeetInfo: Error getting meet client")
@@ -1888,7 +1914,15 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -1942,7 +1976,15 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -1996,7 +2038,15 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2036,7 +2086,16 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2046,8 +2105,8 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	}
 
 	vars := mux.Vars(r)
-	userID := vars["userId"]
-	if userID == "" {
+	userId := vars["userId"]
+	if userId == "" {
 		http.Error(w, "User Id is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: User ID is required")
@@ -2055,7 +2114,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 		return
 	}
 
-	newChannelId, newChannelName, err := meetClient.CreateDirectChannel(userID)
+	newChannelId, newChannelName, err := meetClient.CreateDirectChannel(userId)
 
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
@@ -2077,7 +2136,15 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2118,7 +2185,15 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2159,7 +2234,15 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2202,7 +2285,15 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2245,7 +2336,15 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2263,8 +2362,8 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 		}
 		return
 	}
-	userID := vars["userId"]
-	if userID == "" {
+	userId := vars["userId"]
+	if userId == "" {
 		http.Error(w, "User ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: User ID is required")
@@ -2272,12 +2371,12 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 		return
 	}
 
-	err = meetClient.AddUserChannel(channelID, userID)
+	err = meetClient.AddUserChannel(channelID, userId)
 
 	if err != nil {
 		http.Error(w, "Error add user to channel", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error add user (%s) to channel (%s)", userID, channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error add user (%s) to channel (%s)", userId, channelID)
 		}
 		return
 	}
@@ -2287,7 +2386,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 		"channelId": channelID,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to add user %s to channel %s", userID, channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to add user %s to channel %s", userId, channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2296,7 +2395,15 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2309,7 +2416,7 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 
 	err = meetClient.SetUserStatusOffline()
 
-	meethelper.ClearMeetClient()
+	meethelper.ClearMeetClient("ktzrdgfrmfdxxg7xkiqtgb17fr", repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 
 	if err != nil {
 		http.Error(w, "Error set user status while logout", http.StatusInternalServerError)
@@ -2361,7 +2468,15 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 		return
 	}
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
@@ -2407,7 +2522,15 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 		return
 	}
 
-	meetClient, err := meethelper.GetMeetClient(repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {

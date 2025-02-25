@@ -22,19 +22,16 @@ const meetUrl string = "https://meet.signal18.io"
 
 var meetToken string = ""
 
-var meetClient *MeetChatClient = nil
+var meetClients []*MeetChatClient
 
-// Test Channel Id : ranzunsjkfrftnregi789br13e
+var meetUsers []MeetUser
 
-//to create a mattermost client
-//meetClient := meethelper.CreateMeetClient()
-
-//to read a message
-//meetClient.ReadMessage(ChannelID)
-//peut être rajouter arg pour modifier le nombre de message à lire ?
-
-//to send a message to mattermost
-//meetClient.PostMessage(meetClient.ChannelIdsDirect["1iz5dy9i6j8iuf8b91bacj3zcw__ktzrdgfrmfdxxg7xkiqtgb17fr"], "Test from repman!")
+type MeetUser struct {
+	UserName string
+	Password string
+	UserID   string
+	Token    string
+}
 
 type MeetChatClient struct {
 	Client                  *model.Client4
@@ -101,19 +98,103 @@ type MeetAlertField struct {
 	Value string
 }
 
+func CreateMeetUserClient(userName string, password string, isLogSupport bool) (string, error) {
+
+	if IsMeetUserExist(userName) {
+		return GetUserID(userName), nil
+	}
+
+	meetTok, err := GetMeetToken(userName, password, isLogSupport)
+	if err != nil {
+		return "", err
+	}
+
+	client := CreateMeetClient(meetTok)
+	if client == nil {
+		return "", fmt.Errorf("Can't create meet client")
+	}
+	userID, err := client.GetMeetUserInfo()
+	if err != nil {
+		return "", err
+	}
+
+	client.UserID = userID
+
+	meetUser := MeetUser{
+		UserName: userName,
+		Password: password,
+		Token:    meetTok,
+		UserID:   userID,
+	}
+
+	meetUsers = append(meetUsers, meetUser)
+	meetClients = append(meetClients, client)
+	return userID, nil
+}
+
+func IsMeetUserExist(userName string) bool {
+	for _, user := range meetUsers {
+		if user.UserName == userName {
+			return true
+		}
+	}
+	return false
+}
+
+func GetUserClient(userID string) (*MeetChatClient, error) {
+	for _, client := range meetClients {
+		if client.UserID == userID {
+			return client, nil
+		}
+	}
+	return nil, fmt.Errorf("Meet client not found")
+}
+
+func GetUserID(userName string) string {
+	for _, user := range meetUsers {
+		if user.UserName == userName {
+			return user.UserID
+		}
+	}
+	return ""
+}
+
+func RefreshUserClient(userID string, isLogSupport bool) (*MeetChatClient, error) {
+	for _, user := range meetUsers {
+		if user.UserID == userID {
+			for _, client := range meetClients {
+				if client.UserID == userID {
+					newTok, err := GetMeetToken(user.UserName, user.Password, isLogSupport)
+					if err != nil {
+						return nil, err
+					}
+					user.Token = newTok
+					client = CreateMeetClient(newTok)
+					return client, nil
+				}
+			}
+		}
+	}
+	return nil, fmt.Errorf("Meet user not found")
+}
+
 // create a client for mattermost and set user info
-func GetMeetClient(isLogSupport bool) (*MeetChatClient, error) {
-	if meetToken == "" {
-		return nil, fmt.Errorf("Meet token is not set")
-	}
+func GetMeetClient(userID string, isLogSupport bool) (*MeetChatClient, error) {
+	meetClient, err := GetUserClient(userID)
+
 	//to recreate the client if undefined or if the user session is expired
-	if meetClient == nil || meetClient.Client == nil || meetClient.UserID == "" {
-		meetClient = CreateMeetClient()
+	if meetClient == nil || meetClient.Client == nil || meetClient.UserID == "" || err != nil {
+		meetClient, err = RefreshUserClient(userID, isLogSupport)
+		if err != nil || meetClient == nil {
+			return nil, err
+		}
 	}
-	var err error
+
 	meetClient.UserID, err = meetClient.GetMeetUserInfo() //to get user info from mattermost serv
-	if (err != nil || meetClient.UserID == "") && isLogSupport {
-		fmt.Println("GetMeetClient Error:", err)
+	if err != nil || meetClient.UserID == "" {
+		if isLogSupport {
+			fmt.Println("GetMeetClient Error:", err)
+		}
 		return nil, err
 	}
 	meetClient.TeamIds = meetClient.GetTeamIDs()
@@ -124,12 +205,12 @@ func GetMeetClient(isLogSupport bool) (*MeetChatClient, error) {
 	return meetClient, err
 }
 
-func CreateMeetClient() *MeetChatClient {
+func CreateMeetClient(meetToken string) *MeetChatClient {
 	//to recreate the client if undefined or if the user session is expired
 	if meetToken != "" {
 		client := model.NewAPIv4Client(meetUrl)
 		client.SetOAuthToken(meetToken)
-		meetClient = &MeetChatClient{
+		meetClient := &MeetChatClient{
 			Client: client,
 			URL:    meetUrl,
 			Token:  meetToken,
@@ -140,7 +221,7 @@ func CreateMeetClient() *MeetChatClient {
 }
 
 // Follow the flow of the browser: log to mm using your gitlab account
-func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) error {
+func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (string, error) {
 	gitlabHost := "https://gitlab.signal18.io"
 
 	//cookie jar
@@ -153,13 +234,13 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) e
 
 	body, err := misc.GetRequest(client, gitlabLoginPageURL)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	gitCsrfToken, err := misc.ExtractValue(body, "name=\"authenticity_token\" value=\"([^\"]+)\"")
 	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot extract CSFR token from gitlab:", err)
-		return err
+		return "", err
 	}
 
 	//1.2 Send login credentials
@@ -171,7 +252,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) e
 	_, err = misc.PostRequest(client, gitlabLoginPageURL, form, nil)
 	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot post gitlab login credentials:", err)
-		return err
+		return "", err
 	}
 
 	// 2. Login meet
@@ -181,14 +262,14 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) e
 	body, err = misc.GetRequest(client, meetLoginPageURL)
 	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
-		return err
+		return "", err
 	}
 
 	// 2.2 Extract RedirectUrl and unescape it
 	redirectUrl, err := misc.ExtractValue(body, "href=\"([^\"]+)")
 	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: cannot extract redirectUrl from mattermost login request", err)
-		return err
+		return "", err
 	}
 
 	decodedValue, _ := url.QueryUnescape(redirectUrl)
@@ -198,7 +279,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) e
 	_, err = misc.GetRequest(client, meetAuthURL)
 	if err != nil && isLogSupport {
 		fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
-		return err
+		return "", err
 	}
 
 	// 2.4 Get MMAUTHTOKEN from cookies
@@ -209,11 +290,13 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) e
 		}
 	}
 
-	if meetToken == "" && isLogSupport {
-		fmt.Println("GetMeetToken: Failed to retrieve meet token")
-		return fmt.Errorf("Failed to retrieve meet token")
+	if meetToken == "" {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: Failed to retrieve meet token")
+		}
+		return "", fmt.Errorf("Failed to retrieve meet token")
 	}
-	return nil
+	return meetToken, nil
 }
 
 func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
@@ -453,6 +536,9 @@ func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, e
 }
 
 func (c *MeetChatClient) GetAllUsers() map[string]string {
+	if len(c.TeamIds) == 0 {
+		return nil
+	}
 	users, resp, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
 
 	usersMap := make(map[string]string)
@@ -636,9 +722,13 @@ func (c *MeetChatClient) GetStatusUsers() map[string]string {
 	return statusUsers
 }
 
-func ClearMeetClient() {
-	meetClient = nil
-	meetToken = ""
+func ClearMeetClient(userID string, isSupportLog bool) {
+	/*client, err := GetMeetClient(userID, isSupportLog)
+	if err != nil {
+		return
+	}
+	client.Client = nil
+	client.Token = ""*/
 	return
 }
 

@@ -246,6 +246,7 @@ const meetSlice = createSlice({
     builder
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.meetInfo = action.payload.data;
+        localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
         state.channels = [
           ...Object.entries(action.payload.data?.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
@@ -262,6 +263,7 @@ const meetSlice = createSlice({
         state.messages = {};
         state.unreadMessagesByChannel = {};
         state.channels = [];
+        localStorage.removeItem('userID');
         // Handle successful logout if needed
       })
       .addCase(logoutFromMeet.rejected, (state, action) => {

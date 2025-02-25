@@ -45,6 +45,7 @@ function Navbar({ username }) {
     if (!username){
       localStorage.removeItem('chatOpen');
       localStorage.removeItem('selectedChannel');
+      localStorage.removeItem('userID')
     }
     
   }, [isChatOpen, username]);
@@ -101,6 +102,7 @@ function Navbar({ username }) {
     dispatch(logoutFromMeet())
     localStorage.removeItem('chatOpen');
     localStorage.removeItem('selectedChannel');
+    localStorage.removeItem('userID')
     dispatch(logout())
     dispatch(clearCluster())
   }
