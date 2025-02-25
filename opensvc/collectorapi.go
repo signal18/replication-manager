@@ -131,6 +131,21 @@ type Collector struct {
 	ProvProxDockerProxysqlImg   string
 	ProvProxDockerShardproxyImg string
 	ProvProxTags                string
+	ProvAppAgents               string
+	ProvAppDisk                 string
+	ProvAppNetMask              string
+	ProvAppNetGateway           string
+	ProvAppNetIface             string
+	ProvAppMicroSrv             string
+	ProvAppFSType               string
+	ProvAppFSPool               string
+	ProvAppFSMode               string
+	ProvAppFSPath               string
+	ProvAppDockerMaxscaleImg    string
+	ProvAppDockerHaproxyImg     string
+	ProvAppDockerProxysqlImg    string
+	ProvAppDockerShardproxyImg  string
+	ProvAppTags                 string
 	ProvCores                   string
 	Verbose                     int
 	ContextTimeoutSecond        int

@@ -72,6 +72,8 @@ type AppInterface interface {
 	GetName() string
 	GetHost() string
 	GetPort() string
+	GetUser() string
+	GetPass() string
 	GetURL() string
 	GetId() string
 	GetState() string
@@ -87,6 +89,19 @@ type AppInterface interface {
 	GetEnv() map[string]string
 	GetSshEnv() string
 	OpenSVCGetAppDefaultSection() map[string]string
+	OpenSVCGetAppDiskPool() string
+	OpenSVCGetAppDiskType() string
+	OpenSVCGetAppAgentsFailover() string
+	OpenSVCGetAppDiskSize() string
+	OpenSVCGetAppServiceType() string
+	OpenSVCGetAppGateway() string
+	OpenSVCGetAppNetMask() string
+	OpenSVCGetRouteAddr() string
+	OpenSVCGetRoutePort() string
+	OpenSVCGetRouteMask() string
+	OpenSVCSetRouteAddr(addr string)
+	OpenSVCSetRoutePort(port string)
+	GetVIP() string
 	SetSuspect()
 	SetID()
 	SetDataDir()

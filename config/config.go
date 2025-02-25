@@ -574,28 +574,57 @@ type Config struct {
 	ProvSphinxTags                            string                 `mapstructure:"prov-sphinx-tags" toml:"prov-sphinx-tags" json:"provSphinxTags"`
 	ProvSphinxCron                            string                 `mapstructure:"prov-sphinx-reindex-schedule" toml:"prov-sphinx-reindex-schedule" json:"provSphinxReindexSchedule"`
 	ProvSphinxType                            string                 `mapstructure:"prov-sphinx-service-type" toml:"prov-sphinx-service-type" json:"provSphinxServiceType"`
-	ProvAppSlot1DockerImg                     string                 `mapstructure:"prov-app-slot1-docker-img" toml:"prov-app-slot1-docker-img" json:"provAppSlot1DockerImg"`
-	ProvAppSlot1Agents                        string                 `mapstructure:"prov-app-slot1-agents" toml:"prov-app-slot1-agents" json:"provAppSlot1Agents"`
-	ProvAppSlot1DiskSize                      string                 `measurement:"G,bytes,required" mapstructure:"prov-app-slot1-disk-size" toml:"prov-app-slot1-disk-size" json:"provAppDiskSize"`
-	ProvAppSlot1CpuCores                      string                 `mapstructure:"prov-app-slot1-cpu-cores" toml:"prov-app-slot1-cpu-cores" json:"provAppSlot1CpuCores"`
-	ProvAppSlot1Memory                        string                 `measurement:"M,bytes,required" mapstructure:"prov-app-slot1-memory" toml:"prov-app-slot1-memory" json:"provAppMemory"`
-	ProvAppSlot1VolumeData                    string                 `mapstructure:"prov-app-slot1-volume-data" toml:"prov-app-slot1-volume-data" json:"provAppSlot1VolumeData"`
-	ProvAppSlot1DockerRunArgs                 string                 `mapstructure:"prov-app-slot1-docker-run-args" toml:"prov-app-slot1-docker-run-args" json:"provAppSlot1DockerRunArgs"`
-	AppSlot1Hosts                             string                 `mapstructure:"app-slot1-hosts" toml:"app-slot1-Hosts" json:"appSlot1Hosts"`
-	AppSlot1RunCommand                        string                 `mapstructure:"app-slot1-run-command" toml:"app-slot1-run-command" json:"appSlot1RunCommand"`
-	AppSlot1ConfigGitCloneUrl                 string                 `mapstructure:"app-slot1-config-git-clone-url" toml:"app-slot1-config-git-clone-url" json:"appSlot1ConfigGitCloneUrl"`
-	AppSlot1ConfigGitUser                     string                 `mapstructure:"app-slot1-config-git-user" toml:"app-slot1-config-git-user" json:"appSlot1ConfigGitUser"`
-	AppSlot1ConfigGitPassword                 string                 `mapstructure:"app-slot1-config-git-password" toml:"app-slot1-config-git-password" json:"appSlot1ConfigGitPassword"`
-	AppSlot1ConfigGitBranch                   string                 `mapstructure:"app-slot1-config-git-branch" toml:"app-slot1-config-git-branch" json:"appSlot1ConfigGitBranch"`
-	AppSlot1ConfigSecretVariables             string                 `mapstructure:"app-slot1-config-secret-variables" toml:"app-slot1-config-secret-variables" json:"appSlot1ConfigSecretVariables"`
-	AppSlot1ConfigEnvVariables                string                 `mapstructure:"app-slot1-config-env-variables" toml:"app-slot1-config-env-variables" json:"appSlot1ConfigEnvVariable"`
-	AppSlot1ConfigVolumes                     string                 `mapstructure:"app-slot1-config-volumes" toml:"app-slot1-config-volumes" json:"appSlot1ConfigVolumes"`
-	AppSlot1DataGitCloneUrl                   string                 `mapstructure:"app-slot1-data-git-clone-url" toml:"app-slot1-data-git-clone-url" json:"appSlot1DataGitCloneUrl"`
-	AppSlot1DataGitUser                       string                 `mapstructure:"app-slot1-data-git-user" toml:"app-slot1-data-git-user" json:"appSlot1DataGitUser"`
-	AppSlot1DataGitPassword                   string                 `mapstructure:"app-slot1-data-git-password" toml:"app-slot1-data-git-password" json:"appSlot1DataGitPassword"`
-	AppSlot1DataGitBranch                     string                 `mapstructure:"app-slot1-data-git-branch" toml:"app-slot1-data-git-branch" json:"appSlot1DataBranch"`
-	AppSlot1DataVolumes                       string                 `mapstructure:"app-slot1-data-volumes" toml:"app-slot1-data-volumes" json:"appSlot1DataVolumes"`
-	AppSlot1LogVolumes                        string                 `mapstructure:"app-slot1-log-volumes" toml:"app-slot1-log-volumes" json:"appSlot1LogVolumes"`
+	ProvAppType                               string                 `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppDiskPool                           string                 `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
+	ProvAppDiskType                           string                 `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppDockerImg                          string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppDiskSize                           string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppMemory                             string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppDockerRunArgs                      string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
+	ProvAppAgentsFailover                     string                 `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppNetIface                           string                 `mapstructure:"prov-app-net-iface" toml:"prov-app-net-iface" json:"provAppNetIface"`
+	ProvAppNetmask                            string                 `mapstructure:"prov-app-net-mask" toml:"prov-app-net-mask" json:"provAppNetMask"`
+	ProvAppGateway                            string                 `mapstructure:"prov-app-net-gateway" toml:"prov-app-net-gateway" json:"provAppNetGateway"`
+	ProvAppRouteAddr                          string                 `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort                          string                 `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask                          string                 `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppRoutePolicy                        string                 `mapstructure:"prov-app-route-policy" toml:"prov-app-route-policy" json:"provAppRoutePolicy"`
+	ProvAppNginxType                          string                 `mapstructure:"prov-app-nginx-service-type" toml:"prov-app-nginx-service-type" json:"provAppNginxServiceType"`
+	ProvAppNginxDiskPool                      string                 `mapstructure:"prov-app-nginx-disk-pool" toml:"prov-app-nginx-disk-pool" json:"provAppNginxDiskPool"`
+	ProvAppNginxDiskType                      string                 `mapstructure:"prov-app-nginx-disk-type" toml:"prov-app-nginx-disk-type" json:"provAppNginxDiskType"`
+	ProvAppNginxDockerImg                     string                 `mapstructure:"prov-app-nginx-docker-img" toml:"prov-app-nginx-docker-img" json:"provAppNginxDockerImg"`
+	ProvAppNginxAgents                        string                 `mapstructure:"prov-app-nginx-agents" toml:"prov-app-nginx-agents" json:"provAppNginxAgents"`
+	ProvAppNginxDiskSize                      string                 `measurement:"G,bytes,required" mapstructure:"prov-app-nginx-disk-size" toml:"prov-app-nginx-disk-size" json:"provAppNginxDiskSize"`
+	ProvAppNginxCpuCores                      string                 `mapstructure:"prov-app-nginx-cpu-cores" toml:"prov-app-nginx-cpu-cores" json:"provAppNginxCpuCores"`
+	ProvAppNginxMemory                        string                 `measurement:"M,bytes,required" mapstructure:"prov-app-nginx-memory" toml:"prov-app-nginx-memory" json:"provAppNginxMemory"`
+	ProvAppNginxVolumeData                    string                 `mapstructure:"prov-app-nginx-volume-data" toml:"prov-app-nginx-volume-data" json:"provAppNginxVolumeData"`
+	ProvAppNginxDockerRunArgs                 string                 `mapstructure:"prov-app-nginx-docker-run-args" toml:"prov-app-nginx-docker-run-args" json:"provAppNginxDockerRunArgs"`
+	ProvAppNginxAgentsFailover                string                 `mapstructure:"prov-app-nginx-agents-failover" toml:"prov-app-nginx-agents-failover" json:"provAppNginxAgentsFailover"`
+	ProvAppNginxNetIface                      string                 `mapstructure:"prov-app-nginx-net-iface" toml:"prov-app-nginx-net-iface" json:"provAppNginxNetIface"`
+	ProvAppNginxNetmask                       string                 `mapstructure:"prov-app-nginx-net-mask" toml:"prov-app-nginx-net-mask" json:"provAppNginxNetMask"`
+	ProvAppNginxGateway                       string                 `mapstructure:"prov-app-nginx-net-gateway" toml:"prov-app-nginx-net-gateway" json:"provAppNginxNetGateway"`
+	ProvAppNginxRouteAddr                     string                 `mapstructure:"prov-app-nginx-route-addr" toml:"prov-app-nginx-route-addr" json:"provAppNginxRouteAddr"`
+	ProvAppNginxRoutePort                     string                 `mapstructure:"prov-app-nginx-route-port" toml:"prov-app-nginx-route-port" json:"provAppNginxRoutePort"`
+	ProvAppNginxRouteMask                     string                 `mapstructure:"prov-app-nginx-route-mask" toml:"prov-app-nginx-route-mask" json:"provAppNginxRouteMask"`
+	ProvAppNginxRoutePolicy                   string                 `mapstructure:"prov-app-nginx-route-policy" toml:"prov-app-nginx-route-policy" json:"provAppNginxRoutePolicy"`
+	AppNginxHosts                             string                 `mapstructure:"app-nginx-hosts" toml:"app-nginx-Hosts" json:"appNginxHosts"`
+	AppNginxRunCommand                        string                 `mapstructure:"app-nginx-run-command" toml:"app-nginx-run-command" json:"appNginxRunCommand"`
+	AppNginxConfigGitCloneUrl                 string                 `mapstructure:"app-nginx-config-git-clone-url" toml:"app-nginx-config-git-clone-url" json:"appNginxConfigGitCloneUrl"`
+	AppNginxConfigGitUser                     string                 `mapstructure:"app-nginx-config-git-user" toml:"app-nginx-config-git-user" json:"appNginxConfigGitUser"`
+	AppNginxConfigGitPassword                 string                 `mapstructure:"app-nginx-config-git-password" toml:"app-nginx-config-git-password" json:"appNginxConfigGitPassword"`
+	AppNginxConfigGitBranch                   string                 `mapstructure:"app-nginx-config-git-branch" toml:"app-nginx-config-git-branch" json:"appNginxConfigGitBranch"`
+	AppNginxConfigSecretVariables             string                 `mapstructure:"app-nginx-config-secret-variables" toml:"app-nginx-config-secret-variables" json:"appNginxConfigSecretVariables"`
+	AppNginxConfigEnvVariables                string                 `mapstructure:"app-nginx-config-env-variables" toml:"app-nginx-config-env-variables" json:"appNginxConfigEnvVariable"`
+	AppNginxConfigVolumes                     string                 `mapstructure:"app-nginx-config-volumes" toml:"app-nginx-config-volumes" json:"appNginxConfigVolumes"`
+	AppNginxDataGitCloneUrl                   string                 `mapstructure:"app-nginx-data-git-clone-url" toml:"app-nginx-data-git-clone-url" json:"appNginxDataGitCloneUrl"`
+	AppNginxDataGitUser                       string                 `mapstructure:"app-nginx-data-git-user" toml:"app-nginx-data-git-user" json:"appNginxDataGitUser"`
+	AppNginxDataGitPassword                   string                 `mapstructure:"app-nginx-data-git-password" toml:"app-nginx-data-git-password" json:"appNginxDataGitPassword"`
+	AppNginxDataGitBranch                     string                 `mapstructure:"app-nginx-data-git-branch" toml:"app-nginx-data-git-branch" json:"appNginxDataBranch"`
+	AppNginxDataVolumes                       string                 `mapstructure:"app-nginx-data-volumes" toml:"app-nginx-data-volumes" json:"appNginxDataVolumes"`
+	AppNginxLogVolumes                        string                 `mapstructure:"app-nginx-log-volumes" toml:"app-nginx-log-volumes" json:"appNginxLogVolumes"`
 	ProvSSLCa                                 string                 `mapstructure:"prov-tls-server-ca" toml:"prov-tls-server-ca" json:"provTlsServerCa"`
 	ProvSSLCert                               string                 `mapstructure:"prov-tls-server-cert" toml:"prov-tls-server-cert" json:"provTlsServerCert"`
 	ProvSSLKey                                string                 `mapstructure:"prov-tls-server-key" toml:"prov-tls-server-key" json:"provTlsServerKey"`
@@ -796,7 +825,7 @@ type Config struct {
 	TerminalSessionResume                     bool                   `scope:"server" mapstructure:"terminal-session-resume" toml:"terminal-session-resume" json:"terminalSessionResume"`
 	TerminalSessionManager                    string                 `mapstructure:"terminal-session-manager" toml:"terminal-session-manager" json:"terminalSessionManager"`
 	//OAuthRedirectURL                          string                 `mapstructure:"api-oauth-redirect-url" toml:"git-url" json:"-"`
-	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
+	// BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
 }
 
@@ -963,6 +992,10 @@ const (
 	ConstProxyConsul      string = "consul"
 )
 
+const (
+	ConstAppNginx string = "nginx"
+)
+
 type ServicePlan struct {
 	Id            int     `json:"id,string"`
 	Plan          string  `json:"plan"`
@@ -1038,9 +1071,9 @@ const (
 
 /* replaced by v3.Tag
 type Tag struct {
-	Id       uint   `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
+ Id       uint   `json:"id"`
+ Name     string `json:"name"`
+ Category string `json:"category"`
 }
 */
 
@@ -1394,7 +1427,7 @@ func (conf *Config) DecryptSecretsFromVault() {
 		var secret Secret
 		secret.Value = fmt.Sprintf("%v", origin_value)
 		if conf.IsVaultUsed() && conf.IsPath(secret.Value) {
-			//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
+			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Decrypting all the secret variables on Vault")
 			vault_config := vault.DefaultConfig()
 			vault_config.Address = conf.VaultServerAddr
 			client, err := conf.GetVaultConnection()
@@ -1822,12 +1855,12 @@ func (conf *Config) PushConfigToGit(url string, tok string, user string, dir str
 
 	// cloud18.toml will be in pull repo
 	// if _, err := os.Stat(conf.WorkingDir + "/.pull/cloud18.toml"); !os.IsNotExist(err) {
-	// 	_, err = w.Add("cloud18.toml")
-	// 	if err != nil {
-	// 		if conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-	// 			log.Errorf("Git error : cannot Add cloud18.toml : %s", err)
-	// 		}
-	// 	}
+	//  _, err = w.Add("cloud18.toml")
+	//  if err != nil {
+	//   if conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
+	//    log.Errorf("Git error : cannot Add cloud18.toml : %s", err)
+	//   }
+	//  }
 	// }
 
 	if _, err := os.Stat(conf.WorkingDir + "/default.toml"); !os.IsNotExist(err) {
@@ -1917,36 +1950,36 @@ func ForcePullFromRepo(r *git.Repository, url string, auth *git_https.BasicAuth)
 
 /*
 	func (conf *Config) PullByGitCli() {
-		// Store the initial directory path
-		initialDir, err := os.Getwd()
-		if err != nil {
-			fmt.Println("Failed to get current directory:", err)
-			return
-		}
-		// Change to the desired Git repository directory
-		repoDir := conf.WorkingDir
-		if err := os.Chdir(repoDir); err != nil {
-			log.Errorf("Failed to change directory:", err)
-			return
-		}
+	 // Store the initial directory path
+	 initialDir, err := os.Getwd()
+	 if err != nil {
+	  fmt.Println("Failed to get current directory:", err)
+	  return
+	 }
+	 // Change to the desired Git repository directory
+	 repoDir := conf.WorkingDir
+	 if err := os.Chdir(repoDir); err != nil {
+	  log.Errorf("Failed to change directory:", err)
+	  return
+	 }
 
-		// Execute "git pull" command
-		cmd := exec.Command("git", "pull", "-f")
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			log.Errorf("Failed to execute 'git pull' command:", err)
-			return
-		}
+	 // Execute "git pull" command
+	 cmd := exec.Command("git", "pull", "-f")
+	 output, err := cmd.CombinedOutput()
+	 if err != nil {
+	  log.Errorf("Failed to execute 'git pull' command:", err)
+	  return
+	 }
 
-		log.Infof("Git pull output:", string(output))
+	 log.Infof("Git pull output:", string(output))
 
-		log.Infof("Merge accepted successfully. %s", output)
+	 log.Infof("Merge accepted successfully. %s", output)
 
-		// Change back to the initial directory
-		if err := os.Chdir(initialDir); err != nil {
-			fmt.Println("Failed to change back to initial directory:", err)
-			return
-		}
+	 // Change back to the initial directory
+	 if err := os.Chdir(initialDir); err != nil {
+	  fmt.Println("Failed to change back to initial directory:", err)
+	  return
+	 }
 	}
 */
 func GetBackupBinlogType() map[string]bool {
@@ -2158,7 +2191,7 @@ func (conf *Config) GetMemoryPctShared() (map[string]int, error) {
 		if err != nil {
 			return engines, err
 		}
-		//		log.Printf("%s", keyval[1])
+		//  log.Printf("%s", keyval[1])
 		engines[keyval[0]] = val
 	}
 	return engines, nil
