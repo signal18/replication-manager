@@ -421,7 +421,7 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 
 func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, error) {
 
-	fallback := "Video Meeting started at [" + meetingId + "](https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22).\n\n[Join Meeting](https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22)\n\n"
+	fallback := c.AllUser[c.UserID] + " has started a meeting"
 	meetingLink := "https://jitsi.opensvc.com/" + meetingId + "#config.callDisplayName=%22Jitsi%20Meeting%22"
 
 	post := &model.Post{

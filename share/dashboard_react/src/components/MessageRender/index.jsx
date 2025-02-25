@@ -1,11 +1,10 @@
 import React from 'react';
-import { Box, Text } from '@chakra-ui/react';
+import { Box, Text, Button } from '@chakra-ui/react';
 import { useDispatch } from 'react-redux';
 import styles from './styles.module.scss';
 import {downloadFileFromChannel } from '../../redux/meetSlice';
-import { FaDownload } from 'react-icons/fa';
-import { Divider, AbsoluteCenter } from '@chakra-ui/react'
-import Emoji from 'react-emoji-render';
+import { FaDownload} from 'react-icons/fa';
+import { Divider} from '@chakra-ui/react'
 
 const MessageRender = ({messages, allUsers}) => {
     const dispatch = useDispatch();
@@ -166,6 +165,30 @@ const MessageRender = ({messages, allUsers}) => {
                                                         </Box>
                                                     ))}
                                                 </Box>
+                                            </Box>
+                                        )}
+                                    </Box>
+                                ))}
+                            </Box>
+                        )}
+                        {msg?.MeetingMetadata && msg?.MeetingMetadata.length > 0 && (
+                            <Box className={styles.meetings}>
+                                {msg.MeetingMetadata.map((meetingInfo, meetingIndex) => (
+                                    <Box className={styles.meeting}>
+                                        <div className={styles.meetingInfoText}>{meetingInfo?.Text}</div>
+                                        {meetingInfo?.MeetLink && (
+                                            <Box className={styles.meetingCard}>
+                                                <Text className={styles.meetingTitle}> Meeting Jitsi</Text>
+                                                <Text className={styles.meetingInfo}>{'Meeting ID : ' + meetingInfo?.ID}</Text>
+                                                <Button 
+                                                    as="a" 
+                                                    href={meetingInfo.MeetLink} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className={styles.meetingButton}
+                                                >
+                                                    Join meeting
+                                                </Button>
                                             </Box>
                                         )}
                                     </Box>

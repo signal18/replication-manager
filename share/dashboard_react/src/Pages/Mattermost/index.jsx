@@ -140,7 +140,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
 
     const handleCreateMeeting = () => {
         if (!selectedChannel) return;
-        const meetingId = `meet-${Math.random().toString(36).substring(7)}`;
+        const meetingId = crypto.randomUUID();
         dispatch(postJitsiMeeting({ channelId: selectedChannel, meetingId: meetingId }));
     };
     
