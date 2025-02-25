@@ -132,7 +132,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                                             key={user.id}
                                                             onClick={() => handleUserClick(user.id)}
                                                         >
-                                                            <Box display="flex" alignItems="center">
+                                                            <Box display="flex" alignItems="center" color='black'>
                                                                 <FaCircle
                                                                     color={usersStatus[user.name] === 'online' ? 'green' : 'gray'}
                                                                     style={{ marginRight: '8px' }}
@@ -189,7 +189,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
             <AlertDialog isOpen={isCreateOpen} leastDestructiveRef={undefined} onClose={cancelCreateChannel}>
                 <AlertDialogOverlay>
                     <AlertDialogContent>
-                        <AlertDialogHeader fontSize='lg' fontWeight='bold'>
+                        <AlertDialogHeader fontSize='lg' fontWeight='bold' color='black'>
                             Create New Channel
                         </AlertDialogHeader>
                         <AlertDialogBody>

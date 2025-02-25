@@ -43,10 +43,10 @@ const LeaveUserChannelButton = ({ selectedChannel, onSelectChannel }) => {
         <AlertDialog isOpen={isOpen} leastDestructiveRef={undefined} onClose={cancelLeaveChannel}>
             <AlertDialogOverlay>
                 <AlertDialogContent>
-                    <AlertDialogHeader fontSize='lg' fontWeight='bold'>
+                    <AlertDialogHeader fontSize='lg' fontWeight='bold' color='black'>
                         Leave Channel
                     </AlertDialogHeader>
-                    <AlertDialogBody>
+                    <AlertDialogBody color='black'>
                         Are you sure you want to leave this channel?
                     </AlertDialogBody>
                     <AlertDialogFooter>

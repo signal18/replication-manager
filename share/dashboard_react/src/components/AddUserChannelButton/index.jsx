@@ -49,11 +49,11 @@ const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
         <AlertDialog isOpen={isAddUserOpen} leastDestructiveRef={undefined} onClose={cancelAddUserToChannel}>
             <AlertDialogOverlay>
                 <AlertDialogContent>
-                    <AlertDialogHeader fontSize='lg' fontWeight='bold'>
+                    <AlertDialogHeader fontSize='lg' fontWeight='bold' color='black'>
                         Add User to Channel
                     </AlertDialogHeader>
                     <AlertDialogBody>
-                        <Box display="flex" alignItems="center">
+                        <Box display="flex" alignItems="center" color='black'>
                             <Menu>
                                 <MenuButton as={Button} colorScheme="teal" size="sm" ml="auto">
                                     <FaUserPlus /> Choose a user
@@ -70,7 +70,7 @@ const AddUserChannelButton = ({ selectedChannel, allUsers, usersStatus }) => {
                                             key={user.id}
                                             onClick={() => confirmAddUserToChannel(user.id)}
                                         >
-                                            <Box display="flex" alignItems="center">
+                                            <Box display="flex" alignItems="center" color='black'>
                                                 <FaCircle
                                                     color={usersStatus?.[user.name] === 'online' ? 'green' : 'gray'}
                                                     style={{ marginRight: '8px' }}
