@@ -33,22 +33,50 @@ func (l *LogrusWrapper) GetConfig(clustername string) *Config {
 	return cnf
 }
 
-func (l *LogrusWrapper) Infof(clustername string, module int, format string, args ...interface{}) {
-	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlInfo)
-	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Infof(format, args...)
-}
-
-func (l *LogrusWrapper) Debugf(clustername string, module int, format string, args ...interface{}) {
-	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlDbg)
-	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Debugf(format, args...)
+func (l *LogrusWrapper) Debugln(clustername string, module int, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlDbg) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Debugln(args...)
+	}
 }
 
 func (l *LogrusWrapper) Errorf(clustername string, module int, format string, args ...interface{}) {
-	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlErr)
-	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Errorf(format, args...)
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlErr) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Errorf(format, args...)
+	}
+}
+
+func (l *LogrusWrapper) Errorln(clustername string, module int, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlErr) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Errorln(args...)
+	}
 }
 
 func (l *LogrusWrapper) Warnf(clustername string, module int, format string, args ...interface{}) {
-	l.GetConfig(clustername).IsEligibleForPrinting(module, LvlWarn)
-	l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Warnf(format, args...)
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlWarn) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Warnf(format, args...)
+	}
+}
+
+func (l *LogrusWrapper) Warnln(clustername string, module int, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlWarn) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Warnln(args...)
+	}
+}
+
+func (l *LogrusWrapper) Infof(clustername string, module int, format string, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlInfo) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Infof(format, args...)
+	}
+}
+
+func (l *LogrusWrapper) Infoln(clustername string, module int, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlInfo) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Infoln(args...)
+	}
+}
+
+func (l *LogrusWrapper) Debugf(clustername string, module int, format string, args ...interface{}) {
+	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlDbg) {
+		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Debugf(format, args...)
+	}
 }
