@@ -76,6 +76,14 @@ func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (clustera
 	return clusterauth.APIUser{}, fmt.Errorf("user not found")
 }
 
+func (cluster *Cluster) GetAPIUserByUsername(strUser string) (clusterauth.APIUser, bool) {
+	if user, ok := cluster.APIUsers[strUser]; ok {
+		return user, ok
+	}
+
+	return clusterauth.APIUser{}, false
+}
+
 func (cluster *Cluster) SaveUserAcls(user string) (string, string) {
 	granted, discarded := config.GetCompactGrants(cluster.APIUsers[user].Grants)
 	return strings.Join(granted, " "), strings.Join(discarded, " ")

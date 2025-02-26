@@ -11,7 +11,6 @@
 package app
 
 import (
-	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
@@ -99,16 +98,6 @@ func (p *App) GetServiceName() string {
 
 func (p *App) GetURL() string {
 	return p.GetHost() + ":" + p.GetPort()
-}
-
-func (p *App) GetClusterUser(user string) (clusterauth.APIUser, bool) {
-	if p.Cluster != nil {
-		if usr, ok := p.Cluster.GetAPIUserByUsername(user); ok {
-			return usr, ok
-		}
-	}
-
-	return clusterauth.APIUser{}, false
 }
 
 func (app *App) GetSshEnv() string {
