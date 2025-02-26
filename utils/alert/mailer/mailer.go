@@ -193,7 +193,7 @@ func (m *Mailer) Send(e *email.Email) error {
 	}
 
 	if m.TLS != nil {
-		err := e.SendWithTLS(m.Address, m.Auth, m.TLS.ToTLSConfig())
+		err := e.SendWithStartTLS(m.Address, m.Auth, m.TLS.ToTLSConfig())
 		if err != nil {
 			return err
 		}
