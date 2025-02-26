@@ -126,6 +126,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                                         value={searchTerm}
                                                         onChange={(e) => setSearchTerm(e.target.value)}
                                                         mb={2}
+                                                        sx={{ color: 'black !important' }}
                                                     />
                                                     {filteredUsers.map((user) => (
                                                         <MenuItem
@@ -197,6 +198,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                 placeholder="Enter channel name"
                                 value={newChannelName}
                                 onChange={(e) => setNewChannelName(e.target.value)}
+                                sx={{ color: 'black !important' }}
                             />
                         </AlertDialogBody>
                         <AlertDialogFooter>

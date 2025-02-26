@@ -77,7 +77,7 @@ function Home() {
   useEffect(() => {
     const loggedUser = localStorage.getItem('username')
     if (monitor?.config?.cloud18) {
-      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale','Settings']
+      globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
 
     } else {
       globalTabsRef.current = ['Clusters Local']
@@ -116,9 +116,6 @@ function Home() {
           }
           if (apiUser.grants['cluster-grant']) {
             authorizedTabs.push('Users')
-          }
-          if (clusterData.config.cloud18) {
-            authorizedTabs.push('Support')
           }
           dashboardTabsRef.current = authorizedTabs
         }
@@ -271,7 +268,7 @@ function Home() {
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
-                ? [<PeerClusterList />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />, <Chat />, <MattermostManager/>]
+                ? [<PeerClusterList />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />]
                 : [<ClustersGlobalSettings />])
           ]}
         />

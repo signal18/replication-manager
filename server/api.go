@@ -606,7 +606,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			u := cl.APIUsers[user.Username]
 			if (u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] || u.Roles[config.RoleSysOps] || u.Roles[config.RoleExtSysOps]) && (repman.Conf.Cloud18GitUser != "" && repman.Conf.Cloud18GitPassword != "") {
 				meetUser = repman.Conf.Cloud18GitUser
-				meetPassword = repman.Conf.Cloud18GitPassword
+				meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
 			}
 		}
 
