@@ -1,6 +1,7 @@
 package slackman
 
 import (
+	"net/url"
 	"sync"
 	"time"
 
@@ -84,8 +85,14 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 		return false
 	}
 
+	url, err := url.Parse(sh.Config.URL)
+	if err != nil {
+		s.Errorf("Failed to parse Slack URL: %v", err)
+		return false
+	}
+
 	sh.hook = &logrus_slack.SlackHook{
-		HookURL:        sh.Config.URL,
+		HookURL:        url.String(),
 		AcceptedLevels: sh.Config.AcceptedLevels,
 		Channel:        sh.Config.Channel,
 		IconEmoji:      sh.Config.Icon,
