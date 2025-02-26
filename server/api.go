@@ -596,26 +596,49 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	var userInfo interface{}
 	var userID string
 
-	if repman.Conf.Cloud18 && strings.Contains(user.Username, "@") {
-		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
-		if tok == "" {
-			http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
-			return
+	if repman.Conf.Cloud18 {
+		meetUser := user.Username
+		meetPassword := user.Password
+
+		//fmt.Printf("Login Handler call, user : %s", user.Username)
+
+		//to check user role before getting meet token and client
+		//if dbops or sysops, we use the cloud18-git-user of the config if exist to connect to the support
+		for _, cl := range repman.Clusters {
+			u := cl.APIUsers[user.Username]
+			fmt.Printf("Login Handler call, api user: %v\n", u)
+			if (u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] || u.Roles[config.RoleSysOps] || u.Roles[config.RoleExtSysOps]) && (repman.Conf.Cloud18GitUser != "" && repman.Conf.Cloud18GitPassword != "") {
+				meetUser = repman.Conf.Cloud18GitUser
+				meetPassword = repman.Conf.Cloud18GitPassword
+				//fmt.Printf("Login Handler call, role : %v", u.Roles)
+			}
 		}
 
-		userID, err = meethelper.CreateMeetUserClient(user.Username, user.Password, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		//fmt.Printf("Login Handler call, meet user : %s", meetUser)
+
+		//to get meet token and create a client while login
+		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 		if err != nil && repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Error retrieving meet token: %s", err)
 		}
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 
-		userInfo = struct {
-			Name     string
-			Role     string
-			Password string
-			Email    string `json:"email"`
-			Profile  string `json:"profile"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
+		if strings.Contains(user.Username, "@") {
+			tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+			if tok == "" {
+				http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
+				return
+			}
+
+			userInfo = struct {
+				Name     string
+				Role     string
+				Password string
+				Email    string `json:"email"`
+				Profile  string `json:"profile"`
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
+
+		}
 
 	} else {
 		loggedIn := false

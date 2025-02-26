@@ -160,15 +160,17 @@ function Navbar({ username }) {
               {username && isDesktop && (
                   <>
                       <Text>{`Welcome, ${username}`}</Text>
-                      <Flex className={styles.chatIcon}>
-                        <AlertBadge
-                          isSupport={true}
-                          text='Support'
-                          count={unreadMessagesCount || 0}
-                          onClick={toggleChat}
-                          showText={!isMobile}
-                        />
-                      </Flex>
+                      {monitor?.config?.cloud18 && (
+                        <Flex className={styles.chatIcon}>
+                          <AlertBadge
+                            isSupport={true}
+                            text='Support'
+                            count={unreadMessagesCount || 0}
+                            onClick={toggleChat}
+                            showText={!isMobile}
+                          />
+                        </Flex>
+                      )}
                   </>
               )}
               {isMobile ? (
