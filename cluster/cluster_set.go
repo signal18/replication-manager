@@ -2213,17 +2213,32 @@ func (cluster *Cluster) SetAlertScript(value string) {
 
 func (cluster *Cluster) SetAlertSlackChannel(value string) {
 	cluster.Conf.SlackChannel = value
-	cluster.LogSlack.SetChannel(value)
+	cluster.LogSlack.SetChannel("slack", value)
 }
 
 func (cluster *Cluster) SetAlertSlackUrl(value string) {
 	cluster.Conf.SlackURL = value
-	cluster.LogSlack.SetURL(value)
+	cluster.LogSlack.SetURL("slack", value)
 }
 
 func (cluster *Cluster) SetAlertSlackUser(value string) {
 	cluster.Conf.SlackUser = value
-	cluster.LogSlack.SetUser(value)
+	cluster.LogSlack.SetUser("slack", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackChannel(value string) {
+	cluster.Conf.SlackChannel = value
+	cluster.LogSlack.SetChannel("cloud18", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) {
+	cluster.Conf.SlackURL = value
+	cluster.LogSlack.SetURL("cloud18", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
+	cluster.Conf.SlackUser = value
+	cluster.LogSlack.SetUser("cloud18", value)
 }
 
 func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {

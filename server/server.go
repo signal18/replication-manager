@@ -917,6 +917,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18SalesUnsubscribeScript, "cloud18-sales-unsubscribe-script", "", "Script when user unsubscribe to the cloud18 service")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsValidateScript, "cloud18-sales-external-ops-validate-script", "", "Script when admin validate external ops")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsStopScript, "cloud18-sales-external-ops-stop-script", "", "Script when partnership with external ops ended")
+	flags.StringVar(&conf.Cloud18AlertSlackUrl, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y/", "Mattermost webhook URL to alert")
+	flags.StringVar(&conf.Cloud18AlertSlackChannel, "cloud18-alert-slack-channel", "signal18_alert", "Mattermost channel to alert")
+	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Mattermost user for alert")
+
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")

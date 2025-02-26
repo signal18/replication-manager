@@ -441,7 +441,10 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogPushover.SetLevel(log.WarnLevel)
 	}
 
-	cluster.LogSlack = slackman.NewSlackManager(slackman.SlackConfig{
+	cluster.LogSlack = slackman.NewSlackManager()
+	cluster.LogSlack.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+
+	cluster.LogSlack.SetHookConfig("slack", slackman.SlackConfig{
 		URL:            cluster.Conf.SlackURL,
 		AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
 		Channel:        cluster.Conf.SlackChannel,
@@ -449,10 +452,22 @@ func (cluster *Cluster) InitFromConf() {
 		Icon:           ":ghost:",
 		Timeout:        5 * time.Second,
 	})
-	cluster.LogSlack.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+
+	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
+		URL:            cluster.Conf.Cloud18AlertSlackUrl,
+		AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
+		User:           cluster.Conf.Cloud18AlertSlackUser,
+		Icon:           ":ghost:",
+		Timeout:        5 * time.Second,
+	})
 
 	if cluster.Conf.SlackURL != "" {
-		cluster.LogSlack.Activate(true)
+		cluster.LogSlack.Activate("slack", true)
+	}
+
+	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" {
+		cluster.LogSlack.Activate("cloud18", true)
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
