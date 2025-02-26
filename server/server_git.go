@@ -227,19 +227,23 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 }
 
 func (repman *ReplicationManager) PullCloud18Configs() {
-	if repman.IsGitPull {
+	gm := repman.ConfigManager.GetGitManager()
+	if gm == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git manager not initialized")
 		return
 	}
-	// Set Flag as Git Pull, prevent new cluster save / push is processed
-	repman.SetIsGitPull(true)
-	defer repman.SetIsGitPull(false)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Queue Pulling Cloud18 Configs")
+	repman.ConfigManager.GitPullDir() // Queue the pull
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Waiting for Pulling Cloud18 Configs")
 
-	// Wait if any cluster is saving config
-	for _, cl := range repman.Clusters {
-		for cl.IsSavingConfig {
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
+	// Wait for start pull signal
+	<-gm.PullCh
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Pulling Cloud18 Configs")
+
+	defer func() {
+		// Inform the GitManager that the pull is done
+		gm.DonePullCh <- struct{}{}
+	}()
 
 	pullDir := repman.Conf.WorkingDir + "/.pull"
 	filePath := pullDir + "/cloud18.toml"

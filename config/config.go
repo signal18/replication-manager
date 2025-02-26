@@ -1689,6 +1689,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
+			Depth:             1,
 		})
 
 		if err != nil {
