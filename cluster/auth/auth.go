@@ -1,4 +1,4 @@
-package auth
+package clusterauth
 
 import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
