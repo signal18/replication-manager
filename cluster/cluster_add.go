@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/signal18/replication-manager/cluster/auth"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -163,8 +163,8 @@ type UserForm struct {
 	Grants   string `json:"grants"`
 }
 
-func (cluster *Cluster) FilterGrants(grants string, delegator *auth.APIUser) string {
-	user := new(auth.APIUser)
+func (cluster *Cluster) FilterGrants(grants string, delegator *clusterauth.APIUser) string {
+	user := new(clusterauth.APIUser)
 	cluster.SetUserGrants(user, grants)
 
 	for grant, v := range delegator.Grants {
@@ -178,13 +178,13 @@ func (cluster *Cluster) FilterGrants(grants string, delegator *auth.APIUser) str
 	return strings.Join(allow, " ")
 }
 
-func (cluster *Cluster) AppendGrants(grants string, user *auth.APIUser) string {
+func (cluster *Cluster) AppendGrants(grants string, user *clusterauth.APIUser) string {
 	cluster.SetUserGrants(user, grants)
 	allow, _ := config.GetCompactGrants(user.Grants)
 	return strings.Join(allow, " ")
 }
 
-func (cluster *Cluster) AppendRoles(roles string, user *auth.APIUser) string {
+func (cluster *Cluster) AppendRoles(roles string, user *clusterauth.APIUser) string {
 	for _, role := range strings.Split(roles, " ") {
 		user.Roles[role] = true
 	}

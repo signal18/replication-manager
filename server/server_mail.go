@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/cluster/auth"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 )
@@ -200,7 +200,7 @@ func (repman *ReplicationManager) SendSponsorCredentialsMail(cl *cluster.Cluster
 		repman.Partner.Name = "Signal 18"
 	}
 
-	var user auth.APIUser
+	var user clusterauth.APIUser
 	for _, u := range cl.APIUsers {
 		if u.Roles[config.RoleSponsor] {
 			user = u

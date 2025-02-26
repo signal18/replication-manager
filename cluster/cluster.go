@@ -30,7 +30,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/cluster/app"
-	"github.com/signal18/replication-manager/cluster/auth"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
@@ -163,82 +163,82 @@ type Cluster struct {
 	//rplPass                   string                      `json:"-"`
 	//proxysqlUser              string                      `json:"-"`
 	//proxysqlPass              string                      `json:"-"`
-	StateMachine              *state.StateMachine         `json:"stateMachine"`
-	runOnceAfterTopology      bool                        `json:"-"`
-	logPtr                    *os.File                    `json:"-"`
-	termlength                int                         `json:"-"`
-	runUUID                   string                      `json:"-"`
-	cfgGroupDisplay           string                      `json:"-"`
-	RepMgrVersion             string                      `json:"-"`
-	RepMgrHostname            string                      `json:"-"`
-	exitMsg                   string                      `json:"-"`
-	exit                      bool                        `json:"-"`
-	canFlashBack              bool                        `json:"-"`
-	canResticFetchRepo        bool                        `json:"-"`
-	failoverCond              *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond            *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond             *nbc.NonBlockingChan        `json:"-"`
-	altertableCond            *nbc.NonBlockingChan        `json:"-"`
-	addtableCond              *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan            chan state.State            `json:"-"`
-	switchoverChan            chan bool                   `json:"-"`
-	errorChan                 chan error                  `json:"-"`
-	testStopCluster           bool                        `json:"-"`
-	testStartCluster          bool                        `json:"-"`
-	lastmaster                *ServerMonitor              `json:"-"`
-	benchmarkType             string                      `json:"-"`
-	HaveDBTLSCert             bool                        `json:"haveDBTLSCert"`
-	HaveDBTLSOldCert          bool                        `json:"haveDBTLSOldCert"`
-	tlsconf                   *tls.Config                 `json:"-"`
-	tlsoldconf                *tls.Config                 `json:"-"`
-	tunnel                    *ssh.Client                 `json:"-"`
-	QueryRules                map[uint32]config.QueryRule `json:"-"`
-	Backups                   []v3.Backup                 `json:"-"`
-	BackupStat                v3.BackupStat               `json:"backupStat"`
-	BackupMetaMap             *config.BackupMetaMap       `json:"backupList"`
-	SLAHistory                []state.Sla                 `json:"slaHistory"`
-	APIUsers                  map[string]auth.APIUser     `json:"apiUsers"`
-	Schedule                  map[string]cron.Entry       `json:"-"`
-	scheduler                 *cron.Cron                  `json:"-"`
-	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
-	idSchedulerLogicalBackup  cron.EntryID                `json:"-"`
-	idSchedulerOptimize       cron.EntryID                `json:"-"`
-	idSchedulerAnalyze        cron.EntryID                `json:"-"`
-	idSchedulerErrorLogs      cron.EntryID                `json:"-"`
-	idSchedulerLogRotateTable cron.EntryID                `json:"-"`
-	idSchedulerSLARotate      cron.EntryID                `json:"-"`
-	idSchedulerRollingRestart cron.EntryID                `json:"-"`
-	idSchedulerDbsjobsSsh     cron.EntryID                `json:"-"`
-	idSchedulerRollingReprov  cron.EntryID                `json:"-"`
-	idSchedulerAlertDisable   cron.EntryID                `json:"-"`
-	debugLineMap              map[string]int              `json:"-"`
-	WaitingRejoin             int                         `json:"waitingRejoin"`
-	WaitingSwitchover         int                         `json:"waitingSwitchover"`
-	WaitingFailover           int                         `json:"waitingFailover"`
-	Configurator              configurator.Configurator   `json:"configurator"`
-	DiffVariables             []VariableDiff              `json:"diffVariables"`
-	inInitNodes               bool                        `json:"-"`
-	inOptimizeTables          bool                        `json:"inOptimizeTables"`
-	inAnalyzeTables           bool                        `json:"inAnalyzeTables"`
-	inConnectVault            bool                        `json:"-"`
-	CanInitNodes              bool                        `json:"canInitNodes"`
-	errorInitNodes            error                       `json:"-"`
-	CanConnectVault           bool                        `json:"canConnectVault"`
-	errorConnectVault         error                       `json:"-"`
-	SqlErrorLog               *logsql.Logger              `json:"-"`
-	SqlGeneralLog             *logsql.Logger              `json:"-"`
-	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts"`
-	InPhysicalBackup          bool                        `json:"inPhysicalBackup"`
-	InLogicalBackup           bool                        `json:"inLogicalBackup"`
-	InBinlogBackup            bool                        `json:"inBinlogBackup"`
-	InResticBackup            bool                        `json:"inResticBackup"`
-	InRollingRestart          bool                        `json:"inRollingRestart"`
-	Mailer                    *mailer.Mailer              `json:"-"`
-	ResticRepo                *archiver.ResticRepo        `json:"-"`
-	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
-	Partner                   *config.Partner             `json:"partner"`
-	ConfigManager             *manager.ConfigManager      `json:"-"`
+	StateMachine              *state.StateMachine            `json:"stateMachine"`
+	runOnceAfterTopology      bool                           `json:"-"`
+	logPtr                    *os.File                       `json:"-"`
+	termlength                int                            `json:"-"`
+	runUUID                   string                         `json:"-"`
+	cfgGroupDisplay           string                         `json:"-"`
+	RepMgrVersion             string                         `json:"-"`
+	RepMgrHostname            string                         `json:"-"`
+	exitMsg                   string                         `json:"-"`
+	exit                      bool                           `json:"-"`
+	canFlashBack              bool                           `json:"-"`
+	canResticFetchRepo        bool                           `json:"-"`
+	failoverCond              *nbc.NonBlockingChan           `json:"-"`
+	switchoverCond            *nbc.NonBlockingChan           `json:"-"`
+	rejoinCond                *nbc.NonBlockingChan           `json:"-"`
+	bootstrapCond             *nbc.NonBlockingChan           `json:"-"`
+	altertableCond            *nbc.NonBlockingChan           `json:"-"`
+	addtableCond              *nbc.NonBlockingChan           `json:"-"`
+	statecloseChan            chan state.State               `json:"-"`
+	switchoverChan            chan bool                      `json:"-"`
+	errorChan                 chan error                     `json:"-"`
+	testStopCluster           bool                           `json:"-"`
+	testStartCluster          bool                           `json:"-"`
+	lastmaster                *ServerMonitor                 `json:"-"`
+	benchmarkType             string                         `json:"-"`
+	HaveDBTLSCert             bool                           `json:"haveDBTLSCert"`
+	HaveDBTLSOldCert          bool                           `json:"haveDBTLSOldCert"`
+	tlsconf                   *tls.Config                    `json:"-"`
+	tlsoldconf                *tls.Config                    `json:"-"`
+	tunnel                    *ssh.Client                    `json:"-"`
+	QueryRules                map[uint32]config.QueryRule    `json:"-"`
+	Backups                   []v3.Backup                    `json:"-"`
+	BackupStat                v3.BackupStat                  `json:"backupStat"`
+	BackupMetaMap             *config.BackupMetaMap          `json:"backupList"`
+	SLAHistory                []state.Sla                    `json:"slaHistory"`
+	APIUsers                  map[string]clusterauth.APIUser `json:"apiUsers"`
+	Schedule                  map[string]cron.Entry          `json:"-"`
+	scheduler                 *cron.Cron                     `json:"-"`
+	idSchedulerPhysicalBackup cron.EntryID                   `json:"-"`
+	idSchedulerLogicalBackup  cron.EntryID                   `json:"-"`
+	idSchedulerOptimize       cron.EntryID                   `json:"-"`
+	idSchedulerAnalyze        cron.EntryID                   `json:"-"`
+	idSchedulerErrorLogs      cron.EntryID                   `json:"-"`
+	idSchedulerLogRotateTable cron.EntryID                   `json:"-"`
+	idSchedulerSLARotate      cron.EntryID                   `json:"-"`
+	idSchedulerRollingRestart cron.EntryID                   `json:"-"`
+	idSchedulerDbsjobsSsh     cron.EntryID                   `json:"-"`
+	idSchedulerRollingReprov  cron.EntryID                   `json:"-"`
+	idSchedulerAlertDisable   cron.EntryID                   `json:"-"`
+	debugLineMap              map[string]int                 `json:"-"`
+	WaitingRejoin             int                            `json:"waitingRejoin"`
+	WaitingSwitchover         int                            `json:"waitingSwitchover"`
+	WaitingFailover           int                            `json:"waitingFailover"`
+	Configurator              configurator.Configurator      `json:"configurator"`
+	DiffVariables             []VariableDiff                 `json:"diffVariables"`
+	inInitNodes               bool                           `json:"-"`
+	inOptimizeTables          bool                           `json:"inOptimizeTables"`
+	inAnalyzeTables           bool                           `json:"inAnalyzeTables"`
+	inConnectVault            bool                           `json:"-"`
+	CanInitNodes              bool                           `json:"canInitNodes"`
+	errorInitNodes            error                          `json:"-"`
+	CanConnectVault           bool                           `json:"canConnectVault"`
+	errorConnectVault         error                          `json:"-"`
+	SqlErrorLog               *logsql.Logger                 `json:"-"`
+	SqlGeneralLog             *logsql.Logger                 `json:"-"`
+	SstAvailablePorts         map[string]string              `json:"sstAvailablePorts"`
+	InPhysicalBackup          bool                           `json:"inPhysicalBackup"`
+	InLogicalBackup           bool                           `json:"inLogicalBackup"`
+	InBinlogBackup            bool                           `json:"inBinlogBackup"`
+	InResticBackup            bool                           `json:"inResticBackup"`
+	InRollingRestart          bool                           `json:"inRollingRestart"`
+	Mailer                    *mailer.Mailer                 `json:"-"`
+	ResticRepo                *archiver.ResticRepo           `json:"-"`
+	ErrorConfigMap            config.ErrorConfigMap          `json:"-"` //To store error config
+	Partner                   *config.Partner                `json:"partner"`
+	ConfigManager             *manager.ConfigManager         `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table

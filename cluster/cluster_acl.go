@@ -11,12 +11,12 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/signal18/replication-manager/cluster/auth"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (cluster *Cluster) SetUserGrants(u *auth.APIUser, grant string) {
+func (cluster *Cluster) SetUserGrants(u *clusterauth.APIUser, grant string) {
 	if u.Grants == nil {
 		u.Grants = map[string]bool{}
 	}
@@ -38,7 +38,7 @@ func (cluster *Cluster) SetUserGrants(u *auth.APIUser, grant string) {
 	}
 }
 
-func (cluster *Cluster) SetUserRoles(u *auth.APIUser, roles string) {
+func (cluster *Cluster) SetUserRoles(u *clusterauth.APIUser, roles string) {
 	if u.Roles == nil {
 		u.Roles = map[string]bool{}
 	}
@@ -65,15 +65,15 @@ func (cluster *Cluster) IsValidACL(strUser string, strPassword string, URL strin
 	return false
 }
 
-func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (auth.APIUser, error) {
+func (cluster *Cluster) GetAPIUser(strUser string, strPassword string) (clusterauth.APIUser, error) {
 	if user, ok := cluster.APIUsers[strUser]; ok {
 		if user.Password == strPassword {
 			return user, nil
 		}
-		return auth.APIUser{}, fmt.Errorf("incorrect password")
+		return clusterauth.APIUser{}, fmt.Errorf("incorrect password")
 	}
 
-	return auth.APIUser{}, fmt.Errorf("user not found")
+	return clusterauth.APIUser{}, fmt.Errorf("user not found")
 }
 
 func (cluster *Cluster) SaveUserAcls(user string) (string, string) {
@@ -188,7 +188,7 @@ func (cluster *Cluster) GetClusterUserDiscardACLs(acls string) map[string]ListUs
 }
 
 func (cluster *Cluster) LoadAPIUsers() error {
-	meUsers := make(map[string]auth.APIUser)
+	meUsers := make(map[string]clusterauth.APIUser)
 	credentials := strings.Split(cluster.Conf.Secrets["api-credentials"].Value+","+cluster.Conf.Secrets["api-credentials-external"].Value, ",")
 	listACLs := cluster.GetClusterUserAllowACLs(cluster.Conf.APIUsersACLAllow)
 	listDiscard := cluster.GetClusterUserDiscardACLs(cluster.Conf.APIUsersACLDiscard)
@@ -202,7 +202,7 @@ func (cluster *Cluster) LoadAPIUsers() error {
 		}
 
 		// Assign User Credentials
-		var newapiuser auth.APIUser
+		var newapiuser clusterauth.APIUser
 		newapiuser.User, newapiuser.Password = misc.SplitPair(credential)
 		if _, ok := meUsers[newapiuser.User]; ok {
 			continue
