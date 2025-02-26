@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"os/exec"
 	"regexp"
@@ -2295,7 +2294,7 @@ func (server *ServerMonitor) BackupRestic(tags ...string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s\n", err)
 		}
 		if errStdout != nil || errStderr != nil {
-			log.Fatal("failed to capture stdout or stderr\n")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to capture stdout or stderr\n")
 		}
 		outStr, errStr := string(stdout), string(stderr)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "result:%s\n%s\n%s", resticcmd.Path, outStr, errStr)

@@ -32,6 +32,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/config/manager"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
@@ -234,6 +235,7 @@ type Cluster struct {
 	ResticRepo                *archiver.ResticRepo        `json:"-"`
 	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner"`
+	ConfigManager             *manager.ConfigManager      `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -416,13 +418,12 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover in automatic mode")
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
-
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
-		//	os.MkdirAll(cluster.Conf.WorkingDir+"/"+cluster.Name, os.ModePerm)
-		os.MkdirAll(cluster.Conf.WorkingDir, os.ModePerm)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
+		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
+
 	cluster.SetClusterCredentialsFromConfig()
 	cluster.LoadAPIUsers()
 	cluster.SaveAcls()
@@ -455,7 +456,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
-		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version
+		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version + "\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05")
 		subj := "Replication-Manager started"
 		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
 	}
@@ -857,7 +858,7 @@ func (cluster *Cluster) StateProcessing() {
 
 		cluster.StateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
-			cluster.Save()
+			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
 
 	}
@@ -869,7 +870,8 @@ func (cluster *Cluster) Stop() {
 	if cluster.ResticRepo != nil {
 		cluster.ResticRepo.ShutdownWorker()
 	}
-	cluster.Save()
+	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	// prevent new cycle
 	cluster.exit = true
 }
 
@@ -878,26 +880,12 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 }
 
 func (cluster *Cluster) Save() error {
-	// //Needed to preserve diretory before Pull
-	// if !cluster.IsGitPull && cluster.Conf.Cloud18 {
-	// 	return nil
-	// }
-
-	if cluster.IsGitPush {
-		return nil
-	}
-
-	if cluster.IsSavingConfig {
-		return nil
-	}
-
-	cluster.SetIsSavingConfig(true)
-	defer cluster.SetIsSavingConfig(false)
 
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
+
 	type Save struct {
 		Servers    string      `json:"servers"`
 		Crashes    crashList   `json:"crashes"`

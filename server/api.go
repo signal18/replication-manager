@@ -600,21 +600,15 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		meetUser := user.Username
 		meetPassword := user.Password
 
-		//fmt.Printf("Login Handler call, user : %s", user.Username)
-
 		//to check user role before getting meet token and client
 		//if dbops or sysops, we use the cloud18-git-user of the config if exist to connect to the support
 		for _, cl := range repman.Clusters {
 			u := cl.APIUsers[user.Username]
-			fmt.Printf("Login Handler call, api user: %v\n", u)
 			if (u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] || u.Roles[config.RoleSysOps] || u.Roles[config.RoleExtSysOps]) && (repman.Conf.Cloud18GitUser != "" && repman.Conf.Cloud18GitPassword != "") {
 				meetUser = repman.Conf.Cloud18GitUser
 				meetPassword = repman.Conf.Cloud18GitPassword
-				//fmt.Printf("Login Handler call, role : %v", u.Roles)
 			}
 		}
-
-		//fmt.Printf("Login Handler call, meet user : %s", meetUser)
 
 		//to get meet token and create a client while login
 		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
@@ -638,6 +632,25 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				Profile  string `json:"profile"`
 			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
 
+		} else {
+			loggedIn := false
+			for _, cl := range repman.Clusters {
+				//validate user credentials
+				if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+					continue
+				}
+				loggedIn = true
+				userInfo = struct {
+					Name     string
+					Role     string
+					Password string
+				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
+			}
+
+			if !loggedIn {
+				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+				return
+			}
 		}
 
 	} else {
