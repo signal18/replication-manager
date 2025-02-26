@@ -43,6 +43,9 @@ import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
 import { setBaseURL } from '../../redux/authSlice'
+import MattermostManager from '../Mattermost'
+import Chat from '../Chat'
+
 
 function Home() {
   const dispatch = useDispatch()
@@ -75,6 +78,7 @@ function Home() {
     const loggedUser = localStorage.getItem('username')
     if (monitor?.config?.cloud18) {
       globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
+
     } else {
       globalTabsRef.current = ['Clusters Local']
     }
@@ -262,10 +266,9 @@ function Home() {
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
                 ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
-                
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
-                ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList onLogin={setDashboardTab} mode='shared' />, <ClustersGlobalSettings />]
+                ? [<PeerClusterList />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />]
                 : [<ClustersGlobalSettings />])
           ]}
         />

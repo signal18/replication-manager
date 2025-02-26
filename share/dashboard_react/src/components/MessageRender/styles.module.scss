@@ -1,0 +1,136 @@
+.messagesRender {
+    display: flex;
+    flex-direction: column;
+    font-size:12px;
+
+    .dateSeparator{
+        display:flex;
+        justify-content:center;
+        padding:5px;
+        color:#999;
+
+        .dateSeparatorLine  {
+            display: flex;
+            align-self: center;
+            background: #999;
+            height: 1px;
+        }
+
+        .dateSeparatorDate {
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+    }
+
+    .post {
+        .postInfo {
+            display: flex;
+            justify-content: flex-start;
+            margin-bottom: 5px;
+            align-items: flex-end;
+
+            .postUser{
+                font-weight: 600;
+            }
+
+            .postTime {
+                padding-left: 5px;
+                font-size: 10px;
+            }
+        }
+        .postContent {
+            margin-bottom: 5px;
+        }
+        .fileAttachments {
+
+            .fileAttachment {
+                display: flex;
+                justify-content: flex-start;
+                border: solid;
+                border-width: 1px;
+                border-color: lightgrey;
+
+                .fileLogo {
+                    border: 3px;
+                    width: 25px;
+                }
+
+                .fileDetails {
+                    display: flex;
+                    flex-wrap: wrap;
+                    align-items: center;
+
+                    .fileName {
+                        font-style: italic;
+                        padding-right: 5px;
+                    }
+                    .fileSize {
+                        font-style: italic;
+                        width: fit-content;
+                        padding-right: 5px;
+                    }
+                    .fileDownload {
+                        color: #007bff;
+                        cursor: pointer;
+                    }
+                }
+            }
+        }
+
+        .alerts {
+            display:flex;
+            flex-direction: column;
+            margin-bottom: 5px;
+
+            .alert {
+                
+
+                .alertFields {
+                    display: flex;
+                    flex-direction: row;
+                    border-left: solid 8px;
+                    border-color: red;
+
+                    .content {
+                        display:flex;
+                        flex-direction: row;
+                        justify-content: space-around;
+                        flex-grow: 1;
+                        
+                        .field {
+                            
+                            .fieldTitle {
+                                font-weight: 600;
+                            }
+
+                        }
+                    }
+                }
+
+            }
+        }
+        .meetings {
+            .meeting {
+                .meetingCard {
+                    display:flex;
+                    margin-bottom:5px;
+                    height: 50px;
+                    border-left:solid 8px;
+                    border-color:#007bff;
+                    justify-content: space-around;
+
+                    .meetingTitle {
+
+                    }
+                    .meetingInfo {
+
+                    }
+                    .meetingButton {
+                        background-color: #007bff;
+                        height: 30px;
+                    }
+                }
+            }
+        }
+    }
+}

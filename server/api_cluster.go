@@ -2200,6 +2200,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchLogConfigLoad()
 	case "log-git":
 		mycluster.SwitchLogGit()
+	case "log-support":
+		mycluster.SwitchLogSupport()
 	case "log-backup-stream":
 		mycluster.SwitchLogBackupStream()
 	case "log-orchestrator":
@@ -2636,6 +2638,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-git-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetLogGitLevel(val)
+	case "log-support-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SetLogSupportLevel(val)
 	case "log-backup-stream-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBackupStreamLevel(val)
@@ -3179,6 +3184,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 			mycluster.Conf.LogGit = isactive
 		}
+	case "log-support":
+		if mycluster.Conf.LogSupport != isactive {
+			if isactive {
+				mycluster.Conf.LogSupportLevel = 1
+			} else {
+				mycluster.Conf.LogSupportLevel = 0
+			}
+			mycluster.Conf.LogSupport = isactive
+		}
 	case "log-backup-stream":
 		if mycluster.Conf.LogBackupStream != isactive {
 			if isactive {
@@ -3447,6 +3461,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-git-level":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetLogGitLevel(val)
+	case "log-support-level":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.SetLogSupportLevel(val)
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)

@@ -2000,6 +2000,14 @@ func (cluster *Cluster) SetLogGitLevel(value int) {
 		cluster.Conf.LogGit = false
 	}
 }
+func (cluster *Cluster) SetLogSupportLevel(value int) {
+	cluster.Conf.LogSupportLevel = value
+	if value > 0 {
+		cluster.Conf.LogSupport = true
+	} else {
+		cluster.Conf.LogSupport = false
+	}
+}
 func (cluster *Cluster) SetLogBackupStreamLevel(value int) {
 	cluster.Conf.LogBackupStreamLevel = value
 	if value > 0 {
