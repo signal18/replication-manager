@@ -2227,17 +2227,17 @@ func (cluster *Cluster) SetAlertSlackUser(value string) {
 }
 
 func (cluster *Cluster) SetCloud18AlertSlackChannel(value string) {
-	cluster.Conf.SlackChannel = value
+	cluster.Conf.Cloud18AlertSlackChannel = value
 	cluster.LogSlack.SetChannel("cloud18", value)
 }
 
 func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) {
-	cluster.Conf.SlackURL = value
+	cluster.Conf.Cloud18AlertSlackUrl = value
 	cluster.LogSlack.SetURL("cloud18", value)
 }
 
 func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
-	cluster.Conf.SlackUser = value
+	cluster.Conf.Cloud18AlertSlackUser = value
 	cluster.LogSlack.SetUser("cloud18", value)
 }
 

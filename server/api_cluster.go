@@ -2761,6 +2761,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
+	case "cloud18-alert-slack-channel":
+		mycluster.SetAlertSlackChannel(value)
+	case "cloud18-alert-slack-url":
+		mycluster.SetAlertSlackUrl(value)
+	case "cloud18-alert-slack-user":
+		mycluster.SetAlertSlackUser(value)
 	case "log-file-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
