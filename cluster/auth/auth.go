@@ -5,6 +5,8 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
+type APIUserMap map[string]APIUser
+
 type APIUser struct {
 	User       string          `json:"user"`
 	Password   string          `json:"-"`

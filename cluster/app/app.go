@@ -15,7 +15,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/signal18/replication-manager/cluster/auth"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -37,9 +37,7 @@ type App struct {
 	HostIPV6              string                     `json:"hostIPV6"`
 	Port                  string                     `json:"port"`
 	AppConfig             config.AppConfig           `json:"config"`
-	Clustername           string                     `json:"clustername"`
-	ClusterConfig         *config.Config             `json:"-"`
-	ClusterUsers          *map[string]auth.APIUser   `json:"-"` // map[username]auth.APIUser
+	Cluster               ClusterInterface           `json:"clustername"`
 	Configurator          *configurator.Configurator `json:"-"`
 	Datadir               string                     `json:"datadir"`
 	State                 string                     `json:"state"`
@@ -123,7 +121,7 @@ type AppInterface interface {
 	OpenSVCSetRoutePort(port string)
 	GetVIP() string
 	SetSuspect()
-	SetID(crcTable *crc64.Table)
+	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
 	SetProvAppImage(value string) error
@@ -165,6 +163,15 @@ type AppInterface interface {
 	DelWaitStopCookie() error
 }
 
+type ClusterInterface interface {
+	GetName() string
+	GetHost() string
+	GetPort() string
+	GetCrcTable() *crc64.Table
+	GetConf() config.Config
+	GetAPIUserByUsername(username string) (clusterauth.APIUser, bool)
+}
+
 const (
 	stateFailed       string = "Failed"
 	stateMaster       string = "Master"
@@ -188,13 +195,11 @@ const (
 	stateProxyDesync  string = "ProxyDesync"
 )
 
-func NewAppInstance(placement int, clustername, apptype, url, domain string, conf *config.Config, usermap *map[string]auth.APIUser, name string, compute bool, crcTable *crc64.Table) *App {
+func NewAppInstance(cluster ClusterInterface, placement int, apptype, url, domain string, name string, compute bool) *App {
 	app := new(App)
 	app.Type = apptype
 	app.HostCnf = url // store host from config file
-	app.Clustername = clustername
-	app.ClusterConfig = conf
-	app.ClusterUsers = usermap
+	app.Cluster = cluster
 	app.Version, _ = version.NewVersionFromString(apptype, "")
 	app.FailCount = 0
 
@@ -205,17 +210,17 @@ func NewAppInstance(placement int, clustername, apptype, url, domain string, con
 	}
 
 	// Source name will equal to cluster name
-	app.ServiceName = clustername + "/svc/" + app.Name
+	app.ServiceName = cluster.GetName() + "/svc/" + app.Name
 
 	app.Domain = domain
 
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
-	app.SetID(crcTable)
+	app.SetID()
 	// NOTE: does this make sense to set the state to the same?
 	app.SetPrevState(stateSuspect)
 	app.SetState(stateSuspect)
 
-	app.Datadir = conf.WorkingDir + "/" + clustername + "/apps/" + app.Host + "_" + app.Port
+	app.Datadir = cluster.GetConf().WorkingDir + "/" + cluster.GetName() + "/apps/" + app.Host + "_" + app.Port
 	if _, err := os.Stat(app.Datadir); os.IsNotExist(err) {
 		os.MkdirAll(app.Datadir, os.ModePerm)
 		os.MkdirAll(app.Datadir+"/log", os.ModePerm)

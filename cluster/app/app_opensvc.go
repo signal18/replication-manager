@@ -1,101 +1,101 @@
 package app
 
-func (server *App) OpenSVCGetAppDiskPool() string {
-	return server.AppConfig.ProvAppDiskPool
+func (app *App) OpenSVCGetAppDiskPool() string {
+	return app.AppConfig.ProvAppDiskPool
 }
 
-func (server *App) OpenSVCGetAppDiskType() string {
-	return server.AppConfig.ProvAppDiskType
+func (app *App) OpenSVCGetAppDiskType() string {
+	return app.AppConfig.ProvAppDiskType
 }
 
-func (server *App) OpenSVCGetAppAgents() string {
-	return server.AppConfig.ProvAppAgents
+func (app *App) OpenSVCGetAppAgents() string {
+	return app.AppConfig.ProvAppAgents
 }
 
-func (server *App) OpenSVCGetAppAgentsFailover() string {
-	return server.AppConfig.ProvAppAgentsFailover
+func (app *App) OpenSVCGetAppAgentsFailover() string {
+	return app.AppConfig.ProvAppAgentsFailover
 }
 
-func (server *App) OpenSVCGetAppGateway() string {
-	return server.AppConfig.ProvAppGateway
+func (app *App) OpenSVCGetAppGateway() string {
+	return app.AppConfig.ProvAppGateway
 }
 
-func (server *App) OpenSVCGetAppNetMask() string {
-	return server.AppConfig.ProvAppNetmask
+func (app *App) OpenSVCGetAppNetMask() string {
+	return app.AppConfig.ProvAppNetmask
 }
 
-func (server *App) OpenSVCGetAppRouteAddr() string {
-	return server.AppConfig.ProvAppRouteAddr
+func (app *App) OpenSVCGetAppRouteAddr() string {
+	return app.AppConfig.ProvAppRouteAddr
 }
 
-func (server *App) OpenSVCGetAppRoutePort() string {
-	return server.AppConfig.ProvAppRoutePort
+func (app *App) OpenSVCGetAppRoutePort() string {
+	return app.AppConfig.ProvAppRoutePort
 }
 
-func (server *App) OpenSVCGetAppRouteMask() string {
-	return server.AppConfig.ProvAppRouteMask
+func (app *App) OpenSVCGetAppRouteMask() string {
+	return app.AppConfig.ProvAppRouteMask
 }
 
-func (server *App) OpenSVCSetRouteAddr(addr string) {
-	server.AppConfig.ProvAppRouteAddr = addr
+func (app *App) OpenSVCSetRouteAddr(addr string) {
+	app.AppConfig.ProvAppRouteAddr = addr
 }
 
-func (server *App) OpenSVCSetRoutePort(port string) {
-	server.AppConfig.ProvAppRoutePort = port
+func (app *App) OpenSVCSetRoutePort(port string) {
+	app.AppConfig.ProvAppRoutePort = port
 }
 
-func (server *App) OpenSVCGetAppDiskSize() string {
-	return server.AppConfig.ProvAppDiskSize
+func (app *App) OpenSVCGetAppDiskSize() string {
+	return app.AppConfig.ProvAppDiskSize
 }
 
-func (server *App) OpenSVCGetAppServiceType() string {
-	return server.AppConfig.ProvAppType
+func (app *App) OpenSVCGetAppServiceType() string {
+	return app.AppConfig.ProvAppType
 }
 
-func (server *App) OpenSVCGetAppCpuCores() string {
-	return server.AppConfig.ProvAppCpuCores
+func (app *App) OpenSVCGetAppCpuCores() string {
+	return app.AppConfig.ProvAppCpuCores
 }
 
-func (server *App) OpenSVCGetAppMemory() string {
-	return server.AppConfig.ProvAppMemory
+func (app *App) OpenSVCGetAppMemory() string {
+	return app.AppConfig.ProvAppMemory
 }
 
-func (server *App) OpenSVCGetAppVolumeData() string {
-	return server.AppConfig.ProvAppVolumeData
+func (app *App) OpenSVCGetAppVolumeData() string {
+	return app.AppConfig.ProvAppVolumeData
 }
 
-func (server *App) OpenSVCGetAppDockerImg() string {
-	return server.AppConfig.ProvAppDockerImg
+func (app *App) OpenSVCGetAppDockerImg() string {
+	return app.AppConfig.ProvAppDockerImg
 }
 
-func (server *App) OpenSVCGetAppDockerRunArgs() string {
-	return server.AppConfig.ProvAppDockerRunArgs
+func (app *App) OpenSVCGetAppDockerRunArgs() string {
+	return app.AppConfig.ProvAppDockerRunArgs
 }
 
-func (server *App) OpenSVCGetAppDefaultSection() map[string]string {
+func (app *App) OpenSVCGetAppDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = server.Agent
-	if server.OpenSVCGetAppDiskPool() == "zpool" && server.OpenSVCGetAppAgentsFailover() != "" {
-		svcdefault["nodes"] = server.Agent + "," + server.OpenSVCGetAppAgentsFailover()
+	svcdefault["nodes"] = app.Agent
+	if app.OpenSVCGetAppDiskPool() == "zpool" && app.OpenSVCGetAppAgentsFailover() != "" {
+		svcdefault["nodes"] = app.Agent + "," + app.OpenSVCGetAppAgentsFailover()
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = server.Agent
+		svcdefault["flex_primary"] = app.Agent
 		svcdefault["rollback"] = "false"
 		svcdefault["orchestrate"] = "ha"
 	}
-	svcdefault["app"] = server.ClusterConfig.ProvCodeApp
-	if server.OpenSVCGetAppServiceType() == "docker" {
-		if server.ClusterConfig.ProvDockerDaemonPrivate {
+	svcdefault["app"] = app.Cluster.GetConf().ProvCodeApp
+	if app.OpenSVCGetAppServiceType() == "docker" {
+		if app.Cluster.GetConf().ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"
-			if server.OpenSVCGetAppDiskType() != "volume" {
+			if app.OpenSVCGetAppDiskType() != "volume" {
 				svcdefault["docker_data_dir"] = "{env.base_dir}/docker"
 
 			} else {
 				svcdefault["docker_data_dir"] = "{name}-docker/docker"
 			}
-			if server.OpenSVCGetAppDiskPool() == "zpool" {
+			if app.OpenSVCGetAppDiskPool() == "zpool" {
 				svcdefault["docker_daemon_args"] = " --storage-driver=zfs"
 			} else {
 				svcdefault["docker_daemon_args"] = " --storage-driver=overlay"

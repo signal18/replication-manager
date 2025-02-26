@@ -19,9 +19,9 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-func (app *App) SetID(crctable *crc64.Table) {
+func (app *App) SetID() {
 	app.Id = "app" + strconv.FormatUint(
-		crc64.Checksum([]byte(app.Clustername+app.Name+":"+app.Port), crctable),
+		crc64.Checksum([]byte(app.Cluster.GetName()+app.Name+":"+app.Port), app.Cluster.GetCrcTable()),
 		10)
 }
 
@@ -56,7 +56,7 @@ func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string
 
 func (app *App) SetDataDir() {
 	if app.Host != "" {
-		app.Datadir = app.ClusterConfig.WorkingDir + "/" + app.Clustername + "/" + app.Host + "_" + app.Port
+		app.Datadir = app.Cluster.GetConf().WorkingDir + "/" + app.Cluster.GetName() + "/" + app.Host + "_" + app.Port
 		if _, err := os.Stat(app.Datadir); os.IsNotExist(err) {
 			os.MkdirAll(app.Datadir, os.ModePerm)
 			os.MkdirAll(app.Datadir+"/log", os.ModePerm)
@@ -71,7 +71,7 @@ func (app *App) createCookie(key string) error {
 	newFile, err := os.Create(app.Datadir + "/@" + key)
 	defer newFile.Close()
 	if err != nil {
-		app.Logger.Debugf(app.Clustername, config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
+		app.Logger.Debugf(app.Cluster.GetName(), config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
 	}
 	return err
 }
@@ -118,10 +118,6 @@ func (app *App) SetFailCount(c int) {
 
 func (app *App) SetState(v string) {
 	app.State = v
-}
-
-func (app *App) SetClustername(c string) {
-	app.Clustername = c
 }
 
 func (app *App) SetProvAppImage(value string) error {
