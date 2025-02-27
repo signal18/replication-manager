@@ -502,6 +502,21 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 	return post_mod.Id, nil
 }
 
+func (c *MeetChatClient) PostAdvancedMessage(post *model.Post, markAsRead bool) (string, error) {
+
+	post_mod, resp, err := c.Client.CreatePost(post)
+	if err != nil {
+		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
+		return "", err
+	}
+
+	if markAsRead {
+		c.ViewMessages(post.ChannelId)
+	}
+
+	return post_mod.Id, nil
+}
+
 func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, error) {
 
 	fallback := c.AllUser[c.UserID] + " has started a meeting"
