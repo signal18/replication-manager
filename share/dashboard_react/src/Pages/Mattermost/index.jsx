@@ -26,6 +26,10 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
     const [scrollPosition, setScrollPosition] = useState(null);
     const [selectedFile, setSelectedFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+    const {
+        auth: { isLogged }
+      } = useSelector((state) => state)
     
 
     useEffect(() => {
@@ -71,16 +75,18 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
 
     //to update messages every 2 seconds
     useEffect(() => {
-        const interval = setInterval(() => {
-            if (selectedChannel) {
-                setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
-                dispatch(fetchNewMessages({ channelId: selectedChannel })); 
-            }
-            dispatch(getMeetInfo());
-        }, 500);
-
+        
+            const interval = setInterval(() => {
+                if (isLogged){
+                    if (selectedChannel) {
+                        setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
+                        dispatch(fetchNewMessages({ channelId: selectedChannel })); 
+                    }
+                    dispatch(getMeetInfo());
+                }
+            }, 500);
         return () => clearInterval(interval);
-    }, [dispatch, selectedChannel]);
+    }, [dispatch, selectedChannel, isLogged]);
 
     if (!isOpen) return null;   
       

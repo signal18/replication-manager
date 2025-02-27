@@ -1863,7 +1863,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil || meetClient == nil || meetClient.UserID == "" {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
 		return
 	}
@@ -1910,7 +1910,7 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil || meetClient == nil {
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "ReadMeetMessage: Error getting meet client")
 		}
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		return
@@ -1922,7 +1922,7 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 
 	if channelID == "" && repman.Conf.LogSupport {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "ReadMeetMessage: Channel ID is required")
 		return
 	}
 
@@ -1962,7 +1962,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMessage: Error getting meet client")
 		}
 		return
 	}
@@ -1975,7 +1975,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMessage: Channel ID is required")
 		}
 		return
 	}
@@ -1990,7 +1990,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "Error posting message API", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error posting message to channel %s", channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMessage: error posting message to channel %s", channelID)
 		}
 		return
 	}
@@ -2003,7 +2003,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 		"message_id": message_id,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to post message on channel %s", channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMessage: Success to post message on channel %s", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2016,7 +2016,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
 		return
 	}
 
@@ -2024,7 +2024,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: Error getting meet client")
 		}
 		return
 	}
@@ -2034,7 +2034,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: Channel ID is required")
 		}
 		return
 	}
@@ -2043,7 +2043,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	if channelID == "" {
 		http.Error(w, "Jitsi Meeting ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: Channel ID is required")
 		}
 		return
 	}
@@ -2052,7 +2052,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error posting message API", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error posting meeting link to channel %s", channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: error posting meeting link to channel %s", channelID)
 		}
 		return
 	}
@@ -2064,7 +2064,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 		"message_id": message_id,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to post meeting link on channel %s", channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: Success to post meeting link on channel %s", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2078,7 +2078,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "ViewMeetMessage: No user ID in request header")
 		return
 	}
 
@@ -2086,7 +2086,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "ViewMeetMessage: Error getting meet client")
 		}
 		return
 	}
@@ -2095,7 +2095,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	channelID := vars["channelId"]
 	if channelID == "" && repman.Conf.LogSupport {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "ViewMeetMessage: Channel ID is required")
 		return
 	}
 
@@ -2104,7 +2104,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error view message from channel %s", channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "ViewMeetMessage: error view message from channel %s", channelID)
 		}
 		return
 	}
@@ -2126,7 +2126,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreateDChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2135,7 +2135,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreateDChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2145,7 +2145,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	if userId == "" {
 		http.Error(w, "User Id is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: User ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreateDChannelMeet: User ID is required")
 		}
 		return
 	}
@@ -2163,7 +2163,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 		"channelName": newChannelName,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to create a direct channel %s, %s", newChannelName, newChannelId)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreateDChannelMeet: Success to create a direct channel %s, %s", newChannelName, newChannelId)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2176,7 +2176,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePrivateChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2184,7 +2184,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePrivateChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2194,7 +2194,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 	if channelName == "" {
 		http.Error(w, "Channel name is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel name is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePrivateChannelMeet: Channel name is required")
 		}
 		return
 	}
@@ -2212,7 +2212,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 		"channelName": newChannelName,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to create a private channel %s, %s", newChannelName, newChannelId)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePrivateChannelMeet: Success to create a private channel %s, %s", newChannelName, newChannelId)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2225,7 +2225,7 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePublicChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2233,7 +2233,7 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePublicChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2243,7 +2243,7 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	if channelName == "" {
 		http.Error(w, "Channel name is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel name is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePublicChannelMeet: Channel name is required")
 		}
 		return
 	}
@@ -2261,7 +2261,7 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 		"channelName": newChannelName,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to create a public channel %s, %s", newChannelName, newChannelId)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePublicChannelMeet: Success to create a public channel %s, %s", newChannelName, newChannelId)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2274,7 +2274,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "DeleteChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2282,7 +2282,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DeleteChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2292,7 +2292,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DeleteChannelMeet: Channel ID is required")
 		}
 		return
 	}
@@ -2302,7 +2302,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	if err != nil {
 		http.Error(w, "Error delete channel", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error delete channel %s", channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DeleteChannelMeet: error delete channel %s", channelID)
 		}
 		return
 	}
@@ -2312,7 +2312,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 		"channelId": channelID,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to delete %s channel", channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DeleteChannelMeet: Success to delete %s channel", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2325,7 +2325,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "LeaveChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2333,7 +2333,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LeaveChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2343,7 +2343,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LeaveChannelMeet: Channel ID is required")
 		}
 		return
 	}
@@ -2353,7 +2353,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error leave channel", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error leave channel %s", channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LeaveChannelMeet: error leave channel %s", channelID)
 		}
 		return
 	}
@@ -2363,7 +2363,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 		"channelId": channelID,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to leave channel %s", channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LeaveChannelMeet: Success to leave channel %s", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2376,7 +2376,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "AddUserChannelMeet: No user ID in request header")
 		return
 	}
 
@@ -2384,7 +2384,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2394,7 +2394,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: Channel ID is required")
 		}
 		return
 	}
@@ -2402,7 +2402,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	if userId == "" {
 		http.Error(w, "User ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: User ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: User ID is required")
 		}
 		return
 	}
@@ -2412,7 +2412,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	if err != nil {
 		http.Error(w, "Error add user to channel", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: error add user (%s) to channel (%s)", userId, channelID)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: error add user (%s) to channel (%s)", userId, channelID)
 		}
 		return
 	}
@@ -2422,7 +2422,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 		"channelId": channelID,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to add user %s to channel %s", userId, channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: Success to add user %s to channel %s", userId, channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2435,7 +2435,7 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "LogoutMeet: No user ID in request header")
 		return
 	}
 
@@ -2443,7 +2443,7 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LogoutMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2452,12 +2452,10 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 
 	err = meetClient.SetUserStatusOffline()
 
-	meethelper.ClearMeetClient("ktzrdgfrmfdxxg7xkiqtgb17fr", repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-
 	if err != nil {
 		http.Error(w, "Error set user status while logout", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error set user status while logout")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LogoutMeet: Error set user status while logout")
 		}
 		return
 	}
@@ -2466,7 +2464,7 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 		"status": "success",
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success user %s to logout from mattermost serv", userId)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LogoutMeet: Success user %s to logout from mattermost serv", userId)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2480,7 +2478,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 	if channelID == "" {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Channel ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "UploadFileMeet: Channel ID is required")
 		}
 		return
 	}
@@ -2508,7 +2506,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "UploadFileMeet: No user ID in request header")
 		return
 	}
 
@@ -2516,7 +2514,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "UploadFileMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2528,7 +2526,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 	if err != nil {
 		http.Error(w, "Error sending the file to mattermost serv", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error sending the file to mattermost serv")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "UploadFileMeet: Error sending the file to mattermost serv")
 		}
 		return
 	}
@@ -2539,7 +2537,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 		"channel":  channelID,
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to upload a file on %s channel", channelID)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "UploadFileMeet: Success to upload a file on %s channel", channelID)
 
 	json.NewEncoder(w).Encode(response)
 }
@@ -2553,7 +2551,7 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 	if fileId == "" {
 		http.Error(w, "File ID is required", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: File ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: File ID is required")
 		}
 		return
 	}
@@ -2562,7 +2560,7 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "DownloadFileMeet: No user ID in request header")
 		return
 	}
 
@@ -2570,7 +2568,7 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Error getting meet client")
 		}
 		return
 	}
@@ -2580,7 +2578,7 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error sending the file to mattermost serv", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error sending the file to mattermost serv")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Error sending the file to mattermost serv")
 		}
 		return
 	}
@@ -2595,12 +2593,12 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 	if err != nil {
 		http.Error(w, "Error sending download file data to front", http.StatusBadRequest)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Error sending download file data to front : %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Error sending download file data to front : %s", err)
 		}
 		return
 	}
 
-	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "MeetInfo: Success to retrieve and send download file data")
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Success to retrieve and send download file data")
 }
 
 // handlerTerminal handles the WebSocket connection for a terminal session.

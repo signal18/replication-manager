@@ -175,6 +175,33 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      key: 'Log Support',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch global settings for Log Support?'}
+          onChange={(_v, setRefresh) => dispatch(switchGlobalSetting({ setting: 'log-support', setRefresh }))}
+          isChecked={config?.logSupport}
+        />
+      )
+    },
+    {
+      key: 'Log Support Level',
+      value: (
+        <LogSlider
+          value={config?.logSupportLevel}
+          confirmTitle={`Confirm change 'log-support-level' to: `}
+          onChange={(val) =>
+            dispatch(
+              setGlobalSetting({
+                setting: 'log-support-level',
+                value: val
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Enable API Swagger',
       value: (
         <HStack>

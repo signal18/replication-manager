@@ -34,7 +34,8 @@ function Navbar({ username }) {
   const {
     common: { isMobile, isDesktop },
     globalClusters: { monitor },
-    cluster: { clusterAlerts, clusterData }
+    cluster: { clusterAlerts, clusterData },
+    auth: { isLogged }
   } = useSelector((state) => state)
 
   useEffect(() => {
@@ -52,17 +53,17 @@ function Navbar({ username }) {
 
   //to get the meet info
   useEffect(() => {
-    if (username) {
+    if (isLogged) {
       dispatch(getMeetInfo());
     }
-  }, [ username, dispatch]);
+  }, [isLogged, dispatch]);
 
   useEffect(() => {
     if (meetInfo) {
       const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
       setUnreadMessagesCount(totalUnreadMessages)
     }
-  }, [unreadMessagesByChannel, meetInfo, username]);
+  }, [unreadMessagesByChannel, meetInfo]);
 
   //to toggle chat and save state
   const toggleChat = () => {
