@@ -547,12 +547,12 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 		if resolved {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
 			if cluster.Conf.SlackURL != "" {
-				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Warnf(st.ErrDesc)
+				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "RESOLV"}).Warnf(st.ErrDesc)
 			}
 		} else {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
 			if cluster.Conf.SlackURL != "" {
-				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack"}).Warnf(st.ErrDesc)
+				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Warnf(st.ErrDesc)
 			}
 		}
 
