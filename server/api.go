@@ -27,7 +27,6 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -210,52 +209,6 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
-	// Meet Handler
-	//router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
-	router.Handle("/meet/info", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.MeetInfoHandler)),
-	))
-	router.Handle("/meet/read/{channelId}/{page}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.ReadMeetMessageHandler)),
-	))
-	router.Handle("/meet/post/{channelId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.PostMeetHandler)),
-	))
-	router.Handle("/meet/post/jitsi/{channelId}/{meetingId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.PostJitsiMeetingHandler)),
-	))
-	router.Handle("/meet/view/{channelId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.ViewMeetHandler)),
-	))
-	router.Handle("/meet/create/direct/{userId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.CreateDirectChannelMeetHandler)),
-	))
-	router.Handle("/meet/create/private/{channelName}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.CreatePrivateChannelMeetHandler)),
-	))
-	router.Handle("/meet/create/public/{channelName}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.CreatePublicChannelMeetHandler)),
-	))
-	router.Handle("/meet/delete/{channelId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.DeleteChannelMeetHandler)),
-	))
-	router.Handle("/meet/leave/{channelId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.LeaveChannelMeetHandler)),
-	))
-	router.Handle("/meet/add/{channelId}/{userId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.AddUserChannelMeetHandler)),
-	))
-	router.Handle("/meet/logout", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.LogoutMeetHandler)),
-	))
-	router.Handle("/meet/upload/{channelId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.UploadFileMeetHandler)),
-	))
-	router.Handle("/meet/download/{fileId}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.DownloadFileMeetHandler)),
-	))
-	///////////////////////////
-
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
 	router.HandleFunc("/peer/{encodedpeer}/{route:.*}", repman.DynamicPeerHandler)
 
@@ -347,7 +300,7 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
-
+	repman.apiMeetProtectedHandler(router)
 	repman.apiDatabaseUnprotectedHandler(router)
 	repman.apiDatabaseProtectedHandler(router)
 	repman.apiClusterUnprotectedHandler(router)
@@ -1849,6 +1802,7 @@ func logResponse(resp *http.Response) {
 	}
 }*/
 
+<<<<<<< HEAD
 // Meet Handler
 // to send user info to the front (userID, All available channels, allusers id for private chat)
 func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http.Request) {
@@ -2649,6 +2603,8 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Success to retrieve and send download file data")
 }
 
+=======
+>>>>>>> bfa0fe284f5d06d872d4895f91e79dbb5716f29a
 // handlerTerminal handles the WebSocket connection for a terminal session.
 // @Summary Terminal
 // @Description	Establishes a WebSocket connection for a terminal session.
