@@ -701,8 +701,13 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
-				cwg.Add(1)
 				fpath := filepath.Join(name, file.Name())
+				_, err := file.Info()
+				if err != nil {
+					cm.logger.Warnf("default", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
+					continue
+				}
+				cwg.Add(1)
 				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
 			}
 		}
