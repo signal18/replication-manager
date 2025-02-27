@@ -70,7 +70,7 @@ func (a *Alert) PostMeetMessage(meetClient *meethelper.MeetChatClient, channelID
 
 	_, err := meetClient.PostAdvancedMessage(&post, false)
 	if err != nil {
-		return fmt.Errorf("Error posting message API: %s", err)
+		return err
 	}
 
 	return nil

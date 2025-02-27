@@ -557,7 +557,10 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get meet client: %s", err)
 		} else {
-			alert.PostMeetMessage(meetClient, cluster.Conf.Cloud18AlertChannel)
+			err := alert.PostMeetMessage(meetClient, cluster.Conf.Cloud18AlertChannel)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not send meet alert: %s", err)
+			}
 		}
 	}
 
