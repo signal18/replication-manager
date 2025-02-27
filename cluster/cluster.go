@@ -236,6 +236,7 @@ type Cluster struct {
 	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
+	failSendCount             int                         `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -860,8 +861,9 @@ func (cluster *Cluster) StateProcessing() {
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
 			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
 		}
-
 	}
+
+	cluster.CheckSendMail()
 }
 
 func (cluster *Cluster) Stop() {
