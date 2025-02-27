@@ -19,6 +19,7 @@ import (
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -82,6 +83,31 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	}
 
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
+		gituser := conf.Cloud18GitUser
+		gitpassword := conf.GetDecryptedValue("cloud18-gitlab-password")
+		acces_tok, err := githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		if err != nil {
+			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
+				repman.Logrus.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			}
+			conf.Cloud18 = false
+			return err
+		}
+
+		//to get meet token and create a client while login
+		userID, err := meethelper.CreateMeetUserClient(gituser, gitpassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "Error retrieving meet token: %s", err)
+			}
+		} else {
+			repman.MeetUserID = userID
+			for _, cluster := range repman.Clusters {
+				cluster.MeetUserID = userID
+			}
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
+		}
+
 		if conf.Cloud18Domain == "" {
 			return fmt.Errorf("Cloud18Domain is empty")
 		}
@@ -92,15 +118,6 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 
 		if conf.Cloud18SubDomainZone == "" {
 			return fmt.Errorf("Cloud18SubDomainZone is empty")
-		}
-
-		acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-		if err != nil {
-			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
-			}
-			conf.Cloud18 = false
-			return err
 		}
 
 		repman.SetCloudPartner()

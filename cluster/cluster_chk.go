@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -509,11 +510,6 @@ func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 		return
 	}
 
-	// exit even earlier
-	if cluster.Conf.MailTo == "" && cluster.Conf.AlertScript == "" {
-		return
-	}
-
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
 			Instance: cluster.GetInstanceAddress(),
@@ -535,6 +531,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cancel alert caused by alert disabled from scheduler")
 		return nil
 	}
+
 	if cluster.Conf.MailTo != "" {
 		if cluster.Mailer == nil {
 			if err := cluster.InitMailer(); err != nil {
@@ -555,7 +552,21 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		}()
 	}
 
-	cluster.BashScriptAlert(alert)
+	if cluster.Conf.Cloud18 && cluster.MeetUserID != "" {
+		meetClient, err := meethelper.GetMeetClient(cluster.MeetUserID, cluster.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get meet client: %s", err)
+		} else {
+			err := alert.PostMeetMessage(meetClient, cluster.Conf.Cloud18AlertChannel)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not send meet alert: %s", err)
+			}
+		}
+	}
+
+	if cluster.Conf.AlertScript != "" {
+		cluster.BashScriptAlert(alert)
+	}
 
 	return nil
 }

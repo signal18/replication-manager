@@ -237,6 +237,7 @@ type Cluster struct {
 	Partner                   *config.Partner             `json:"partner"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
 	failSendCount             int                         `json:"-"`
+	MeetUserID                string                      `json:"-"` //To store meet user id
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
