@@ -156,6 +156,7 @@ type ReplicationManager struct {
 	ModTimes                                         map[string]time.Time              `json:"termsDT"`
 	SessionManager                                   *tty.SessionManager               `json:"-"`
 	ConfigManager                                    *manager.ConfigManager            `json:"-"`
+	MeetUserID                                       string                            `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -920,6 +921,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18SalesUnsubscribeScript, "cloud18-sales-unsubscribe-script", "", "Script when user unsubscribe to the cloud18 service")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsValidateScript, "cloud18-sales-external-ops-validate-script", "", "Script when admin validate external ops")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsStopScript, "cloud18-sales-external-ops-stop-script", "", "Script when partnership with external ops ended")
+	flags.StringVar(&conf.Cloud18AlertChannel, "cloud18-alert-channel", "signal18_alert", "Alert channel for cloud18")
+
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
