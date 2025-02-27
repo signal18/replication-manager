@@ -2,6 +2,7 @@ package manager
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 // ConfigSaveTask holds the parameters for saving a config and additional waiting functionality
@@ -26,7 +28,7 @@ type ConfigSaveTask struct {
 
 type ConfigGitTask struct {
 	TaskType    string
-	conf        config.Config
+	conf        *config.Config
 	clusterList []string
 	WaitGroup   *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
 }
@@ -336,7 +338,7 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 }
 
 // GitPush waits for active saves, blocks new ones, and pushes changes
-func (cm *ConfigManager) GitPush(conf config.Config, clusterList []string, wait bool) {
+func (cm *ConfigManager) GitPush(conf *config.Config, clusterList []string, wait bool) {
 
 	configGitTask := ConfigGitTask{conf: conf, clusterList: clusterList, TaskType: "push"}
 
@@ -478,7 +480,7 @@ func (cm *ConfigManager) Stop() {
 	})
 }
 
-func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []string) error {
+func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []string) error {
 	defer func() {
 		if r := recover(); r != nil {
 			cm.logger.Errorf("default", config.ConstLogModGeneral, "Error pushing to git: %v", r)
@@ -495,15 +497,15 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 		return nil
 	}
 
-	cm.AddPullToGitignore(&conf)
-	cm.AddTempDirToGitignore(&conf)
+	cm.AddPullToGitignore(conf)
+	cm.AddTempDirToGitignore(conf)
 
 	cm.logger.Infof("default", config.ConstLogModGit, "Pushing All Configs To Git")
 
-	err := cm.PushConfigToGit(&conf, clusterList)
+	err := cm.PushConfigToGit(conf, clusterList)
 	if err != nil && err == transport.ErrRepositoryNotFound {
 		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.PushConfigToGit(&conf, clusterList)
+		err := cm.PushConfigToGit(conf, clusterList)
 		if err != nil {
 			cm.logger.Errorf("default", config.ConstLogModGit, "Error pushing to git: %v", err)
 			return err
@@ -511,7 +513,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 	}
 
 	// Count the commits
-	commits, err := cm.CountAllCommits(&conf)
+	commits, err := cm.CountAllCommits(conf)
 	if err != nil {
 		cm.logger.Warnf("default", config.ConstLogModGit, "Error counting commits: %v", err)
 		return err
@@ -519,7 +521,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 
 	if commits >= 10 {
 		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.ShallowClone(&conf)
+		err := cm.ShallowClone(conf)
 		if err != nil {
 			cm.logger.Errorf("default", config.ConstLogModGit, "Error shallow cloning: %v", err)
 			return err
@@ -699,8 +701,13 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
-				cwg.Add(1)
 				fpath := filepath.Join(name, file.Name())
+				_, err := file.Info()
+				if err != nil {
+					cm.logger.Warnf("default", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
+					continue
+				}
+				cwg.Add(1)
 				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
 			}
 		}
@@ -753,7 +760,32 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		"Push took: %s", time.Since(pushStart))
 
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot push: %s", err)
+		if errors.Is(err, transport.ErrAuthenticationRequired) {
+			acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if err != nil {
+				cm.logger.Errorf("default", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
+				conf.Cloud18 = false
+				return err
+			}
+
+			tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if personal_access_token == "" {
+				personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
+				if err != nil {
+					cm.logger.Errorf("default", config.ConstLogModGit, "Error creating personal access token: %v", err)
+					return err
+				}
+
+				var Secrets config.Secret
+				Secrets.Value = personal_access_token
+				Secrets.OldValue = conf.Secrets["git-acces-token"].Value
+				conf.GitAccesToken = personal_access_token
+				conf.Secrets["git-acces-token"] = Secrets
+			}
+		} else {
+			cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot push: %s", err)
+		}
 	}
 
 	return err
