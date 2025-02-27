@@ -98,15 +98,15 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		userID, err := meethelper.CreateMeetUserClient(gituser, gitpassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 		if err != nil {
 			if repman.Conf.LogSupport {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Error retrieving meet token: %s", err)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "Error retrieving meet token: %s", err)
 			}
 		} else {
 			repman.MeetUserID = userID
 			for _, cluster := range repman.Clusters {
 				cluster.MeetUserID = userID
 			}
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 
 		if conf.Cloud18Domain == "" {
 			return fmt.Errorf("Cloud18Domain is empty")

@@ -300,6 +300,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               }
             />
           )
+        },
+        {
+          key: 'Log Support Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logSupportLevel}
+              confirmTitle={`Confirm change 'log-support-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-support-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
         }
       ]
     },
