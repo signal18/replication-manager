@@ -3190,6 +3190,8 @@ func GetTagsForLog(module int) string {
 		return "conf"
 	case ConstLogModGit:
 		return "git"
+	case ConstLogModSupport:
+		return "support"
 	case ConstLogModBackupStream:
 		return "backup"
 	case ConstLogModOrchestrator:
