@@ -2150,7 +2150,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+				repman.ConfigManager.GitPush(&repman.Conf, repman.ClusterList, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
@@ -2389,7 +2389,7 @@ func (repman *ReplicationManager) Stop() {
 
 		if isNeedPush {
 			repman.IsNeedGitPush = false
-			repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
+			repman.ConfigManager.GitPush(&repman.Conf, repman.ClusterList, true)
 		}
 	}
 
