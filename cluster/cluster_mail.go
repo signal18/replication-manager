@@ -19,7 +19,7 @@ func (cluster *Cluster) InitMailer() error {
 	}
 
 	cluster.Mailer = m
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster mailed initialized successfully")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster mailer initialized successfully")
 
 	return nil
 }
