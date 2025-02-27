@@ -3571,6 +3571,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.SwitchMailSmtpTlsSkipVerify()
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
+	case "log-support":
+		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	default:
 		return errors.New("Setting not found")
 	}

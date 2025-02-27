@@ -1912,7 +1912,7 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "ReadMeetMessage: Error getting meet client")
 		}
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		return
 	}
 	vars := mux.Vars(r)
@@ -1960,7 +1960,7 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMessage: Error getting meet client")
 		}
@@ -2022,7 +2022,7 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "PostMeetMeeting: Error getting meet client")
 		}
@@ -2084,7 +2084,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "ViewMeetMessage: Error getting meet client")
 		}
@@ -2133,7 +2133,7 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreateDChannelMeet: Error getting meet client")
 		}
@@ -2182,7 +2182,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePrivateChannelMeet: Error getting meet client")
 		}
@@ -2231,7 +2231,7 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "CreatePublicChannelMeet: Error getting meet client")
 		}
@@ -2280,7 +2280,7 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DeleteChannelMeet: Error getting meet client")
 		}
@@ -2331,7 +2331,7 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LeaveChannelMeet: Error getting meet client")
 		}
@@ -2382,7 +2382,7 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: Error getting meet client")
 		}
@@ -2441,7 +2441,7 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "LogoutMeet: Error getting meet client")
 		}
@@ -2512,7 +2512,7 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "UploadFileMeet: Error getting meet client")
 		}
@@ -2566,7 +2566,7 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil {
-		http.Error(w, "Error getting meet client", http.StatusInternalServerError)
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "DownloadFileMeet: Error getting meet client")
 		}
