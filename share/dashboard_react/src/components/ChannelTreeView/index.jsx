@@ -172,7 +172,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                             {type === 'P' && (
                                                 <>
                                                 <Box className={styles.channelActionsButtons}>
-                                                    <LeaveUserChannelButton selectedChannel={channel.id} />
+                                                    <LeaveUserChannelButton selectedChannel={channel.id} onSelectChannel={onSelectChannel} />
                                                     <AddUserChannelButton selectedChannel={channel.id} allUsers={allUsers} usersStatus={usersStatus}/>
                                                 </Box>
                                                 </>

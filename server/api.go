@@ -612,10 +612,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 		//to get meet token and create a client while login
 		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-		if err != nil && repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Error retrieving meet token: %s", err)
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
+			}
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 		}
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 
 		if strings.Contains(user.Username, "@") {
 			tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
@@ -1863,10 +1866,10 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 	if err != nil || meetClient == nil || meetClient.UserID == "" {
-		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "MeetInfo: Error getting meet client")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "MeetInfo: Error getting meet client: %e", err)
 		}
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
 		return
 	}
 	info := struct {
@@ -2223,6 +2226,7 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePrivateChannelMeet: Enable to create channel: %e", err)
 		return
 	}
 
