@@ -1860,7 +1860,9 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		}
 		return
 	}
 
@@ -1908,7 +1910,9 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		}
 		return
 	}
 
@@ -2028,7 +2032,9 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
+		}
 		return
 	}
 
@@ -2109,7 +2115,9 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	channelID := vars["channelId"]
 	if channelID == "" && repman.Conf.LogSupport {
 		http.Error(w, "Channel ID is required", http.StatusBadRequest)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "ViewMeetMessage: Channel ID is required")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "ViewMeetMessage: Channel ID is required")
+		}
 		return
 	}
 
@@ -2226,7 +2234,9 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 
 	if err != nil {
 		http.Error(w, "Error view message API", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePrivateChannelMeet: Enable to create channel: %e", err)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePrivateChannelMeet: Enable to create channel: %e")
+		}
 		return
 	}
 

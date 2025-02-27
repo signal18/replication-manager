@@ -225,7 +225,7 @@ func GetMeetClient(userID string, isLogSupport bool) (*MeetChatClient, error) {
 		}
 		return meetClient, err
 	}
-	err = meetClient.SetUserStatusOnline(isLogSupport)
+	err = meetClient.SetUserStatusOnline()
 	if err != nil {
 		if isLogSupport {
 			fmt.Printf("GetMeetClient Error: failed to set user as online : %e", err)
@@ -406,9 +406,8 @@ func (c *MeetChatClient) GetFilesMessagesMetadata(metadata []MeetFile, fileId st
 }
 
 func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelMessages, error) {
-	posts, resp, err := c.Client.GetPostsForChannel(channelID, page, 30, "", true)
+	posts, _, err := c.Client.GetPostsForChannel(channelID, page, 30, "", true)
 	if err != nil {
-		fmt.Println("ReadMessages Mattermost Error:", err, resp.StatusCode)
 		return nil, err
 	}
 
@@ -515,9 +514,8 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 		Message:   message,
 	}
 
-	post_mod, resp, err := c.Client.CreatePost(post)
+	post_mod, _, err := c.Client.CreatePost(post)
 	if err != nil {
-		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
 		return "", err
 	}
 
@@ -586,7 +584,7 @@ func (c *MeetChatClient) GetAllUsers() (map[string]string, error) {
 	usersMap := make(map[string]string)
 
 	if err != nil {
-		fmt.Printf("GetAllUsers Error: ", err, ", StatusCode: ", resp.StatusCode)
+		fmt.Println("GetAllUsers Error: ", err, ", StatusCode: ", resp.StatusCode)
 		return usersMap, err
 	}
 
@@ -666,7 +664,7 @@ func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, 
 }
 
 func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, string, error) {
-	channel, resp, err := c.Client.CreateChannel(&model.Channel{
+	channel, _, err := c.Client.CreateChannel(&model.Channel{
 		CreatorId:   c.UserID,
 		Name:        channelName,
 		DisplayName: channelName,
@@ -675,7 +673,6 @@ func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, strin
 	})
 
 	if err != nil {
-		fmt.Println("CreatePrivateChannel Mattermost Error:", err, resp.StatusCode)
 		return "", "", err
 	}
 
@@ -686,13 +683,10 @@ func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, strin
 }
 
 func (c *MeetChatClient) DeleteChannel(channelID string) error {
-	resp, err := c.Client.DeleteChannel(channelID)
+	_, err := c.Client.DeleteChannel(channelID)
 	if err != nil {
-		fmt.Println("DeleteChannel Mattermost Error:", err, resp.StatusCode)
 		return err
 	}
-
-	fmt.Println("DeleteChannel Mattermost :", resp.StatusCode)
 
 	//update the direct channels
 	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
@@ -701,9 +695,8 @@ func (c *MeetChatClient) DeleteChannel(channelID string) error {
 }
 
 func (c *MeetChatClient) LeaveChannel(channelID string) error {
-	resp, err := c.Client.RemoveUserFromChannel(channelID, c.UserID)
+	_, err := c.Client.RemoveUserFromChannel(channelID, c.UserID)
 	if err != nil {
-		fmt.Println("LeaveChannel Mattermost Error:", err, resp.StatusCode)
 		return err
 	}
 
@@ -714,9 +707,8 @@ func (c *MeetChatClient) LeaveChannel(channelID string) error {
 }
 
 func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
-	_, resp, err := c.Client.AddChannelMember(channelID, userID)
+	_, _, err := c.Client.AddChannelMember(channelID, userID)
 	if err != nil {
-		fmt.Println("LeaveChannel Mattermost Error:", err, resp.StatusCode)
 		return err
 	}
 
@@ -727,11 +719,8 @@ func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
 }
 
 // to set user as online
-func (c *MeetChatClient) SetUserStatusOnline(isLogSupport bool) error {
+func (c *MeetChatClient) SetUserStatusOnline() error {
 	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
-	if err != nil && isLogSupport {
-		fmt.Printf("SetUserStatusOnline Mattermost Error:", err)
-	}
 	return err
 }
 
