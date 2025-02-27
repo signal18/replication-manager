@@ -2,7 +2,6 @@ package alert
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/jordan-wright/email"
@@ -39,9 +38,5 @@ func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
 	}
 	e.Text = []byte(text)
 
-	err := mailer.Send(e)
-	if err != nil {
-		log.Printf("ERROR: Could not send mail alert: %s", err)
-	}
-	return err
+	return mailer.Send(e)
 }

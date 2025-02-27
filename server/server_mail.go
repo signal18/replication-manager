@@ -13,11 +13,7 @@ import (
 func (repman *ReplicationManager) InitMailer() error {
 	var m *mailer.Mailer
 	var err error
-	if repman.Conf.MailMaxPool > 0 {
-		m, err = mailer.NewMailerWithPool(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailMaxPool, repman.Conf.MailTimeout)
-	} else {
-		m, err = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify)
-	}
+	m, err = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailTimeout, repman.Conf.MailMaxPool)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
 		return err

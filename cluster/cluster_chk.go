@@ -545,7 +545,12 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		go func() {
 			err := alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
+				if cluster.failSendCount < 3 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
+				}
+				cluster.failSendCount++
+			} else {
+				cluster.failSendCount = 0
 			}
 		}()
 	}
@@ -553,6 +558,12 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 	cluster.BashScriptAlert(alert)
 
 	return nil
+}
+
+func (cluster *Cluster) CheckSendMail() {
+	if cluster.failSendCount > 3 {
+		cluster.SetState("WARN0138", state.State{ErrType: "WARN", ErrDesc: clusterError["WARN0138"], ErrFrom: "CHECK"})
+	}
 }
 
 func (cluster *Cluster) CheckAllTableChecksum() {
