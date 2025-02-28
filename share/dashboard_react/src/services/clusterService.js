@@ -372,8 +372,8 @@ function resetSlaveAll(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reset-slave-all`)
 }
 
-function cancelServerJob(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/cancel-job`)
+function cancelServerJob(clusterName, serverId, taskName, baseURL) {
+  return getApi(baseURL).get(`/api/clusters/${clusterName}/servers/${serverId}/actions/job-cancel/${taskName}`)
 }
 //#endregion Server management APIs
 
