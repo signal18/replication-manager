@@ -456,6 +456,18 @@ func (cluster *Cluster) InitFromConf() {
 			Timeout:        5 * time.Second, // request timeout for calling slack api
 		})
 	}
+
+	if cluster.Conf.Cloud18AlertSlackURL != "" {
+		cluster.LogSlack.AddHook(&logrus_slack.SlackHook{
+			HookURL:        cluster.Conf.Cloud18AlertSlackURL,
+			AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+			Channel:        cluster.Conf.Cloud18AlertSlackChannel,
+			IconEmoji:      ":ghost:",
+			Username:       cluster.Conf.Cloud18AlertSlackUser,
+			Timeout:        5 * time.Second, // request timeout for calling slack api
+		})
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {

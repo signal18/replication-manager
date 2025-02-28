@@ -2712,15 +2712,37 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-slack-channel":
 		mycluster.SetAlertSlackChannel(value)
 	case "alert-slack-url":
-		mycluster.SetAlertSlackUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
+	case "cloud18-alert-slack-channel":
+		mycluster.SetCloud18AlertSlackChannel(value)
+	case "cloud18-alert-slack-url":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetCloud18AlertSlackUrl(string(val))
+	case "cloud18-alert-slack-user":
+		mycluster.SetCloud18AlertSlackUser(value)
 	case "alert-teams-proxy-url":
-		mycluster.SetAlertTeamsProxyUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertTeamsProxyUrl(string(val))
 	case "alert-teams-state":
 		mycluster.SetAlertTeamsState(value)
 	case "alert-teams-url":
-		mycluster.SetAlertTeamsUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
 	case "mail-smtp-addr":

@@ -211,7 +211,7 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'alert-slack-url',
-                value: value
+                value: btoa(value)
               })
             )
           }
@@ -249,7 +249,7 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'alert-teams-proxy-url',
-                value: value
+                value: btoa(value)
               })
             )
           }
@@ -287,7 +287,7 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'alert-teams-url',
-                value: value
+                value: btoa(value)
               })
             )
           }

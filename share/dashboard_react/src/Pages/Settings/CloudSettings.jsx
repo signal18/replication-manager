@@ -293,7 +293,64 @@ function CloudSettings({ selectedCluster, user }) {
           value: (
             <RMIconButton icon={HiKey} onClick={() => { setCredentialType('cloud18-sponsor-user-credentials'); setIsCredentialModalOpen(true) }} />
           )
-        }
+        },
+        {
+          key: 'Cloud18 Alert Channel',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.cloud18AlertSlackChannel}
+              confirmTitle={`Confirm slack channel to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'cloud18-alert-slack-channel',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Cloud18 Alert Url',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.cloud18AlertSlackUrl}
+              confirmTitle={`Confirm slack url to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'alert-slack-url',
+                    value: btoa(value)
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Cloud18 Alert User',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.cloud18AlertSlackUser}
+              confirmTitle={`Confirm slack user to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'alert-slack-user',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
       ]
       : [])
   ]
