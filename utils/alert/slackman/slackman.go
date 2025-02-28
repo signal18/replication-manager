@@ -2,10 +2,13 @@ package slackman
 
 import (
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/bluele/logrus_slack"
+	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -21,7 +24,7 @@ type SlackConfig struct {
 
 type SlackmanHook struct {
 	Config  SlackConfig
-	hook    *logrus_slack.SlackHook // Webhook URL
+	hook    logrus.Hook // Webhook URL
 	Enabled bool
 	mu      sync.Mutex
 }
@@ -94,21 +97,34 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 		return false
 	}
 
-	url, err := url.Parse(sh.Config.URL)
+	URL, err := url.Parse(sh.Config.URL)
 	if err != nil {
 		s.Errorf("Failed to parse Slack URL: %v", err)
 		return false
 	}
 
-	sh.hook = &logrus_slack.SlackHook{
-		HookURL:        url.String(),
-		AcceptedLevels: sh.Config.AcceptedLevels,
-		Channel:        sh.Config.Channel,
-		IconEmoji:      sh.Config.Icon,
-		Username:       sh.Config.User,
-		Timeout:        sh.Config.Timeout,
+	if strings.Contains(URL.Host, "slack.com") {
+		sh.hook = &logrus_slack.SlackHook{
+			HookURL:        URL.String(),
+			AcceptedLevels: sh.Config.AcceptedLevels,
+			Channel:        sh.Config.Channel,
+			IconEmoji:      sh.Config.Icon,
+			Username:       sh.Config.User,
+			Timeout:        sh.Config.Timeout,
+		}
+	} else {
+		sh.hook = &meethelper.MeetHook{
+			WebhookURL:     URL.String(),
+			AcceptedLevels: sh.Config.AcceptedLevels,
+			Timeout:        sh.Config.Timeout,
+			FieldHeader:    "Replication Manager alert",
+			Model: model.IncomingWebhookRequest{
+				ChannelName: sh.Config.Channel,
+				Username:    sh.Config.User,
+				IconEmoji:   sh.Config.Icon,
+			},
+		}
 	}
-
 	s.AddHook(sh.hook)
 
 	sh.Enabled = true
