@@ -42,6 +42,15 @@ func NewSlackManager() *SlackManager {
 	return manager
 }
 
+func (s *SlackManager) IsHookActive(hooktype string) bool {
+	sh := s.GetHook(hooktype)
+	if sh == nil {
+		return false
+	}
+
+	return sh.Enabled
+}
+
 func (s *SlackManager) GetHook(hooktype string) *SlackmanHook {
 	if v, ok := s.hook.Load(hooktype); ok {
 		return v.(*SlackmanHook)

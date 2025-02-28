@@ -330,6 +330,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/send-alert/{hooktype}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
@@ -6150,6 +6155,67 @@ func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.Respon
 		err := mycluster.ResticResetQueue()
 		if err != nil {
 			http.Error(w, "Error resetting task queue :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue reset"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+type MeetAlertMessage struct {
+	Fields  log.Fields `json:"fields"`
+	Message string     `json:"message"`
+}
+
+// handlerMuxSendCloud18Alert handles the HTTP request to send a cloud18 alert for a given cluster.
+// @Summary Send Cloud18 Alert
+// @Description	Send a cloud18 alert for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param hooktype path string true "Hook Type" Enums(cloud18, slack)
+// @Param body body MeetAlertMessage true "Alert Message"
+// @Success 200 {string} string "Task queue reset"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/send-alert/{hooktype} [post]
+func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	hooktype := vars["hooktype"]
+
+	if hooktype == "" {
+		http.Error(w, "No hook type", 500)
+		return
+	}
+
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		var post MeetAlertMessage
+		//decode request into post struct
+		err := json.NewDecoder(r.Body).Decode(&post)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "Error in request")
+			return
+		}
+
+		if mycluster.LogSlack.IsHookActive(hooktype) {
+			mycluster.LogSlack.WithFields(post.Fields).Warnf(post.Message)
+		} else {
+			http.Error(w, "No slack hook", 500)
 			return
 		}
 

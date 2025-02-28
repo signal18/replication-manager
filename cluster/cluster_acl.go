@@ -714,6 +714,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/send-email") {
 			return true
 		}
+
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/send-alert") {
+			return true
+		}
 	}
 
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {

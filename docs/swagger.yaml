@@ -1585,6 +1585,14 @@ definitions:
         type: string
       cloud18:
         type: boolean
+      cloud18Alert:
+        type: boolean
+      cloud18AlertSlackChannel:
+        type: string
+      cloud18AlertSlackUrl:
+        type: string
+      cloud18AlertSlackUser:
+        type: string
       cloud18CostCurrency:
         type: string
       cloud18DatabaseReadSrvRecord:
@@ -1826,6 +1834,10 @@ definitions:
         type: boolean
       fullVersion:
         type: string
+      gitMaxWorker:
+        type: integer
+      gitMinWorker:
+        type: integer
       gitMonitoringTicker:
         type: integer
       gitUrl:
@@ -1962,6 +1974,8 @@ definitions:
         type: integer
       logLevel:
         type: integer
+      logMailerLevel:
+        type: integer
       logOrchestrator:
         type: boolean
       logOrchestratorLevel:
@@ -1983,6 +1997,10 @@ definitions:
         type: boolean
       logSstLevel:
         description: internal replication-manager sst
+        type: integer
+      logSupport:
+        type: boolean
+      logSupportLevel:
         type: integer
       logSyslog:
         type: boolean
@@ -2292,6 +2310,8 @@ definitions:
         type: string
       provDbDockerRunArgs:
         type: string
+      provDbDockerRunArgsLimit:
+        type: boolean
       provDbDockerTmpfsSize:
         type: string
       provDbDomain:
@@ -2783,6 +2803,9 @@ definitions:
       serverId:
         type: integer
     type: object
+  logrus.Fields:
+    additionalProperties: true
+    type: object
   mailer.Email:
     properties:
       attachments:
@@ -2982,6 +3005,13 @@ definitions:
       status:
         type: string
       uuid:
+        type: string
+    type: object
+  server.MeetAlertMessage:
+    properties:
+      fields:
+        $ref: '#/definitions/logrus.Fields'
+      message:
         type: string
     type: object
   server.ReplicationManager:
@@ -3883,6 +3913,55 @@ paths:
       summary: Rotate passwords for a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/send-alert/{hooktype}:
+    post:
+      consumes:
+      - application/json
+      description: Send a cloud18 alert for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Hook Type
+        enum:
+        - cloud18
+        - slack
+        in: path
+        name: hooktype
+        required: true
+        type: string
+      - description: Alert Message
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.MeetAlertMessage'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Send Cloud18 Alert
+      tags:
+      - Cloud18
   /api/clusters/{clusterName}/actions/send-email:
     post:
       consumes:
