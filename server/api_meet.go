@@ -55,6 +55,9 @@ func (repman *ReplicationManager) apiMeetProtectedHandler(router *mux.Router) {
 	router.Handle("/meet/add/{channelId}/{userId}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.AddUserChannelMeetHandler)),
 	))
+	router.Handle("/meet/join/{channelId}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.JoinChannelMeetHandler)),
+	))
 	router.Handle("/meet/logout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.LogoutMeetHandler)),
 	))
@@ -78,7 +81,9 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		}
 		return
 	}
 
@@ -95,6 +100,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		ChannelIdsOpen          map[string]string `json:"channel_ids_open"`
 		ChannelIdsPrivate       map[string]string `json:"channel_ids_private"`
 		ChannelIdsDirect        map[string]string `json:"channel_ids_direct"`
+		ChannelIdsOpenJoin      map[string]string `json:"channel_ids_open_join"`
 		UnReadMessagesByChannel map[string]int    `json:"unread_messages_by_channel"`
 		AllUsers                map[string]string `json:"all_users"`
 		StatusUsers             map[string]string `json:"status_users"`
@@ -103,6 +109,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		ChannelIdsOpen:          meetClient.ChannelIdsOpen,
 		ChannelIdsPrivate:       meetClient.ChannelIdsPrivate,
 		ChannelIdsDirect:        meetClient.ChannelIdsDirect,
+		ChannelIdsOpenJoin:      meetClient.ChannelIdsOpenJoin,
 		UnReadMessagesByChannel: meetClient.UnReadMessagesByChannel,
 		AllUsers:                meetClient.AllUser,
 		StatusUsers:             meetClient.StatusUsers,
@@ -126,7 +133,9 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+		}
 		return
 	}
 
@@ -246,7 +255,9 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 
 	if userID == "" {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
+		}
 		return
 	}
 
@@ -334,7 +345,7 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	err = meetClient.ViewMessages(channelID)
 
 	if err != nil {
-		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		http.Error(w, "Error view message", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "ViewMeetMessage: error view message from channel %s", channelID)
 		}
@@ -389,9 +400,9 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	newChannelId, newChannelName, err := meetClient.CreateDirectChannel(userId)
 
 	if err != nil {
-		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		http.Error(w, "Error creating direct channel", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreateDChannelMeet: User ID is required")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreateDChannelMeet: Failed to create direct channel")
 		}
 		return
 	}
@@ -495,7 +506,10 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	newChannelId, newChannelName, err := meetClient.CreateOpenChannel(channelName)
 
 	if err != nil {
-		http.Error(w, "Error view message API", http.StatusInternalServerError)
+		http.Error(w, "Error creating public channel", http.StatusInternalServerError)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePublicChannelMeet: Failed to create public channel")
+		}
 		return
 	}
 
@@ -673,6 +687,59 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	}
 
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "AddUserChannelMeet: Success to add user %s to channel %s", userId, channelID)
+
+	json.NewEncoder(w).Encode(response)
+}
+
+func (repman *ReplicationManager) JoinChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+
+	userID := r.Header.Get("X-User-ID")
+
+	if userID == "" {
+		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "JoinChannelMeet: No user ID in request header")
+		}
+		return
+	}
+
+	meetClient, err := meethelper.GetMeetClient(userID, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+	if err != nil {
+		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "JoinChannelMeet: Error getting meet client")
+		}
+		return
+	}
+
+	vars := mux.Vars(r)
+	channelID := vars["channelId"]
+	if channelID == "" {
+		http.Error(w, "Channel ID is required", http.StatusBadRequest)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "JoinChannelMeet: Channel ID is required")
+		}
+		return
+	}
+
+	err = meetClient.AddUserChannel(channelID, userID)
+
+	if err != nil {
+		http.Error(w, "Error add user to channel", http.StatusInternalServerError)
+		if repman.Conf.LogSupport {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "JoinChannelMeet: error join channel (%s)", channelID)
+		}
+		return
+	}
+
+	response := map[string]string{
+		"status":    "success",
+		"channelId": channelID,
+	}
+
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "JoinChannelMeet: Success to add user %s to channel %s", userID, channelID)
 
 	json.NewEncoder(w).Encode(response)
 }

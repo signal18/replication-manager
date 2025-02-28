@@ -14,13 +14,17 @@ export const meetService = {
     createPublicChannel,
     deleteChannel,
     leaveChannel,
-    addUserChannel
+    addUserChannel,
+    joinChannel
 }
 
 
 async function getMeetInfo() {
     try {
         const response = await meetApi.get('info');
+        if (response.status !== 200) {
+            throw new Error(`Error fetching meet info: ${response.status} ${response.data}`);
+        }
         return response;
     } catch (error) {
         console.error('Error fetching meet info:', error);
@@ -183,6 +187,20 @@ async function leaveChannel(ChannelId) {
 async function addUserChannel(ChannelId, UserId) {
     try {
         const response = await meetApi.get(`add/${ChannelId}/${UserId}`);
+        if (!response.data || !response.data.channelId) {
+            throw new Error('Invalid response from API');
+        }
+        return response.data;
+
+    } catch (error) {
+        console.error('Error view meet messages:', error);
+        throw error;
+    }
+}
+
+async function joinChannel(ChannelId) {
+    try {
+        const response = await meetApi.get(`join/${ChannelId}`);
         if (!response.data || !response.data.channelId) {
             throw new Error('Invalid response from API');
         }

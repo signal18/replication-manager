@@ -32,11 +32,6 @@ function Login(props) {
   }, [])
 
   useEffect(() => {
-    localStorage.removeItem('selectedChannel');
-    localStorage.removeItem('chatOpen');
-  }, [])
-
-  useEffect(() => {
     if (!loading || !loadingGitLogin) {
       if (isLogged && user) {
         navigate('/')

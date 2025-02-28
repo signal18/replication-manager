@@ -26,7 +26,7 @@ function Navbar({ username }) {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
-  const { meetInfo, unreadMessagesByChannel } = useSelector((state) => state?.meet)
+  const { meetInfo, unreadMessagesByChannel, meetError } = useSelector((state) => state?.meet)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
   const [logoText, setLogoText] = useState('REPLICATION MANAGER')
@@ -39,22 +39,19 @@ function Navbar({ username }) {
   } = useSelector((state) => state)
 
   useEffect(() => {
-    localStorage.setItem('chatOpen', isChatOpen);
-  }, [isChatOpen]);
-
-  useEffect(() => {
-    if (!username){
-      localStorage.removeItem('chatOpen');
-      localStorage.removeItem('selectedChannel');
-      localStorage.removeItem('userID')
+    if (isLogged){
+      localStorage.setItem('chatOpen', isChatOpen);
     }
-    
-  }, [isChatOpen, username]);
+  }, [isChatOpen, isLogged]);
 
   //to get the meet info
   useEffect(() => {
     if (isLogged) {
       dispatch(getMeetInfo());
+    }else{
+      localStorage.removeItem('chatOpen');
+      localStorage.removeItem('selectedChannel');
+      localStorage.removeItem('userID')
     }
   }, [isLogged, dispatch]);
 
@@ -165,7 +162,8 @@ function Navbar({ username }) {
                         <Flex className={styles.chatIcon}>
                           <AlertBadge
                             isSupport={true}
-                            text='Support'
+                            isConnect={!meetError}
+                            text={meetError ? 'Support (disconnected)' : 'Support'}
                             count={unreadMessagesCount || 0}
                             onClick={toggleChat}
                             showText={!isMobile}

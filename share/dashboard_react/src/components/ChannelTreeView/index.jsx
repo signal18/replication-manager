@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {Accordion, AccordionItem, AccordionButton, AccordionIcon, AccordionPanel,Box, Button, Menu, MenuButton, MenuList, MenuItem, Input, AlertDialog,AlertDialogBody, AlertDialogFooter, AlertDialogHeader, AlertDialogContent, AlertDialogOverlay } from '@chakra-ui/react';
 import styles from './styles.module.scss';
-import {createDirectChannel, createPublicChannel, createPrivateChannel} from '../../redux/meetSlice';
-import { FaPlus, FaCircle } from 'react-icons/fa';
+import {createDirectChannel, createPublicChannel, createPrivateChannel, joinChannel} from '../../redux/meetSlice';
+import { FaPlus, FaCircle, FaArrowRight } from 'react-icons/fa';
 import LeaveUserChannelButton from '../LeaveUserChannelButton';
 import AddUserChannelButton from '../AddUserChannelButton';
 
-const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, usersStatus, selectedChannel = '' , selectedAccordionIndex, setSelectedAccordionIndex }) => {
+const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, usersStatus, selectedChannel = '' , selectedAccordionIndex, setSelectedAccordionIndex, openChannelToJoin }) => {
     const dispatch = useDispatch();
     const [searchTerm, setSearchTerm] = useState('');
     const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -30,12 +30,18 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
 
     const allUsersArray = Object.entries(allUsers).map(([userId, userName]) => ({ id: userId, name: userName }));
 
+    const openChannelToJoinArray = Object.entries(openChannelToJoin).map(([channelName, channelId]) => ({ id: channelId, name: channelName }));
+
     const filteredUsers = allUsersArray.filter(user =>
         user.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    ); 
 
     const handleUserClick = (userId) => {
         dispatch(createDirectChannel({UserId: userId}));
+    };
+
+    const handleChannelClick = (channelId) => {
+        dispatch(joinChannel({ChannelId: channelId}));
     };
 
 
@@ -78,7 +84,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                             </p>
                             {selectedChannel && (
                                 <Box className={styles.channelsTypeButton}>
-                                    {channels.find(c => c.id === selectedChannel)?.type === 'P' && (
+                                    {channels.find(c => c.id === selectedChannel)?.type !== 'D' && (
                                         <>
                                             <LeaveUserChannelButton selectedChannel={selectedChannel} onSelectChannel={onSelectChannel} />
                                             <AddUserChannelButton selectedChannel={selectedChannel} allUsers={allUsers} usersStatus={usersStatus}/>
@@ -113,6 +119,34 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                         >
                                             <FaPlus />
                                         </Button>
+                                    )}
+                                    {type === 'O' && (
+                                        <Box >
+                                            <Menu>
+                                                <MenuButton as={Button} colorScheme="green" ml="auto">
+                                                    <FaArrowRight />
+                                                </MenuButton>
+                                                <MenuList>
+                                                    <Input
+                                                        placeholder="Search public channel to join..."
+                                                        value={searchTerm}
+                                                        onChange={(e) => setSearchTerm(e.target.value)}
+                                                        mb={2}
+                                                        sx={{ color: 'black !important' }}
+                                                    />
+                                                    {openChannelToJoinArray.map((channel) => (
+                                                        <MenuItem
+                                                            key={channel.id}
+                                                            onClick={() => handleChannelClick(channel.id)}
+                                                        >
+                                                            <Box display="flex" alignItems="center" color='black'>
+                                                                {channel.name}
+                                                            </Box>
+                                                        </MenuItem>
+                                                    ))}
+                                                </MenuList>
+                                            </Menu>
+                                        </Box>
                                     )}
                                     {type === 'D' && (
                                         <Box >
@@ -169,7 +203,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                                 {type !== 'D' && channel.name}
                                             </div>
                                             <div className={styles.channelUnreadMessages}>{unReadMessagesByChannel && unReadMessagesByChannel[channel.id] > 0 && ` (${unReadMessagesByChannel[channel.id]})`}</div>
-                                            {type === 'P' && (
+                                            {type !== 'D'  && (
                                                 <>
                                                 <Box className={styles.channelActionsButtons}>
                                                     <LeaveUserChannelButton selectedChannel={channel.id} onSelectChannel={onSelectChannel} />

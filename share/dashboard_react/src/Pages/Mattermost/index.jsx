@@ -162,7 +162,16 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                 <DrawerBody className={styles.mattermostContainer} >
                     <Box className={styles.accordionPanel}>
                         <Box className={styles.treeViewWrapper}>
-                            <ChannelTreeView onSelectChannel={(channel) => { setSelectedChannel(channel); setSelectedAccordionIndex([]);}} unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} allUsers={meetInfo?.all_users || {}} usersStatus={meetInfo?.status_users || {}} selectedChannel={selectedChannel} selectedAccordionIndex={selectedAccordionIndex} setSelectedAccordionIndex={setSelectedAccordionIndex}/>
+                            <ChannelTreeView 
+                                onSelectChannel={(channel) => { setSelectedChannel(channel); setSelectedAccordionIndex([]);}} 
+                                unReadMessagesByChannel={meetInfo?.unread_messages_by_channel || {}} 
+                                allUsers={meetInfo?.all_users || {}} 
+                                usersStatus={meetInfo?.status_users || {}} 
+                                selectedChannel={selectedChannel} 
+                                selectedAccordionIndex={selectedAccordionIndex} 
+                                setSelectedAccordionIndex={setSelectedAccordionIndex}
+                                openChannelToJoin={meetInfo?.channel_ids_open_join || {}}
+                            />
                         </Box>
                         {selectedChannel && (
                             <Box

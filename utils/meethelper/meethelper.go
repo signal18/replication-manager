@@ -40,6 +40,7 @@ type MeetChatClient struct {
 	ChannelIdsOpen          map[string]string //public channel
 	ChannelIdsPrivate       map[string]string //private channel
 	ChannelIdsDirect        map[string]string //direct channel (to talk to other users)
+	ChannelIdsOpenJoin      map[string]string //public channel to join
 	URL                     string
 	Token                   string
 	AllUser                 map[string]string //to store id and name of all users (for direct chat)
@@ -211,7 +212,7 @@ func GetMeetClient(userID string, isLogSupport bool) (*MeetChatClient, error) {
 		}
 		return meetClient, err
 	}
-	meetClient.ChannelIdsOpen, meetClient.ChannelIdsPrivate, meetClient.ChannelIdsDirect, meetClient.UnReadMessagesByChannel, err = meetClient.GetChannels()
+	err = meetClient.UpdateChannels()
 	if err != nil {
 		if isLogSupport {
 			fmt.Printf("GetMeetClient Error: failed to get all channels : %e", err)
@@ -352,15 +353,16 @@ func (c *MeetChatClient) GetTeamIDs() ([]string, error) {
 	return teamIDs, nil
 }
 
-func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string, map[string]int, error) {
+func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string, map[string]string, map[string]int, error) {
 	channels, _, err := c.Client.GetChannelsForUserWithLastDeleteAt(c.UserID, 0)
 	channelsMapO := make(map[string]string)
 	channelsMapP := make(map[string]string)
 	channelsMapD := make(map[string]string)
+	channelsMapOJoin := make(map[string]string)
 	unReadMessagesByChannel := make(map[string]int)
 
 	if err != nil {
-		return channelsMapO, channelsMapP, channelsMapD, unReadMessagesByChannel, err
+		return channelsMapO, channelsMapP, channelsMapD, channelsMapOJoin, unReadMessagesByChannel, err
 	}
 
 	for _, channel := range channels {
@@ -378,11 +380,26 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 				channelsMapD[channelName] = channel.Id
 			}
 		}
-		unReadMessages := c.GetUnReadMessages(channel.Id)
-		unReadMessagesByChannel[channel.Id] = unReadMessages
+		unReadMessages, err := c.GetUnReadMessages(channel.Id)
+		if err == nil {
+			unReadMessagesByChannel[channel.Id] = unReadMessages
+		}
+
 	}
 
-	return channelsMapO, channelsMapP, channelsMapD, unReadMessagesByChannel, nil
+	for _, team := range c.TeamIds {
+		channels, _, err = c.Client.GetPublicChannelsForTeam(team, 0, 50, "")
+		if err != nil {
+			return channelsMapO, channelsMapP, channelsMapD, channelsMapOJoin, unReadMessagesByChannel, err
+		}
+		for _, channel := range channels {
+			if !containsValue(channelsMapO, channel.Id) {
+				channelsMapOJoin[channel.Name] = channel.Id
+			}
+		}
+	}
+
+	return channelsMapO, channelsMapP, channelsMapD, channelsMapOJoin, unReadMessagesByChannel, nil
 }
 
 // to set file and meta data
@@ -522,9 +539,9 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 	//fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
 
 	//if a user post a message, it means he read the channel
-	c.ViewMessages(channelID)
+	err = c.ViewMessages(channelID)
 
-	return post_mod.Id, nil
+	return post_mod.Id, err
 }
 
 func (c *MeetChatClient) PostAdvancedMessage(post *model.Post, markAsRead bool) (string, error) {
@@ -536,10 +553,10 @@ func (c *MeetChatClient) PostAdvancedMessage(post *model.Post, markAsRead bool) 
 	}
 
 	if markAsRead {
-		c.ViewMessages(post.ChannelId)
+		err = c.ViewMessages(post.ChannelId)
 	}
 
-	return post_mod.Id, nil
+	return post_mod.Id, err
 }
 
 func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, error) {
@@ -561,30 +578,28 @@ func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, e
 		},
 	}
 
-	post_mod, resp, err := c.Client.CreatePost(post)
+	post_mod, _, err := c.Client.CreatePost(post)
 	if err != nil {
-		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
 		return "", err
 	}
 
 	//fmt.Println("Message posted successfully on Mattermost", post_mod.Id)
 
 	//if a user post a message, it means he read the channel
-	c.ViewMessages(channelID)
+	err = c.ViewMessages(channelID)
 
-	return post_mod.Id, nil
+	return post_mod.Id, err
 }
 
 func (c *MeetChatClient) GetAllUsers() (map[string]string, error) {
 	if len(c.TeamIds) == 0 {
 		return nil, fmt.Errorf("GetAllUsers Mattermost Error: No team for user")
 	}
-	users, resp, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
+	users, _, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
 
 	usersMap := make(map[string]string)
 
 	if err != nil {
-		fmt.Println("GetAllUsers Error: ", err, ", StatusCode: ", resp.StatusCode)
 		return usersMap, err
 	}
 
@@ -595,21 +610,20 @@ func (c *MeetChatClient) GetAllUsers() (map[string]string, error) {
 	return usersMap, nil
 }
 
-func (c *MeetChatClient) GetUnReadMessages(channelID string) int {
+func (c *MeetChatClient) GetUnReadMessages(channelID string) (int, error) {
 
 	channelUnread, _, err := c.Client.GetChannelUnread(channelID, c.UserID)
 	if err != nil {
-		fmt.Println("GetUnReadMessages Mattermost Error:", err)
-		return 0
+		return 0, err
 	}
 
-	return int(channelUnread.MsgCount)
+	return int(channelUnread.MsgCount), nil
 }
 
 // to update the channels to load unread messages
 func (c *MeetChatClient) UpdateChannels() error {
 	var err error
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.ChannelIdsOpenJoin, c.UnReadMessagesByChannel, err = c.GetChannels()
 	return err
 }
 
@@ -621,7 +635,6 @@ func (c *MeetChatClient) ViewMessages(channelID string) error {
 	})
 
 	if err != nil {
-		fmt.Println("ViewMessages Mattermost Error:", err)
 		return err
 	}
 
@@ -631,20 +644,19 @@ func (c *MeetChatClient) ViewMessages(channelID string) error {
 
 // to create direct channel with a user
 func (c *MeetChatClient) CreateDirectChannel(userID string) (string, string, error) {
-	channel, resp, err := c.Client.CreateDirectChannel(c.UserID, userID)
+	channel, _, err := c.Client.CreateDirectChannel(c.UserID, userID)
 	if err != nil {
-		fmt.Println("CreateDirectChannel Mattermost Error:", err, resp.StatusCode)
 		return "", "", err
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	err = c.UpdateChannels()
 
 	return channel.Id, getValue(c.ChannelIdsDirect, channel.Id), err
 }
 
 func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, error) {
-	channel, resp, err := c.Client.CreateChannel(&model.Channel{
+	channel, _, err := c.Client.CreateChannel(&model.Channel{
 		CreatorId:   c.UserID,
 		Name:        channelName,
 		DisplayName: channelName,
@@ -653,12 +665,11 @@ func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, 
 	})
 
 	if err != nil {
-		fmt.Println("CreateOpenChannel Mattermost Error:", err, resp.StatusCode)
 		return "", "", err
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	err = c.UpdateChannels()
 
 	return channel.Id, getValue(c.ChannelIdsOpen, channel.Id), err
 }
@@ -677,7 +688,7 @@ func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, strin
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	err = c.UpdateChannels()
 
 	return channel.Id, getValue(c.ChannelIdsPrivate, channel.Id), err
 }
@@ -689,7 +700,7 @@ func (c *MeetChatClient) DeleteChannel(channelID string) error {
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	err = c.UpdateChannels()
 
 	return err
 }
@@ -701,7 +712,7 @@ func (c *MeetChatClient) LeaveChannel(channelID string) error {
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
+	err = c.UpdateChannels()
 
 	return err
 }
@@ -713,8 +724,7 @@ func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
 	}
 
 	//update the direct channels
-	c.ChannelIdsOpen, c.ChannelIdsPrivate, c.ChannelIdsDirect, c.UnReadMessagesByChannel, err = c.GetChannels()
-
+	err = c.UpdateChannels()
 	return err
 }
 
@@ -727,18 +737,12 @@ func (c *MeetChatClient) SetUserStatusOnline() error {
 // to set user as offline
 func (c *MeetChatClient) SetUserStatusOffline() error {
 	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
-	if err != nil {
-		fmt.Println("SetUserStatusOffLine Mattermost Error:", err)
-	}
 	return err
 }
 
 // to set user as away
 func (c *MeetChatClient) SetUserStatusAway() error {
 	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
-	if err != nil {
-		fmt.Println("SetUserStatusAway Mattermost Error:", err)
-	}
 	return err
 }
 
@@ -773,7 +777,6 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 	fileRes, _, err := c.Client.UploadFile(fileBytes, channelID, fileName)
 
 	if fileRes == nil || err != nil {
-		fmt.Println("UploadFile Mattermost Error:", err)
 		return err
 	}
 
@@ -786,7 +789,6 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 
 	// Post the message with the file attachment
 	if _, _, err := c.Client.CreatePost(post); err != nil {
-		fmt.Println("CreatePost Mattermost Error:", err)
 		return err
 	}
 
@@ -798,14 +800,12 @@ func (c *MeetChatClient) DownloadFileFromChannel(fileId string) ([]byte, string,
 	fileBytes, _, err := c.Client.GetFile(fileId)
 
 	if err != nil {
-		fmt.Println("Download file Mattermost Error:", err)
 		return nil, "", err
 	}
 
 	fileInfo, _, err := c.Client.GetFileInfo(fileId)
 
 	if err != nil {
-		fmt.Println("Download file Mattermost Error:", err)
 		return nil, "", err
 	}
 

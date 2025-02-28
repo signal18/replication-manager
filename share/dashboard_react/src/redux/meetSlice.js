@@ -230,6 +230,21 @@ export const addUserChannel = createAsyncThunk(
   }
 );
 
+export const joinChannel = createAsyncThunk(
+  'meet/joinChannel',
+  async ({ ChannelId}, thunkAPI) => {
+    try {
+      const response = await meetService.joinChannel(ChannelId);
+      showSuccessBanner("You have successfully joined the channel", response.status, thunkAPI);
+      return { ChannelId : response.channelId};
+    } catch (error) {
+      handleError(error, thunkAPI);
+      showErrorBanner("Error while adding user to channel", error, thunkAPI);
+      throw error;
+    }
+  }
+);
+
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {
@@ -237,6 +252,7 @@ const meetSlice = createSlice({
     messages: {},  // Stocke les messages par channelId
     loading: false,
     error: null,
+    meetError: false,
     unreadMessagesByChannel: {},
     channels: [],
   },
@@ -248,6 +264,7 @@ const meetSlice = createSlice({
         state.meetInfo = action.payload.data;
         localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
+        state.meetError = false;
         state.channels = [
           ...Object.entries(action.payload.data?.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
           ...Object.entries(action.payload.data?.channel_ids_private).map(([name, id]) => ({ name, id, type: 'P' })),
@@ -257,6 +274,10 @@ const meetSlice = createSlice({
       .addCase(logoutFromMeet.pending, (state) => {
         state.loading = true;
       })
+      .addCase(getMeetInfo.rejected, (state, action) => {
+        state.meetError = true; 
+        state.meetInfo = null;
+      })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;
         state.meetInfo = null;
@@ -264,6 +285,8 @@ const meetSlice = createSlice({
         state.unreadMessagesByChannel = {};
         state.channels = [];
         localStorage.removeItem('userID');
+        localStorage.removeItem('chatOpen');
+        localStorage.removeItem('selectedChannel');
         // Handle successful logout if needed
       })
       .addCase(logoutFromMeet.rejected, (state, action) => {

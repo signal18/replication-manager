@@ -561,7 +561,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
 
 	flags.BoolVar(&conf.LogSupport, "log-support", false, "To log messages errors or warns from mattermost")
-	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 0, "Log Support Level")
+	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 1, "Log Support Level")
 
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
