@@ -892,7 +892,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 }
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
-	cluster.Configurator.SetConfig(cluster.Conf)
+	cluster.Configurator.SetConfig(*cluster.Conf)
 	//splitmonitoringuser := cluster.Conf.User
 
 	var err error
@@ -937,7 +937,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
-	cluster.Configurator.SetConfig(cluster.Conf)
+	cluster.Configurator.SetConfig(*cluster.Conf)
 
 	//splitreplicationuser := cluster.Conf.RplUser
 

@@ -23,7 +23,7 @@ var dockerMinusRm bool
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
-	svc.ClusterConf = &cluster.Conf
+	svc.ClusterConf = cluster.Conf
 	svc.Logrus = cluster.Logrus
 	svc.UseAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {

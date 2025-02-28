@@ -168,7 +168,7 @@ func (cluster *Cluster) SwitchInteractive() {
 
 func (cluster *Cluster) SwitchReadOnly() {
 	cluster.Conf.ReadOnly = !cluster.Conf.ReadOnly
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchRplChecks() {
@@ -340,12 +340,12 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
 	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchProxySQL() {

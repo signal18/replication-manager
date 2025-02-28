@@ -347,7 +347,7 @@ func (cluster *Cluster) GetProxies() proxyList {
 	return cluster.Proxies
 }
 
-func (cluster *Cluster) GetConf() config.Config {
+func (cluster *Cluster) GetConf() *config.Config {
 	return cluster.Conf
 }
 

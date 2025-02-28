@@ -92,7 +92,7 @@ type ReplicationManager struct {
 	ClusterList          []string                          `json:"clusters"`
 	ImmutableClusterList []string                          `json:"-"`
 	Tests                []string                          `json:"tests"`
-	Conf                 config.Config                     `json:"config"`
+	Conf                 *config.Config                    `json:"config"`
 	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
 	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
 	DefaultFlagMap       map[string]interface{}            `json:"-"`
@@ -1146,11 +1146,15 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
+	if repman.Conf == nil {
+		repman.Conf = new(config.Config)
+	}
+
 	if repman.Logrus == nil {
 		repman.Logrus = log.New()
 	}
 	if repman.ConfigManager == nil {
-		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
 	}
 	repman.PeerClusters = make([]config.PeerCluster, 0)
 	repman.ModTimes = make(map[string]time.Time)
@@ -1445,7 +1449,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		if k == nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
 		}
-		repman.Conf = conf
+		*repman.Conf = conf
 
 	}
 	//	backupvipersave := viper.GetViper()
@@ -1488,9 +1492,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
-	repman.Conf = conf
+	*repman.Conf = conf
 	repman.ViperConfig = fistRead
-	repman.ConfigManager.UpdateLoggerConfig("default", &repman.Conf)
+	repman.ConfigManager.UpdateLoggerConfig("default", repman.Conf)
 	repman.ConfigManager.SetWorker(repman.Conf.GitMinWorker, repman.Conf.GitMaxWorker)
 }
 
@@ -1993,7 +1997,7 @@ func (repman *ReplicationManager) Run() error {
 			},
 		})
 
-		go graphite.RunCarbon(&repman.Conf)
+		go graphite.RunCarbon(repman.Conf)
 		repman.Logrus.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
 			"httpport":   repman.Conf.GraphiteCarbonServerPort,
@@ -2025,7 +2029,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.CheckAndRotateLog(carbonApiLog, ExpectedUser)
 		})
 
-		go graphite.RunCarbonApi(&repman.Conf)
+		go graphite.RunCarbonApi(repman.Conf)
 		repman.Logrus.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
@@ -2153,7 +2157,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.ConfigManager.SaveConfig("default", repman.Save, true)
 
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
-				repman.ConfigManager.GitPush(&repman.Conf, repman.ClusterList, true)
+				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 			}
 
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
@@ -2233,7 +2237,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
-	repman.ConfigManager.UpdateLoggerConfig(clusterName, &repman.currentCluster.Conf)
+	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
 
 	go repman.currentCluster.Run()
@@ -2392,7 +2396,7 @@ func (repman *ReplicationManager) Stop() {
 
 		if isNeedPush {
 			repman.IsNeedGitPush = false
-			repman.ConfigManager.GitPush(&repman.Conf, repman.ClusterList, true)
+			repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
 		}
 	}
 
@@ -2631,10 +2635,6 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if repman.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-default"] = repman.Conf
-
 		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {

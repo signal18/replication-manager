@@ -310,7 +310,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					if err != nil {
 						repman.Logrus.Errorf("Config error in " + repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
-					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), repman.Conf)
+					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), *repman.Conf)
 					repman.StartCluster(f.Name())
 					repman.Clusters[f.Name()].IsGitPull = true
 					for _, cluster := range repman.Clusters {

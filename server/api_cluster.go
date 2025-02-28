@@ -2516,7 +2516,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "db-servers-credential":
 		mycluster.Conf.User = value
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		mycluster.ReloadConfig(mycluster.Conf)
+		mycluster.ReloadConfig(*mycluster.Conf)
 		//mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
@@ -2908,7 +2908,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetInteractive(strings.ToLower(value) == "on")
 	case "failover-readonly-state":
 		mycluster.SetReadOnly(strings.ToLower(value) == "on")
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "failover-restart-unsafe":
 		mycluster.Conf.FailRestartUnsafe = isactive
 	case "failover-at-sync":
@@ -3033,10 +3033,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProxysqlOn = isactive
 	case "proxy-servers-read-on-master":
 		mycluster.Conf.PRXServersReadOnMaster = isactive
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-read-on-master-no-slave":
 		mycluster.Conf.PRXServersReadOnMasterNoSlave = isactive
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = isactive
 	case "database-heartbeat":
@@ -3333,7 +3333,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetApiTokenTimeout(val)
 	case "cloud18":
 		if value == "true" {
-			if err := repman.InitGitConfig(&repman.Conf); err != nil {
+			if err := repman.InitGitConfig(repman.Conf); err != nil {
 				if strings.Contains(err.Error(), "invalid_grant") {
 					return fmt.Errorf("invalid_grant")
 				}
@@ -3985,11 +3985,11 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.InitConfig(repman.Conf, true)
+	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		//mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
-		mycluster.ReloadConfig(mycluster.Conf)
+		mycluster.ReloadConfig(*mycluster.Conf)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -4405,7 +4405,7 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.Conf)
+		err := e.Encode(*mycluster.Conf)
 		if err != nil {
 			http.Error(w, "Encoding error in settings", 500)
 			return
