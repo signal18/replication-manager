@@ -2248,6 +2248,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCloud18SubscribedDbops()
 	case "cloud18-open-sysops":
 		mycluster.SwitchCloud18OpenSysops()
+	case "cloud18-alert":
+		mycluster.Conf.SwitchCloud18Shared()
 	case "topology-staging":
 		mycluster.SwitchTopologyStaging()
 	default:
@@ -2719,6 +2721,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
+	case "cloud18-alert":
+		if mycluster.Conf.Cloud18Alert != isactive {
+			mycluster.Conf.Cloud18Alert = isactive
+			if mycluster.Conf.Cloud18Alert {
+				mycluster.LogSlack.Activate("cloud18", true)
+			} else {
+				mycluster.LogSlack.Deactivate("cloud18", true)
+			}
+		}
 	case "cloud18-alert-slack-channel":
 		mycluster.SetCloud18AlertSlackChannel(value)
 	case "cloud18-alert-slack-url":

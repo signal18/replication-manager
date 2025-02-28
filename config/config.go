@@ -758,6 +758,7 @@ type Config struct {
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
 	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
 	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	Cloud18Alert                              bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
 	Cloud18AlertSlackChannel                  string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
 	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
 	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
@@ -3306,6 +3307,10 @@ func (conf *Config) SwitchCloud18Shared() {
 	if conf.Cloud18 {
 		conf.Cloud18Shared = !conf.Cloud18Shared
 	}
+}
+
+func (conf *Config) SwitchCloud18Alert() {
+	conf.Cloud18Alert = !conf.Cloud18Alert
 }
 
 func (conf *Config) SwitchCloud18() {
