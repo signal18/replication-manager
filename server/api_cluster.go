@@ -6220,7 +6220,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Task queue reset"))
+		w.Write([]byte("Message sent via logrus"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
