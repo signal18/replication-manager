@@ -501,7 +501,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 }
 
 func (cluster *Cluster) IsVariableDiffFromRepmanDefault(v string) bool {
-	values_clust := reflect.ValueOf(cluster.Conf)
+	values_clust := reflect.ValueOf(*cluster.Conf)
 	types_clust := values_clust.Type()
 
 	values_def := reflect.ValueOf(cluster.Confs.ConfInit)

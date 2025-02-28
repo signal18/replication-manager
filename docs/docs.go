@@ -1432,6 +1432,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/send-alert/{hooktype}": {
+            "post": {
+                "description": "Send a cloud18 alert for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Send Cloud18 Alert",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "cloud18",
+                            "slack"
+                        ],
+                        "type": "string",
+                        "description": "Hook Type",
+                        "name": "hooktype",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Alert Message",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.MeetAlertMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue reset",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/send-email": {
             "post": {
                 "description": "Sends an email to the specified recipient.",
@@ -14595,6 +14667,18 @@ const docTemplate = `{
                 "cloud18": {
                     "type": "boolean"
                 },
+                "cloud18Alert": {
+                    "type": "boolean"
+                },
+                "cloud18AlertSlackChannel": {
+                    "type": "string"
+                },
+                "cloud18AlertSlackUrl": {
+                    "type": "string"
+                },
+                "cloud18AlertSlackUser": {
+                    "type": "string"
+                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -14956,6 +15040,12 @@ const docTemplate = `{
                 "fullVersion": {
                     "type": "string"
                 },
+                "gitMaxWorker": {
+                    "type": "integer"
+                },
+                "gitMinWorker": {
+                    "type": "integer"
+                },
                 "gitMonitoringTicker": {
                     "type": "integer"
                 },
@@ -15160,6 +15250,9 @@ const docTemplate = `{
                 "logLevel": {
                     "type": "integer"
                 },
+                "logMailerLevel": {
+                    "type": "integer"
+                },
                 "logOrchestrator": {
                     "type": "boolean"
                 },
@@ -15190,6 +15283,12 @@ const docTemplate = `{
                 },
                 "logSstLevel": {
                     "description": "internal replication-manager sst",
+                    "type": "integer"
+                },
+                "logSupport": {
+                    "type": "boolean"
+                },
+                "logSupportLevel": {
                     "type": "integer"
                 },
                 "logSyslog": {
@@ -15653,6 +15752,9 @@ const docTemplate = `{
                 },
                 "provDbDockerRunArgs": {
                     "type": "string"
+                },
+                "provDbDockerRunArgsLimit": {
+                    "type": "boolean"
                 },
                 "provDbDockerTmpfsSize": {
                     "type": "string"
@@ -16392,6 +16494,10 @@ const docTemplate = `{
                 }
             }
         },
+        "logrus.Fields": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "mailer.Email": {
             "type": "object",
             "properties": {
@@ -16697,6 +16803,17 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.MeetAlertMessage": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "$ref": "#/definitions/logrus.Fields"
+                },
+                "message": {
                     "type": "string"
                 }
             }

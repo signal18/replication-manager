@@ -758,7 +758,10 @@ type Config struct {
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
 	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
 	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
-	Cloud18AlertChannel                       string                 `mapstructure:"cloud18-alert-channel"  toml:"cloud18-alert-channel" json:"cloud18AlertChannel"`
+	Cloud18Alert                              bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
+	Cloud18AlertSlackChannel                  string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
+	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
+	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
@@ -844,6 +847,10 @@ type PeerCluster struct {
 	Cloud18ExtDbOps                        string   `json:"cloud18-external-dbops"`
 	Cloud18ExtSysOps                       string   `json:"cloud18-external-sysops"`
 	Cloud18InfraCertifications             string   `json:"cloud18-infra-certifications"`
+	Cloud18Alert                           bool     `json:"cloud18-alert,string"`
+	Cloud18AlertSlackChannel               string   `json:"cloud18-alert-slack-channel"`
+	Cloud18AlertSlackURL                   string   `json:"cloud18-alert-slack-url"`
+	Cloud18AlertSlackUser                  string   `json:"cloud18-alert-slack-user"`
 }
 
 type Partner struct {
@@ -3304,6 +3311,10 @@ func (conf *Config) SwitchCloud18Shared() {
 	if conf.Cloud18 {
 		conf.Cloud18Shared = !conf.Cloud18Shared
 	}
+}
+
+func (conf *Config) SwitchCloud18Alert() {
+	conf.Cloud18Alert = !conf.Cloud18Alert
 }
 
 func (conf *Config) SwitchCloud18() {

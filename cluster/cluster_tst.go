@@ -349,8 +349,8 @@ func (cluster *Cluster) InitBenchTable() error {
 }
 
 func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
-	test.ConfigInit = cluster.Conf
-	savedConf = cluster.Conf
+	test.ConfigInit = *cluster.Conf
+	savedConf = *cluster.Conf
 	savedFailoverCtr = cluster.FailoverCtr
 	savedFailoverTs = cluster.FailoverTs
 	cluster.CleanAll = true
@@ -367,7 +367,7 @@ func (cluster *Cluster) InitTestCluster(conf string, test *Test) bool {
 }
 
 func (cluster *Cluster) CloseTestCluster(conf string, test *Test) bool {
-	test.ConfigTest = cluster.Conf
+	test.ConfigTest = *cluster.Conf
 	if cluster.testStopCluster {
 		cluster.Unprovision()
 		cluster.WaitClusterStop()
@@ -386,7 +386,7 @@ func (cluster *Cluster) SwitchoverWaitTest() {
 }
 
 func (cluster *Cluster) RestoreConf() {
-	cluster.Conf = savedConf
+	*cluster.Conf = savedConf
 	cluster.FailoverTs = savedFailoverTs
 	cluster.FailoverCtr = savedFailoverCtr
 

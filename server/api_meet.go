@@ -87,7 +87,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "MeetInfo: Error getting meet client: %e", err)
 		}
-		http.Error(w, "Error getting meet client", http.StatusUnauthorized)
+		http.Error(w, "Error getting meet client", http.StatusForbidden)
 		return
 	}
 	info := struct {

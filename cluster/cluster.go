@@ -36,6 +36,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
+	"github.com/signal18/replication-manager/utils/alert/slackman"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -72,86 +73,86 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	OsUser                        *user.User           `json:"-"`
-	Name                          string               `json:"name"`
-	Tenant                        string               `json:"tenant"`
-	WorkingDir                    string               `json:"workingDir"`
-	Servers                       serverList           `json:"-"`
-	LogSlaveServers               []string             `json:"-"` //To store slave with log-slave-updates
-	ServerIdList                  []string             `json:"dbServers"`
-	Crashes                       crashList            `json:"dbServersCrashes"` //This will be purged on all db node up
-	FailoverHistory               crashList            `json:"failoverHistory"`  //This will be used for PITR
-	Proxies                       proxyList            `json:"-"`
-	ProxyIdList                   []string             `json:"proxyServers"`
-	FailoverCtr                   int                  `json:"failoverCounter"`
-	FailoverTs                    int64                `json:"failoverLastTime"`
-	Status                        string               `json:"activePassiveStatus"`
-	IsSplitBrain                  bool                 `json:"isSplitBrain"`
-	IsSplitBrainBck               bool                 `json:"-"`
-	IsFailedArbitrator            bool                 `json:"isFailedArbitrator"`
-	IsLostMajority                bool                 `json:"isLostMajority"`
-	IsDown                        bool                 `json:"isDown"`
-	IsClusterDown                 bool                 `json:"isClusterDown"`
-	IsMasterDown                  bool                 `json:"isMasterDown"`
-	IsAllDbUp                     bool                 `json:"isAllDbUp"`
-	IsFailable                    bool                 `json:"isFailable"`
-	IsPostgres                    bool                 `json:"isPostgres"`
-	IsProvision                   bool                 `json:"isProvision"`
-	IsNeedProxiesRestart          bool                 `json:"isNeedProxyRestart"`
-	IsNeedProxiesReprov           bool                 `json:"isNeedProxiesRestart"`
-	IsNeedProxiesConfigChange     bool                 `json:"isNeedProxiesConfigChange"`
-	IsNeedDatabasesRestart        bool                 `json:"isNeedDatabasesRestart"`
-	IsNeedDatabasesRollingRestart bool                 `json:"isNeedDatabasesRollingRestart"`
-	IsNeedDatabasesRollingReprov  bool                 `json:"isNeedDatabasesRollingReprov"`
-	IsNeedDatabasesReprov         bool                 `json:"isNeedDatabasesReprov"`
-	IsNeedDatabasesConfigChange   bool                 `json:"isNeedDatabasesConfigChange"`
-	IsGettingSlowLog              bool                 `json:"isGettingSlowLog"`
-	IsValidBackup                 bool                 `json:"isValidBackup"`
-	IsNotMonitoring               bool                 `json:"isNotMonitoring"`
-	IsCapturing                   bool                 `json:"isCapturing"`
-	IsGitPull                     bool                 `json:"isGitPull"`
-	IsGitPush                     bool                 `json:"isGitPush"`
-	IsSavingConfig                bool                 `json:"-"`
-	IsNeedGitPush                 bool                 `json:"-"`
-	IsExportPush                  bool                 `json:"isExportPush"`
-	IsAlertDisable                bool                 `json:"isAlertDisable"`
-	Conf                          config.Config        `json:"config"`
-	Confs                         *config.ConfVersion  `json:"-"`
-	CleanAll                      bool                 `json:"cleanReplication"` //used in testing
-	Topology                      string               `json:"topology"`
-	Uptime                        string               `json:"uptime"`
-	UptimeFailable                string               `json:"uptimeFailable"`
-	UptimeSemiSync                string               `json:"uptimeSemisync"`
-	MonitorSpin                   string               `json:"monitorSpin"`
-	WorkLoad                      config.WorkLoad      `json:"workLoad"`
-	Logrus                        *log.Logger          `json:"-"`
-	LogPushover                   *log.Logger          `json:"-"`
-	Log                           s18log.HttpLog       `json:"log"`
-	LogTask                       s18log.HttpLog       `json:"logTask"`
-	LogSlack                      *log.Logger          `json:"-"`
-	JobResults                    *config.TasksMap     `json:"jobResults"`
-	Grants                        map[string]string    `json:"-"`
-	Roles                         map[string]string    `json:"-"`
-	tlog                          *s18log.TermLog      `json:"-"`
-	htlog                         *s18log.HttpLog      `json:"-"`
-	SQLGeneralLog                 s18log.HttpLog       `json:"sqlGeneralLog"`
-	SQLErrorLog                   s18log.HttpLog       `json:"sqlErrorLog"`
-	MonitorType                   map[string]string    `json:"monitorType"`
-	TopologyType                  map[string]string    `json:"topologyType"`
-	FSType                        map[string]bool      `json:"fsType"`
-	DiskType                      map[string]string    `json:"diskType"`
-	VMType                        map[string]bool      `json:"vmType"`
-	Agents                        []Agent              `json:"agents"`
-	AgentMaxFreq                  map[string]int64     `json:"-"`
-	hostList                      []string             `json:"-"`
-	proxyList                     []string             `json:"-"`
-	clusterList                   map[string]*Cluster  `json:"-"`
-	slaves                        serverList           `json:"slaves"`
-	master                        *ServerMonitor       `json:"master"`
-	oldMaster                     *ServerMonitor       `json:"oldmaster"`
-	vmaster                       *ServerMonitor       `json:"vmaster"`
-	mxs                           *maxscale.MaxScale   `json:"-"`
-	CheckSumConfig                map[string]hash.Hash `json:"-"`
+	OsUser                        *user.User             `json:"-"`
+	Name                          string                 `json:"name"`
+	Tenant                        string                 `json:"tenant"`
+	WorkingDir                    string                 `json:"workingDir"`
+	Servers                       serverList             `json:"-"`
+	LogSlaveServers               []string               `json:"-"` //To store slave with log-slave-updates
+	ServerIdList                  []string               `json:"dbServers"`
+	Crashes                       crashList              `json:"dbServersCrashes"` //This will be purged on all db node up
+	FailoverHistory               crashList              `json:"failoverHistory"`  //This will be used for PITR
+	Proxies                       proxyList              `json:"-"`
+	ProxyIdList                   []string               `json:"proxyServers"`
+	FailoverCtr                   int                    `json:"failoverCounter"`
+	FailoverTs                    int64                  `json:"failoverLastTime"`
+	Status                        string                 `json:"activePassiveStatus"`
+	IsSplitBrain                  bool                   `json:"isSplitBrain"`
+	IsSplitBrainBck               bool                   `json:"-"`
+	IsFailedArbitrator            bool                   `json:"isFailedArbitrator"`
+	IsLostMajority                bool                   `json:"isLostMajority"`
+	IsDown                        bool                   `json:"isDown"`
+	IsClusterDown                 bool                   `json:"isClusterDown"`
+	IsMasterDown                  bool                   `json:"isMasterDown"`
+	IsAllDbUp                     bool                   `json:"isAllDbUp"`
+	IsFailable                    bool                   `json:"isFailable"`
+	IsPostgres                    bool                   `json:"isPostgres"`
+	IsProvision                   bool                   `json:"isProvision"`
+	IsNeedProxiesRestart          bool                   `json:"isNeedProxyRestart"`
+	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesRestart"`
+	IsNeedProxiesConfigChange     bool                   `json:"isNeedProxiesConfigChange"`
+	IsNeedDatabasesRestart        bool                   `json:"isNeedDatabasesRestart"`
+	IsNeedDatabasesRollingRestart bool                   `json:"isNeedDatabasesRollingRestart"`
+	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov"`
+	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov"`
+	IsNeedDatabasesConfigChange   bool                   `json:"isNeedDatabasesConfigChange"`
+	IsGettingSlowLog              bool                   `json:"isGettingSlowLog"`
+	IsValidBackup                 bool                   `json:"isValidBackup"`
+	IsNotMonitoring               bool                   `json:"isNotMonitoring"`
+	IsCapturing                   bool                   `json:"isCapturing"`
+	IsGitPull                     bool                   `json:"isGitPull"`
+	IsGitPush                     bool                   `json:"isGitPush"`
+	IsSavingConfig                bool                   `json:"-"`
+	IsNeedGitPush                 bool                   `json:"-"`
+	IsExportPush                  bool                   `json:"isExportPush"`
+	IsAlertDisable                bool                   `json:"isAlertDisable"`
+	Conf                          *config.Config         `json:"config"`
+	Confs                         *config.ConfVersion    `json:"-"`
+	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
+	Topology                      string                 `json:"topology"`
+	Uptime                        string                 `json:"uptime"`
+	UptimeFailable                string                 `json:"uptimeFailable"`
+	UptimeSemiSync                string                 `json:"uptimeSemisync"`
+	MonitorSpin                   string                 `json:"monitorSpin"`
+	WorkLoad                      config.WorkLoad        `json:"workLoad"`
+	Logrus                        *log.Logger            `json:"-"`
+	LogPushover                   *log.Logger            `json:"-"`
+	Log                           s18log.HttpLog         `json:"log"`
+	LogTask                       s18log.HttpLog         `json:"logTask"`
+	LogSlack                      *slackman.SlackManager `json:"-"`
+	JobResults                    *config.TasksMap       `json:"jobResults"`
+	Grants                        map[string]string      `json:"-"`
+	Roles                         map[string]string      `json:"-"`
+	tlog                          *s18log.TermLog        `json:"-"`
+	htlog                         *s18log.HttpLog        `json:"-"`
+	SQLGeneralLog                 s18log.HttpLog         `json:"sqlGeneralLog"`
+	SQLErrorLog                   s18log.HttpLog         `json:"sqlErrorLog"`
+	MonitorType                   map[string]string      `json:"monitorType"`
+	TopologyType                  map[string]string      `json:"topologyType"`
+	FSType                        map[string]bool        `json:"fsType"`
+	DiskType                      map[string]string      `json:"diskType"`
+	VMType                        map[string]bool        `json:"vmType"`
+	Agents                        []Agent                `json:"agents"`
+	AgentMaxFreq                  map[string]int64       `json:"-"`
+	hostList                      []string               `json:"-"`
+	proxyList                     []string               `json:"-"`
+	clusterList                   map[string]*Cluster    `json:"-"`
+	slaves                        serverList             `json:"slaves"`
+	master                        *ServerMonitor         `json:"master"`
+	oldMaster                     *ServerMonitor         `json:"oldmaster"`
+	vmaster                       *ServerMonitor         `json:"vmaster"`
+	mxs                           *maxscale.MaxScale     `json:"-"`
+	CheckSumConfig                map[string]hash.Hash   `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -333,11 +334,12 @@ type ClusterForm struct {
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, RepMgrVersion string, RepMgrHostname string) error {
+	cluster.Conf = new(config.Config)
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
 
-	cluster.Conf = confs.ConfInit
+	*cluster.Conf = confs.ConfInit
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -442,19 +444,35 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogPushover.SetLevel(log.WarnLevel)
 	}
 
-	cluster.LogSlack = log.New()
+	cluster.LogSlack = slackman.NewSlackManager()
 	cluster.LogSlack.SetFormatter(&log.TextFormatter{FullTimestamp: true})
 
+	cluster.LogSlack.SetHookConfig("slack", slackman.SlackConfig{
+		URL:            cluster.Conf.SlackURL,
+		AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+		Channel:        cluster.Conf.SlackChannel,
+		User:           cluster.Conf.SlackUser,
+		Icon:           ":ghost:",
+		Timeout:        5 * time.Second,
+	})
+
+	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
+		URL:            cluster.Conf.Cloud18AlertSlackURL,
+		AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
+		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
+		User:           cluster.Conf.Cloud18AlertSlackUser,
+		Icon:           ":ghost:",
+		Timeout:        5 * time.Second,
+	})
+
 	if cluster.Conf.SlackURL != "" {
-		cluster.LogSlack.AddHook(&logrus_slack.SlackHook{
-			HookURL:        cluster.Conf.SlackURL,
-			AcceptedLevels: logrus_slack.LevelThreshold(log.WarnLevel),
-			Channel:        cluster.Conf.SlackChannel,
-			IconEmoji:      ":ghost:",
-			Username:       cluster.Conf.SlackUser,
-			Timeout:        5 * time.Second, // request timeout for calling slack api
-		})
+		cluster.LogSlack.Activate("slack", true)
 	}
+
+	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" {
+		cluster.LogSlack.Activate("cloud18", true)
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	if cluster.Conf.MailTo != "" {
@@ -506,7 +524,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	err = cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
 		log.Fatal("missing important file, giving up")
@@ -1008,7 +1026,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	header := "[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n"
 
 	// Marshal and write TOML configuration
-	readconf, err := toml.Marshal(cluster.Conf)
+	readconf, err := toml.Marshal(*cluster.Conf)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
 		return false, err
@@ -1169,10 +1187,6 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if cluster.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-"+cluster.Name] = cluster.Conf
-
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -1182,7 +1196,7 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 		}
 		defer file.Close()
 
-		readconf, _ := toml.Marshal(cluster.Conf)
+		readconf, _ := toml.Marshal(*cluster.Conf)
 		t, _ := toml.LoadBytes(readconf)
 		s := t
 		keys := t.Keys()
@@ -1323,7 +1337,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) {
-	cluster.Conf = conf
+	*cluster.Conf = conf
 	cluster.agentFlagCheck()
 	if conf.LogFile != "" {
 		var err error
@@ -1336,7 +1350,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
-	cluster.Conf = conf
+	*cluster.Conf = conf
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()
