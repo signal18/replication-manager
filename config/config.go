@@ -847,10 +847,6 @@ type PeerCluster struct {
 	Cloud18ExtDbOps                        string   `json:"cloud18-external-dbops"`
 	Cloud18ExtSysOps                       string   `json:"cloud18-external-sysops"`
 	Cloud18InfraCertifications             string   `json:"cloud18-infra-certifications"`
-	Cloud18Alert                           bool     `json:"cloud18-alert,string"`
-	Cloud18AlertSlackChannel               string   `json:"cloud18-alert-slack-channel"`
-	Cloud18AlertSlackURL                   string   `json:"cloud18-alert-slack-url"`
-	Cloud18AlertSlackUser                  string   `json:"cloud18-alert-slack-user"`
 }
 
 type Partner struct {
