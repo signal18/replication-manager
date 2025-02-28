@@ -115,7 +115,7 @@ type Cluster struct {
 	IsNeedGitPush                 bool                 `json:"-"`
 	IsExportPush                  bool                 `json:"isExportPush"`
 	IsAlertDisable                bool                 `json:"isAlertDisable"`
-	Conf                          config.Config        `json:"config"`
+	Conf                          *config.Config       `json:"config"`
 	Confs                         *config.ConfVersion  `json:"-"`
 	CleanAll                      bool                 `json:"cleanReplication"` //used in testing
 	Topology                      string               `json:"topology"`
@@ -333,11 +333,12 @@ type ClusterForm struct {
 
 // Init initial cluster definition
 func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s18log.TermLog, loghttp *s18log.HttpLog, termlength int, runUUID string, RepMgrVersion string, RepMgrHostname string) error {
+	cluster.Conf = new(config.Config)
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
 
-	cluster.Conf = confs.ConfInit
+	*cluster.Conf = confs.ConfInit
 
 	cluster.tlog = tlog
 	cluster.htlog = loghttp
@@ -506,7 +507,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
 	}
 	//Loading configuration compliances
-	err = cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not initialize configurator %s", err)
 		log.Fatal("missing important file, giving up")
@@ -1008,7 +1009,7 @@ func (cluster *Cluster) SaveConfigFile() (bool, error) {
 	header := "[saved-" + cluster.Name + "]\ntitle = \"" + cluster.Name + "\" \n"
 
 	// Marshal and write TOML configuration
-	readconf, err := toml.Marshal(cluster.Conf)
+	readconf, err := toml.Marshal(*cluster.Conf)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
 		return false, err
@@ -1169,10 +1170,6 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if cluster.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-"+cluster.Name] = cluster.Conf
-
 		file, err := os.OpenFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {
@@ -1182,7 +1179,7 @@ func (cluster *Cluster) Overwrite() (bool, error) {
 		}
 		defer file.Close()
 
-		readconf, _ := toml.Marshal(cluster.Conf)
+		readconf, _ := toml.Marshal(*cluster.Conf)
 		t, _ := toml.LoadBytes(readconf)
 		s := t
 		keys := t.Keys()
@@ -1323,7 +1320,7 @@ func (cluster *Cluster) GetEncryptedValueFromMemory(key string) string {
 }
 
 func (cluster *Cluster) InitAgent(conf config.Config) {
-	cluster.Conf = conf
+	*cluster.Conf = conf
 	cluster.agentFlagCheck()
 	if conf.LogFile != "" {
 		var err error
@@ -1336,7 +1333,7 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
-	cluster.Conf = conf
+	*cluster.Conf = conf
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()

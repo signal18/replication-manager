@@ -421,7 +421,7 @@ func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.C
 		return nil, err
 	}
 
-	b, err := json.Marshal(mycluster.Conf)
+	b, err := json.Marshal(*mycluster.Conf)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "could not marshal config")
 	}
@@ -473,7 +473,7 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		if err = user.Granted(config.GrantClusterSettings); err != nil {
 			return nil, err
 		}
-		s.InitConfig(s.Conf, true)
+		s.InitConfig(*s.Conf, true)
 		mycluster.ReloadConfig(s.Confs[in.Cluster.Name])
 
 	case v3.ClusterSetting_ADD_PROXY_TAG:
