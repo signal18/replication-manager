@@ -363,6 +363,23 @@ definitions:
       plan:
         type: string
     type: object
+  cluster.ClusterState:
+    properties:
+      crashes:
+        items:
+          $ref: '#/definitions/cluster.Crash'
+        type: array
+      provisioned:
+        type: boolean
+      servers:
+        type: string
+      sla:
+        $ref: '#/definitions/state.Sla'
+      slaHistory:
+        items:
+          $ref: '#/definitions/state.Sla'
+        type: array
+    type: object
   cluster.Crash:
     properties:
       electedMasterURL:
@@ -4905,6 +4922,39 @@ paths:
       summary: Retrieve Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
+  /api/clusters/{clusterName}/health:
+    get:
+      description: Get the health status of the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cluster health fetched
+          schema:
+            $ref: '#/definitions/cluster.ClusterState'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Cluster Health
+      tags:
+      - ClusterHealth
   /api/clusters/{clusterName}/jobs:
     get:
       description: This endpoint retrieves the job entries for the specified cluster.
@@ -11105,6 +11155,34 @@ paths:
       summary: Send Email
       tags:
       - AlertMailer
+  /api/health:
+    get:
+      consumes:
+      - application/json
+      description: Returns the health status of all privileged clusters.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of cluster health statuses
+          schema:
+            items:
+              $ref: '#/definitions/cluster.ClusterState'
+            type: array
+        "500":
+          description: Error getting JWT claims
+          schema:
+            type: string
+      summary: Get Cluster Health
+      tags:
+      - Cluster
   /api/heartbeat:
     get:
       consumes:

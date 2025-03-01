@@ -2894,6 +2894,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/health": {
+            "get": {
+                "description": "Get the health status of the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterHealth"
+                ],
+                "summary": "Get Cluster Health",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cluster health fetched",
+                        "schema": {
+                            "$ref": "#/definitions/cluster.ClusterState"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/jobs": {
             "get": {
                 "description": "This endpoint retrieves the job entries for the specified cluster.",
@@ -11499,6 +11548,48 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/health": {
+            "get": {
+                "description": "Returns the health status of all privileged clusters.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Get Cluster Health",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of cluster health statuses",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/cluster.ClusterState"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting JWT claims",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/heartbeat": {
             "get": {
                 "description": "Returns the heartbeat status of the replication manager.",
@@ -12841,6 +12932,32 @@ const docTemplate = `{
                 },
                 "plan": {
                     "type": "string"
+                }
+            }
+        },
+        "cluster.ClusterState": {
+            "type": "object",
+            "properties": {
+                "crashes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.Crash"
+                    }
+                },
+                "provisioned": {
+                    "type": "boolean"
+                },
+                "servers": {
+                    "type": "string"
+                },
+                "sla": {
+                    "$ref": "#/definitions/state.Sla"
+                },
+                "slaHistory": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/state.Sla"
+                    }
                 }
             }
         },

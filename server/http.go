@@ -153,6 +153,11 @@ func (repman *ReplicationManager) httpserver() {
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
 	))
+
+	router.Handle("/api/health", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxHealth)),
+	))
+
 	router.Handle("/api/auth/callback", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))

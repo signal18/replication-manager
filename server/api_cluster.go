@@ -33,6 +33,9 @@ func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Route
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/health", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterHealth)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
 	))
@@ -6229,5 +6232,30 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+// handlerMuxClusterHealth handles the HTTP request to retrieve the status of a specified cluster.
+// @Summary Get Cluster Health
+// @Description	Get the health status of the specified cluster.
+// @Tags ClusterHealth
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} cluster.ClusterState "Cluster health fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/health [get]
+func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(mycluster.GetClusterState())
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }

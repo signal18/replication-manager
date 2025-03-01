@@ -900,6 +900,14 @@ func (cluster *Cluster) SetIsSavingConfig(val bool) {
 	cluster.IsSavingConfig = val
 }
 
+type ClusterState struct {
+	Servers    string      `json:"servers"`
+	Crashes    crashList   `json:"crashes"`
+	SLA        state.Sla   `json:"sla"`
+	SLAHistory []state.Sla `json:"slaHistory"`
+	IsAllDbUp  bool        `json:"provisioned"`
+}
+
 func (cluster *Cluster) Save() error {
 
 	_, file, no, ok := runtime.Caller(1)
@@ -907,15 +915,7 @@ func (cluster *Cluster) Save() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 
-	type Save struct {
-		Servers    string      `json:"servers"`
-		Crashes    crashList   `json:"crashes"`
-		SLA        state.Sla   `json:"sla"`
-		SLAHistory []state.Sla `json:"slaHistory"`
-		IsAllDbUp  bool        `json:"provisioned"`
-	}
-
-	var clsave Save
+	var clsave ClusterState
 	clsave.Crashes = cluster.Crashes
 	clsave.Servers = cluster.Conf.Hosts
 	clsave.SLA = cluster.StateMachine.GetSla()

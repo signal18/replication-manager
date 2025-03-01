@@ -561,6 +561,16 @@ func (cluster *Cluster) GetStatus() bool {
 	return cluster.StateMachine.IsFailable()
 }
 
+func (cluster *Cluster) GetClusterState() ClusterState {
+	return ClusterState{
+		Crashes:    cluster.Crashes,
+		Servers:    cluster.Conf.Hosts,
+		SLA:        cluster.StateMachine.GetSla(),
+		IsAllDbUp:  cluster.IsAllDbUp,
+		SLAHistory: cluster.SLAHistory,
+	}
+}
+
 func (cluster *Cluster) GetGroupReplicationWhiteList() string {
 	var gcomms []string
 	for _, server := range cluster.Servers {
