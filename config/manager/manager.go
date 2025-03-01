@@ -713,7 +713,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		}
 
 		// Add agents.json and queryrules.json if they exist
-		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
+		for _, jsonFile := range []string{"agents.json", "queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
 				cwg.Add(1)
