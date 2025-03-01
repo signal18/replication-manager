@@ -295,6 +295,19 @@ function CloudSettings({ selectedCluster, user }) {
           )
         },
         {
+          key: 'Cloud18 Alert',
+          value: (
+            <RMSwitch
+              confirmTitle={'Confirm switch settings for cloud18-alert?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'cloud18-alert' }))
+              }
+              isDisabled={user?.grants['cluster-settings'] == false}
+              isChecked={selectedCluster?.config?.cloud18Alert}
+            />
+          )
+        },
+        {
           key: 'Cloud18 Alert Channel',
           value: (
             <TextForm
