@@ -11173,9 +11173,9 @@ paths:
         "200":
           description: List of cluster health statuses
           schema:
-            items:
+            additionalProperties:
               $ref: '#/definitions/cluster.ClusterState'
-            type: array
+            type: object
         "500":
           description: Error getting JWT claims
           schema:

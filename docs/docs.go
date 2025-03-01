@@ -11575,8 +11575,8 @@ const docTemplate = `{
                     "200": {
                         "description": "List of cluster health statuses",
                         "schema": {
-                            "type": "array",
-                            "items": {
+                            "type": "object",
+                            "additionalProperties": {
                                 "$ref": "#/definitions/cluster.ClusterState"
                             }
                         }

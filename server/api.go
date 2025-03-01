@@ -2134,16 +2134,16 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} cluster.ClusterState "List of cluster health statuses"
+// @Success 200 {object} map[string]cluster.ClusterState "List of cluster health statuses"
 // @Failure 500 {string} string "Error getting JWT claims"
 // @Router /api/health [get]
 func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	var healths []cluster.ClusterState
+	healths := make(map[string]cluster.ClusterState)
 	for _, mycluster := range repman.Clusters {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-			healths = append(healths, mycluster.GetClusterState())
+			healths[mycluster.Name] = mycluster.GetClusterState()
 		}
 	}
 
