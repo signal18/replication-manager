@@ -324,7 +324,7 @@ function CloudSettings({ selectedCluster, user }) {
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'alert-slack-url',
+                    setting: 'cloud18-alert-slack-url',
                     value: btoa(value)
                   })
                 )
@@ -343,7 +343,7 @@ function CloudSettings({ selectedCluster, user }) {
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'alert-slack-user',
+                    setting: 'cloud18-alert-slack-user',
                     value: value
                   })
                 )

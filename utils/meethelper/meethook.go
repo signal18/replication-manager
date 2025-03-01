@@ -157,9 +157,14 @@ func (wh *WebHook) PostWebhookMessage(payload *model.IncomingWebhookRequest) err
 	}
 	defer resp.Body.Close()
 
+	t, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body: %v", err)
+	}
+
 	if resp.StatusCode != 200 {
-		t, _ := io.ReadAll(resp.Body)
 		return errors.New(string(t))
 	}
+
 	return nil
 }

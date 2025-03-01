@@ -2,7 +2,6 @@ package slackman
 
 import (
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,30 +11,32 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// SlackConfig holds the configuration for Slack logging.
+// SlackConfig holds the configuration for a Slack or Mattermost webhook.
 type SlackConfig struct {
-	URL            string
-	Channel        string
-	User           string
-	Icon           string
-	Timeout        time.Duration
-	AcceptedLevels []logrus.Level
+	HookType       string         // Type of hook: "slack" or "meet" (Mattermost).
+	URL            string         // Webhook URL for sending messages.
+	Channel        string         // Target channel for notifications.
+	User           string         // Username used for sending messages.
+	Icon           string         // Emoji or image URL for the message sender.
+	Timeout        time.Duration  // Timeout duration for webhook requests.
+	AcceptedLevels []logrus.Level // Log levels that trigger notifications.
 }
 
+// SlackmanHook represents an individual webhook configuration and its state.
 type SlackmanHook struct {
-	Config  SlackConfig
-	hook    logrus.Hook // Webhook URL
-	Enabled bool
-	mu      sync.Mutex
+	Config  SlackConfig // Hook configuration.
+	hook    logrus.Hook // The actual logrus hook instance.
+	Enabled bool        // Whether the hook is currently active.
+	mu      sync.Mutex  // Mutex to ensure safe concurrent access.
 }
 
-// SlackManager manages logging and Slack integration.
+// SlackManager manages multiple Slack/Mattermost webhook hooks.
 type SlackManager struct {
-	*logrus.Logger
-	hook sync.Map // Slack hooks
+	*logrus.Logger          // Embedded logrus logger.
+	hook           sync.Map // A concurrent map storing hooks by their type.
 }
 
-// NewSlackManager initializes the logger and Slack hook.
+// NewSlackManager initializes and returns a new SlackManager instance.
 func NewSlackManager() *SlackManager {
 	logger := logrus.New()
 	manager := &SlackManager{
@@ -45,6 +46,7 @@ func NewSlackManager() *SlackManager {
 	return manager
 }
 
+// IsHookActive checks if a given hook type is active.
 func (s *SlackManager) IsHookActive(hooktype string) bool {
 	sh := s.GetHook(hooktype)
 	if sh == nil {
@@ -54,6 +56,7 @@ func (s *SlackManager) IsHookActive(hooktype string) bool {
 	return sh.Enabled
 }
 
+// GetHook retrieves a hook by type, returning nil if it does not exist.
 func (s *SlackManager) GetHook(hooktype string) *SlackmanHook {
 	if v, ok := s.hook.Load(hooktype); ok {
 		return v.(*SlackmanHook)
@@ -62,12 +65,13 @@ func (s *SlackManager) GetHook(hooktype string) *SlackmanHook {
 	return nil
 }
 
+// LoadOrStoreHook retrieves an existing hook or creates a new one if it doesn't exist.
 func (s *SlackManager) LoadOrStoreHook(hooktype string) *SlackmanHook {
 	v, _ := s.hook.LoadOrStore(hooktype, &SlackmanHook{})
 	return v.(*SlackmanHook)
 }
 
-// NewSlackManager initializes the logger and Slack hook.
+// SetHookConfig sets or updates the configuration for a hook.
 func (s *SlackManager) SetHookConfig(hooktype string, config SlackConfig) {
 	sh := s.LoadOrStoreHook(hooktype)
 	sh.mu.Lock()
@@ -75,13 +79,13 @@ func (s *SlackManager) SetHookConfig(hooktype string, config SlackConfig) {
 
 	sh.Config = config
 
-	// Set default log levels if none are provided.
+	// Set default log levels if none are specified.
 	if len(sh.Config.AcceptedLevels) == 0 {
 		sh.Config.AcceptedLevels = logrus.AllLevels
 	}
 }
 
-// Activate enables Slack logging.
+// Activate enables a webhook hook by configuring and registering it.
 func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 	sh := s.GetHook(hooktype)
 	if sh == nil {
@@ -93,19 +97,22 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 		defer sh.mu.Unlock()
 	}
 
+	// Prevent activation if the hook is already enabled or has no URL.
 	if sh.Enabled || sh.Config.URL == "" {
 		return false
 	}
 
-	URL, err := url.Parse(sh.Config.URL)
+	// Validate the webhook URL.
+	_, err := url.Parse(sh.Config.URL)
 	if err != nil {
-		s.Errorf("Failed to parse Slack URL: %v", err)
+		s.Errorf("Failed to parse URL: %v", err)
 		return false
 	}
 
-	if strings.Contains(URL.Host, "slack.com") {
+	// Initialize the appropriate hook type (Slack or Mattermost).
+	if sh.Config.HookType == "slack" {
 		sh.hook = &logrus_slack.SlackHook{
-			HookURL:        URL.String(),
+			HookURL:        sh.Config.URL,
 			AcceptedLevels: sh.Config.AcceptedLevels,
 			Channel:        sh.Config.Channel,
 			IconEmoji:      sh.Config.Icon,
@@ -114,7 +121,7 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 		}
 	} else {
 		sh.hook = &meethelper.MeetHook{
-			WebhookURL:     URL.String(),
+			WebhookURL:     sh.Config.URL,
 			AcceptedLevels: sh.Config.AcceptedLevels,
 			Timeout:        sh.Config.Timeout,
 			FieldHeader:    "Replication Manager alert",
@@ -125,14 +132,15 @@ func (s *SlackManager) Activate(hooktype string, useLock bool) bool {
 			},
 		}
 	}
-	s.AddHook(sh.hook)
 
+	// Register the hook with logrus.
+	s.AddHook(sh.hook)
 	sh.Enabled = true
 
 	return true
 }
 
-// Deactivate removes the Slack hook.
+// Deactivate removes and disables a webhook hook.
 func (s *SlackManager) Deactivate(hooktype string, useLock bool) {
 	sh := s.GetHook(hooktype)
 	if sh == nil {
@@ -148,7 +156,7 @@ func (s *SlackManager) Deactivate(hooktype string, useLock bool) {
 		return
 	}
 
-	// Remove Slack hook safely.
+	// Remove the hook from logrus safely.
 	newHooks := logrus.LevelHooks{}
 	for level, hooks := range s.Hooks {
 		filteredHooks := []logrus.Hook{}
@@ -162,29 +170,30 @@ func (s *SlackManager) Deactivate(hooktype string, useLock bool) {
 		}
 	}
 
+	// Replace the logger's hooks and disable the current hook.
 	s.ReplaceHooks(newHooks)
 	sh.hook = nil
 	sh.Enabled = false
 }
 
-// UpdateConfig dynamically updates the Slack settings.
+// UpdateConfig updates the configuration of an existing hook.
 func (s *SlackManager) UpdateConfig(hooktype string, newConfig SlackConfig) {
 	sh := s.LoadOrStoreHook(hooktype)
 
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 
-	// Deactivate old Slack hook if enabled. Do not use lock since already locked.
+	// If the hook is enabled, deactivate it before updating.
 	if sh.Enabled {
 		s.Deactivate(hooktype, false)
 	}
 
-	// Set default log levels if none are provided.
+	// Set default log levels if not specified.
 	if len(newConfig.AcceptedLevels) == 0 {
 		newConfig.AcceptedLevels = logrus.AllLevels
 	}
 
-	// Reactivate with new config. Do not use lock since already locked.
+	// Activate the hook if a valid URL is provided.
 	if newConfig.URL != "" {
 		s.Activate(hooktype, false)
 	}
@@ -192,26 +201,25 @@ func (s *SlackManager) UpdateConfig(hooktype string, newConfig SlackConfig) {
 	sh.Config = newConfig
 }
 
-// SetURL updates the Slack webhook URL.
+// SetURL updates the webhook URL and reactivates the hook if necessary.
 func (s *SlackManager) SetURL(hooktype, url string) {
 	sh := s.LoadOrStoreHook(hooktype)
 
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
-	// Deactivate old Slack hook if enabled. Do not use lock since already locked.
+
 	if sh.Enabled {
 		s.Deactivate(hooktype, false)
 	}
 
 	sh.Config.URL = url
 
-	// Reactivate with new URL. Do not use lock since already locked.
 	if url != "" {
 		s.Activate(hooktype, false)
 	}
 }
 
-// SetChannel updates the Slack channel.
+// SetChannel updates the webhook channel and reactivates the hook if necessary.
 func (s *SlackManager) SetChannel(hooktype, channel string) {
 	sh := s.LoadOrStoreHook(hooktype)
 
@@ -229,7 +237,7 @@ func (s *SlackManager) SetChannel(hooktype, channel string) {
 	}
 }
 
-// SetUser updates the Slack username.
+// SetUser updates the webhook username and reactivates the hook if necessary.
 func (s *SlackManager) SetUser(hooktype, user string) {
 	sh := s.LoadOrStoreHook(hooktype)
 
@@ -247,7 +255,7 @@ func (s *SlackManager) SetUser(hooktype, user string) {
 	}
 }
 
-// SetIcon updates the Slack icon emoji.
+// SetIcon updates the webhook icon and reactivates the hook if necessary.
 func (s *SlackManager) SetIcon(hooktype, icon string) {
 	sh := s.LoadOrStoreHook(hooktype)
 
@@ -265,7 +273,7 @@ func (s *SlackManager) SetIcon(hooktype, icon string) {
 	}
 }
 
-// SetTimeout updates the Slack timeout.
+// SetTimeout updates the webhook timeout and reactivates the hook if necessary.
 func (s *SlackManager) SetTimeout(hooktype string, timeout time.Duration) {
 	sh := s.LoadOrStoreHook(hooktype)
 
@@ -283,7 +291,7 @@ func (s *SlackManager) SetTimeout(hooktype string, timeout time.Duration) {
 	}
 }
 
-// SetAcceptedLevels updates the log levels sent to Slack.
+// SetAcceptedLevels updates the log levels that trigger webhook notifications.
 func (s *SlackManager) SetAcceptedLevels(hooktype string, levels []logrus.Level) {
 	sh := s.LoadOrStoreHook(hooktype)
 	sh.mu.Lock()

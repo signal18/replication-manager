@@ -2789,6 +2789,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerAlertDisableTime(val)
 	case "cloud18":
 		mycluster.Conf.Cloud18 = (value == "true")
+		if mycluster.Conf.Cloud18 && mycluster.Conf.Cloud18Alert {
+			mycluster.LogSlack.Activate("cloud18", true)
+		} else {
+			mycluster.LogSlack.Deactivate("cloud18", true)
+		}
 	case "cloud18-domain":
 		mycluster.Conf.Cloud18Domain = value
 	case "cloud18-sub-domain":
