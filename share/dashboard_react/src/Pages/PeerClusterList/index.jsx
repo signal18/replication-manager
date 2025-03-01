@@ -137,11 +137,11 @@ function PeerClusterList({ onLogin, mode }) {
         }
 
         dispatch(setBaseURL({ baseURL: '' }));
-        showErrorToast({
+        dispatch(showErrorToast({
           status: 'error',
           title: 'Peer login failed',
           description: resp?.payload?.data || "Peer login failed"
-        })
+        }));
       }
     })
   };
