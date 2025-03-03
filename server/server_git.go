@@ -384,6 +384,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	modTime := fstat.ModTime()
 
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
+		repman.PeerManager.GetAllHealthStatus()
 		return nil // No changes in the file modification time
 	}
 
