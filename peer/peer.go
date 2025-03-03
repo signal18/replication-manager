@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -53,20 +54,29 @@ type PeerCluster struct {
 	Cloud18ExtDbOps                        string  `json:"cloud18-external-dbops"`
 	Cloud18ExtSysOps                       string  `json:"cloud18-external-sysops"`
 	Cloud18InfraCertifications             string  `json:"cloud18-infra-certifications"`
-	IsHealthy                              bool    `json:"-"`
-	IsProvisioned                          bool    `json:"-"`
 }
 
 type PeerHealth struct {
-	IsHealthy     bool `json:"is_healthy"`
-	IsProvisioned bool `json:"is_provisioned"`
+	IsDown        bool      `json:"isDown"`
+	IsMasterDown  bool      `json:"isMasterDown"`
+	IsFailable    bool      `json:"isFailable"`
+	IsProvisioned bool      `json:"isProvisioned"`
+	LastUpdate    time.Time `json:"lastUpdate"`
+}
+
+type PeerClusterData struct {
+	PeerCluster PeerCluster `json:"cluster"`
+	Health      PeerHealth  `json:"health"`
 }
 
 // PeerManager manages peer clusters.
 type PeerManager struct {
 	mu                sync.RWMutex
-	PeerURL           map[string]struct{}
+	PeerUser          string
+	PeerPassword      string
+	PeerURL           map[string]time.Time
 	PeerClusters      map[string]*PeerCluster
+	PeerHealth        map[string]*PeerHealth
 	PeerForSale       map[string]*PeerCluster
 	PeerUserClusters  map[string]map[string]*PeerCluster
 	UserClusterAccess map[string]map[string]struct{} // Optimized mapping for user access to clusters
@@ -78,12 +88,25 @@ type PeerManager struct {
 func NewPeerManager() *PeerManager {
 	return &PeerManager{
 		PeerClusters:      make(map[string]*PeerCluster),
+		PeerHealth:        make(map[string]*PeerHealth),
 		PeerForSale:       make(map[string]*PeerCluster),
 		PeerUserClusters:  make(map[string]map[string]*PeerCluster),
 		UserClusterAccess: make(map[string]map[string]struct{}),
-		PeerURL:           make(map[string]struct{}),
+		PeerURL:           make(map[string]time.Time),
 		Clients:           make(map[string]*PeerClient),
 	}
+}
+
+// SetPeerUser sets the username for peer communication.
+func (pm *PeerManager) SetPeerCredentials(username, password string) {
+	pm.PeerUser = username
+	pm.PeerPassword = password
+}
+
+func (pm *PeerManager) NewClient(baseURL string) *PeerClient {
+	pclient := NewPeerClient(baseURL, 10*time.Second)
+	pm.Clients[baseURL] = pclient
+	return pclient
 }
 
 // AddPeerURL adds a new origin to the PeerURL map.
@@ -91,7 +114,7 @@ func (pm *PeerManager) AddPeerURL(origin string) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	pm.PeerURL[origin] = struct{}{}
+	pm.PeerURL[origin] = time.Time{}
 }
 
 // RemovePeerURL removes an origin from the PeerURL map.
@@ -129,7 +152,7 @@ func (pm *PeerManager) AddPeerURLBatch(origins []string) {
 	defer pm.mu.Unlock()
 
 	for _, origin := range origins {
-		pm.PeerURL[origin] = struct{}{}
+		pm.PeerURL[origin] = time.Time{}
 	}
 }
 
@@ -176,7 +199,10 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 
 		pm.ReloadUsers(pc)
 		updatedNames[hashID] = true
-		pm.PeerURL[pc.ApiPublicUrl] = struct{}{}
+
+		if _, exists := pm.PeerURL[pc.ApiPublicUrl]; !exists {
+			pm.PeerURL[pc.ApiPublicUrl] = time.Time{}
+		}
 	}
 
 	if removeOld {
@@ -187,7 +213,10 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		}
 	}
 
-	pm.MissingSince = time.Time{}
+	// Update the health status of all clusters.
+	if len(pm.PeerURL) > 0 {
+		pm.GetAllHealthStatus()
+	}
 }
 
 // RemoveCluster removes a pc.
@@ -237,28 +266,52 @@ func (pm *PeerManager) GetCluster(hashID string) (*PeerCluster, bool) {
 }
 
 // GetUserClusters retrieves all clusters a user has access to.
-func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
+func (pm *PeerManager) GetUserClusters(username string) []*PeerClusterData {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := []*PeerCluster{}
+	clusters := []*PeerClusterData{}
 	if pcs, ok := pm.PeerUserClusters[username]; ok {
-		for _, pc := range pcs {
-			clusters = append(clusters, pc)
+		for pcname, pc := range pcs {
+			ph := pm.PeerHealth[pcname]
+			if ph == nil {
+				ph = &PeerHealth{}
+			}
+			pcd := PeerClusterData{
+				PeerCluster: *pc,
+				Health:      *ph,
+			}
+			clusters = append(clusters, &pcd)
 		}
 	}
+	sort.Slice(clusters, func(i, j int) bool {
+		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+	})
 	return clusters
 }
 
 // ListClusters returns all clusters.
-func (pm *PeerManager) ListClusters() []*PeerCluster {
+func (pm *PeerManager) ListClusters() []*PeerClusterData {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := make([]*PeerCluster, 0, len(pm.PeerClusters))
-	for _, cluster := range pm.PeerClusters {
-		clusters = append(clusters, cluster)
+	clusters := make([]*PeerClusterData, 0, len(pm.PeerClusters))
+	for pcname, pc := range pm.PeerClusters {
+		ph := pm.PeerHealth[pcname]
+		if ph == nil {
+			ph = &PeerHealth{}
+		}
+		pcd := PeerClusterData{
+			PeerCluster: *pc,
+			Health:      *ph,
+		}
+		clusters = append(clusters, &pcd)
 	}
+
+	sort.Slice(clusters, func(i, j int) bool {
+		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+	})
+
 	return clusters
 }
 
@@ -273,12 +326,20 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := make([]*PeerCluster, 0, len(pm.PeerForSale))
-	for _, cluster := range pm.PeerForSale {
-		clusters = append(clusters, cluster)
+	clusters := make([]PeerClusterData, 0, len(pm.PeerForSale))
+	for pcname, pc := range pm.PeerForSale {
+		ph := pm.PeerHealth[pcname]
+		if ph == nil {
+			ph = &PeerHealth{}
+		}
+		clusters = append(clusters, PeerClusterData{PeerCluster: *pc, Health: *ph})
 	}
 
-	return json.Marshal(clusters)
+	sort.Slice(clusters, func(i, j int) bool {
+		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+	})
+
+	return json.MarshalIndent(clusters, "", "\t")
 }
 
 // removeClusterFromUsers removes a cluster from user mapping.
@@ -333,21 +394,13 @@ func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 	}
 }
 
-func (pm *PeerManager) NewClient(peerURL, username, token string) *PeerClient {
-	pc := NewPeerClient(peerURL, time.Duration(10)*time.Second)
-	pc.SetHeader("Authorization", "Bearer "+token)
-
-	pm.Clients[GetHashID(peerURL, username)] = pc
-	pm.GetHealthStatus(pc)
-
-	return pc
-}
-
 func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 	hstatus, hbody, err := pclient.Get("/api/health")
 	if err != nil {
 		return err
 	}
+
+	update := time.Now()
 
 	if hstatus != http.StatusOK {
 		return fmt.Errorf("Health check failed with status %d: %s", hstatus, string(hbody))
@@ -359,14 +412,38 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 
 		for clustername, status := range healths {
 			hashID := GetHashID(pclient.baseURL, clustername)
-			if pc, ok := pm.PeerClusters[hashID]; ok {
-				pc.IsHealthy = status.IsHealthy
-				pc.IsProvisioned = status.IsProvisioned
-			}
+			status.LastUpdate = update
+			pm.PeerHealth[hashID] = &status
 		}
 	}
 
 	return nil
+}
+
+func (pm *PeerManager) GetAllHealthStatus() {
+	for url, modtime := range pm.PeerURL {
+		pclient, ok := pm.Clients[url]
+		if !ok {
+			pclient = pm.NewClient(url)
+			pm.Clients[url] = pclient
+		}
+
+		// Login if no token is set in the client.
+		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
+			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
+				fmt.Println(err)
+				continue
+			}
+		}
+
+		if time.Since(modtime) > time.Minute {
+			if err := pm.GetHealthStatus(pclient); err != nil {
+				fmt.Println(err)
+				continue
+			}
+			pm.PeerURL[url] = time.Now()
+		}
+	}
 }
 
 func GetPeerHashID(pc *PeerCluster) string {

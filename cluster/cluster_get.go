@@ -564,7 +564,9 @@ func (cluster *Cluster) GetStatus() bool {
 
 func (cluster *Cluster) GetPeerHealth() peer.PeerHealth {
 	return peer.PeerHealth{
-		IsHealthy:     cluster.IsDown || cluster.IsMasterDown,
+		IsDown:        cluster.IsDown,
+		IsMasterDown:  cluster.IsMasterDown,
+		IsFailable:    cluster.StateMachine.IsFailable(),
 		IsProvisioned: cluster.IsProvision,
 	}
 }

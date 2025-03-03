@@ -1648,15 +1648,6 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 
 		status, body = repman.PeerLogin(parsedPeerURL, user)
 
-		if status == http.StatusOK {
-			var authtoken AuthToken
-			err = json.Unmarshal(body, &authtoken)
-			if err == nil {
-				// Save the client in the peer manager
-				repman.PeerManager.NewClient(parsedPeerURL.String(), user.Username, authtoken.Token)
-			}
-		}
-
 	} else {
 		// Forward the request to the peer URL
 		status, body = repman.PeerRequestForwarder(parsedPeerURL, r)
@@ -2035,9 +2026,7 @@ func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *htt
 
 	healths := make(map[string]peer.PeerHealth)
 	for _, mycluster := range repman.Clusters {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-			healths[mycluster.Name] = mycluster.GetPeerHealth()
-		}
+		healths[mycluster.Name] = mycluster.GetPeerHealth()
 	}
 
 	w.WriteHeader(http.StatusOK)

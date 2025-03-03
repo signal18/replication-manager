@@ -9,11 +9,12 @@ import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiTag } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiTag } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
+import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
 
 function PeerClusterList({ onLogin, mode }) {
   const dispatch = useDispatch()
@@ -74,19 +75,19 @@ function PeerClusterList({ onLogin, mode }) {
   }
 
   const handleSubscribeModal = (clusterItem) => {
-    let baseURL = clusterItem['api-public-url']
+    let baseURL = clusterItem?.cluster['api-public-url']
     if (monitor?.config?.apiPublicUrl == baseURL) {
       baseURL = ''
     }
 
 
     closeTermsModal(true)
-    dispatch(clusterSubscribe({ clusterName: clusterItem['cluster-name'], baseURL: baseURL }))
+    dispatch(clusterSubscribe({ clusterName: clusterItem?.cluster['cluster-name'], baseURL: baseURL }))
   }
 
   const handlePeerCluster = (clusterItem, isRelogin = false) => {
     let handler
-    let baseURL = clusterItem['api-public-url']
+    let baseURL = clusterItem?.cluster['api-public-url']
     let token = localStorage.getItem(`user_token`)
 
     if (monitor?.config?.apiPublicUrl == baseURL) {
@@ -99,13 +100,13 @@ function PeerClusterList({ onLogin, mode }) {
 
     if (token && !isRelogin) {
       dispatch(setBaseURL({ baseURL: baseURL }));
-      handler = dispatch(getClusterData({ clusterName: clusterItem['cluster-name'] }))
+      handler = dispatch(getClusterData({ clusterName: clusterItem?.cluster['cluster-name'] }))
     } else {
       localStorage.removeItem(`user_token_${btoa(baseURL)}`)
       handler = dispatch(peerLogin({ baseURL: baseURL }))
         .then((action) => {
           if (action?.payload?.status === 200) {
-            return dispatch(getClusterData({ clusterName: clusterItem['cluster-name'] }))
+            return dispatch(getClusterData({ clusterName: clusterItem?.cluster['cluster-name'] }))
           } else {
             dispatch(
               showErrorToast({
@@ -153,13 +154,13 @@ function PeerClusterList({ onLogin, mode }) {
     <>
       <Flex className={styles.clusterList}>
         {clusters?.map((clusterItem) => {
-          const headerText = `${clusterItem['cluster-name']}\n`
-          const domain = `${clusterItem['cloud18-domain']}`
-          const subDomain = `${clusterItem['cloud18-sub-domain']}`
-          const subDomainZone = ` ${clusterItem['cloud18-sub-domain-zone']}`
-          const cost = clusterItem['cloud18-monthly-infra-cost'] * 1 + clusterItem['cloud18-monthly-license-cost'] * 1 + clusterItem['cloud18-monthly-sysops-cost'] * 1 + clusterItem['cloud18-monthly-dbops-cost'] * 1
-          const amount = (cost * (100 - clusterItem['cloud18-promotion-pct'])) / 100
-          const currency = clusterItem['cloud18-cost-currency']
+          const headerText = `${clusterItem?.cluster['cluster-name']}\n`
+          const domain = `${clusterItem?.cluster['cloud18-domain']}`
+          const subDomain = `${clusterItem?.cluster['cloud18-sub-domain']}`
+          const subDomainZone = ` ${clusterItem?.cluster['cloud18-sub-domain-zone']}`
+          const cost = clusterItem?.cluster['cloud18-monthly-infra-cost'] * 1 + clusterItem?.cluster['cloud18-monthly-license-cost'] * 1 + clusterItem?.cluster['cloud18-monthly-sysops-cost'] * 1 + clusterItem?.cluster['cloud18-monthly-dbops-cost'] * 1
+          const amount = (cost * (100 - clusterItem?.cluster['cloud18-promotion-pct'])) / 100
+          const currency = clusterItem?.cluster['cloud18-cost-currency']
 
           const isPending = clusterItem?.['api-credentials-acl-allow']?.includes('pending')
         const isSponsor = clusterItem?.['api-credentials-acl-allow']?.includes('sponsor')
@@ -177,12 +178,45 @@ function PeerClusterList({ onLogin, mode }) {
                 </>
               )
             },
-            { key: 'Service Plan', value: clusterItem['prov-service-plan'] },
-            { key: 'Geo Zone', value: clusterItem['cloud18-infra-geo-localizations'] },
+            { key: 'Is Healthy', value: (
+              <HStack spacing='4'>
+                {clusterItem?.health?.isDown || clusterItem?.health?.isMasterDown ? (
+                  <>
+                    <CheckOrCrossIcon isValid={false} />
+                    <Text>No</Text>
+                  </>
+                ) : !clusterItem?.health?.isFailable ? (
+                  <>
+                    <CustomIcon icon={HiExclamation} color='orange' />
+                    <Text>Warning</Text>
+                  </>
+                ) : (
+                  <>
+                    <CheckOrCrossIcon isValid={true} />
+                    <Text>Yes</Text>
+                  </>
+                )}
+              </HStack>
+            ) },
+            { key: 'Is Provisioned', value: (<HStack spacing='4'>
+              {clusterItem?.health?.isProvisioned ? (
+                <>
+                  <CheckOrCrossIcon isValid={true} />
+                  <Text>Yes</Text>
+                </>
+              ) : (
+                <>
+                  <CheckOrCrossIcon isValid={false} />
+                  <Text>No</Text>
+                </>
+              )}
+            </HStack>) },
+            { key: 'Service Plan', value: clusterItem?.cluster['prov-service-plan'] },
+            { key: 'Geo Zone', value: clusterItem?.cluster['cloud18-infra-geo-localizations'] },
             {
               key: (
                 <HStack spacing='4'>
-                  {clusterItem['cloud18-promotion-pct'] && clusterItem['cloud18-promotion-pct'] > 0 ? (
+                  {clusterItem?.cluster['cloud18-promotion-pct'] && clusterItem?.cluster['cloud18-promotion-pct'] > 0 ? (
                     <>
                       <Text>Price</Text>
                       <CustomIcon color={"red"} icon={HiTag} />
@@ -195,7 +229,7 @@ function PeerClusterList({ onLogin, mode }) {
                 </HStack>
               ), value: (
                 <HStack spacing='4'>
-                  {clusterItem['cloud18-promotion-pct'] && clusterItem['cloud18-promotion-pct'] > 0 ? (
+                  {clusterItem?.cluster['cloud18-promotion-pct'] && clusterItem?.cluster['cloud18-promotion-pct'] > 0 ? (
                     <>
                       <Text>
                         <Text as={"span"} textColor="red.500" textDecorationColor="red.500" textDecoration="line-through">
@@ -215,24 +249,24 @@ function PeerClusterList({ onLogin, mode }) {
                 </HStack>
               )
             },
-            { key: 'Memory', value: clusterItem['prov-db-memory'] / 1024 + "GB" },
-            { key: 'IOps', value: clusterItem['prov-db-disk-iops'] },
-            { key: 'Disk', value: clusterItem['prov-db-disk-size'] + "GB" },
-            { key: 'CPU Core', value: clusterItem['prov-db-cpu-cores'] },
-            { key: 'CPU Type', value: clusterItem['cloud18-infra-cpu-model'] },
-            { key: 'CPU Freq', value: clusterItem['cloud18-infra-cpu-freq'] },
-            { key: 'Data Centers', value: clusterItem['cloud18-infra-data-centers'] },
-            { key: 'Public Bandwidth', value: clusterItem['cloud18-infra-public-bandwidth'] / 1024 + "Gbps" },
-            { key: 'Time To Response', value: clusterItem['cloud18-sla-response-time'] + "Hours" },
-            { key: 'Time To Repair', value: clusterItem['cloud18-sla-repair-time'] + "Hours" },
-            { key: 'Time To Provision', value: clusterItem['cloud18-sla-provision-time'] + "Hours" },
-            { key: 'Certifications', value: clusterItem['cloud18-infra-certifications']  },
-            { key: 'Infrastructure', value: clusterItem['prov-orchestrator'] + " " + clusterItem['cloud18-platform-description'] },
+            { key: 'Memory', value: clusterItem?.cluster['prov-db-memory'] / 1024 + "GB" },
+            { key: 'IOps', value: clusterItem?.cluster['prov-db-disk-iops'] },
+            { key: 'Disk', value: clusterItem?.cluster['prov-db-disk-size'] + "GB" },
+            { key: 'CPU Core', value: clusterItem?.cluster['prov-db-cpu-cores'] },
+            { key: 'CPU Type', value: clusterItem?.cluster['cloud18-infra-cpu-model'] },
+            { key: 'CPU Freq', value: clusterItem?.cluster['cloud18-infra-cpu-freq'] },
+            { key: 'Data Centers', value: clusterItem?.cluster['cloud18-infra-data-centers'] },
+            { key: 'Public Bandwidth', value: clusterItem?.cluster['cloud18-infra-public-bandwidth'] / 1024 + "Gbps" },
+            { key: 'Time To Response', value: clusterItem?.cluster['cloud18-sla-response-time'] + "Hours" },
+            { key: 'Time To Repair', value: clusterItem?.cluster['cloud18-sla-repair-time'] + "Hours" },
+            { key: 'Time To Provision', value: clusterItem?.cluster['cloud18-sla-provision-time'] + "Hours" },
+            { key: 'Certifications', value: clusterItem?.cluster['cloud18-infra-certifications']  },
+            { key: 'Infrastructure', value: clusterItem?.cluster['prov-orchestrator'] + " " + clusterItem?.cluster['cloud18-platform-description'] },
             /*  {
                 key: 'Share',
                 value: (
                   <HStack spacing='4'>
-                    {clusterItem['cloud18-is-multi-dc'] ? (
+                    {clusterItem?.cluster['cloud18-is-multi-dc'] ? (
                       <>
                         <CheckOrCrossIcon isValid={true} />
                         <Text>Yes</Text>
@@ -249,7 +283,7 @@ function PeerClusterList({ onLogin, mode }) {
           ]
 
           return (
-            <Box key={clusterItem['cluster-name']} className={styles.cardWrapper}>
+            <Box key={clusterItem?.cluster['cluster-name']} className={styles.cardWrapper}>
               <Card
                 className={styles.card}
                 width={'400px'}

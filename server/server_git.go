@@ -404,6 +404,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	// Compare with the existing checksum
 	if oldHash, ok := repman.CheckSumConfig["peer"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
+		repman.PeerManager.GetAllHealthStatus()
 		return nil // No changes in the file content
 	}
 
