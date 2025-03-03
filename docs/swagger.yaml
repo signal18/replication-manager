@@ -998,109 +998,6 @@ definitions:
       sysopsEmail:
         type: string
     type: object
-  config.PeerCluster:
-    properties:
-      api-credentials-acl-allow:
-        type: string
-      api-credentials-acl-allow-external:
-        type: string
-      api-public-url:
-        type: string
-      cloud18-cost-currency:
-        type: string
-      cloud18-database-read-srv-record:
-        type: string
-      cloud18-database-read-write-split-srv-record:
-        type: string
-      cloud18-database-read-write-srv-record:
-        type: string
-      cloud18-domain:
-        type: string
-      cloud18-external-dbops:
-        type: string
-      cloud18-external-sysops:
-        type: string
-      cloud18-infra-certifications:
-        type: string
-      cloud18-infra-cpu-freq:
-        type: string
-      cloud18-infra-cpu-model:
-        type: string
-      cloud18-infra-data-centers:
-        type: string
-      cloud18-infra-geo-localizations:
-        type: string
-      cloud18-infra-public-bandwidth:
-        example: "0"
-        type: string
-      cloud18-monthly-dbops-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-infra-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-license-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-sysops-cost:
-        example: "0"
-        type: string
-      cloud18-open-dbops:
-        example: "false"
-        type: string
-      cloud18-open-sysops:
-        example: "false"
-        type: string
-      cloud18-peer:
-        example: "false"
-        type: string
-      cloud18-platform-description:
-        type: string
-      cloud18-promotion-pct:
-        example: "0"
-        type: string
-      cloud18-shared:
-        example: "false"
-        type: string
-      cloud18-sla-provision-time:
-        example: "0"
-        type: string
-      cloud18-sla-repair-time:
-        example: "0"
-        type: string
-      cloud18-sla-response-time:
-        example: "0"
-        type: string
-      cloud18-sub-domain:
-        type: string
-      cloud18-sub-domain-zone:
-        type: string
-      cloud18-subscribed-dbops:
-        example: "false"
-        type: string
-      cluster-name:
-        type: string
-      peer-users:
-        items:
-          type: string
-        type: array
-      prov-db-cpu-cores:
-        example: "0"
-        type: string
-      prov-db-disk-iops:
-        example: "0"
-        type: string
-      prov-db-disk-size:
-        example: "0"
-        type: string
-      prov-db-memory:
-        example: "0"
-        type: string
-      prov-orchestrator:
-        type: string
-      prov-service-plan:
-        type: string
-    type: object
   config.PointInTimeMeta:
     properties:
       backup:
@@ -2903,6 +2800,105 @@ definitions:
     properties:
       pid:
         type: integer
+    type: object
+  peer.PeerCluster:
+    properties:
+      api-credentials-acl-allow:
+        type: string
+      api-credentials-acl-allow-external:
+        type: string
+      api-public-url:
+        type: string
+      cloud18-cost-currency:
+        type: string
+      cloud18-database-read-srv-record:
+        type: string
+      cloud18-database-read-write-split-srv-record:
+        type: string
+      cloud18-database-read-write-srv-record:
+        type: string
+      cloud18-domain:
+        type: string
+      cloud18-external-dbops:
+        type: string
+      cloud18-external-sysops:
+        type: string
+      cloud18-infra-certifications:
+        type: string
+      cloud18-infra-cpu-freq:
+        type: string
+      cloud18-infra-cpu-model:
+        type: string
+      cloud18-infra-data-centers:
+        type: string
+      cloud18-infra-geo-localizations:
+        type: string
+      cloud18-infra-public-bandwidth:
+        example: "0"
+        type: string
+      cloud18-monthly-dbops-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-infra-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-license-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-sysops-cost:
+        example: "0"
+        type: string
+      cloud18-open-dbops:
+        example: "false"
+        type: string
+      cloud18-open-sysops:
+        example: "false"
+        type: string
+      cloud18-peer:
+        example: "false"
+        type: string
+      cloud18-platform-description:
+        type: string
+      cloud18-promotion-pct:
+        example: "0"
+        type: string
+      cloud18-shared:
+        example: "false"
+        type: string
+      cloud18-sla-provision-time:
+        example: "0"
+        type: string
+      cloud18-sla-repair-time:
+        example: "0"
+        type: string
+      cloud18-sla-response-time:
+        example: "0"
+        type: string
+      cloud18-sub-domain:
+        type: string
+      cloud18-sub-domain-zone:
+        type: string
+      cloud18-subscribed-dbops:
+        example: "false"
+        type: string
+      cluster-name:
+        type: string
+      prov-db-cpu-cores:
+        example: "0"
+        type: string
+      prov-db-disk-iops:
+        example: "0"
+        type: string
+      prov-db-disk-size:
+        example: "0"
+        type: string
+      prov-db-memory:
+        example: "0"
+        type: string
+      prov-orchestrator:
+        type: string
+      prov-service-plan:
+        type: string
     type: object
   proxysql.QueryRule:
     properties:
@@ -10919,7 +10915,7 @@ paths:
           description: List of peer clusters available for sale
           schema:
             items:
-              $ref: '#/definitions/config.PeerCluster'
+              $ref: '#/definitions/peer.PeerCluster'
             type: array
         "401":
           description: Unauthenticated resource
@@ -10950,7 +10946,7 @@ paths:
           description: List of peer clusters
           schema:
             items:
-              $ref: '#/definitions/config.PeerCluster'
+              $ref: '#/definitions/peer.PeerCluster'
             type: array
         "401":
           description: Unauthenticated resource

@@ -24,6 +24,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -561,13 +562,12 @@ func (cluster *Cluster) GetStatus() bool {
 	return cluster.StateMachine.IsFailable()
 }
 
-func (cluster *Cluster) GetClusterState() ClusterState {
-	return ClusterState{
-		Crashes:    cluster.Crashes,
-		Servers:    cluster.Conf.Hosts,
-		SLA:        cluster.StateMachine.GetSla(),
-		IsAllDbUp:  cluster.IsAllDbUp,
-		SLAHistory: cluster.SLAHistory,
+func (cluster *Cluster) GetPeerHealth() peer.PeerHealth {
+	return peer.PeerHealth{
+		IsDown:        cluster.IsDown,
+		IsMasterDown:  cluster.IsMasterDown,
+		IsFailable:    cluster.StateMachine.IsFailable(),
+		IsProvisioned: cluster.IsProvision,
 	}
 }
 

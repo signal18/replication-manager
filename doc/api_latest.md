@@ -11472,7 +11472,7 @@ Status: Internal Server Error
 
 
 
-### <span id="config-peer-cluster"></span> config.PeerCluster
+### <span id="config-peer-cluster"></span> peer.PeerCluster
 
 
   

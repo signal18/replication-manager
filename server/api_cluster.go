@@ -6242,7 +6242,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} cluster.ClusterState "Cluster health fetched"
+// @Success 200 {object} peer.PeerHealth "Cluster health fetched"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/health [get]
@@ -6253,7 +6253,7 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 	if mycluster != nil {
 		w.WriteHeader(http.StatusOK)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(mycluster.GetClusterState())
+		json.NewEncoder(w).Encode(mycluster.GetPeerHealth())
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])

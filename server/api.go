@@ -45,12 +45,12 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -375,12 +375,7 @@ func (repman *ReplicationManager) apiserver() {
 /////////////////////////////////////////
 
 func (repman *ReplicationManager) handleOriginValidator(origin string) bool {
-	for _, cl := range repman.PeerClusters {
-		if cl.ApiPublicUrl == origin {
-			return true
-		}
-	}
-	return false
+	return repman.PeerManager.HasPeerURL(origin)
 }
 
 func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) {
@@ -1042,7 +1037,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 // @Tags Cloud18
 // @Produce application/json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} config.PeerCluster "List of peer clusters"
+// @Success 200 {array} peer.PeerCluster "List of peer clusters"
 // @Failure 401 {string} string "Unauthenticated resource"
 // @Failure 500 {string} string "Failed to get token claims or Error Marshal"
 // @Router /api/clusters/peers [get]
@@ -1064,23 +1059,12 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 		peerUser = repman.Conf.Cloud18GitUser
 	}
 
-	peer := make([]config.PeerCluster, 0)
-	booked := strings.Split(repman.PeerBooked[peerUser], ",")
-	for _, cl := range repman.PeerClusters {
-		if misc.IsValidPublicURL(cl.ApiPublicUrl) {
-			// fmt.Println("Peer cluster is valid")
-			// fmt.Println(cl.ApiCredentialsAclAllowExternal + "," + cl.ApiCredentialsAclAllow)
-			if strings.Contains(cl.ApiCredentialsAclAllowExternal+","+cl.ApiCredentialsAclAllow, peerUser) || slices.Contains(booked, cl.Cloud18Domain+"/"+cl.Cloud18SubDomain+"/"+cl.ClusterName) {
-				peer = append(peer, cl)
-			}
-		}
-	}
-
-	cl, err := json.MarshalIndent(peer, "", "\t")
+	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser)
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(cl)
 }
@@ -1091,7 +1075,7 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 // @Tags Cloud18
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Produce application/json
-// @Success 200 {array} config.PeerCluster "List of peer clusters available for sale"
+// @Success 200 {array} peer.PeerCluster "List of peer clusters available for sale"
 // @Failure 401 {string} string "Unauthenticated resource"
 // @Failure 500 {string} string "Failed to get token claims or Error Marshal"
 // @Router /api/clusters/for-sale [get]
@@ -1102,33 +1086,12 @@ func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseW
 		return
 	}
 
-	uinfo, err := repman.GetJWTClaims(r)
-	if err != nil {
-		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
-		return
-	}
-
-	peerUser := uinfo["User"]
-	if peerUser == "admin" {
-		peerUser = repman.Conf.Cloud18GitUser
-	}
-
-	shared := make([]config.PeerCluster, 0)
-	booked := strings.Split(repman.PeerBooked[peerUser], ",")
-	for _, cl := range repman.PeerClusters {
-		if slices.Contains(booked, cl.Cloud18Domain+"/"+cl.Cloud18SubDomain+"/"+cl.ClusterName) {
-			continue
-		}
-		if !strings.Contains(cl.ApiCredentialsAclAllowExternal, "sponsor") && !strings.Contains(cl.ApiCredentialsAclAllowExternal, "pending") && !cl.Cloud18Peer {
-			shared = append(shared, cl)
-		}
-	}
-
-	cl, err := json.MarshalIndent(shared, "", "\t")
+	cl, err := repman.PeerManager.GetSaleClustersJSON()
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(cl)
 }
@@ -1604,12 +1567,7 @@ func (repman *ReplicationManager) RecoveryMiddleware(next http.Handler) http.Han
 
 // isAllowedPeer checks if a given peer URL is in the allowed list
 func (repman *ReplicationManager) IsAllowedPeer(peerURL string) bool {
-	for _, pcl := range repman.PeerClusters {
-		if peerURL == pcl.ApiPublicUrl {
-			return true
-		}
-	}
-	return false
+	return repman.PeerManager.HasPeerURL(peerURL)
 }
 
 // isAllowedPeer checks if a given peer URL is in the allowed list
@@ -2060,17 +2018,15 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {object} map[string]cluster.ClusterState "List of cluster health statuses"
+// @Success 200 {object} map[string]peer.PeerHealth "List of cluster health statuses"
 // @Failure 500 {string} string "Error getting JWT claims"
 // @Router /api/health [get]
 func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	healths := make(map[string]cluster.ClusterState)
+	healths := make(map[string]peer.PeerHealth)
 	for _, mycluster := range repman.Clusters {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-			healths[mycluster.Name] = mycluster.GetClusterState()
-		}
+		healths[mycluster.Name] = mycluster.GetPeerHealth()
 	}
 
 	w.WriteHeader(http.StatusOK)

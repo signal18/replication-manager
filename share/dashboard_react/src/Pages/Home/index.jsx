@@ -22,7 +22,7 @@ import {
   pauseAutoReload,
   getBackupStats
 } from '../../redux/clusterSlice'
-import { getClusters, getMonitoredData, getClusterPeers } from '../../redux/globalClustersSlice'
+import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
 import { useNavigate, useParams } from 'react-router-dom'
@@ -170,6 +170,7 @@ function Home() {
         globalTabsRef.current[selectedTabRef.current] === 'Clusters For Sale'
       ) {
         dispatch(getClusterPeers({}))
+        dispatch(getClusterForSale({}))
       }
     } else if (selectedClusterNameRef.current) {
       if (!isAutoReloadPaused) {

@@ -806,49 +806,6 @@ type Secret struct {
 	Value    string
 }
 
-type PeerCluster struct {
-	ClusterName                            string   `json:"cluster-name"`
-	PeerUsers                              []string `json:"peer-users"`
-	ApiPublicUrl                           string   `json:"api-public-url"`
-	ApiCredentialsAclAllow                 string   `json:"api-credentials-acl-allow"`
-	ApiCredentialsAclAllowExternal         string   `json:"api-credentials-acl-allow-external"`
-	ProvDbMemory                           int      `json:"prov-db-memory,string"`
-	ProvDbCpuCores                         int      `json:"prov-db-cpu-cores,string"`
-	ProvDbDiskIops                         int64    `json:"prov-db-disk-iops,string"`
-	ProvDbDiskSize                         int64    `json:"prov-db-disk-size,string"`
-	ProvServicePlan                        string   `json:"prov-service-plan"`
-	ProvOrchestrator                       string   `json:"prov-orchestrator"`
-	Cloud18Domain                          string   `json:"cloud18-domain"`
-	Cloud18PlatformDescription             string   `json:"cloud18-platform-description"`
-	Cloud18Shared                          bool     `json:"cloud18-shared,string"`
-	Cloud18Peer                            bool     `json:"cloud18-peer,string"`
-	Cloud18SubDomain                       string   `json:"cloud18-sub-domain"`
-	Cloud18SubDomainZone                   string   `json:"cloud18-sub-domain-zone"`
-	Cloud18MonthlyInfraCost                float64  `json:"cloud18-monthly-infra-cost,string"`
-	Cloud18MonthlyLicenseCost              float64  `json:"cloud18-monthly-license-cost,string"`
-	Cloud18MonthlySysopsCost               float64  `json:"cloud18-monthly-sysops-cost,string"`
-	Cloud18MonthlyDbopsCost                float64  `json:"cloud18-monthly-dbops-cost,string"`
-	Cloud18CostCurrency                    string   `json:"cloud18-cost-currency"`
-	Cloud18InfraCPUFreq                    string   `json:"cloud18-infra-cpu-freq"`
-	Cloud18InfraCPUModel                   string   `json:"cloud18-infra-cpu-model"`
-	Cloud18InfraGeoLocalizations           string   `json:"cloud18-infra-geo-localizations"`
-	Cloud18InfraPublicBandwidth            float64  `json:"cloud18-infra-public-bandwidth,string"`
-	Cloud18InfraDataCenters                string   `json:"cloud18-infra-data-centers"`
-	Cloud18OpenDbops                       bool     `json:"cloud18-open-dbops,string"`
-	Cloud18SubscribedDbops                 bool     `json:"cloud18-subscribed-dbops,string"`
-	Cloud18OpenSysops                      bool     `json:"cloud18-open-sysops,string"`
-	Cloud18DatabaseReadWriteSplitSrvRecord string   `json:"cloud18-database-read-write-split-srv-record"`
-	Cloud18DatabaseReadSrvRecord           string   `json:"cloud18-database-read-srv-record"`
-	Cloud18DatabaseReadWriteSrvRecord      string   `json:"cloud18-database-read-write-srv-record"`
-	Cloud18SlaResponseTime                 float64  `json:"cloud18-sla-response-time,string"`
-	Cloud18SlaRepairTime                   float64  `json:"cloud18-sla-repair-time,string"`
-	Cloud18SlaProvisionTime                float64  `json:"cloud18-sla-provision-time,string"`
-	Cloud18PromotionPct                    float64  `json:"cloud18-promotion-pct,string"`
-	Cloud18ExtDbOps                        string   `json:"cloud18-external-dbops"`
-	Cloud18ExtSysOps                       string   `json:"cloud18-external-sysops"`
-	Cloud18InfraCertifications             string   `json:"cloud18-infra-certifications"`
-}
-
 type Partner struct {
 	Id          int
 	Name        string
@@ -1963,51 +1920,6 @@ func GetBackupLogicalType() map[string]bool {
 		ConstBackupLogicalTypeMydumper:  true,
 		ConstBackupLogicalTypeRiver:     false,
 		ConstBackupLogicalTypeDumpling:  false,
-	}
-}
-
-func GetCloud18PeerClusters() []PeerCluster {
-	return []PeerCluster{
-		PeerCluster{
-			ClusterName:                "Bench",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Stephane dev Small 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "10.8.0.50:10005",
-		},
-		PeerCluster{
-			ClusterName:                "Marie",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Priyanka dev 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.marie-dev.svc.cloud18:10005",
-		},
-		PeerCluster{
-			ClusterName:                "Ahmad",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Ahamd dev 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.ahmad.svc.cloud18:10005",
-		},
-		PeerCluster{
-			ClusterName:                "rs1small",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Small 16G RAM NVME 4cores 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.ahmad.svc.cloud18:10005",
-		},
 	}
 }
 
