@@ -1,4 +1,4 @@
-package peerclient
+package peer
 
 import (
 	"fmt"

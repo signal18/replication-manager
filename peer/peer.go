@@ -4,6 +4,8 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -51,6 +53,13 @@ type PeerCluster struct {
 	Cloud18ExtDbOps                        string  `json:"cloud18-external-dbops"`
 	Cloud18ExtSysOps                       string  `json:"cloud18-external-sysops"`
 	Cloud18InfraCertifications             string  `json:"cloud18-infra-certifications"`
+	IsHealthy                              bool    `json:"-"`
+	IsProvisioned                          bool    `json:"-"`
+}
+
+type PeerHealth struct {
+	IsHealthy     bool `json:"is_healthy"`
+	IsProvisioned bool `json:"is_provisioned"`
 }
 
 // PeerManager manages peer clusters.
@@ -61,6 +70,7 @@ type PeerManager struct {
 	PeerForSale       map[string]*PeerCluster
 	PeerUserClusters  map[string]map[string]*PeerCluster
 	UserClusterAccess map[string]map[string]struct{} // Optimized mapping for user access to clusters
+	Clients           map[string]*PeerClient
 	MissingSince      time.Time
 }
 
@@ -72,6 +82,7 @@ func NewPeerManager() *PeerManager {
 		PeerUserClusters:  make(map[string]map[string]*PeerCluster),
 		UserClusterAccess: make(map[string]map[string]struct{}),
 		PeerURL:           make(map[string]struct{}),
+		Clients:           make(map[string]*PeerClient),
 	}
 }
 
@@ -320,6 +331,42 @@ func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 	} else {
 		pm.PeerForSale[hashID] = pc
 	}
+}
+
+func (pm *PeerManager) NewClient(peerURL, username, token string) *PeerClient {
+	pc := NewPeerClient(peerURL, time.Duration(10)*time.Second)
+	pc.SetHeader("Authorization", "Bearer "+token)
+
+	pm.Clients[GetHashID(peerURL, username)] = pc
+	pm.GetHealthStatus(pc)
+
+	return pc
+}
+
+func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
+	hstatus, hbody, err := pclient.Get("/api/health")
+	if err != nil {
+		return err
+	}
+
+	if hstatus != http.StatusOK {
+		return fmt.Errorf("Health check failed with status %d: %s", hstatus, string(hbody))
+	} else {
+		healths := make(map[string]PeerHealth)
+		if err := json.Unmarshal(hbody, &healths); err != nil {
+			return fmt.Errorf("Failed to parse health status: %s", err)
+		}
+
+		for clustername, status := range healths {
+			hashID := GetHashID(pclient.baseURL, clustername)
+			if pc, ok := pm.PeerClusters[hashID]; ok {
+				pc.IsHealthy = status.IsHealthy
+				pc.IsProvisioned = status.IsProvisioned
+			}
+		}
+	}
+
+	return nil
 }
 
 func GetPeerHashID(pc *PeerCluster) string {

@@ -7,29 +7,15 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/pgzip"
 	"github.com/signal18/replication-manager/peer"
-	"github.com/signal18/replication-manager/utils/peerclient"
 	log "github.com/sirupsen/logrus"
 )
 
 func (repman *ReplicationManager) GetPeerCluster(peerURL, clustername string) (*peer.PeerCluster, bool) {
 	return repman.PeerManager.GetCluster(peer.GetHashID(peerURL, clustername))
-}
-
-func (repman *ReplicationManager) GetPeerClient(peerURL, username string) *peerclient.PeerClient {
-	return repman.peerClientMap[peer.GetHashID(peerURL, username)]
-}
-
-func (repman *ReplicationManager) SetPeerClient(peerURL, username, token string) *peerclient.PeerClient {
-	pc := peerclient.NewPeerClient(peerURL, time.Duration(10)*time.Second)
-	pc.SetHeader("Authorization", "Bearer "+token)
-	repman.peerClientMap[peer.GetHashID(peerURL, username)] = pc
-
-	return pc
 }
 
 func (repman *ReplicationManager) PeerLogin(parsedPeerURL *url.URL, user userCredentials) (int, []byte) {
