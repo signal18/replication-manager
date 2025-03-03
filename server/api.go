@@ -45,6 +45,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
@@ -2026,16 +2027,16 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {object} map[string]cluster.ClusterState "List of cluster health statuses"
+// @Success 200 {object} map[string]peer.PeerHealth "List of cluster health statuses"
 // @Failure 500 {string} string "Error getting JWT claims"
 // @Router /api/health [get]
 func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	healths := make(map[string]cluster.ClusterState)
+	healths := make(map[string]peer.PeerHealth)
 	for _, mycluster := range repman.Clusters {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
-			healths[mycluster.Name] = mycluster.GetClusterState()
+			healths[mycluster.Name] = mycluster.GetPeerHealth()
 		}
 	}
 
