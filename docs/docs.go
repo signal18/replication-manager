@@ -243,7 +243,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/config.PeerCluster"
+                                "$ref": "#/definitions/peer.PeerCluster"
                             }
                         }
                     },
@@ -288,7 +288,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/config.PeerCluster"
+                                "$ref": "#/definitions/peer.PeerCluster"
                             }
                         }
                     },
@@ -13892,152 +13892,6 @@ const docTemplate = `{
                 }
             }
         },
-        "config.PeerCluster": {
-            "type": "object",
-            "properties": {
-                "api-credentials-acl-allow": {
-                    "type": "string"
-                },
-                "api-credentials-acl-allow-external": {
-                    "type": "string"
-                },
-                "api-public-url": {
-                    "type": "string"
-                },
-                "cloud18-cost-currency": {
-                    "type": "string"
-                },
-                "cloud18-database-read-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-database-read-write-split-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-database-read-write-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-domain": {
-                    "type": "string"
-                },
-                "cloud18-external-dbops": {
-                    "type": "string"
-                },
-                "cloud18-external-sysops": {
-                    "type": "string"
-                },
-                "cloud18-infra-certifications": {
-                    "type": "string"
-                },
-                "cloud18-infra-cpu-freq": {
-                    "type": "string"
-                },
-                "cloud18-infra-cpu-model": {
-                    "type": "string"
-                },
-                "cloud18-infra-data-centers": {
-                    "type": "string"
-                },
-                "cloud18-infra-geo-localizations": {
-                    "type": "string"
-                },
-                "cloud18-infra-public-bandwidth": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-dbops-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-infra-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-license-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-sysops-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-open-dbops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-open-sysops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-peer": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-platform-description": {
-                    "type": "string"
-                },
-                "cloud18-promotion-pct": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-shared": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-sla-provision-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sla-repair-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sla-response-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sub-domain": {
-                    "type": "string"
-                },
-                "cloud18-sub-domain-zone": {
-                    "type": "string"
-                },
-                "cloud18-subscribed-dbops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cluster-name": {
-                    "type": "string"
-                },
-                "peer-users": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "prov-db-cpu-cores": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-disk-iops": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-disk-size": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-memory": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-orchestrator": {
-                    "type": "string"
-                },
-                "prov-service-plan": {
-                    "type": "string"
-                }
-            }
-        },
         "config.PointInTimeMeta": {
             "type": "object",
             "properties": {
@@ -16736,6 +16590,146 @@ const docTemplate = `{
             "properties": {
                 "pid": {
                     "type": "integer"
+                }
+            }
+        },
+        "peer.PeerCluster": {
+            "type": "object",
+            "properties": {
+                "api-credentials-acl-allow": {
+                    "type": "string"
+                },
+                "api-credentials-acl-allow-external": {
+                    "type": "string"
+                },
+                "api-public-url": {
+                    "type": "string"
+                },
+                "cloud18-cost-currency": {
+                    "type": "string"
+                },
+                "cloud18-database-read-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-database-read-write-split-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-database-read-write-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-domain": {
+                    "type": "string"
+                },
+                "cloud18-external-dbops": {
+                    "type": "string"
+                },
+                "cloud18-external-sysops": {
+                    "type": "string"
+                },
+                "cloud18-infra-certifications": {
+                    "type": "string"
+                },
+                "cloud18-infra-cpu-freq": {
+                    "type": "string"
+                },
+                "cloud18-infra-cpu-model": {
+                    "type": "string"
+                },
+                "cloud18-infra-data-centers": {
+                    "type": "string"
+                },
+                "cloud18-infra-geo-localizations": {
+                    "type": "string"
+                },
+                "cloud18-infra-public-bandwidth": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-dbops-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-infra-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-license-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-sysops-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-open-dbops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-open-sysops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-peer": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-platform-description": {
+                    "type": "string"
+                },
+                "cloud18-promotion-pct": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-shared": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-sla-provision-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sla-repair-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sla-response-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sub-domain": {
+                    "type": "string"
+                },
+                "cloud18-sub-domain-zone": {
+                    "type": "string"
+                },
+                "cloud18-subscribed-dbops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cluster-name": {
+                    "type": "string"
+                },
+                "prov-db-cpu-cores": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-disk-iops": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-disk-size": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-memory": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-orchestrator": {
+                    "type": "string"
+                },
+                "prov-service-plan": {
+                    "type": "string"
                 }
             }
         },

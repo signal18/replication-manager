@@ -18,6 +18,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/meethelper"
 	log "github.com/sirupsen/logrus"
@@ -373,7 +374,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	fstat, err := os.Stat(filePath)
 	if err != nil {
-		repman.PeerClusters = make([]config.PeerCluster, 0)
+		repman.PeerManager.DropAllClusters()
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
@@ -390,7 +391,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		repman.PeerClusters = make([]config.PeerCluster, 0)
+		repman.PeerManager.DropAllClusters()
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
@@ -407,14 +408,17 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	}
 
 	// Decode JSON
-	var PeerList []config.PeerCluster
+	var PeerList []*peer.PeerCluster
 	if err := json.Unmarshal(content, &PeerList); err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
 	}
 
+	if len(PeerList) > 0 {
+		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+	}
+
 	// Update state
-	repman.PeerClusters = PeerList
 	repman.CheckSumConfig["peer"] = newHash
 
 	return nil

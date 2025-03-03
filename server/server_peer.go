@@ -3,8 +3,6 @@ package server
 import (
 	"bytes"
 	"compress/zlib"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -13,24 +11,23 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/klauspost/pgzip"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/peerclient"
 	log "github.com/sirupsen/logrus"
 )
 
-func (repman *ReplicationManager) GetPeerClientID(peerURL, username string) string {
-	md5Hash := md5.New()
-	md5Hash.Write([]byte(peerURL + "/" + username))
-	return hex.EncodeToString(md5Hash.Sum(nil))
+func (repman *ReplicationManager) GetPeerCluster(peerURL, clustername string) (*peer.PeerCluster, bool) {
+	return repman.PeerManager.GetCluster(peer.GetHashID(peerURL, clustername))
 }
 
 func (repman *ReplicationManager) GetPeerClient(peerURL, username string) *peerclient.PeerClient {
-	return repman.peerClientMap[repman.GetPeerClientID(peerURL, username)]
+	return repman.peerClientMap[peer.GetHashID(peerURL, username)]
 }
 
 func (repman *ReplicationManager) SetPeerClient(peerURL, username, token string) *peerclient.PeerClient {
 	pc := peerclient.NewPeerClient(peerURL, time.Duration(10)*time.Second)
 	pc.SetHeader("Authorization", "Bearer "+token)
-	repman.peerClientMap[repman.GetPeerClientID(peerURL, username)] = pc
+	repman.peerClientMap[peer.GetHashID(peerURL, username)] = pc
 
 	return pc
 }

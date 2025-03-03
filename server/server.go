@@ -55,6 +55,7 @@ import (
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
@@ -80,8 +81,7 @@ type ReplicationManager struct {
 	MemProfile           string                            `json:"memprofile"`
 	CpuProfile           string                            `json:"cpuprofile"`
 	Clusters             map[string]*cluster.Cluster       `json:"-"`
-	PeerClusters         []config.PeerCluster              `json:"-"`
-	PeerBooked           map[string]string                 `json:"-"`
+	PeerManager          *peer.PeerManager                 `json:"-"`
 	Partners             []config.Partner                  `json:"partners"`
 	Partner              config.Partner                    `json:"partner"`
 	Agents               []opensvc.Host                    `json:"agents"`
@@ -1158,7 +1158,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if repman.ConfigManager == nil {
 		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
 	}
-	repman.PeerClusters = make([]config.PeerCluster, 0)
+	repman.PeerManager = peer.NewPeerManager()
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
@@ -1854,7 +1854,6 @@ func (repman *ReplicationManager) Run() error {
 	repman.cApiLog = clog.New()
 	repman.clog = clog.New()
 	repman.CheckSumConfig = make(map[string]hash.Hash)
-	repman.PeerBooked = make(map[string]string)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
 
