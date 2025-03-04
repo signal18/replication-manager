@@ -1860,6 +1860,7 @@ func (repman *ReplicationManager) Run() error {
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
+	repman.UpdateLocalPeer()
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -2165,6 +2166,11 @@ func (repman *ReplicationManager) Run() error {
 			if repman.Conf.Cloud18 && repman.Conf.GitUrlPull != "" {
 				repman.PullCloud18Configs()
 				repman.ReloadTerms()
+			}
+
+			if repman.Conf.Cloud18 {
+				repman.PeerManager.GetAllHealthStatus()
+				repman.UpdateLocalPeer()
 			}
 		}
 
