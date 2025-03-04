@@ -376,9 +376,21 @@ func GetHashID(peerURL, name string) string {
 }
 
 func SortPeerFunc(a, b *PeerCluster) int {
-	if a.ApiPublicUrl < b.ApiPublicUrl {
+	if a.Cloud18Domain < b.Cloud18Domain {
 		return -1
-	} else if a.ApiPublicUrl > b.ApiPublicUrl {
+	} else if a.Cloud18Domain > b.Cloud18Domain {
+		return 1
+	}
+
+	if a.Cloud18SubDomain < b.Cloud18SubDomain {
+		return -1
+	} else if a.Cloud18SubDomain > b.Cloud18SubDomain {
+		return 1
+	}
+
+	if a.Cloud18SubDomainZone < b.Cloud18SubDomainZone {
+		return -1
+	} else if a.Cloud18SubDomainZone > b.Cloud18SubDomainZone {
 		return 1
 	}
 
