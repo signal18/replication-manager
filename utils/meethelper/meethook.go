@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"time"
 
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -29,6 +30,10 @@ var ErrTimeout = errors.New("Request timed out")
 func (sh *MeetHook) Fire(e *logrus.Entry) error {
 	if sh.hook == nil {
 		sh.hook = NewWebHook(sh.WebhookURL)
+	}
+
+	if !slices.Contains(sh.AcceptedLevels, e.Level) {
+		return nil
 	}
 
 	payload := sh.Model
