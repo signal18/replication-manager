@@ -15,10 +15,16 @@ import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
 import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
+import SearchBox from '../../components/SearchBox'
+
+const filterFunc = (cluster, search) => {
+  return cluster['cluster-name'].toLowerCase().includes(search.toLowerCase()) || cluster['cloud18-domain'].toLowerCase().includes(search.toLowerCase()) || cluster['cloud18-sub-domain'].toLowerCase().includes(search.toLowerCase())
+}
 
 function PeerClusterList({ onLogin, mode }) {
   const dispatch = useDispatch()
   const [clusters, setClusters] = useState([])
+  const [search, setSearch] = useState("")
   const [finalTerms, setFinalTerms] = useState(``)
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
 
@@ -37,12 +43,20 @@ function PeerClusterList({ onLogin, mode }) {
 
   useEffect(() => {
     if (clusterPeers?.length > 0 && mode !== 'shared') {
+      if (search === "") {
       setClusters(clusterPeers)
+      } else {
+        setClusters(clusterPeers.filter((cluster) => filterFunc(cluster, search)))
+      }
     }
     if (clusterForSale?.length > 0 && mode === 'shared') {
-      setClusters(clusterForSale)
+      if (search === "") {
+        setClusters(clusterForSale)
+      } else {
+        setClusters(clusterForSale.filter((cluster) => filterFunc(cluster, search)))
+      }
     }
-  }, [clusterPeers,clusterForSale])
+  }, [clusterPeers, clusterForSale, search])
 
   let header = `
 | Label | Value |
@@ -50,18 +64,18 @@ function PeerClusterList({ onLogin, mode }) {
 `
 
   const parseTerms = useCallback((cluster, newterms = ``) => {
-      let servicePlan = Object.entries(cluster)
-        .filter(([key]) => !([].includes(key))) // fields to remove
-        .map(([key, value]) => `| ${key} | ${value} |`)
-        .join("\n");
-      let finalterm = newterms
-        .replace(`<<user>>`, user?.username)
-        .replace(`<<cluster>>`, cluster?.["cluster-name"])
-        .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
-        .replace(`<<date>>`, (new Date()).toLocaleDateString())
-      setFinalTerms(finalterm)
-      openTermsModal()
-    },[user?.username])
+    let servicePlan = Object.entries(cluster)
+      .filter(([key]) => !([].includes(key))) // fields to remove
+      .map(([key, value]) => `| ${key} | ${value} |`)
+      .join("\n");
+    let finalterm = newterms
+      .replace(`<<user>>`, user?.username)
+      .replace(`<<cluster>>`, cluster?.["cluster-name"])
+      .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
+      .replace(`<<date>>`, (new Date()).toLocaleDateString())
+    setFinalTerms(finalterm)
+    openTermsModal()
+  }, [user?.username])
 
   const openTermsModal = () => {
     setIsTermsModalOpen(true)
@@ -147,11 +161,13 @@ function PeerClusterList({ onLogin, mode }) {
     })
   };
 
-
   return !loading && clusters?.length === 0 ? (
     <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
   ) : (
     <>
+      <Flex className={styles.searchWrapper}>
+        <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={setSearch}/>
+      </Flex>
       <Flex className={styles.clusterList}>
         {clusters?.map((clusterItem) => {
           const headerText = `${clusterItem['cluster-name']}\n`
@@ -163,7 +179,7 @@ function PeerClusterList({ onLogin, mode }) {
           const currency = clusterItem['cloud18-cost-currency']
 
           const isPending = clusterItem?.['api-credentials-acl-allow']?.includes('pending')
-        const isSponsor = clusterItem?.['api-credentials-acl-allow']?.includes('sponsor')
+          const isSponsor = clusterItem?.['api-credentials-acl-allow']?.includes('sponsor')
 
           const dataObject = [
             {
@@ -178,39 +194,43 @@ function PeerClusterList({ onLogin, mode }) {
                 </>
               )
             },
-            { key: 'Is Healthy', value: (
-              <HStack spacing='4'>
-                {clusterItem?.isDown || clusterItem?.isMasterDown ? (
-                  <>
-                    <CheckOrCrossIcon isValid={false} />
-                    <Text>No</Text>
-                  </>
-                ) : !clusterItem?.isFailable ? (
-                  <>
-                    <CustomIcon icon={HiExclamation} color='orange' />
-                    <Text>Warning</Text>
-                  </>
-                ) : (
+            {
+              key: 'Is Healthy', value: (
+                <HStack spacing='4'>
+                  {clusterItem?.isDown || clusterItem?.isMasterDown ? (
+                    <>
+                      <CheckOrCrossIcon isValid={false} />
+                      <Text>No</Text>
+                    </>
+                  ) : !clusterItem?.isFailable ? (
+                    <>
+                      <CustomIcon icon={HiExclamation} color='orange' />
+                      <Text>Warning</Text>
+                    </>
+                  ) : (
+                    <>
+                      <CheckOrCrossIcon isValid={true} />
+                      <Text>Yes</Text>
+                    </>
+                  )}
+                </HStack>
+              )
+            },
+            {
+              key: 'Is Provisioned', value: (<HStack spacing='4'>
+                {clusterItem?.isProvisioned ? (
                   <>
                     <CheckOrCrossIcon isValid={true} />
                     <Text>Yes</Text>
                   </>
+                ) : (
+                  <>
+                    <CheckOrCrossIcon isValid={false} />
+                    <Text>No</Text>
+                  </>
                 )}
-              </HStack>
-            ) },
-            { key: 'Is Provisioned', value: (<HStack spacing='4'>
-              {clusterItem?.isProvisioned ? (
-                <>
-                  <CheckOrCrossIcon isValid={true} />
-                  <Text>Yes</Text>
-                </>
-              ) : (
-                <>
-                  <CheckOrCrossIcon isValid={false} />
-                  <Text>No</Text>
-                </>
-              )}
-            </HStack>) },
+              </HStack>)
+            },
             { key: 'Service Plan', value: clusterItem['prov-service-plan'] },
             { key: 'Geo Zone', value: clusterItem['cloud18-infra-geo-localizations'] },
             {
@@ -260,7 +280,7 @@ function PeerClusterList({ onLogin, mode }) {
             { key: 'Time To Response', value: clusterItem['cloud18-sla-response-time'] + "Hours" },
             { key: 'Time To Repair', value: clusterItem['cloud18-sla-repair-time'] + "Hours" },
             { key: 'Time To Provision', value: clusterItem['cloud18-sla-provision-time'] + "Hours" },
-            { key: 'Certifications', value: clusterItem['cloud18-infra-certifications']  },
+            { key: 'Certifications', value: clusterItem['cloud18-infra-certifications'] },
             { key: 'Infrastructure', value: clusterItem['prov-orchestrator'] + " " + clusterItem['cloud18-platform-description'] },
             /*  {
                 key: 'Share',
@@ -292,7 +312,7 @@ function PeerClusterList({ onLogin, mode }) {
                     as="button"
                     className={styles.btnHeading}
                     onClick={() => { handlePeerCluster(clusterItem) }}>
-                    <CustomIcon icon={ isSponsor || isPending ? (HiCreditCard): (AiOutlineCluster)} fill={ isSponsor ? "green" : isPending ? "orange" : "gray" }  />
+                    <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
                     <span className={styles.cardHeaderText}>{headerText}</span>
                   </HStack>
                 }
