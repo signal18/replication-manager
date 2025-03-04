@@ -137,6 +137,11 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		hashID := GetPeerHashID(pc)
 
 		if cl, exists := pm.PeerClusters[hashID]; exists {
+			pc.IsDown = cl.IsDown
+			pc.IsMasterDown = cl.IsMasterDown
+			pc.IsFailable = cl.IsFailable
+			pc.IsProvisioned = cl.IsProvisioned
+			pc.LastUpdate = cl.LastUpdate
 			*cl = *pc
 		} else {
 			pm.PeerClusters[hashID] = pc

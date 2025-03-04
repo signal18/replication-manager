@@ -375,7 +375,6 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	fstat, err := os.Stat(filePath)
 	if err != nil {
-		repman.PeerManager.DropAllClusters()
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
@@ -393,7 +392,6 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		repman.PeerManager.DropAllClusters()
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
