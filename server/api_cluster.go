@@ -2257,7 +2257,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "cloud18-open-sysops":
 		mycluster.SwitchCloud18OpenSysops()
 	case "cloud18-alert":
-		mycluster.Conf.SwitchCloud18Shared()
+		mycluster.Conf.SwitchCloud18Alert()
 		if mycluster.Conf.Cloud18Alert {
 			mycluster.LogSlack.Activate("cloud18", true)
 		} else {
