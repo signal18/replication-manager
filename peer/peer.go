@@ -263,7 +263,7 @@ func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 	hashID := GetPeerHashID(pc)
 	userlist := make(map[string]struct{})
 	var forSale bool = pc.Cloud18Shared
-	for _, acl := range strings.Split(pc.ApiCredentialsAclAllow, ",") {
+	for _, acl := range strings.Split(pc.ApiCredentialsAclAllow+","+pc.ApiCredentialsAclAllowExternal, ",") {
 		uname, _, _, roles := misc.SplitAcls(acl)
 		if _, ok := pm.UserClusterAccess[uname]; !ok {
 			pm.UserClusterAccess[uname] = make(map[string]struct{})
