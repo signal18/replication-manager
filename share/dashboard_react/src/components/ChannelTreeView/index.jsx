@@ -112,7 +112,7 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                         {type === 'O' ? 'Public Channels' : type === 'P' ? 'Private Channels' : 'Direct Channels'}
                                         {totalUnreadMessagesByType[type] > 0 && ` (${totalUnreadMessagesByType[type]})`}
                                     </p>
-                                    {type !== 'D' && (
+                                    {type === 'P' && (
                                         <Button
                                             onClick={() => handleCreateChannel(type)}
                                             className={styles.channelsTypeButton}
@@ -121,9 +121,9 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                         </Button>
                                     )}
                                     {type === 'O' && (
-                                        <Box >
+                                        <Box display="flex" alignItems="center" ml="auto" gap="5px">
                                             <Menu>
-                                                <MenuButton as={Button} colorScheme="green" ml="auto">
+                                                <MenuButton as={Button} colorScheme="green">
                                                     <FaArrowRight />
                                                 </MenuButton>
                                                 <MenuList>
@@ -146,10 +146,16 @@ const ChannelTreeView = ({ onSelectChannel, unReadMessagesByChannel, allUsers, u
                                                     ))}
                                                 </MenuList>
                                             </Menu>
+                                            <Button
+                                                onClick={() => handleCreateChannel(type)}
+                                                className={styles.channelsTypeButton}
+                                            >
+                                                <FaPlus />
+                                            </Button>
                                         </Box>
                                     )}
                                     {type === 'D' && (
-                                        <Box >
+                                        <Box ml="auto" >
                                             <Menu>
                                                 <MenuButton as={Button} className={styles.channelsTypeButton}>
                                                     <FaPlus/>
