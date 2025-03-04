@@ -9,7 +9,7 @@ import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiExclamation, HiTag } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
@@ -204,7 +204,12 @@ function PeerClusterList({ onLogin, mode }) {
             {
               key: 'Is Healthy', value: (
                 <HStack spacing='4'>
-                  {clusterItem?.isDown || clusterItem?.isMasterDown ? (
+                  {clusterItem?.lastUpdate == "0001-01-01T00:00:00Z" ? (
+                    <>
+                      <CustomIcon icon={HiQuestionMarkCircle} color='gray' />
+                      <Text>Unknown</Text>
+                    </>
+                  ) : clusterItem?.isDown || clusterItem?.isMasterDown ? (
                     <>
                       <CheckOrCrossIcon isValid={false} />
                       <Text>No</Text>
@@ -225,7 +230,12 @@ function PeerClusterList({ onLogin, mode }) {
             },
             {
               key: 'Is Provisioned', value: (<HStack spacing='4'>
-                {clusterItem?.isProvisioned ? (
+                {clusterItem?.lastUpdate == "0001-01-01T00:00:00Z" ? (
+                  <>
+                    <CustomIcon icon={HiQuestionMarkCircle} color='gray' />
+                    <Text>Unknown</Text>
+                  </>
+                ) : clusterItem?.isProvisioned ? (
                   <>
                     <CheckOrCrossIcon isValid={true} />
                     <Text>Yes</Text>
