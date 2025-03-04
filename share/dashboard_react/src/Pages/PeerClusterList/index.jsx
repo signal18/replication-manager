@@ -44,7 +44,7 @@ function PeerClusterList({ onLogin, mode }) {
   useEffect(() => {
     if (clusterPeers?.length > 0 && mode !== 'shared') {
       if (search === "") {
-      setClusters(clusterPeers)
+        setClusters(clusterPeers)
       } else {
         setClusters(clusterPeers.filter((cluster) => filterFunc(cluster, search)))
       }
@@ -162,11 +162,18 @@ function PeerClusterList({ onLogin, mode }) {
   };
 
   return !loading && clusters?.length === 0 ? (
-    <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
+    <>
+      {search !== "" && (
+        <Flex className={styles.searchWrapper}>
+          <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={setSearch} />
+        </Flex>
+      )}
+      {search === "" && <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />}
+    </>
   ) : (
     <>
       <Flex className={styles.searchWrapper}>
-        <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={setSearch}/>
+        <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={setSearch} />
       </Flex>
       <Flex className={styles.clusterList}>
         {clusters?.map((clusterItem) => {
