@@ -79,6 +79,7 @@ type PeerManager struct {
 	mu                sync.RWMutex
 	PeerUser          string
 	PeerPassword      string
+	ApiURL            string
 	PeerURL           map[string]*PeerNodeStatus
 	PeerClusters      map[string]*PeerCluster
 	PeerForSale       map[string]*PeerCluster
@@ -104,6 +105,10 @@ func NewPeerManager() *PeerManager {
 func (pm *PeerManager) SetPeerCredentials(username, password string) {
 	pm.PeerUser = username
 	pm.PeerPassword = password
+}
+
+func (pm *PeerManager) SetApiPublicURL(apiURL string) {
+	pm.ApiURL = apiURL
 }
 
 func (pm *PeerManager) NewClient(baseURL string) *PeerClient {
@@ -330,8 +335,29 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 	return nil
 }
 
+func (pm *PeerManager) UpdateHealthStatus(healths map[string]PeerHealth) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	update := time.Now()
+	for clustername, status := range healths {
+		hashID := GetHashID(pm.ApiURL, clustername)
+		if pc, exists := pm.PeerClusters[hashID]; exists {
+			pc.IsDown = status.IsDown
+			pc.IsMasterDown = status.IsMasterDown
+			pc.IsFailable = status.IsFailable
+			pc.IsProvisioned = status.IsProvisioned
+			pc.LastUpdate = update
+		}
+	}
+}
+
 func (pm *PeerManager) GetAllHealthStatus() {
 	for url, nodestat := range pm.PeerURL {
+		if url == pm.ApiURL {
+			continue
+		}
+
 		// Skip if the URL is not valid.
 		if !misc.IsValidPublicURL(url) {
 			nodestat.Error = fmt.Sprintf("not a valid public URL")

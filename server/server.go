@@ -1481,6 +1481,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.PeerManager.SetPeerCredentials(conf.Cloud18GitUser, conf.GetDecryptedPassword("git-password", conf.Secrets["cloud18-gitlab-password"].Value))
+	repman.PeerManager.SetApiPublicURL(conf.APIPublicURL)
 
 	//add config from cluster to the config map
 	for _, cl := range repman.ClusterList {

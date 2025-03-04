@@ -112,3 +112,16 @@ func (repman *ReplicationManager) PeerResponseHandler(resp *http.Response) (int,
 
 	return resp.StatusCode, body
 }
+
+func (repman *ReplicationManager) GetLocalHealth() map[string]peer.PeerHealth {
+	healths := make(map[string]peer.PeerHealth)
+	for _, mycluster := range repman.Clusters {
+		healths[mycluster.Name] = mycluster.GetPeerHealth()
+	}
+
+	return healths
+}
+
+func (repman *ReplicationManager) UpdateLocalPeer() {
+	repman.PeerManager.UpdateHealthStatus(repman.GetLocalHealth())
+}

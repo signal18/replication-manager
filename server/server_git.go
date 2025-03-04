@@ -277,6 +277,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		if repman.Conf.Cloud18 {
 			repman.CheckCloud18Config(filePath)
 			repman.LoadPeerJson()
+			repman.UpdateLocalPeer()
 			repman.LoadPartnersJson()
 		}
 	}

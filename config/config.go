@@ -3425,7 +3425,7 @@ func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) Er
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
-				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprint("error parsing %s with no default: %s", f.Name, err)}
+				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("error parsing %s with no default: %s", f.Name, err)}
 				continue
 			}
 
