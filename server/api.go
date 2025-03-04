@@ -273,6 +273,9 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/clusters/peers", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerClusters)),
 	))
+	router.Handle("/api/peers", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerNodes)),
+	))
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))
@@ -1029,6 +1032,44 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
 		return
 	}
+}
+
+// handlerMuxPeerNodes handles the request to retrieve all peer nodes status.
+// @Summary Retrieve peer nodes status
+// @Description This endpoint retrieves the status of all peer nodes.
+// @Tags Cloud18
+// @Produce application/json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {array} peer.PeerNodeStatus "List of peer nodes"
+// @Failure 401 {string} string "Unauthenticated resource"
+// @Failure 500 {string} string "Failed to get token claims or Error Marshal"
+// @Router /api/peers [get]
+func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *http.Request) {
+	ok, err := repman.isValidRequest(r)
+	if !ok {
+		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		return
+	}
+
+	uinfo, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
+		return
+	}
+
+	peerUser := uinfo["User"]
+	if peerUser == "admin" {
+		peerUser = repman.Conf.Cloud18GitUser
+	}
+
+	cl, err := repman.PeerManager.GetPeerNodesJSON()
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(cl)
 }
 
 // handlerMuxPeerClusters handles the request to retrieve peer clusters for a user.

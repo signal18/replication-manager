@@ -363,23 +363,6 @@ definitions:
       plan:
         type: string
     type: object
-  cluster.ClusterState:
-    properties:
-      crashes:
-        items:
-          $ref: '#/definitions/cluster.Crash'
-        type: array
-      provisioned:
-        type: boolean
-      servers:
-        type: string
-      sla:
-        $ref: '#/definitions/state.Sla'
-      slaHistory:
-        items:
-          $ref: '#/definitions/state.Sla'
-        type: array
-    type: object
   cluster.Crash:
     properties:
       electedMasterURL:
@@ -2883,6 +2866,16 @@ definitions:
         type: string
       cluster-name:
         type: string
+      isDown:
+        type: boolean
+      isFailable:
+        type: boolean
+      isMasterDown:
+        type: boolean
+      isProvisioned:
+        type: boolean
+      lastUpdate:
+        type: string
       prov-db-cpu-cores:
         example: "0"
         type: string
@@ -2898,6 +2891,25 @@ definitions:
       prov-orchestrator:
         type: string
       prov-service-plan:
+        type: string
+    type: object
+  peer.PeerHealth:
+    properties:
+      isDown:
+        type: boolean
+      isFailable:
+        type: boolean
+      isMasterDown:
+        type: boolean
+      isProvisioned:
+        type: boolean
+      lastUpdate:
+        type: string
+    type: object
+  peer.PeerNodeStatus:
+    properties:
+      error: {}
+      lastUpdate:
         type: string
     type: object
   proxysql.QueryRule:
@@ -4939,7 +4951,7 @@ paths:
         "200":
           description: Cluster health fetched
           schema:
-            $ref: '#/definitions/cluster.ClusterState'
+            $ref: '#/definitions/peer.PeerHealth'
         "403":
           description: No valid ACL
           schema:
@@ -11170,7 +11182,7 @@ paths:
           description: List of cluster health statuses
           schema:
             additionalProperties:
-              $ref: '#/definitions/cluster.ClusterState'
+              $ref: '#/definitions/peer.PeerHealth'
             type: object
         "500":
           description: Error getting JWT claims
@@ -11264,6 +11276,36 @@ paths:
       summary: Handles replication manager requests
       tags:
       - Public
+  /api/peers:
+    get:
+      description: This endpoint retrieves the status of all peer nodes.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of peer nodes
+          schema:
+            items:
+              $ref: '#/definitions/peer.PeerNodeStatus'
+            type: array
+        "401":
+          description: Unauthenticated resource
+          schema:
+            type: string
+        "500":
+          description: Failed to get token claims or Error Marshal
+          schema:
+            type: string
+      summary: Retrieve peer nodes status
+      tags:
+      - Cloud18
   /api/prometheus:
     get:
       description: Fetches Prometheus metrics for all servers in all clusters managed

@@ -2925,7 +2925,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Cluster health fetched",
                         "schema": {
-                            "$ref": "#/definitions/cluster.ClusterState"
+                            "$ref": "#/definitions/peer.PeerHealth"
                         }
                     },
                     "403": {
@@ -11577,7 +11577,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
-                                "$ref": "#/definitions/cluster.ClusterState"
+                                "$ref": "#/definitions/peer.PeerHealth"
                             }
                         }
                     },
@@ -11711,6 +11711,51 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/peers": {
+            "get": {
+                "description": "This endpoint retrieves the status of all peer nodes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Retrieve peer nodes status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of peer nodes",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/peer.PeerNodeStatus"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated resource",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to get token claims or Error Marshal",
                         "schema": {
                             "type": "string"
                         }
@@ -12932,32 +12977,6 @@ const docTemplate = `{
                 },
                 "plan": {
                     "type": "string"
-                }
-            }
-        },
-        "cluster.ClusterState": {
-            "type": "object",
-            "properties": {
-                "crashes": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/cluster.Crash"
-                    }
-                },
-                "provisioned": {
-                    "type": "boolean"
-                },
-                "servers": {
-                    "type": "string"
-                },
-                "sla": {
-                    "$ref": "#/definitions/state.Sla"
-                },
-                "slaHistory": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/state.Sla"
-                    }
                 }
             }
         },
@@ -16709,6 +16728,21 @@ const docTemplate = `{
                 "cluster-name": {
                     "type": "string"
                 },
+                "isDown": {
+                    "type": "boolean"
+                },
+                "isFailable": {
+                    "type": "boolean"
+                },
+                "isMasterDown": {
+                    "type": "boolean"
+                },
+                "isProvisioned": {
+                    "type": "boolean"
+                },
+                "lastUpdate": {
+                    "type": "string"
+                },
                 "prov-db-cpu-cores": {
                     "type": "string",
                     "example": "0"
@@ -16729,6 +16763,35 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "prov-service-plan": {
+                    "type": "string"
+                }
+            }
+        },
+        "peer.PeerHealth": {
+            "type": "object",
+            "properties": {
+                "isDown": {
+                    "type": "boolean"
+                },
+                "isFailable": {
+                    "type": "boolean"
+                },
+                "isMasterDown": {
+                    "type": "boolean"
+                },
+                "isProvisioned": {
+                    "type": "boolean"
+                },
+                "lastUpdate": {
+                    "type": "string"
+                }
+            }
+        },
+        "peer.PeerNodeStatus": {
+            "type": "object",
+            "properties": {
+                "error": {},
+                "lastUpdate": {
                     "type": "string"
                 }
             }

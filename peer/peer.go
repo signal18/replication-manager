@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,14 +69,18 @@ type PeerHealth struct {
 	LastUpdate    time.Time `json:"lastUpdate"`
 }
 
+type PeerNodeStatus struct {
+	Error      error
+	LastUpdate time.Time
+}
+
 // PeerManager manages peer clusters.
 type PeerManager struct {
 	mu                sync.RWMutex
 	PeerUser          string
 	PeerPassword      string
-	PeerURL           map[string]time.Time
+	PeerURL           map[string]*PeerNodeStatus
 	PeerClusters      map[string]*PeerCluster
-	PeerHealth        map[string]*PeerHealth
 	PeerForSale       map[string]*PeerCluster
 	PeerUserClusters  map[string]map[string]*PeerCluster
 	UserClusterAccess map[string]map[string]struct{} // Optimized mapping for user access to clusters
@@ -88,11 +92,10 @@ type PeerManager struct {
 func NewPeerManager() *PeerManager {
 	return &PeerManager{
 		PeerClusters:      make(map[string]*PeerCluster),
-		PeerHealth:        make(map[string]*PeerHealth),
 		PeerForSale:       make(map[string]*PeerCluster),
 		PeerUserClusters:  make(map[string]map[string]*PeerCluster),
 		UserClusterAccess: make(map[string]map[string]struct{}),
-		PeerURL:           make(map[string]time.Time),
+		PeerURL:           make(map[string]*PeerNodeStatus),
 		Clients:           make(map[string]*PeerClient),
 	}
 }
@@ -109,22 +112,6 @@ func (pm *PeerManager) NewClient(baseURL string) *PeerClient {
 	return pclient
 }
 
-// AddPeerURL adds a new origin to the PeerURL map.
-func (pm *PeerManager) AddPeerURL(origin string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	pm.PeerURL[origin] = time.Time{}
-}
-
-// RemovePeerURL removes an origin from the PeerURL map.
-func (pm *PeerManager) RemovePeerURL(origin string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	delete(pm.PeerURL, origin)
-}
-
 // HasPeerURL checks if an origin exists in the PeerURL map.
 func (pm *PeerManager) HasPeerURL(origin string) bool {
 	pm.mu.RLock()
@@ -132,53 +119,6 @@ func (pm *PeerManager) HasPeerURL(origin string) bool {
 
 	_, exists := pm.PeerURL[origin]
 	return exists
-}
-
-// ListPeerURL lists all the origins in the PeerURL map.
-func (pm *PeerManager) ListPeerURL() []string {
-	pm.mu.RLock()
-	defer pm.mu.RUnlock()
-
-	origins := make([]string, 0, len(pm.PeerURL))
-	for origin := range pm.PeerURL {
-		origins = append(origins, origin)
-	}
-	return origins
-}
-
-// AddPeerURLBatch adds multiple origins to the PeerURL map in a batch.
-func (pm *PeerManager) AddPeerURLBatch(origins []string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	for _, origin := range origins {
-		pm.PeerURL[origin] = time.Time{}
-	}
-}
-
-// RemovePeerURLBatch removes multiple origins from the PeerURL map in a batch.
-func (pm *PeerManager) RemovePeerURLBatch(origins []string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-
-	for _, origin := range origins {
-		delete(pm.PeerURL, origin)
-	}
-}
-
-// AddOrUpdateCluster adds a new cluster or updates an existing one.
-func (pm *PeerManager) AddOrUpdateCluster(pc *PeerCluster) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	hashID := GetPeerHashID(pc)
-
-	if cl, exists := pm.PeerClusters[hashID]; exists {
-		*cl = *pc
-	} else {
-		pm.PeerClusters[hashID] = pc
-	}
-
-	pm.ReloadUsers(pc)
 }
 
 // BatchUpdateClusters updates multiple clusters at once.
@@ -201,7 +141,7 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 		updatedNames[hashID] = true
 
 		if _, exists := pm.PeerURL[pc.ApiPublicUrl]; !exists {
-			pm.PeerURL[pc.ApiPublicUrl] = time.Time{}
+			pm.PeerURL[pc.ApiPublicUrl] = new(PeerNodeStatus)
 		}
 	}
 
@@ -217,13 +157,6 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 	if len(pm.PeerURL) > 0 {
 		pm.GetAllHealthStatus()
 	}
-}
-
-// RemoveCluster removes a pc.
-func (pm *PeerManager) RemoveCluster(hashID string) {
-	pm.mu.Lock()
-	defer pm.mu.Unlock()
-	pm.removeCluster(hashID)
 }
 
 // removeCluster (internal function, assumes lock is held).
@@ -276,27 +209,21 @@ func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
 			clusters = append(clusters, pc)
 		}
 	}
-	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].ClusterName < clusters[j].ClusterName
-	})
+
+	slices.SortStableFunc(clusters, SortPeerFunc)
 	return clusters
 }
 
-// ListClusters returns all clusters.
-func (pm *PeerManager) ListClusters() []*PeerCluster {
+func (pm *PeerManager) GetPeerNodeStatus() map[string]*PeerNodeStatus {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
+	return pm.PeerURL
+}
 
-	clusters := make([]*PeerCluster, 0, len(pm.PeerClusters))
-	for _, pc := range pm.PeerClusters {
-		clusters = append(clusters, pc)
-	}
-
-	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].ClusterName < clusters[j].ClusterName
-	})
-
-	return clusters
+// GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
+func (pm *PeerManager) GetPeerNodesJSON() ([]byte, error) {
+	nodes := pm.GetPeerNodeStatus()
+	return json.MarshalIndent(nodes, "", "\t")
 }
 
 // GetUserClustersJSON returns a JSON string of all clusters assigned to a user.
@@ -315,9 +242,7 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 		clusters = append(clusters, pc)
 	}
 
-	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].ClusterName < clusters[j].ClusterName
-	})
+	slices.SortStableFunc(clusters, SortPeerFunc)
 
 	return json.MarshalIndent(clusters, "", "\t")
 }
@@ -383,11 +308,11 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 	update := time.Now()
 
 	if hstatus != http.StatusOK {
-		return fmt.Errorf("Health check failed with status %d: %s", hstatus, string(hbody))
+		return fmt.Errorf("health check failed with status %d: %s", hstatus, string(hbody))
 	} else {
 		healths := make(map[string]PeerHealth)
 		if err := json.Unmarshal(hbody, &healths); err != nil {
-			return fmt.Errorf("Failed to parse health status: %s", err)
+			return fmt.Errorf("failed to parse health status: %s", err)
 		}
 
 		for clustername, status := range healths {
@@ -406,7 +331,13 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 }
 
 func (pm *PeerManager) GetAllHealthStatus() {
-	for url, modtime := range pm.PeerURL {
+	for url, nodestat := range pm.PeerURL {
+		// Skip if the URL is not valid.
+		if !misc.IsValidPublicURL(url) {
+			nodestat.Error = fmt.Errorf("not a valid public URL")
+			continue
+		}
+
 		pclient, ok := pm.Clients[url]
 		if !ok {
 			pclient = pm.NewClient(url)
@@ -416,17 +347,18 @@ func (pm *PeerManager) GetAllHealthStatus() {
 		// Login if no token is set in the client.
 		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				fmt.Println(err)
+				nodestat.Error = fmt.Errorf("failed to login: %s", err)
 				continue
 			}
 		}
 
-		if time.Since(modtime) > time.Minute {
+		if time.Since(nodestat.LastUpdate) > time.Minute {
 			if err := pm.GetHealthStatus(pclient); err != nil {
-				fmt.Println(err)
+				nodestat.Error = fmt.Errorf("failed to get health status: %s", err)
 				continue
 			}
-			pm.PeerURL[url] = time.Now()
+			nodestat.LastUpdate = time.Now()
+			nodestat.Error = nil
 		}
 	}
 }
@@ -441,4 +373,20 @@ func GetHashID(peerURL, name string) string {
 	md5Hash := md5.New()
 	md5Hash.Write([]byte(peerURL + "/" + name))
 	return hex.EncodeToString(md5Hash.Sum(nil))
+}
+
+func SortPeerFunc(a, b *PeerCluster) int {
+	if a.ApiPublicUrl < b.ApiPublicUrl {
+		return -1
+	} else if a.ApiPublicUrl > b.ApiPublicUrl {
+		return 1
+	}
+
+	if a.ClusterName < b.ClusterName {
+		return -1
+	} else if a.ClusterName > b.ClusterName {
+		return 1
+	}
+
+	return 0
 }

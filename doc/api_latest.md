@@ -24,6 +24,15 @@
 
 ## All endpoints
 
+###  alert_mailer
+
+| Method  | URI     | Name   | Summary |
+|---------|---------|--------|---------|
+| POST | /api/clusters/{clusterName}/actions/send-email | [post API clusters cluster name actions send email](#post-api-clusters-cluster-name-actions-send-email) | Send Email |
+| POST | /api/email/send | [post API email send](#post-api-email-send) | Send Email |
+  
+
+
 ###  auth
 
 | Method  | URI     | Name   | Summary |
@@ -38,8 +47,15 @@
 |---------|---------|--------|---------|
 | GET | /api/clusters/for-sale | [get API clusters for sale](#get-api-clusters-for-sale) | Retrieve peer clusters for sale |
 | GET | /api/clusters/peers | [get API clusters peers](#get-api-clusters-peers) | Retrieve peer clusters for a user |
+| GET | /api/peers | [get API peers](#get-api-peers) | Retrieve peer nodes status |
 | GET | /api/terms | [get API terms](#get-api-terms) | Retrieves terms |
+| POST | /api/clusters/{clusterName}/actions/send-alert/{hooktype} | [post API clusters cluster name actions send alert hooktype](#post-api-clusters-cluster-name-actions-send-alert-hooktype) | Send Cloud18 Alert |
+| POST | /api/clusters/{clusterName}/ext-role/accept | [post API clusters cluster name ext role accept](#post-api-clusters-cluster-name-ext-role-accept) | Accept external operations for a specific cluster |
+| POST | /api/clusters/{clusterName}/ext-role/quote | [post API clusters cluster name ext role quote](#post-api-clusters-cluster-name-ext-role-quote) | Quote external operations for a specific cluster |
+| POST | /api/clusters/{clusterName}/ext-role/refuse | [post API clusters cluster name ext role refuse](#post-api-clusters-cluster-name-ext-role-refuse) | Reject external operations for a specific cluster |
+| POST | /api/clusters/{clusterName}/ext-role/subscribe | [post API clusters cluster name ext role subscribe](#post-api-clusters-cluster-name-ext-role-subscribe) | subscribe external operations for a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/accept-subscription | [post API clusters cluster name sales accept subscription](#post-api-clusters-cluster-name-sales-accept-subscription) | Accept a subscription for a specific cluster |
+| POST | /api/clusters/{clusterName}/sales/end-external-ops | [post API clusters cluster name sales end external ops](#post-api-clusters-cluster-name-sales-end-external-ops) | Remove external operations for a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/end-subscription | [post API clusters cluster name sales end subscription](#post-api-clusters-cluster-name-sales-end-subscription) | Remove a sponsor from a specific cluster |
 | POST | /api/clusters/{clusterName}/sales/refuse-subscription | [post API clusters cluster name sales refuse subscription](#post-api-clusters-cluster-name-sales-refuse-subscription) | Reject a subscription for a specific cluster |
 | POST | /api/clusters/{clusterName}/subscribe | [post API clusters cluster name subscribe](#post-api-clusters-cluster-name-subscribe) | Subscribe a user to a cluster |
@@ -59,7 +75,9 @@
 | GET | /api/clusters/{clusterName}/status | [get API clusters cluster name status](#get-api-clusters-cluster-name-status) | Retrieve status of a cluster |
 | GET | /api/clusters/{clusterName}/top | [get API clusters cluster name top](#get-api-clusters-cluster-name-top) | Retrieve top metrics for a specific cluster |
 | GET | /api/clusters/{clusterName}/topology/crashes | [get API clusters cluster name topology crashes](#get-api-clusters-cluster-name-topology-crashes) | Retrieve crashes for a specific cluster |
+| GET | /api/health | [get API health](#get-api-health) | Get Cluster Health |
 | POST | /api/clusters/actions/add/{clusterName} | [post API clusters actions add cluster name](#post-api-clusters-actions-add-cluster-name) | Add a new cluster |
+| POST | /api/clusters/actions/rename/{clusterName}/{newClusterName} | [post API clusters actions rename cluster name new cluster name](#post-api-clusters-actions-rename-cluster-name-new-cluster-name) | Rename a cluster |
 | POST | /api/clusters/{clusterName}/actions/waitdatabases | [post API clusters cluster name actions waitdatabases](#post-api-clusters-cluster-name-actions-waitdatabases) | Wait for databases to be ready for a specific cluster |
   
 
@@ -73,6 +91,8 @@
 | POST | /api/clusters/{clusterName}/actions/reset-failover-control | [post API clusters cluster name actions reset failover control](#post-api-clusters-cluster-name-actions-reset-failover-control) | Reset failover control for a specific cluster |
 | POST | /api/clusters/{clusterName}/actions/reset-sla | [post API clusters cluster name actions reset SLA](#post-api-clusters-cluster-name-actions-reset-sla) | Reset SLA for a specific cluster |
 | POST | /api/clusters/{clusterName}/actions/rotate-passwords | [post API clusters cluster name actions rotate passwords](#post-api-clusters-cluster-name-actions-rotate-passwords) | Rotate passwords for a specific cluster |
+| POST | /api/clusters/{clusterName}/actions/staging-refresh | [post API clusters cluster name actions staging refresh](#post-api-clusters-cluster-name-actions-staging-refresh) | Refresh Staging Cluster |
+| POST | /api/clusters/{clusterName}/actions/staging-reload-script | [post API clusters cluster name actions staging reload script](#post-api-clusters-cluster-name-actions-staging-reload-script) | Reload Staging Script |
 | POST | /api/clusters/{clusterName}/actions/switchover | [post API clusters cluster name actions switchover](#post-api-clusters-cluster-name-actions-switchover) | Handles the switchover process for a given cluster. |
 | POST | /api/clusters/settings/actions/reload-clusters-plans | [post API clusters settings actions reload clusters plans](#post-api-clusters-settings-actions-reload-clusters-plans) | Reload cluster plans |
   
@@ -90,7 +110,17 @@
 
 | Method  | URI     | Name   | Summary |
 |---------|---------|--------|---------|
+| GET | /api/clusters/{clusterName}/archives | [get API clusters cluster name archives](#get-api-clusters-cluster-name-archives) | Retrieve backups for a specific cluster |
+| GET | /api/clusters/{clusterName}/archives/stats | [get API clusters cluster name archives stats](#get-api-clusters-cluster-name-archives-stats) | Retrieve backup stats for a specific cluster |
+| GET | /api/clusters/{clusterName}/archives/task-queue | [get API clusters cluster name archives task queue](#get-api-clusters-cluster-name-archives-task-queue) | Get Archives Task Queue |
+| GET | /api/clusters/{clusterName}/archives/task-queue/reset | [get API clusters cluster name archives task queue reset](#get-api-clusters-cluster-name-archives-task-queue-reset) | Reset Archives Task Queue |
 | GET | /api/clusters/{clusterName}/backups | [get API clusters cluster name backups](#get-api-clusters-cluster-name-backups) | Retrieve backups for a specific cluster |
+| GET | /api/clusters/{clusterName}/backups/stats | [get API clusters cluster name backups stats](#get-api-clusters-cluster-name-backups-stats) | Retrieve backup stats for a specific cluster |
+| POST | /api/clusters/{clusterName}/archives/fetch | [post API clusters cluster name archives fetch](#post-api-clusters-cluster-name-archives-fetch) | Fetch Archives |
+| POST | /api/clusters/{clusterName}/archives/init | [post API clusters cluster name archives init](#post-api-clusters-cluster-name-archives-init) | Init Restic Backup |
+| POST | /api/clusters/{clusterName}/archives/init/{force} | [post API clusters cluster name archives init force](#post-api-clusters-cluster-name-archives-init-force) | Init Restic Backup |
+| POST | /api/clusters/{clusterName}/archives/purge | [post API clusters cluster name archives purge](#post-api-clusters-cluster-name-archives-purge) | Purge Restic Backup |
+| POST | /api/clusters/{clusterName}/archives/unlock | [post API clusters cluster name archives unlock](#post-api-clusters-cluster-name-archives-unlock) | Unlock Restic Backup |
   
 
 
@@ -111,6 +141,14 @@
 | POST | /api/clusters/{clusterName}/settings/actions/reload-graphite-filterlist | [post API clusters cluster name settings actions reload graphite filterlist](#post-api-clusters-cluster-name-settings-actions-reload-graphite-filterlist) | Reload Graphite filter list for a specific cluster |
 | POST | /api/clusters/{clusterName}/settings/actions/reset-graphite-filterlist/{template} | [post API clusters cluster name settings actions reset graphite filterlist template](#post-api-clusters-cluster-name-settings-actions-reset-graphite-filterlist-template) | Reset Graphite filter list for a specific cluster |
 | POST | /api/clusters/{clusterName}/settings/actions/set-graphite-filterlist/{filterType} | [post API clusters cluster name settings actions set graphite filterlist filter type](#post-api-clusters-cluster-name-settings-actions-set-graphite-filterlist-filter-type) | Set Graphite filter list for a specific cluster |
+  
+
+
+###  cluster_health
+
+| Method  | URI     | Name   | Summary |
+|---------|---------|--------|---------|
+| GET | /api/clusters/{clusterName}/health | [get API clusters cluster name health](#get-api-clusters-cluster-name-health) | Get Cluster Health |
   
 
 
@@ -178,7 +216,7 @@
 | POST | /api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue} | [post API clusters cluster name settings actions set cron setting name setting value](#post-api-clusters-cluster-name-settings-actions-set-cron-setting-name-setting-value) | Set cron jobs for a specific cluster |
 | POST | /api/clusters/{clusterName}/settings/actions/set/{settingName}/{settingValue} | [post API clusters cluster name settings actions set setting name setting value](#post-api-clusters-cluster-name-settings-actions-set-setting-name-setting-value) | Set settings for a specific cluster |
 | POST | /api/clusters/{clusterName}/settings/actions/switch/{settingName} | [post API clusters cluster name settings actions switch setting name](#post-api-clusters-cluster-name-settings-actions-switch-setting-name) | Switch settings for a specific cluster |
-| POST | /api/clusters/settings/actions/set/{settingName}/{settingValue} | [post API clusters settings actions set setting name setting value](#post-api-clusters-settings-actions-set-setting-name-setting-value) | Set global settings for the server |
+| POST | /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state} | [post API clusters cluster name settings actions switch setting name state](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state) | Switch settings for a specific cluster |
   
 
 
@@ -215,7 +253,15 @@
 | GET | /api/clusters/{clusterName}/topology/master | [get API clusters cluster name topology master](#get-api-clusters-cluster-name-topology-master) | Retrieve master of a cluster |
 | GET | /api/clusters/{clusterName}/topology/proxies | [get API clusters cluster name topology proxies](#get-api-clusters-cluster-name-topology-proxies) | Shows the proxies for that specific named cluster |
 | GET | /api/clusters/{clusterName}/topology/servers | [get API clusters cluster name topology servers](#get-api-clusters-cluster-name-topology-servers) | Retrieve servers for a specific cluster |
+| GET | /api/clusters/{clusterName}/topology/servers/count | [get API clusters cluster name topology servers count](#get-api-clusters-cluster-name-topology-servers-count) | Return number of servers for that specific named cluster |
 | GET | /api/clusters/{clusterName}/topology/slaves | [get API clusters cluster name topology slaves](#get-api-clusters-cluster-name-topology-slaves) | Shows the slaves for that specific named cluster |
+| GET | /api/clusters/{clusterName}/topology/slaves/count | [get API clusters cluster name topology slaves count](#get-api-clusters-cluster-name-topology-slaves-count) | Return number of slaves for that specific named cluster |
+| GET | /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex} | [get API clusters cluster name topology slaves index slave index](#get-api-clusters-cluster-name-topology-slaves-index-slave-index) | Shows the slaves for that specific named cluster |
+| GET | /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}/attr/{attrName} | [get API clusters cluster name topology slaves index slave index attr attr name](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name) | Shows the slaves for that specific named cluster |
+| GET | /api/clusters/{clusterName}/topology/state/{state} | [get API clusters cluster name topology state state](#get-api-clusters-cluster-name-topology-state-state) | Retrieve all servers by state for a specific cluster |
+| GET | /api/clusters/{clusterName}/topology/state/{state}/count | [get API clusters cluster name topology state state count](#get-api-clusters-cluster-name-topology-state-state-count) | Return number of servers for that specific named cluster |
+| GET | /api/clusters/{clusterName}/topology/state/{state}/index/{index} | [get API clusters cluster name topology state state index index](#get-api-clusters-cluster-name-topology-state-state-index-index) | Retrieve server by state and index for a specific cluster |
+| GET | /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName} | [get API clusters cluster name topology state state index index attr attr name](#get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name) | Retrieve server attributes by state and index for a specific cluster |
 | POST | /api/clusters/{clusterName}/actions/add/{clusterShardingName} | [post API clusters cluster name actions add cluster sharding name](#post-api-clusters-cluster-name-actions-add-cluster-sharding-name) | Add a sharding cluster to an existing cluster |
   
 
@@ -246,10 +292,12 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName} | [get API clusters cluster name servers server name](#get-api-clusters-cluster-name-servers-server-name) | Get server details |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor | [get API clusters cluster name servers server name actions toogle innodb monitor](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor) | Toggle InnoDB monitor on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/all-slaves-status | [get API clusters cluster name servers server name all slaves status](#get-api-clusters-cluster-name-servers-server-name-all-slaves-status) | Get status of all slaves of a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/attr/{attrName} | [get API clusters cluster name servers server name attr attr name](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name) | Get server details |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-failed | [get API clusters cluster name servers server name is failed](#get-api-clusters-cluster-name-servers-server-name-is-failed) | Check if a server is failed |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-master | [get API clusters cluster name servers server name is master](#get-api-clusters-cluster-name-servers-server-name-is-master) | Check if a server is a master |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave | [get API clusters cluster name servers server name is slave](#get-api-clusters-cluster-name-servers-server-name-is-slave) | Check if a server is a slave |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-error | [get API clusters cluster name servers server name is slave error](#get-api-clusters-cluster-name-servers-server-name-is-slave-error) | Check if a server is in slave error state |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop | [get API clusters cluster name servers server name is slave stop](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop) | Check if a server is in slave Stop state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-standalone | [get API clusters cluster name servers server name is standalone](#get-api-clusters-cluster-name-servers-server-name-is-standalone) | Check if a server is in standalone state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/master-status | [get API clusters cluster name servers server name master status](#get-api-clusters-cluster-name-servers-server-name-master-status) | Get master status of a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/meta-data-locks | [get API clusters cluster name servers server name meta data locks](#get-api-clusters-cluster-name-servers-server-name-meta-data-locks) | Get metadata locks of a server |
@@ -259,6 +307,7 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master | [get API clusters cluster name servers server name server port is master](#get-api-clusters-cluster-name-servers-server-name-server-port-is-master) | Check if a server port is a master |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave | [get API clusters cluster name servers server name server port is slave](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave) | Check if a server port is a slave |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-error | [get API clusters cluster name servers server name server port is slave error](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-error) | Check if a server is in slave error state |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop | [get API clusters cluster name servers server name server port is slave stop](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop) | Check if a server is in slave Stop state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-standalone | [get API clusters cluster name servers server name server port is standalone](#get-api-clusters-cluster-name-servers-server-name-server-port-is-standalone) | Check if a server is in standalone state |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change | [get API clusters cluster name servers server name server port need config change](#get-api-clusters-cluster-name-servers-server-name-server-port-need-config-change) | Check if a server needs a config change |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov | [get API clusters cluster name servers server name server port need prov](#get-api-clusters-cluster-name-servers-server-name-server-port-need-prov) | Check if a server needs provisioning |
@@ -403,7 +452,9 @@
 
 | Method  | URI     | Name   | Summary |
 |---------|---------|--------|---------|
+| POST | /api/clusters/settings/actions/set/{settingName}/{settingValue} | [post API clusters settings actions set setting name setting value](#post-api-clusters-settings-actions-set-setting-name-setting-value) | Set global settings for the server |
 | POST | /api/clusters/settings/actions/switch/{settingName} | [post API clusters settings actions switch setting name](#post-api-clusters-settings-actions-switch-setting-name) | Switch global settings for the server |
+| POST | /api/clusters/settings/actions/switch/{settingName}/{state} | [post API clusters settings actions switch setting name state](#post-api-clusters-settings-actions-switch-setting-name-state) | Switch global settings for the server |
   
 
 
@@ -444,6 +495,20 @@
   
 
 
+###  terminal
+
+| Method  | URI     | Name   | Summary |
+|---------|---------|--------|---------|
+| GET | /api/terminal/connect | [get API terminal connect](#get-api-terminal-connect) | Terminal |
+| GET | /api/terminal/connect/clusters/{clusterName}/proxies/{serverName} | [get API terminal connect clusters cluster name proxies server name](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name) | Terminal |
+| GET | /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command} | [get API terminal connect clusters cluster name proxies server name command](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command) | Terminal |
+| GET | /api/terminal/connect/clusters/{clusterName}/servers/{serverName} | [get API terminal connect clusters cluster name servers server name](#get-api-terminal-connect-clusters-cluster-name-servers-server-name) | Terminal |
+| GET | /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command} | [get API terminal connect clusters cluster name servers server name command](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command) | Terminal |
+| GET | /api/terminal/list | [get API terminal list](#get-api-terminal-list) | Get Terminal Session List |
+| GET | /api/terminal/list/clusters/{clusterName} | [get API terminal list clusters cluster name](#get-api-terminal-list-clusters-cluster-name) | Get Terminal Session List |
+  
+
+
 ###  user
 
 | Method  | URI     | Name   | Summary |
@@ -479,8 +544,7 @@ Deletes a cluster identified by its name.
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
 | [200](#delete-api-clusters-actions-delete-cluster-name-200) | OK | Cluster deleted successfully |  | [schema](#delete-api-clusters-actions-delete-cluster-name-200-schema) |
-| [400](#delete-api-clusters-actions-delete-cluster-name-400) | Bad Request | Invalid cluster name |  | [schema](#delete-api-clusters-actions-delete-cluster-name-400-schema) |
-| [500](#delete-api-clusters-actions-delete-cluster-name-500) | Internal Server Error | Internal server error |  | [schema](#delete-api-clusters-actions-delete-cluster-name-500-schema) |
+| [500](#delete-api-clusters-actions-delete-cluster-name-500) | Internal Server Error | Invalid cluster name" or "No Valid ACL |  | [schema](#delete-api-clusters-actions-delete-cluster-name-500-schema) |
 
 #### Responses
 
@@ -494,16 +558,7 @@ Status: OK
 
 
 
-##### <span id="delete-api-clusters-actions-delete-cluster-name-400"></span> 400 - Invalid cluster name
-Status: Bad Request
-
-###### <span id="delete-api-clusters-actions-delete-cluster-name-400-schema"></span> Schema
-   
-  
-
-
-
-##### <span id="delete-api-clusters-actions-delete-cluster-name-500"></span> 500 - Internal server error
+##### <span id="delete-api-clusters-actions-delete-cluster-name-500"></span> 500 - Invalid cluster name" or "No Valid ACL
 Status: Internal Server Error
 
 ###### <span id="delete-api-clusters-actions-delete-cluster-name-500-schema"></span> Schema
@@ -621,6 +676,226 @@ Status: Internal Server Error
 
 
 
+### <span id="get-api-clusters-cluster-name-archives"></span> Retrieve backups for a specific cluster (*GetAPIClustersClusterNameArchives*)
+
+```
+GET /api/clusters/{clusterName}/archives
+```
+
+This endpoint retrieves the backups for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-archives-200) | OK | List of backups |  | [schema](#get-api-clusters-cluster-name-archives-200-schema) |
+| [403](#get-api-clusters-cluster-name-archives-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-archives-403-schema) |
+| [500](#get-api-clusters-cluster-name-archives-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-archives-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-archives-200"></span> 200 - List of backups
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-archives-200-schema"></span> Schema
+   
+  
+
+[][interface{}](#interface)
+
+##### <span id="get-api-clusters-cluster-name-archives-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-archives-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-archives-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-archives-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-archives-stats"></span> Retrieve backup stats for a specific cluster (*GetAPIClustersClusterNameArchivesStats*)
+
+```
+GET /api/clusters/{clusterName}/archives/stats
+```
+
+This endpoint retrieves the backup stats for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-archives-stats-200) | OK | List of backups |  | [schema](#get-api-clusters-cluster-name-archives-stats-200-schema) |
+| [403](#get-api-clusters-cluster-name-archives-stats-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-archives-stats-403-schema) |
+| [500](#get-api-clusters-cluster-name-archives-stats-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-archives-stats-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-archives-stats-200"></span> 200 - List of backups
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-archives-stats-200-schema"></span> Schema
+   
+  
+
+[][ArchiverBackupStat](#archiver-backup-stat)
+
+##### <span id="get-api-clusters-cluster-name-archives-stats-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-archives-stats-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-archives-stats-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-archives-stats-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-archives-task-queue"></span> Get Archives Task Queue (*GetAPIClustersClusterNameArchivesTaskQueue*)
+
+```
+GET /api/clusters/{clusterName}/archives/task-queue
+```
+
+Gets the restic task queue for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-archives-task-queue-200) | OK | Task queue fetched |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-200-schema) |
+| [403](#get-api-clusters-cluster-name-archives-task-queue-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-403-schema) |
+| [500](#get-api-clusters-cluster-name-archives-task-queue-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-200"></span> 200 - Task queue fetched
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-200-schema"></span> Schema
+   
+  
+
+[][ArchiverResticTask](#archiver-restic-task)
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-archives-task-queue-reset"></span> Reset Archives Task Queue (*GetAPIClustersClusterNameArchivesTaskQueueReset*)
+
+```
+GET /api/clusters/{clusterName}/archives/task-queue/reset
+```
+
+Empty the restic task queue for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-archives-task-queue-reset-200) | OK | Task queue reset |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-reset-200-schema) |
+| [403](#get-api-clusters-cluster-name-archives-task-queue-reset-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-reset-403-schema) |
+| [500](#get-api-clusters-cluster-name-archives-task-queue-reset-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-archives-task-queue-reset-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-200"></span> 200 - Task queue reset
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-archives-task-queue-reset-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="get-api-clusters-cluster-name-backups"></span> Retrieve backups for a specific cluster (*GetAPIClustersClusterNameBackups*)
 
 ```
@@ -671,6 +946,61 @@ Status: Forbidden
 Status: Internal Server Error
 
 ###### <span id="get-api-clusters-cluster-name-backups-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-backups-stats"></span> Retrieve backup stats for a specific cluster (*GetAPIClustersClusterNameBackupsStats*)
+
+```
+GET /api/clusters/{clusterName}/backups/stats
+```
+
+This endpoint retrieves the backup stats for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-backups-stats-200) | OK | List of backups |  | [schema](#get-api-clusters-cluster-name-backups-stats-200-schema) |
+| [403](#get-api-clusters-cluster-name-backups-stats-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-backups-stats-403-schema) |
+| [500](#get-api-clusters-cluster-name-backups-stats-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-backups-stats-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-backups-stats-200"></span> 200 - List of backups
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-backups-stats-200-schema"></span> Schema
+   
+  
+
+[][ArchiverBackupStat](#archiver-backup-stat)
+
+##### <span id="get-api-clusters-cluster-name-backups-stats-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-backups-stats-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-backups-stats-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-backups-stats-500-schema"></span> Schema
    
   
 
@@ -816,6 +1146,61 @@ Status: OK
 Status: Internal Server Error
 
 ###### <span id="get-api-clusters-cluster-name-graphite-filterlist-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-health"></span> Get Cluster Health (*GetAPIClustersClusterNameHealth*)
+
+```
+GET /api/clusters/{clusterName}/health
+```
+
+Get the health status of the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-health-200) | OK | Cluster health fetched |  | [schema](#get-api-clusters-cluster-name-health-200-schema) |
+| [403](#get-api-clusters-cluster-name-health-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-health-403-schema) |
+| [500](#get-api-clusters-cluster-name-health-500) | Internal Server Error | No cluster |  | [schema](#get-api-clusters-cluster-name-health-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-health-200"></span> 200 - Cluster health fetched
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-health-200-schema"></span> Schema
+   
+  
+
+[PeerPeerHealth](#peer-peer-health)
+
+##### <span id="get-api-clusters-cluster-name-health-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="get-api-clusters-cluster-name-health-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-health-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-health-500-schema"></span> Schema
    
   
 
@@ -3488,6 +3873,53 @@ Status: Internal Server Error
 
 
 
+### <span id="get-api-clusters-cluster-name-servers-server-name-attr-attr-name"></span> Get server details (*GetAPIClustersClusterNameServersServerNameAttrAttrName*)
+
+```
+GET /api/clusters/{clusterName}/servers/{serverName}/attr/{attrName}
+```
+
+Retrieves the details of a specified server within a cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| attrName | `path` | string | `string` |  | ✓ |  | Attribute Name (using json path notation split by dot) |
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| serverName | `path` | string | `string` |  | ✓ |  | Server Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name-200) | OK | Server Attribute (partial based on attrName) |  | [schema](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name-200-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name-500) | Internal Server Error | No cluster" or "Server Not Found" or "Attribute not found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-attr-attr-name-200"></span> 200 - Server Attribute (partial based on attrName)
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-attr-attr-name-200-schema"></span> Schema
+   
+  
+
+[ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-attr-attr-name-500"></span> 500 - No cluster" or "Server Not Found" or "Attribute not found
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-attr-attr-name-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="get-api-clusters-cluster-name-servers-server-name-digest-statements-pfs"></span> Get PFS statements of a server (*GetAPIClustersClusterNameServersServerNameDigestStatementsPfs*)
 
 ```
@@ -3851,6 +4283,51 @@ Status: OK
 Status: Internal Server Error
 
 ###### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-error-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop"></span> Check if a server is in slave Stop state (*GetAPIClustersClusterNameServersServerNameIsSlaveStop*)
+
+```
+GET /api/clusters/{clusterName}/servers/{serverName}/is-slave-Stop
+```
+
+Checks if a specified server within a cluster is in a slave Stop state.
+
+#### Produces
+  * text/plain
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| serverName | `path` | string | `string` |  | ✓ |  | Server Name |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop-200) | OK | 200 -Server is in Slave Stop state! |  | [schema](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop-200-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop-500) | Internal Server Error | 500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster! |  | [schema](#get-api-clusters-cluster-name-servers-server-name-is-slave-stop-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop-200"></span> 200 - 200 -Server is in Slave Stop state!
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop-500"></span> 500 - 500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster!
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-is-slave-stop-500-schema"></span> Schema
    
   
 
@@ -4845,6 +5322,52 @@ Status: OK
 Status: Internal Server Error
 
 ###### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-error-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop"></span> Check if a server is in slave Stop state (*GetAPIClustersClusterNameServersServerNameServerPortIsSlaveStop*)
+
+```
+GET /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-slave-Stop
+```
+
+Checks if a specified server within a cluster is in a slave Stop state.
+
+#### Produces
+  * text/plain
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| serverName | `path` | string | `string` |  | ✓ |  | Server Name |
+| serverPort | `path` | string | `string` |  |  |  | Server Port |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-200) | OK | 200 -Server is in Slave Stop state! |  | [schema](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-200-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-500) | Internal Server Error | 500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster! |  | [schema](#get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-200"></span> 200 - 200 -Server is in Slave Stop state!
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-500"></span> 500 - 500 -Server is not in Slave Stop state!" or "500 -No valid server!" or "500 -No cluster!
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-servers-server-name-server-port-is-slave-stop-500-schema"></span> Schema
    
   
 
@@ -6293,6 +6816,48 @@ Status: Internal Server Error
 
 
 
+### <span id="get-api-clusters-cluster-name-topology-servers-count"></span> Return number of servers for that specific named cluster (*GetAPIClustersClusterNameTopologyServersCount*)
+
+```
+GET /api/clusters/{clusterName}/topology/servers/count
+```
+
+Return number of servers for that specific named cluster
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-servers-count-200) | OK | Number of servers |  | [schema](#get-api-clusters-cluster-name-topology-servers-count-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-servers-count-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-servers-count-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-servers-count-200"></span> 200 - Number of servers
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-servers-count-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-topology-servers-count-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-servers-count-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="get-api-clusters-cluster-name-topology-slaves"></span> Shows the slaves for that specific named cluster (*GetAPIClustersClusterNameTopologySlaves*)
 
 ```
@@ -6335,6 +6900,319 @@ Status: Internal Server Error
 
 
 
+### <span id="get-api-clusters-cluster-name-topology-slaves-count"></span> Return number of slaves for that specific named cluster (*GetAPIClustersClusterNameTopologySlavesCount*)
+
+```
+GET /api/clusters/{clusterName}/topology/slaves/count
+```
+
+Return number of slaves for that specific named cluster
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-slaves-count-200) | OK | Number of slaves |  | [schema](#get-api-clusters-cluster-name-topology-slaves-count-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-slaves-count-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-slaves-count-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-count-200"></span> 200 - Number of slaves
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-count-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-count-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-count-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index"></span> Shows the slaves for that specific named cluster (*GetAPIClustersClusterNameTopologySlavesIndexSlaveIndex*)
+
+```
+GET /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}
+```
+
+Shows the slaves for that specific named cluster
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| slaveIndex | `path` | string | `string` |  | ✓ |  | Slave Index (start from 0) |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-200) | OK | Slave Data |  | [schema](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-200"></span> 200 - Slave Data
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-200-schema"></span> Schema
+   
+  
+
+[ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name"></span> Shows the slaves for that specific named cluster (*GetAPIClustersClusterNameTopologySlavesIndexSlaveIndexAttrAttrName*)
+
+```
+GET /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex}/attr/{attrName}
+```
+
+Shows the slaves for that specific named cluster
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| attrName | `path` | string | `string` |  | ✓ |  | Attribute Name (using json path notation split by dot) |
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| slaveIndex | `path` | string | `string` |  | ✓ |  | Slave Index (start from 0) |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-200) | OK | Slave Attribute (partial based on attrName) |  | [schema](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-200"></span> 200 - Slave Attribute (partial based on attrName)
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-200-schema"></span> Schema
+   
+  
+
+[ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-slaves-index-slave-index-attr-attr-name-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-state-state"></span> Retrieve all servers by state for a specific cluster (*GetAPIClustersClusterNameTopologyStateState*)
+
+```
+GET /api/clusters/{clusterName}/topology/state/{state}
+```
+
+This endpoint retrieves the servers for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| state | `path` | string | `string` |  | ✓ |  | Server State |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-state-state-200) | OK | server by state |  | [schema](#get-api-clusters-cluster-name-topology-state-state-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-state-state-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-state-state-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-200"></span> 200 - server by state
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-200-schema"></span> Schema
+   
+  
+
+[][ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-state-state-count"></span> Return number of servers for that specific named cluster (*GetAPIClustersClusterNameTopologyStateStateCount*)
+
+```
+GET /api/clusters/{clusterName}/topology/state/{state}/count
+```
+
+Return number of servers for that specific named cluster
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| state | `path` | string | `string` |  | ✓ |  | Server State |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-state-state-count-200) | OK | Number of servers |  | [schema](#get-api-clusters-cluster-name-topology-state-state-count-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-state-state-count-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-state-state-count-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-count-200"></span> 200 - Number of servers
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-count-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-count-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-count-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-state-state-index-index"></span> Retrieve server by state and index for a specific cluster (*GetAPIClustersClusterNameTopologyStateStateIndexIndex*)
+
+```
+GET /api/clusters/{clusterName}/topology/state/{state}/index/{index}
+```
+
+This endpoint retrieves the server for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| index | `path` | string | `string` |  | ✓ |  | Index |
+| state | `path` | string | `string` |  | ✓ |  | Server State |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-state-state-index-index-200) | OK | server by state |  | [schema](#get-api-clusters-cluster-name-topology-state-state-index-index-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-state-state-index-index-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-state-state-index-index-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-200"></span> 200 - server by state
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-200-schema"></span> Schema
+   
+  
+
+[ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name"></span> Retrieve server attributes by state and index for a specific cluster (*GetAPIClustersClusterNameTopologyStateStateIndexIndexAttrAttrName*)
+
+```
+GET /api/clusters/{clusterName}/topology/state/{state}/index/{index}/attr/{attrName}
+```
+
+This endpoint retrieves the servers for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| attrName | `path` | string | `string` |  | ✓ |  | Attribute Name with dot notation |
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| index | `path` | string | `string` |  | ✓ |  | Index |
+| state | `path` | string | `string` |  | ✓ |  | Server State |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-200) | OK | Server (partial based on attrName) |  | [schema](#get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-200-schema) |
+| [500](#get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-500) | Internal Server Error | Internal Server Error |  | [schema](#get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-200"></span> 200 - Server (partial based on attrName)
+Status: OK
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-200-schema"></span> Schema
+   
+  
+
+[ClusterServerMonitor](#cluster-server-monitor)
+
+##### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-500"></span> 500 - Internal Server Error
+Status: Internal Server Error
+
+###### <span id="get-api-clusters-cluster-name-topology-state-state-index-index-attr-attr-name-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="get-api-clusters-for-sale"></span> Retrieve peer clusters for sale (*GetAPIClustersForSale*)
 
 ```
@@ -6369,7 +7247,7 @@ Status: OK
    
   
 
-[][ConfigPeerCluster](#config-peer-cluster)
+[][PeerPeerCluster](#peer-peer-cluster)
 
 ##### <span id="get-api-clusters-for-sale-401"></span> 401 - Unauthenticated resource
 Status: Unauthorized
@@ -6423,7 +7301,7 @@ Status: OK
    
   
 
-[][ConfigPeerCluster](#config-peer-cluster)
+[][PeerPeerCluster](#peer-peer-cluster)
 
 ##### <span id="get-api-clusters-peers-401"></span> 401 - Unauthenticated resource
 Status: Unauthorized
@@ -6476,6 +7354,53 @@ Status: OK
 Status: Internal Server Error
 
 ###### <span id="get-api-configs-grafana-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-health"></span> Get Cluster Health (*GetAPIHealth*)
+
+```
+GET /api/health
+```
+
+Returns the health status of all privileged clusters.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-health-200) | OK | List of cluster health statuses |  | [schema](#get-api-health-200-schema) |
+| [500](#get-api-health-500) | Internal Server Error | Error getting JWT claims |  | [schema](#get-api-health-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-health-200"></span> 200 - List of cluster health statuses
+Status: OK
+
+###### <span id="get-api-health-200-schema"></span> Schema
+   
+  
+
+map of [PeerPeerHealth](#peer-peer-health)
+
+##### <span id="get-api-health-500"></span> 500 - Error getting JWT claims
+Status: Internal Server Error
+
+###### <span id="get-api-health-500-schema"></span> Schema
    
   
 
@@ -6564,6 +7489,60 @@ Status: OK
 Status: Internal Server Error
 
 ###### <span id="get-api-monitor-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-peers"></span> Retrieve peer nodes status (*GetAPIPeers*)
+
+```
+GET /api/peers
+```
+
+This endpoint retrieves the status of all peer nodes.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-peers-200) | OK | List of peer nodes |  | [schema](#get-api-peers-200-schema) |
+| [401](#get-api-peers-401) | Unauthorized | Unauthenticated resource |  | [schema](#get-api-peers-401-schema) |
+| [500](#get-api-peers-500) | Internal Server Error | Failed to get token claims or Error Marshal |  | [schema](#get-api-peers-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-peers-200"></span> 200 - List of peer nodes
+Status: OK
+
+###### <span id="get-api-peers-200-schema"></span> Schema
+   
+  
+
+[][PeerPeerNodeStatus](#peer-peer-node-status)
+
+##### <span id="get-api-peers-401"></span> 401 - Unauthenticated resource
+Status: Unauthorized
+
+###### <span id="get-api-peers-401-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-peers-500"></span> 500 - Failed to get token claims or Error Marshal
+Status: Internal Server Error
+
+###### <span id="get-api-peers-500-schema"></span> Schema
    
   
 
@@ -6672,6 +7651,414 @@ Status: OK
   
 
 map of string
+
+### <span id="get-api-terminal-connect"></span> Terminal (*GetAPITerminalConnect*)
+
+```
+GET /api/terminal/connect
+```
+
+Establishes a WebSocket connection for a terminal session.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-connect-200) | OK | Connected successfully |  | [schema](#get-api-terminal-connect-200-schema) |
+| [400](#get-api-terminal-connect-400) | Bad Request | No user provided |  | [schema](#get-api-terminal-connect-400-schema) |
+| [500](#get-api-terminal-connect-500) | Internal Server Error | No valid node" or "No valid cluster |  | [schema](#get-api-terminal-connect-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-connect-200"></span> 200 - Connected successfully
+Status: OK
+
+###### <span id="get-api-terminal-connect-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-400"></span> 400 - No user provided
+Status: Bad Request
+
+###### <span id="get-api-terminal-connect-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-500"></span> 500 - No valid node" or "No valid cluster
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-connect-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name"></span> Terminal (*GetAPITerminalConnectClustersClusterNameProxiesServerName*)
+
+```
+GET /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}
+```
+
+Establishes a WebSocket connection for a terminal session.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| serverName | `path` | string | `string` |  |  |  | Server Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-200) | OK | Connected successfully |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-200-schema) |
+| [400](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-400) | Bad Request | No user provided |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-400-schema) |
+| [500](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-500) | Internal Server Error | No valid node" or "No valid cluster |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-200"></span> 200 - Connected successfully
+Status: OK
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-400"></span> 400 - No user provided
+Status: Bad Request
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-500"></span> 500 - No valid node" or "No valid cluster
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command"></span> Terminal (*GetAPITerminalConnectClustersClusterNameProxiesServerNameCommand*)
+
+```
+GET /api/terminal/connect/clusters/{clusterName}/proxies/{serverName}/{command}
+```
+
+Establishes a WebSocket connection for a terminal session.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| serverName | `path` | string | `string` |  |  |  | Server Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-200) | OK | Connected successfully |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-200-schema) |
+| [400](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-400) | Bad Request | No user provided |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-400-schema) |
+| [500](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-500) | Internal Server Error | No valid node" or "No valid cluster |  | [schema](#get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-200"></span> 200 - Connected successfully
+Status: OK
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-400"></span> 400 - No user provided
+Status: Bad Request
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-500"></span> 500 - No valid node" or "No valid cluster
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-proxies-server-name-command-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name"></span> Terminal (*GetAPITerminalConnectClustersClusterNameServersServerName*)
+
+```
+GET /api/terminal/connect/clusters/{clusterName}/servers/{serverName}
+```
+
+Establishes a WebSocket connection for a terminal session.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| serverName | `path` | string | `string` |  |  |  | Server Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-200) | OK | Connected successfully |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-200-schema) |
+| [400](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-400) | Bad Request | No user provided |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-400-schema) |
+| [500](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-500) | Internal Server Error | No valid node" or "No valid cluster |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-200"></span> 200 - Connected successfully
+Status: OK
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-400"></span> 400 - No user provided
+Status: Bad Request
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-500"></span> 500 - No valid node" or "No valid cluster
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command"></span> Terminal (*GetAPITerminalConnectClustersClusterNameServersServerNameCommand*)
+
+```
+GET /api/terminal/connect/clusters/{clusterName}/servers/{serverName}/{command}
+```
+
+Establishes a WebSocket connection for a terminal session.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| serverName | `path` | string | `string` |  |  |  | Server Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-200) | OK | Connected successfully |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-200-schema) |
+| [400](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-400) | Bad Request | No user provided |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-400-schema) |
+| [500](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-500) | Internal Server Error | No valid node" or "No valid cluster |  | [schema](#get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-200"></span> 200 - Connected successfully
+Status: OK
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-400"></span> 400 - No user provided
+Status: Bad Request
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-500"></span> 500 - No valid node" or "No valid cluster
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-connect-clusters-cluster-name-servers-server-name-command-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-list"></span> Get Terminal Session List (*GetAPITerminalList*)
+
+```
+GET /api/terminal/list
+```
+
+Returns a list of terminal sessions for a user.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-list-200) | OK | List of terminal sessions |  | [schema](#get-api-terminal-list-200-schema) |
+| [403](#get-api-terminal-list-403) | Forbidden | Terminal session is disabled |  | [schema](#get-api-terminal-list-403-schema) |
+| [500](#get-api-terminal-list-500) | Internal Server Error | Error getting JWT claims" or "Error encoding JSON |  | [schema](#get-api-terminal-list-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-list-200"></span> 200 - List of terminal sessions
+Status: OK
+
+###### <span id="get-api-terminal-list-200-schema"></span> Schema
+   
+  
+
+[]string
+
+##### <span id="get-api-terminal-list-403"></span> 403 - Terminal session is disabled
+Status: Forbidden
+
+###### <span id="get-api-terminal-list-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-list-500"></span> 500 - Error getting JWT claims" or "Error encoding JSON
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-list-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="get-api-terminal-list-clusters-cluster-name"></span> Get Terminal Session List (*GetAPITerminalListClustersClusterName*)
+
+```
+GET /api/terminal/list/clusters/{clusterName}
+```
+
+Returns a list of terminal sessions for a user.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#get-api-terminal-list-clusters-cluster-name-200) | OK | List of terminal sessions |  | [schema](#get-api-terminal-list-clusters-cluster-name-200-schema) |
+| [403](#get-api-terminal-list-clusters-cluster-name-403) | Forbidden | Terminal session is disabled |  | [schema](#get-api-terminal-list-clusters-cluster-name-403-schema) |
+| [500](#get-api-terminal-list-clusters-cluster-name-500) | Internal Server Error | Error getting JWT claims" or "Error encoding JSON |  | [schema](#get-api-terminal-list-clusters-cluster-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="get-api-terminal-list-clusters-cluster-name-200"></span> 200 - List of terminal sessions
+Status: OK
+
+###### <span id="get-api-terminal-list-clusters-cluster-name-200-schema"></span> Schema
+   
+  
+
+[]string
+
+##### <span id="get-api-terminal-list-clusters-cluster-name-403"></span> 403 - Terminal session is disabled
+Status: Forbidden
+
+###### <span id="get-api-terminal-list-clusters-cluster-name-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="get-api-terminal-list-clusters-cluster-name-500"></span> 500 - Error getting JWT claims" or "Error encoding JSON
+Status: Internal Server Error
+
+###### <span id="get-api-terminal-list-clusters-cluster-name-500-schema"></span> Schema
+   
+  
+
+
 
 ### <span id="get-api-terms"></span> Retrieves terms (*GetAPITerms*)
 
@@ -6829,6 +8216,55 @@ Status: Bad Request
 Status: Internal Server Error
 
 ###### <span id="post-api-clusters-actions-add-cluster-name-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-actions-rename-cluster-name-new-cluster-name"></span> Rename a cluster (*PostAPIClustersActionsRenameClusterNameNewClusterName*)
+
+```
+POST /api/clusters/actions/rename/{clusterName}/{newClusterName}
+```
+
+Renames a cluster identified by its name.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| newClusterName | `path` | string | `string` |  | ✓ |  | New Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-actions-rename-cluster-name-new-cluster-name-200) | OK | Cluster renamed successfully |  | [schema](#post-api-clusters-actions-rename-cluster-name-new-cluster-name-200-schema) |
+| [500](#post-api-clusters-actions-rename-cluster-name-new-cluster-name-500) | Internal Server Error | Invalid cluster name" or "Cluster name already exists" or "No Valid ACL |  | [schema](#post-api-clusters-actions-rename-cluster-name-new-cluster-name-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-actions-rename-cluster-name-new-cluster-name-200"></span> 200 - Cluster renamed successfully
+Status: OK
+
+###### <span id="post-api-clusters-actions-rename-cluster-name-new-cluster-name-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-actions-rename-cluster-name-new-cluster-name-500"></span> 500 - Invalid cluster name" or "Cluster name already exists" or "No Valid ACL
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-actions-rename-cluster-name-new-cluster-name-500-schema"></span> Schema
    
   
 
@@ -7776,6 +9212,235 @@ Status: Internal Server Error
 
 
 
+### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype"></span> Send Cloud18 Alert (*PostAPIClustersClusterNameActionsSendAlertHooktype*)
+
+```
+POST /api/clusters/{clusterName}/actions/send-alert/{hooktype}
+```
+
+Send a cloud18 alert for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| hooktype | `path` | string | `string` |  | ✓ |  | Hook Type |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerMeetAlertMessage](#server-meet-alert-message) | `models.ServerMeetAlertMessage` | | ✓ | | Alert Message |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-actions-send-alert-hooktype-200) | OK | Task queue reset |  | [schema](#post-api-clusters-cluster-name-actions-send-alert-hooktype-200-schema) |
+| [403](#post-api-clusters-cluster-name-actions-send-alert-hooktype-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-actions-send-alert-hooktype-403-schema) |
+| [500](#post-api-clusters-cluster-name-actions-send-alert-hooktype-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-actions-send-alert-hooktype-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-200"></span> 200 - Task queue reset
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-actions-send-alert-hooktype-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-actions-send-email"></span> Send Email (*PostAPIClustersClusterNameActionsSendEmail*)
+
+```
+POST /api/clusters/{clusterName}/actions/send-email
+```
+
+Sends an email to the specified recipient.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| email | `body` | [MailerEmail](#mailer-email) | `models.MailerEmail` | | ✓ | | Email details |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-actions-send-email-200) | OK | Email sent successfully |  | [schema](#post-api-clusters-cluster-name-actions-send-email-200-schema) |
+| [400](#post-api-clusters-cluster-name-actions-send-email-400) | Bad Request | Error in request |  | [schema](#post-api-clusters-cluster-name-actions-send-email-400-schema) |
+| [500](#post-api-clusters-cluster-name-actions-send-email-500) | Internal Server Error | Error sending email |  | [schema](#post-api-clusters-cluster-name-actions-send-email-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-email-200"></span> 200 - Email sent successfully
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-actions-send-email-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-email-400"></span> 400 - Error in request
+Status: Bad Request
+
+###### <span id="post-api-clusters-cluster-name-actions-send-email-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-send-email-500"></span> 500 - Error sending email
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-actions-send-email-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-actions-staging-refresh"></span> Refresh Staging Cluster (*PostAPIClustersClusterNameActionsStagingRefresh*)
+
+```
+POST /api/clusters/{clusterName}/actions/staging-refresh
+```
+
+Refreshes the staging cluster specified by the cluster name in the URL.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-actions-staging-refresh-200) | OK | Staging cluster refresh initiated |  | [schema](#post-api-clusters-cluster-name-actions-staging-refresh-200-schema) |
+| [403](#post-api-clusters-cluster-name-actions-staging-refresh-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-actions-staging-refresh-403-schema) |
+| [500](#post-api-clusters-cluster-name-actions-staging-refresh-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-actions-staging-refresh-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-refresh-200"></span> 200 - Staging cluster refresh initiated
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-refresh-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-refresh-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-refresh-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-refresh-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-refresh-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-actions-staging-reload-script"></span> Reload Staging Script (*PostAPIClustersClusterNameActionsStagingReloadScript*)
+
+```
+POST /api/clusters/{clusterName}/actions/staging-reload-script
+```
+
+Reloads the staging script specified by the cluster name in the URL.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-actions-staging-reload-script-200) | OK | Staging script reloaded |  | [schema](#post-api-clusters-cluster-name-actions-staging-reload-script-200-schema) |
+| [403](#post-api-clusters-cluster-name-actions-staging-reload-script-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-actions-staging-reload-script-403-schema) |
+| [500](#post-api-clusters-cluster-name-actions-staging-reload-script-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-actions-staging-reload-script-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-200"></span> 200 - Staging script reloaded
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-actions-staging-reload-script-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="post-api-clusters-cluster-name-actions-start-traffic"></span> Start traffic for a specific cluster (*PostAPIClustersClusterNameActionsStartTraffic*)
 
 ```
@@ -8078,6 +9743,518 @@ Status: Internal Server Error
 
 
 
+### <span id="post-api-clusters-cluster-name-archives-fetch"></span> Fetch Archives (*PostAPIClustersClusterNameArchivesFetch*)
+
+```
+POST /api/clusters/{clusterName}/archives/fetch
+```
+
+Fetches the restic backup for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-archives-fetch-200) | OK | Archives fetch queued |  | [schema](#post-api-clusters-cluster-name-archives-fetch-200-schema) |
+| [403](#post-api-clusters-cluster-name-archives-fetch-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-archives-fetch-403-schema) |
+| [500](#post-api-clusters-cluster-name-archives-fetch-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-archives-fetch-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-archives-fetch-200"></span> 200 - Archives fetch queued
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-archives-fetch-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-fetch-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-archives-fetch-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-fetch-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-archives-fetch-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-archives-init"></span> Init Restic Backup (*PostAPIClustersClusterNameArchivesInit*)
+
+```
+POST /api/clusters/{clusterName}/archives/init
+```
+
+Inits the restic backup for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-archives-init-200) | OK | Archives purge queued |  | [schema](#post-api-clusters-cluster-name-archives-init-200-schema) |
+| [403](#post-api-clusters-cluster-name-archives-init-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-archives-init-403-schema) |
+| [500](#post-api-clusters-cluster-name-archives-init-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-archives-init-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-200"></span> 200 - Archives purge queued
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-archives-init-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-archives-init-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-archives-init-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-archives-init-force"></span> Init Restic Backup (*PostAPIClustersClusterNameArchivesInitForce*)
+
+```
+POST /api/clusters/{clusterName}/archives/init/{force}
+```
+
+Inits the restic backup for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| force | `path` | string | `string` |  |  |  | Force init |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-archives-init-force-200) | OK | Archives purge queued |  | [schema](#post-api-clusters-cluster-name-archives-init-force-200-schema) |
+| [403](#post-api-clusters-cluster-name-archives-init-force-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-archives-init-force-403-schema) |
+| [500](#post-api-clusters-cluster-name-archives-init-force-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-archives-init-force-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-force-200"></span> 200 - Archives purge queued
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-archives-init-force-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-force-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-archives-init-force-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-init-force-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-archives-init-force-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-archives-purge"></span> Purge Restic Backup (*PostAPIClustersClusterNameArchivesPurge*)
+
+```
+POST /api/clusters/{clusterName}/archives/purge
+```
+
+Purges the restic backup for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-archives-purge-200) | OK | Archives purge queued |  | [schema](#post-api-clusters-cluster-name-archives-purge-200-schema) |
+| [403](#post-api-clusters-cluster-name-archives-purge-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-archives-purge-403-schema) |
+| [500](#post-api-clusters-cluster-name-archives-purge-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-archives-purge-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-archives-purge-200"></span> 200 - Archives purge queued
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-archives-purge-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-purge-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-archives-purge-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-purge-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-archives-purge-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-archives-unlock"></span> Unlock Restic Backup (*PostAPIClustersClusterNameArchivesUnlock*)
+
+```
+POST /api/clusters/{clusterName}/archives/unlock
+```
+
+Unlocks the restic backup for the specified cluster.
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-archives-unlock-200) | OK | Archives purge queued |  | [schema](#post-api-clusters-cluster-name-archives-unlock-200-schema) |
+| [403](#post-api-clusters-cluster-name-archives-unlock-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-archives-unlock-403-schema) |
+| [500](#post-api-clusters-cluster-name-archives-unlock-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-archives-unlock-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-archives-unlock-200"></span> 200 - Archives purge queued
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-archives-unlock-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-unlock-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-archives-unlock-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-archives-unlock-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-archives-unlock-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-ext-role-accept"></span> Accept external operations for a specific cluster (*PostAPIClustersClusterNameExtRoleAccept*)
+
+```
+POST /api/clusters/{clusterName}/ext-role/accept
+```
+
+This endpoint accepts external operations for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerCloudUserForm](#server-cloud-user-form) | `models.ServerCloudUserForm` | | ✓ | | User Form |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-ext-role-accept-200) | OK | Email sent to sponsor! |  | [schema](#post-api-clusters-cluster-name-ext-role-accept-200-schema) |
+| [403](#post-api-clusters-cluster-name-ext-role-accept-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-ext-role-accept-403-schema) |
+| [500](#post-api-clusters-cluster-name-ext-role-accept-500) | Internal Server Error | Error accepting subscription |  | [schema](#post-api-clusters-cluster-name-ext-role-accept-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-accept-200"></span> 200 - Email sent to sponsor!
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-ext-role-accept-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-accept-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-ext-role-accept-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-accept-500"></span> 500 - Error accepting subscription
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-ext-role-accept-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-ext-role-quote"></span> Quote external operations for a specific cluster (*PostAPIClustersClusterNameExtRoleQuote*)
+
+```
+POST /api/clusters/{clusterName}/ext-role/quote
+```
+
+This endpoint quotes external operations for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerCloudUserForm](#server-cloud-user-form) | `models.ServerCloudUserForm` | | ✓ | | User Form |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-ext-role-quote-200) | OK | Email sent to sponsor! |  | [schema](#post-api-clusters-cluster-name-ext-role-quote-200-schema) |
+| [403](#post-api-clusters-cluster-name-ext-role-quote-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-ext-role-quote-403-schema) |
+| [500](#post-api-clusters-cluster-name-ext-role-quote-500) | Internal Server Error | Error accepting external operations |  | [schema](#post-api-clusters-cluster-name-ext-role-quote-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-quote-200"></span> 200 - Email sent to sponsor!
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-ext-role-quote-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-quote-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-ext-role-quote-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-quote-500"></span> 500 - Error accepting external operations
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-ext-role-quote-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-ext-role-refuse"></span> Reject external operations for a specific cluster (*PostAPIClustersClusterNameExtRoleRefuse*)
+
+```
+POST /api/clusters/{clusterName}/ext-role/refuse
+```
+
+This endpoint rejects external operations for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerCloudUserForm](#server-cloud-user-form) | `models.ServerCloudUserForm` | | ✓ | | User Form |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-ext-role-refuse-200) | OK | Subscription removed! |  | [schema](#post-api-clusters-cluster-name-ext-role-refuse-200-schema) |
+| [403](#post-api-clusters-cluster-name-ext-role-refuse-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-ext-role-refuse-403-schema) |
+| [500](#post-api-clusters-cluster-name-ext-role-refuse-500) | Internal Server Error | Error removing subscription |  | [schema](#post-api-clusters-cluster-name-ext-role-refuse-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-refuse-200"></span> 200 - Subscription removed!
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-ext-role-refuse-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-refuse-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-ext-role-refuse-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-refuse-500"></span> 500 - Error removing subscription
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-ext-role-refuse-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-ext-role-subscribe"></span> subscribe external operations for a specific cluster (*PostAPIClustersClusterNameExtRoleSubscribe*)
+
+```
+POST /api/clusters/{clusterName}/ext-role/subscribe
+```
+
+This endpoint subscribes external operations for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerCloudUserForm](#server-cloud-user-form) | `models.ServerCloudUserForm` | | ✓ | | User Form |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-ext-role-subscribe-200) | OK | Email sent to sponsor! |  | [schema](#post-api-clusters-cluster-name-ext-role-subscribe-200-schema) |
+| [403](#post-api-clusters-cluster-name-ext-role-subscribe-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-ext-role-subscribe-403-schema) |
+| [500](#post-api-clusters-cluster-name-ext-role-subscribe-500) | Internal Server Error | Error subscribing external operations |  | [schema](#post-api-clusters-cluster-name-ext-role-subscribe-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-subscribe-200"></span> 200 - Email sent to sponsor!
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-ext-role-subscribe-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-subscribe-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-ext-role-subscribe-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-ext-role-subscribe-500"></span> 500 - Error subscribing external operations
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-ext-role-subscribe-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="post-api-clusters-cluster-name-proxies-proxy-name-actions-provision"></span> Provision Proxy Service (*PostAPIClustersClusterNameProxiesProxyNameActionsProvision*)
 
 ```
@@ -8368,6 +10545,65 @@ Status: Forbidden
 Status: Internal Server Error
 
 ###### <span id="post-api-clusters-cluster-name-sales-accept-subscription-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-cluster-name-sales-end-external-ops"></span> Remove external operations for a specific cluster (*PostAPIClustersClusterNameSalesEndExternalOps*)
+
+```
+POST /api/clusters/{clusterName}/sales/end-external-ops
+```
+
+This endpoint removes external operations for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| body | `body` | [ServerCloudUserForm](#server-cloud-user-form) | `models.ServerCloudUserForm` | | ✓ | | User Form |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-sales-end-external-ops-200) | OK | Sponsor partnership removed! |  | [schema](#post-api-clusters-cluster-name-sales-end-external-ops-200-schema) |
+| [403](#post-api-clusters-cluster-name-sales-end-external-ops-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-sales-end-external-ops-403-schema) |
+| [500](#post-api-clusters-cluster-name-sales-end-external-ops-500) | Internal Server Error | Error removing sponsor partnership |  | [schema](#post-api-clusters-cluster-name-sales-end-external-ops-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-sales-end-external-ops-200"></span> 200 - Sponsor partnership removed!
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-sales-end-external-ops-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-sales-end-external-ops-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-sales-end-external-ops-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-sales-end-external-ops-500"></span> 500 - Error removing sponsor partnership
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-sales-end-external-ops-500-schema"></span> Schema
    
   
 
@@ -9895,6 +12131,66 @@ Status: Internal Server Error
 
 
 
+### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state"></span> Switch settings for a specific cluster (*PostAPIClustersClusterNameSettingsActionsSwitchSettingNameState*)
+
+```
+POST /api/clusters/{clusterName}/settings/actions/switch/{settingName}/{state}
+```
+
+This endpoint switches the settings for the specified cluster.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| clusterName | `path` | string | `string` |  | ✓ |  | Cluster Name |
+| settingName | `path` | string | `string` |  | ✓ |  | Setting Name |
+| state | `path` | string | `string` |  |  |  | Toggle state (on/off) |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-200) | OK | Successfully switched setting |  | [schema](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-200-schema) |
+| [403](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-403-schema) |
+| [500](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-200"></span> 200 - Successfully switched setting
+Status: OK
+
+###### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-cluster-name-settings-actions-switch-setting-name-state-500-schema"></span> Schema
+   
+  
+
+
+
 ### <span id="post-api-clusters-cluster-name-subscribe"></span> Subscribe a user to a cluster (*PostAPIClustersClusterNameSubscribe*)
 
 ```
@@ -10492,7 +12788,6 @@ This endpoint switches the global settings for the server.
 
 | Name | Source | Type | Go type | Separator | Required | Default | Description |
 |------|--------|------|---------|-----------| :------: |---------|-------------|
-| clusterName | `path` | string | `string` |  |  |  | Cluster Name |
 | settingName | `path` | string | `string` |  | ✓ |  | Setting Name |
 | Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
 
@@ -10528,6 +12823,123 @@ Status: Forbidden
 Status: Internal Server Error
 
 ###### <span id="post-api-clusters-settings-actions-switch-setting-name-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-clusters-settings-actions-switch-setting-name-state"></span> Switch global settings for the server (*PostAPIClustersSettingsActionsSwitchSettingNameState*)
+
+```
+POST /api/clusters/settings/actions/switch/{settingName}/{state}
+```
+
+This endpoint switches the global settings for the server.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| settingName | `path` | string | `string` |  | ✓ |  | Setting Name |
+| state | `path` | string | `string` |  |  |  | Toggle state (on/off) |
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-clusters-settings-actions-switch-setting-name-state-200) | OK | Successfully switched setting |  | [schema](#post-api-clusters-settings-actions-switch-setting-name-state-200-schema) |
+| [403](#post-api-clusters-settings-actions-switch-setting-name-state-403) | Forbidden | No valid ACL |  | [schema](#post-api-clusters-settings-actions-switch-setting-name-state-403-schema) |
+| [500](#post-api-clusters-settings-actions-switch-setting-name-state-500) | Internal Server Error | No cluster |  | [schema](#post-api-clusters-settings-actions-switch-setting-name-state-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-clusters-settings-actions-switch-setting-name-state-200"></span> 200 - Successfully switched setting
+Status: OK
+
+###### <span id="post-api-clusters-settings-actions-switch-setting-name-state-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-settings-actions-switch-setting-name-state-403"></span> 403 - No valid ACL
+Status: Forbidden
+
+###### <span id="post-api-clusters-settings-actions-switch-setting-name-state-403-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-clusters-settings-actions-switch-setting-name-state-500"></span> 500 - No cluster
+Status: Internal Server Error
+
+###### <span id="post-api-clusters-settings-actions-switch-setting-name-state-500-schema"></span> Schema
+   
+  
+
+
+
+### <span id="post-api-email-send"></span> Send Email (*PostAPIEmailSend*)
+
+```
+POST /api/email/send
+```
+
+Sends an email to the specified recipient.
+
+#### Consumes
+  * application/json
+
+#### Produces
+  * application/json
+
+#### Parameters
+
+| Name | Source | Type | Go type | Separator | Required | Default | Description |
+|------|--------|------|---------|-----------| :------: |---------|-------------|
+| Authorization | `header` | string | `string` |  | ✓ | `"Bearer \u003cAdd access token here\u003e"` | Insert your access token |
+| email | `body` | [MailerEmail](#mailer-email) | `models.MailerEmail` | | ✓ | | Email details |
+
+#### All responses
+| Code | Status | Description | Has headers | Schema |
+|------|--------|-------------|:-----------:|--------|
+| [200](#post-api-email-send-200) | OK | Email sent successfully |  | [schema](#post-api-email-send-200-schema) |
+| [400](#post-api-email-send-400) | Bad Request | Error in request |  | [schema](#post-api-email-send-400-schema) |
+| [500](#post-api-email-send-500) | Internal Server Error | Error sending email |  | [schema](#post-api-email-send-500-schema) |
+
+#### Responses
+
+
+##### <span id="post-api-email-send-200"></span> 200 - Email sent successfully
+Status: OK
+
+###### <span id="post-api-email-send-200-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-email-send-400"></span> 400 - Error in request
+Status: Bad Request
+
+###### <span id="post-api-email-send-400-schema"></span> Schema
+   
+  
+
+
+
+##### <span id="post-api-email-send-500"></span> 500 - Error sending email
+Status: Internal Server Error
+
+###### <span id="post-api-email-send-500-schema"></span> Schema
    
   
 
@@ -10733,6 +13145,80 @@ Status: Internal Server Error
 
 ## Models
 
+### <span id="archiver-backup-stat"></span> archiver.BackupStat
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| total_blob_count | integer| `int64` |  | |  |  |
+| total_file_count | integer| `int64` |  | |  |  |
+| total_size | integer| `int64` |  | |  |  |
+
+
+
+### <span id="archiver-restic-purge-option"></span> archiver.ResticPurgeOption
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| keepDaily | integer| `int64` |  | |  |  |
+| keepHourly | integer| `int64` |  | |  |  |
+| keepLast | integer| `int64` |  | |  |  |
+| keepMonthly | integer| `int64` |  | |  |  |
+| keepWeekly | integer| `int64` |  | |  |  |
+| keepWithin | string| `string` |  | |  |  |
+| keepWithinDaily | string| `string` |  | |  |  |
+| keepWithinHourly | string| `string` |  | |  |  |
+| keepWithinMonthly | string| `string` |  | |  |  |
+| keepWithinWeekly | string| `string` |  | |  |  |
+| keepWithinYearly | string| `string` |  | |  |  |
+| keepYearly | integer| `int64` |  | |  |  |
+
+
+
+### <span id="archiver-restic-task"></span> archiver.ResticTask
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| dir_path | string| `string` |  | |  |  |
+| error_state | [GithubComSignal18ReplicationManagerUtilsStateState](#github-com-signal18-replication-manager-utils-state-state)| `GithubComSignal18ReplicationManagerUtilsStateState` |  | |  |  |
+| opt | [ArchiverResticPurgeOption](#archiver-restic-purge-option)| `ArchiverResticPurgeOption` |  | |  |  |
+| tags | []string| `[]string` |  | |  |  |
+| task_id | integer| `int64` |  | |  |  |
+| task_type | [ArchiverTaskType](#archiver-task-type)| `ArchiverTaskType` |  | |  |  |
+
+
+
+### <span id="archiver-task-type"></span> archiver.TaskType
+
+
+  
+
+| Name | Type | Go type | Default | Description | Example |
+|------|------|---------| ------- |-------------|---------|
+| archiver.TaskType | integer| int64 | |  |  |
+
+
+
 ### <span id="cluster-api-user"></span> cluster.APIUser
 
 
@@ -10745,6 +13231,7 @@ Status: Internal Server Error
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | grants | map of boolean| `map[string]bool` |  | |  |  |
+| isExternal | boolean| `bool` |  | |  |  |
 | roles | map of boolean| `map[string]bool` |  | |  |  |
 | user | string| `string` |  | |  |  |
 
@@ -10885,6 +13372,7 @@ Status: Internal Server Error
 | monitorSpin | string| `string` |  | |  |  |
 | monitorType | map of string| `map[string]string` |  | |  |  |
 | name | string| `string` |  | |  |  |
+| partner | [ConfigPartner](#config-partner)| `ConfigPartner` |  | |  |  |
 | proxyServers | []string| `[]string` |  | |  |  |
 | slaHistory | [][StateSLA](#state-sla)| `[]*StateSLA` |  | |  |  |
 | slavesConnected | integer| `int64` |  | |  |  |
@@ -11120,6 +13608,7 @@ Status: Internal Server Error
 | binaryLogFilePrevious | string| `string` |  | |  |  |
 | binaryLogFiles | [DbhelperBinaryLogMetaMap](#dbhelper-binary-log-meta-map)| `DbhelperBinaryLogMetaMap` |  | |  |  |
 | binaryLogFilesCount | integer| `int64` |  | |  |  |
+| binaryLogName | string| `string` |  | |  |  |
 | binaryLogOldestTimestamp | integer| `int64` |  | |  |  |
 | binaryLogPos | string| `string` |  | |  |  |
 | binaryLogPurgeBefore | integer| `int64` |  | |  |  |
@@ -11462,67 +13951,12 @@ Status: Internal Server Error
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | dbopsEmail | string| `string` |  | |  |  |
-| domains | string| `string` |  | |  |  |
 | id | integer| `int64` |  | |  |  |
 | isDbops | integer| `int64` |  | |  |  |
 | isSysops | integer| `int64` |  | |  |  |
 | name | string| `string` |  | |  |  |
 | stars | integer| `int64` |  | |  |  |
 | sysopsEmail | string| `string` |  | |  |  |
-
-
-
-### <span id="config-peer-cluster"></span> peer.PeerCluster
-
-
-  
-
-
-
-**Properties**
-
-| Name | Type | Go type | Required | Default | Description | Example |
-|------|------|---------|:--------:| ------- |-------------|---------|
-| api-credentials-acl-allow | string| `string` |  | |  |  |
-| api-credentials-acl-allow-external | string| `string` |  | |  |  |
-| api-public-url | string| `string` |  | |  |  |
-| cloud18-cost-currency | string| `string` |  | |  |  |
-| cloud18-database-read-srv-record | string| `string` |  | |  |  |
-| cloud18-database-read-write-split-srv-record | string| `string` |  | |  |  |
-| cloud18-database-read-write-srv-record | string| `string` |  | |  |  |
-| cloud18-domain | string| `string` |  | |  |  |
-| cloud18-external-dbops | string| `string` |  | |  |  |
-| cloud18-external-sysops | string| `string` |  | |  |  |
-| cloud18-infra-certifications | string| `string` |  | |  |  |
-| cloud18-infra-cpu-freq | string| `string` |  | |  |  |
-| cloud18-infra-cpu-model | string| `string` |  | |  |  |
-| cloud18-infra-data-centers | string| `string` |  | |  |  |
-| cloud18-infra-geo-localizations | string| `string` |  | |  |  |
-| cloud18-infra-public-bandwidth | string| `string` |  | |  | `0` |
-| cloud18-monthly-dbops-cost | string| `string` |  | |  | `0` |
-| cloud18-monthly-infra-cost | string| `string` |  | |  | `0` |
-| cloud18-monthly-license-cost | string| `string` |  | |  | `0` |
-| cloud18-monthly-sysops-cost | string| `string` |  | |  | `0` |
-| cloud18-open-dbops | string| `string` |  | |  | `false` |
-| cloud18-open-sysops | string| `string` |  | |  | `false` |
-| cloud18-peer | string| `string` |  | |  | `false` |
-| cloud18-platform-description | string| `string` |  | |  |  |
-| cloud18-promotion-pct | string| `string` |  | |  | `0` |
-| cloud18-shared | string| `string` |  | |  | `false` |
-| cloud18-sla-provision-time | string| `string` |  | |  | `0` |
-| cloud18-sla-repair-time | string| `string` |  | |  | `0` |
-| cloud18-sla-response-time | string| `string` |  | |  | `0` |
-| cloud18-sub-domain | string| `string` |  | |  |  |
-| cloud18-sub-domain-zone | string| `string` |  | |  |  |
-| cloud18-subscribed-dbops | string| `string` |  | |  | `false` |
-| cluster-name | string| `string` |  | |  |  |
-| peer-users | []string| `[]string` |  | |  |  |
-| prov-db-cpu-cores | string| `string` |  | |  | `0` |
-| prov-db-disk-iops | string| `string` |  | |  | `0` |
-| prov-db-disk-size | string| `string` |  | |  | `0` |
-| prov-db-memory | string| `string` |  | |  | `0` |
-| prov-orchestrator | string| `string` |  | |  |  |
-| prov-service-plan | string| `string` |  | |  |  |
 
 
 
@@ -11749,6 +14183,7 @@ Status: Internal Server Error
 |------|------|---------|:--------:| ------- |-------------|---------|
 | binlogDoDB | string| `string` |  | |  |  |
 | binlogIgnoreDB | string| `string` |  | |  |  |
+| executedGtidSet | string| `string` |  | |  |  |
 | file | string| `string` |  | |  |  |
 | position | integer| `int64` |  | |  |  |
 
@@ -11767,7 +14202,6 @@ Status: Internal Server Error
 |------|------|---------|:--------:| ------- |-------------|---------|
 | channelName | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | connectionName | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
-| eeplicateDoDomainIds | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | execMasterLogPos | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | executedGtidSet | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | gtidIoPos | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
@@ -11785,6 +14219,7 @@ Status: Internal Server Error
 | readMasterLogPos | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | relayMasterLogFile | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | replicateDoDb | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
+| replicateDoDomainIds | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | replicateDoTable | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | replicateIgnoreDb | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | replicateIgnoreDomainIds | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
@@ -11798,6 +14233,8 @@ Status: Internal Server Error
 | slaveIoRunning | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | slaveSQLRunningState | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 | slaveSqlRunning | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
+| sqlDelay | [SQLNullInt64](#sql-null-int64)| `SQLNullInt64` |  | |  |  |
+| sqlRemainingDelay | [SQLNullInt64](#sql-null-int64)| `SQLNullInt64` |  | |  |  |
 | usingGtid | [SQLNullString](#sql-null-string)| `SQLNullString` |  | |  |  |
 
 
@@ -11831,6 +14268,10 @@ Status: Internal Server Error
 | apiCredentialsACLDiscardExternal | string| `string` |  | |  |  |
 | apiCredentialsExternal | string| `string` |  | |  |  |
 | apiCredentialsSecureConfig | boolean| `bool` |  | |  |  |
+| apiErrorDisregardPort | boolean| `bool` |  | |  |  |
+| apiErrorLimit | integer| `int64` |  | |  |  |
+| apiErrorLimitDuration | integer| `int64` |  | |  |  |
+| apiErrorSuppress | boolean| `bool` |  | |  |  |
 | apiHttpsBind | boolean| `bool` |  | |  |  |
 | apiOAuthClientID | string| `string` |  | |  |  |
 | apiOAuthClientSecret | string| `string` |  | |  |  |
@@ -11867,9 +14308,16 @@ Status: Internal Server Error
 | backupBinlogsKeep | integer| `int64` |  | |  |  |
 | backupKeepDaily | integer| `int64` |  | |  |  |
 | backupKeepHourly | integer| `int64` |  | |  |  |
+| backupKeepLast | integer| `int64` |  | |  |  |
 | backupKeepMonthly | integer| `int64` |  | |  |  |
 | backupKeepUntilValid | boolean| `bool` |  | |  |  |
 | backupKeepWeekly | integer| `int64` |  | |  |  |
+| backupKeepWithin | string| `string` |  | |  |  |
+| backupKeepWithinDaily | string| `string` |  | |  |  |
+| backupKeepWithinHourly | string| `string` |  | |  |  |
+| backupKeepWithinMonthly | string| `string` |  | |  |  |
+| backupKeepWithinWeekly | string| `string` |  | |  |  |
+| backupKeepWithinYearly | string| `string` |  | |  |  |
 | backupKeepYearly | integer| `int64` |  | |  |  |
 | backupLoadScript | string| `string` |  | |  |  |
 | backupLockDDL | boolean| `bool` |  | |  |  |
@@ -11892,6 +14340,7 @@ Status: Internal Server Error
 | backupResticAwsAccessKeyId | string| `string` |  | |  |  |
 | backupResticBinaryPath | string| `string` |  | |  |  |
 | backupResticRepository | string| `string` |  | |  |  |
+| backupResticTimeout | integer| `int64` |  | |  |  |
 | backupSaveScript | string| `string` |  | |  |  |
 | backupStreaming | boolean| `bool` |  | |  |  |
 | backupStreamingBucket | string| `string` |  | |  |  |
@@ -11910,6 +14359,10 @@ Status: Internal Server Error
 | checkReplicationState | boolean| `bool` |  | |  |  |
 | checkType | string| `string` |  | |  |  |
 | cloud18 | boolean| `bool` |  | |  |  |
+| cloud18Alert | boolean| `bool` |  | |  |  |
+| cloud18AlertSlackChannel | string| `string` |  | |  |  |
+| cloud18AlertSlackUrl | string| `string` |  | |  |  |
+| cloud18AlertSlackUser | string| `string` |  | |  |  |
 | cloud18CostCurrency | string| `string` |  | |  |  |
 | cloud18DatabaseReadSrvRecord | string| `string` |  | |  |  |
 | cloud18DatabaseReadWriteSplitSrvRecord | string| `string` |  | |  |  |
@@ -11918,7 +14371,9 @@ Status: Internal Server Error
 | cloud18DbaUserCredential | string| `string` |  | |  |  |
 | cloud18Domain | string| `string` |  | |  |  |
 | cloud18ExternalDbOps | string| `string` |  | |  |  |
+| cloud18ExternalDbOpsStatus | string| `string` |  | |  |  |
 | cloud18ExternalSysOps | string| `string` |  | |  |  |
+| cloud18ExternalSysOpsStatus | string| `string` |  | |  |  |
 | cloud18GitUser | string| `string` |  | |  |  |
 | cloud18InfraCertifications | string| `string` |  | |  |  |
 | cloud18InfraCpuFreq | string| `string` |  | |  |  |
@@ -11928,6 +14383,8 @@ Status: Internal Server Error
 | cloud18InfraGeoLocalizations | string| `string` |  | |  |  |
 | cloud18InfraPublicBandwidth | number| `float64` |  | |  |  |
 | cloud18MonthlyDbopsCost | number| `float64` |  | |  |  |
+| cloud18MonthlyExternalDbopsCost | number| `float64` |  | |  |  |
+| cloud18MonthlyExternalSysopsCost | number| `float64` |  | |  |  |
 | cloud18MonthlyInfraCost | number| `float64` |  | |  |  |
 | cloud18MonthlyLicenseCost | number| `float64` |  | |  |  |
 | cloud18MonthlySysopsCost | number| `float64` |  | |  |  |
@@ -11935,6 +14392,8 @@ Status: Internal Server Error
 | cloud18OpenSysops | boolean| `bool` |  | |  |  |
 | cloud18PlatformDescription | string| `string` |  | |  |  |
 | cloud18PromotionPct | number| `float64` |  | |  |  |
+| cloud18SalesExternalOpsStopScript | string| `string` |  | |  |  |
+| cloud18SalesExternalOpsValidateScript | string| `string` |  | |  |  |
 | cloud18SalesSubscriptionScript | string| `string` |  | |  |  |
 | cloud18SalesSubscriptionValidateScript | string| `string` |  | |  |  |
 | cloud18SalesUnsubscribeScript | string| `string` |  | |  |  |
@@ -12024,6 +14483,8 @@ Status: Internal Server Error
 | forceSyncBinlog | boolean| `bool` |  | |  |  |
 | forceSyncInnodb | boolean| `bool` |  | |  |  |
 | fullVersion | string| `string` |  | |  |  |
+| gitMaxWorker | integer| `int64` |  | |  |  |
+| gitMinWorker | integer| `int64` |  | |  |  |
 | gitMonitoringTicker | integer| `int64` |  | |  |  |
 | gitUrl | string| `string` |  | |  |  |
 | gitUrlPull | string| `string` |  | |  |  |
@@ -12057,6 +14518,9 @@ Status: Internal Server Error
 | haproxyReadPort | integer| `int64` |  | |  |  |
 | haproxyServers | string| `string` |  | |  |  |
 | haproxyServers-ipv6 | string| `string` |  | |  |  |
+| haproxyStagingBackend | string| `string` |  | |  |  |
+| haproxyStagingBind | string| `string` |  | |  |  |
+| haproxyStagingPort | string| `string` |  | |  |  |
 | haproxyStatPort | integer| `int64` |  | |  |  |
 | haproxyWritePort | integer| `int64` |  | |  |  |
 | haproxylUser | string| `string` |  | |  |  |
@@ -12073,6 +14537,7 @@ Status: Internal Server Error
 | interactive | boolean| `bool` |  | |  |  |
 | jobLogBatchSize | integer| `int64` |  | |  |  |
 | kubeConfig | string| `string` |  | |  |  |
+| logArchiveLevel | integer| `int64` |  | |  |  |
 | logBackupStream | boolean| `bool` |  | |  |  |
 | logBackupStreamLevel | integer| `int64` |  | |  |  |
 | logBinlogPurge | boolean| `bool` |  | |  |  |
@@ -12088,6 +14553,7 @@ Status: Internal Server Error
 | logHeartbeat | boolean| `bool` |  | |  |  |
 | logHeartbeatLevel | integer| `int64` |  | |  |  |
 | logLevel | integer| `int64` |  | |  |  |
+| logMailerLevel | integer| `int64` |  | |  |  |
 | logOrchestrator | boolean| `bool` |  | |  |  |
 | logOrchestratorLevel | integer| `int64` |  | |  |  |
 | logProxy | boolean| `bool` |  | |  |  |
@@ -12098,6 +14564,8 @@ Status: Internal Server Error
 | logSqlInMonitoring | boolean| `bool` |  | |  |  |
 | logSst | boolean| `bool` |  | | internal replication-manager sst |  |
 | logSstLevel | integer| `int64` |  | | internal replication-manager sst |  |
+| logSupport | boolean| `bool` |  | |  |  |
+| logSupportLevel | integer| `int64` |  | |  |  |
 | logSyslog | boolean| `bool` |  | |  |  |
 | logTask | boolean| `bool` |  | |  |  |
 | logTaskLevel | integer| `int64` |  | |  |  |
@@ -12108,10 +14576,12 @@ Status: Internal Server Error
 | logWriterElection | boolean| `bool` |  | |  |  |
 | logWriterElectionLevel | integer| `int64` |  | |  |  |
 | mailFrom | string| `string` |  | |  |  |
+| mailMaxPool | integer| `int64` |  | |  |  |
 | mailSmtpAddr | string| `string` |  | |  |  |
 | mailSmtpPassword | string| `string` |  | |  |  |
 | mailSmtpTlsSkipVerify | boolean| `bool` |  | |  |  |
 | mailSmtpUser | string| `string` |  | |  |  |
+| mailTimeout | integer| `int64` |  | |  |  |
 | mailTo | string| `string` |  | |  |  |
 | maxscale | boolean| `bool` |  | |  |  |
 | maxscaleBinlog | boolean| `bool` |  | |  |  |
@@ -12132,6 +14602,7 @@ Status: Internal Server Error
 | maxscaleUser | string| `string` |  | |  |  |
 | maxscaleWritePort | integer| `int64` |  | |  |  |
 | maxscalemBinaryPath | string| `string` |  | |  |  |
+| measurementAutoClampLimit | boolean| `bool` |  | |  |  |
 | monitoringAddress | string| `string` |  | |  |  |
 | monitoringAlertTrigger | string| `string` |  | |  |  |
 | monitoringBasedir | string| `string` |  | |  |  |
@@ -12227,6 +14698,7 @@ Status: Internal Server Error
 | provDbAgents | string| `string` |  | |  |  |
 | provDbBinaryBasedir | string| `string` |  | |  |  |
 | provDbBinaryInTarball | boolean| `bool` |  | |  |  |
+| provDbBinaryLogName | string| `string` |  | |  |  |
 | provDbBinaryTarballName | string| `string` |  | |  |  |
 | provDbBootstrapScript | string| `string` |  | |  |  |
 | provDbCleanupScript | string| `string` |  | |  |  |
@@ -12247,8 +14719,12 @@ Status: Internal Server Error
 | provDbDiskTempSize | string| `string` |  | |  |  |
 | provDbDiskType | string| `string` |  | |  |  |
 | provDbDockerImg | string| `string` |  | |  |  |
+| provDbDockerRunArgs | string| `string` |  | |  |  |
+| provDbDockerRunArgsLimit | boolean| `bool` |  | |  |  |
+| provDbDockerTmpfsSize | string| `string` |  | |  |  |
 | provDbDomain | string| `string` |  | |  |  |
 | provDbExpireLogDays | integer| `int64` |  | |  |  |
+| provDbJobsDockerRunArgs | string| `string` |  | |  |  |
 | provDbLoadCsv | string| `string` |  | |  |  |
 | provDbLoadSql | string| `string` |  | |  |  |
 | provDbMaxConnections | integer| `int64` |  | |  |  |
@@ -12267,6 +14743,7 @@ Status: Internal Server Error
 | provDockerDaemonPrivate | boolean| `bool` |  | |  |  |
 | provNetCni | boolean| `bool` |  | |  |  |
 | provNetCniCluster | string| `string` |  | |  |  |
+| provNetDockerRunArgs | string| `string` |  | |  |  |
 | provOrchestrator | string| `string` |  | |  |  |
 | provOrchestratorCluster | string| `string` |  | |  |  |
 | provOrchestratorEnable | string| `string` |  | |  |  |
@@ -12285,6 +14762,7 @@ Status: Internal Server Error
 | provProxyDockerMaxscaleImg | string| `string` |  | |  |  |
 | provProxyDockerMysqlrouterImg | string| `string` |  | |  |  |
 | provProxyDockerProxysqlImg | string| `string` |  | |  |  |
+| provProxyDockerRunArgs | string| `string` |  | |  |  |
 | provProxyDockerShardproxyImg | string| `string` |  | |  |  |
 | provProxyMemory | string| `string` |  | |  |  |
 | provProxyNetGateway | string| `string` |  | |  |  |
@@ -12347,11 +14825,13 @@ Status: Internal Server Error
 | proxysqlMultiplexing | boolean| `bool` |  | |  |  |
 | proxysqlPassword | string| `string` |  | |  |  |
 | proxysqlPort | string| `string` |  | |  |  |
+| proxysqlReadTrackState | string| `string` |  | |  |  |
 | proxysqlReaderHostgroup | string| `string` |  | |  |  |
 | proxysqlSaveToDisk | boolean| `bool` |  | |  |  |
 | proxysqlServers | string| `string` |  | |  |  |
 | proxysqlServersIpv6 | string| `string` |  | |  |  |
 | proxysqlUser | string| `string` |  | |  |  |
+| proxysqlWriteTrackState | string| `string` |  | |  |  |
 | proxysqlWriterHostgroup | string| `string` |  | |  |  |
 | registryConsul | boolean| `bool` |  | |  |  |
 | registryConsulCredential | string| `string` |  | |  |  |
@@ -12455,8 +14935,14 @@ Status: Internal Server Error
 | sysbenchThreads | integer| `int64` |  | |  |  |
 | sysbenchTime | integer| `int64` |  | |  |  |
 | sysbenchV1 | boolean| `bool` |  | |  |  |
+| terminalSessionEnabled | boolean| `bool` |  | |  |  |
+| terminalSessionManager | string| `string` |  | |  |  |
+| terminalSessionResume | boolean| `bool` |  | |  |  |
 | test | boolean| `bool` |  | |  |  |
 | testInjectTraffic | boolean| `bool` |  | |  |  |
+| topologyStaging | boolean| `bool` |  | |  |  |
+| topologyStagingPostDetachScript | string| `string` |  | |  |  |
+| topologyStagingRefreshScript | string| `string` |  | |  |  |
 | topologyTarget | string| `string` |  | |  |  |
 | vaultAuth | string| `string` |  | |  |  |
 | vaultMode | string| `string` |  | |  |  |
@@ -12469,6 +14955,25 @@ Status: Internal Server Error
 | version | string| `string` |  | |  |  |
 | withEmbed | string| `string` |  | |  |  |
 | withTarball | string| `string` |  | |  |  |
+
+
+
+### <span id="github-com-signal18-replication-manager-utils-state-state"></span> github_com_signal18_replication-manager_utils_state.State
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| errDesc | string| `string` |  | |  |  |
+| errFrom | string| `string` |  | |  |  |
+| errKey | string| `string` |  | |  |  |
+| errType | string| `string` |  | |  |  |
+| serverUrl | string| `string` |  | |  |  |
 
 
 
@@ -12486,6 +14991,32 @@ Status: Internal Server Error
 | domainId | integer| `int64` |  | |  |  |
 | seqNo | integer| `int64` |  | |  |  |
 | serverId | integer| `int64` |  | |  |  |
+
+
+
+### <span id="logrus-fields"></span> logrus.Fields
+
+
+  
+
+[interface{}](#interface)
+
+### <span id="mailer-email"></span> mailer.Email
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| attachments | []string| `[]string` |  | |  |  |
+| is_html | boolean| `bool` |  | |  |  |
+| message | string| `string` |  | |  |  |
+| subject | string| `string` |  | |  |  |
+| to | string| `string` |  | |  |  |
 
 
 
@@ -12573,6 +15104,99 @@ Status: Internal Server Error
 | Name | Type | Go type | Required | Default | Description | Example |
 |------|------|---------|:--------:| ------- |-------------|---------|
 | pid | integer| `int64` |  | |  |  |
+
+
+
+### <span id="peer-peer-cluster"></span> peer.PeerCluster
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| api-credentials-acl-allow | string| `string` |  | |  |  |
+| api-credentials-acl-allow-external | string| `string` |  | |  |  |
+| api-public-url | string| `string` |  | |  |  |
+| cloud18-cost-currency | string| `string` |  | |  |  |
+| cloud18-database-read-srv-record | string| `string` |  | |  |  |
+| cloud18-database-read-write-split-srv-record | string| `string` |  | |  |  |
+| cloud18-database-read-write-srv-record | string| `string` |  | |  |  |
+| cloud18-domain | string| `string` |  | |  |  |
+| cloud18-external-dbops | string| `string` |  | |  |  |
+| cloud18-external-sysops | string| `string` |  | |  |  |
+| cloud18-infra-certifications | string| `string` |  | |  |  |
+| cloud18-infra-cpu-freq | string| `string` |  | |  |  |
+| cloud18-infra-cpu-model | string| `string` |  | |  |  |
+| cloud18-infra-data-centers | string| `string` |  | |  |  |
+| cloud18-infra-geo-localizations | string| `string` |  | |  |  |
+| cloud18-infra-public-bandwidth | string| `string` |  | |  | `0` |
+| cloud18-monthly-dbops-cost | string| `string` |  | |  | `0` |
+| cloud18-monthly-infra-cost | string| `string` |  | |  | `0` |
+| cloud18-monthly-license-cost | string| `string` |  | |  | `0` |
+| cloud18-monthly-sysops-cost | string| `string` |  | |  | `0` |
+| cloud18-open-dbops | string| `string` |  | |  | `false` |
+| cloud18-open-sysops | string| `string` |  | |  | `false` |
+| cloud18-peer | string| `string` |  | |  | `false` |
+| cloud18-platform-description | string| `string` |  | |  |  |
+| cloud18-promotion-pct | string| `string` |  | |  | `0` |
+| cloud18-shared | string| `string` |  | |  | `false` |
+| cloud18-sla-provision-time | string| `string` |  | |  | `0` |
+| cloud18-sla-repair-time | string| `string` |  | |  | `0` |
+| cloud18-sla-response-time | string| `string` |  | |  | `0` |
+| cloud18-sub-domain | string| `string` |  | |  |  |
+| cloud18-sub-domain-zone | string| `string` |  | |  |  |
+| cloud18-subscribed-dbops | string| `string` |  | |  | `false` |
+| cluster-name | string| `string` |  | |  |  |
+| isDown | boolean| `bool` |  | |  |  |
+| isFailable | boolean| `bool` |  | |  |  |
+| isMasterDown | boolean| `bool` |  | |  |  |
+| isProvisioned | boolean| `bool` |  | |  |  |
+| lastUpdate | string| `string` |  | |  |  |
+| prov-db-cpu-cores | string| `string` |  | |  | `0` |
+| prov-db-disk-iops | string| `string` |  | |  | `0` |
+| prov-db-disk-size | string| `string` |  | |  | `0` |
+| prov-db-memory | string| `string` |  | |  | `0` |
+| prov-orchestrator | string| `string` |  | |  |  |
+| prov-service-plan | string| `string` |  | |  |  |
+
+
+
+### <span id="peer-peer-health"></span> peer.PeerHealth
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| isDown | boolean| `bool` |  | |  |  |
+| isFailable | boolean| `bool` |  | |  |  |
+| isMasterDown | boolean| `bool` |  | |  |  |
+| isProvisioned | boolean| `bool` |  | |  |  |
+| lastUpdate | string| `string` |  | |  |  |
+
+
+
+### <span id="peer-peer-node-status"></span> peer.PeerNodeStatus
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| error | [interface{}](#interface)| `interface{}` |  | |  |  |
+| lastUpdate | string| `string` |  | |  |  |
 
 
 
@@ -12693,6 +15317,26 @@ Status: Internal Server Error
 
 
 
+### <span id="server-cloud-user-form"></span> server.CloudUserForm
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| cost | number| `float64` |  | |  |  |
+| grants | string| `string` |  | |  |  |
+| password | string| `string` |  | |  |  |
+| reason | string| `string` |  | |  |  |
+| roles | string| `string` |  | |  |  |
+| username | string| `string` |  | |  |  |
+
+
+
 ### <span id="server-credential-mail-form"></span> server.CredentialMailForm
 
 
@@ -12743,6 +15387,22 @@ Status: Internal Server Error
 | secret | string| `string` |  | |  |  |
 | status | string| `string` |  | |  |  |
 | uuid | string| `string` |  | |  |  |
+
+
+
+### <span id="server-meet-alert-message"></span> server.MeetAlertMessage
+
+
+  
+
+
+
+**Properties**
+
+| Name | Type | Go type | Required | Default | Description | Example |
+|------|------|---------|:--------:| ------- |-------------|---------|
+| fields | [LogrusFields](#logrus-fields)| `LogrusFields` |  | |  |  |
+| message | string| `string` |  | |  |  |
 
 
 

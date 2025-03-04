@@ -108,16 +108,16 @@ func (pc *PeerClient) PeerLogin(username, password string) error {
 	// Marshal the modified JSON back to a byte slice
 	loginBody, err := json.Marshal(PeerCredential{Username: username, Password: password})
 	if err != nil {
-		return fmt.Errorf("failed to marshal modified JSON: %w", err)
+		return err
 	}
 	// Send the request to GoApp 2
 	status, body, err := pc.Post("api/login", bytes.NewBuffer(loginBody))
 	if err != nil {
-		return fmt.Errorf("error forwarding request: %w", err)
+		return err
 	}
 
 	if status != http.StatusOK {
-		return fmt.Errorf("peer %s status %d: %s", pc.baseURL, status, string(body))
+		return err
 	}
 
 	var AuthToken struct {
@@ -125,7 +125,7 @@ func (pc *PeerClient) PeerLogin(username, password string) error {
 	}
 
 	if err := json.Unmarshal(body, &AuthToken); err != nil {
-		return fmt.Errorf("failed to unmarshal response: %w", err)
+		return err
 	}
 
 	pc.SetHeader("Authorization", "Bearer "+AuthToken.Token)
