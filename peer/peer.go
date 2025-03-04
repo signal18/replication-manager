@@ -15,45 +15,50 @@ import (
 )
 
 type PeerCluster struct {
-	ClusterName                            string  `json:"cluster-name"`
-	ApiPublicUrl                           string  `json:"api-public-url"`
-	ApiCredentialsAclAllow                 string  `json:"api-credentials-acl-allow"`
-	ApiCredentialsAclAllowExternal         string  `json:"api-credentials-acl-allow-external"`
-	ProvDbMemory                           int     `json:"prov-db-memory,string"`
-	ProvDbCpuCores                         int     `json:"prov-db-cpu-cores,string"`
-	ProvDbDiskIops                         int64   `json:"prov-db-disk-iops,string"`
-	ProvDbDiskSize                         int64   `json:"prov-db-disk-size,string"`
-	ProvServicePlan                        string  `json:"prov-service-plan"`
-	ProvOrchestrator                       string  `json:"prov-orchestrator"`
-	Cloud18Domain                          string  `json:"cloud18-domain"`
-	Cloud18PlatformDescription             string  `json:"cloud18-platform-description"`
-	Cloud18Shared                          bool    `json:"cloud18-shared,string"`
-	Cloud18Peer                            bool    `json:"cloud18-peer,string"`
-	Cloud18SubDomain                       string  `json:"cloud18-sub-domain"`
-	Cloud18SubDomainZone                   string  `json:"cloud18-sub-domain-zone"`
-	Cloud18MonthlyInfraCost                float64 `json:"cloud18-monthly-infra-cost,string"`
-	Cloud18MonthlyLicenseCost              float64 `json:"cloud18-monthly-license-cost,string"`
-	Cloud18MonthlySysopsCost               float64 `json:"cloud18-monthly-sysops-cost,string"`
-	Cloud18MonthlyDbopsCost                float64 `json:"cloud18-monthly-dbops-cost,string"`
-	Cloud18CostCurrency                    string  `json:"cloud18-cost-currency"`
-	Cloud18InfraCPUFreq                    string  `json:"cloud18-infra-cpu-freq"`
-	Cloud18InfraCPUModel                   string  `json:"cloud18-infra-cpu-model"`
-	Cloud18InfraGeoLocalizations           string  `json:"cloud18-infra-geo-localizations"`
-	Cloud18InfraPublicBandwidth            float64 `json:"cloud18-infra-public-bandwidth,string"`
-	Cloud18InfraDataCenters                string  `json:"cloud18-infra-data-centers"`
-	Cloud18OpenDbops                       bool    `json:"cloud18-open-dbops,string"`
-	Cloud18SubscribedDbops                 bool    `json:"cloud18-subscribed-dbops,string"`
-	Cloud18OpenSysops                      bool    `json:"cloud18-open-sysops,string"`
-	Cloud18DatabaseReadWriteSplitSrvRecord string  `json:"cloud18-database-read-write-split-srv-record"`
-	Cloud18DatabaseReadSrvRecord           string  `json:"cloud18-database-read-srv-record"`
-	Cloud18DatabaseReadWriteSrvRecord      string  `json:"cloud18-database-read-write-srv-record"`
-	Cloud18SlaResponseTime                 float64 `json:"cloud18-sla-response-time,string"`
-	Cloud18SlaRepairTime                   float64 `json:"cloud18-sla-repair-time,string"`
-	Cloud18SlaProvisionTime                float64 `json:"cloud18-sla-provision-time,string"`
-	Cloud18PromotionPct                    float64 `json:"cloud18-promotion-pct,string"`
-	Cloud18ExtDbOps                        string  `json:"cloud18-external-dbops"`
-	Cloud18ExtSysOps                       string  `json:"cloud18-external-sysops"`
-	Cloud18InfraCertifications             string  `json:"cloud18-infra-certifications"`
+	ClusterName                            string    `json:"cluster-name"`
+	ApiPublicUrl                           string    `json:"api-public-url"`
+	ApiCredentialsAclAllow                 string    `json:"api-credentials-acl-allow"`
+	ApiCredentialsAclAllowExternal         string    `json:"api-credentials-acl-allow-external"`
+	ProvDbMemory                           int       `json:"prov-db-memory,string"`
+	ProvDbCpuCores                         int       `json:"prov-db-cpu-cores,string"`
+	ProvDbDiskIops                         int64     `json:"prov-db-disk-iops,string"`
+	ProvDbDiskSize                         int64     `json:"prov-db-disk-size,string"`
+	ProvServicePlan                        string    `json:"prov-service-plan"`
+	ProvOrchestrator                       string    `json:"prov-orchestrator"`
+	Cloud18Domain                          string    `json:"cloud18-domain"`
+	Cloud18PlatformDescription             string    `json:"cloud18-platform-description"`
+	Cloud18Shared                          bool      `json:"cloud18-shared,string"`
+	Cloud18Peer                            bool      `json:"cloud18-peer,string"`
+	Cloud18SubDomain                       string    `json:"cloud18-sub-domain"`
+	Cloud18SubDomainZone                   string    `json:"cloud18-sub-domain-zone"`
+	Cloud18MonthlyInfraCost                float64   `json:"cloud18-monthly-infra-cost,string"`
+	Cloud18MonthlyLicenseCost              float64   `json:"cloud18-monthly-license-cost,string"`
+	Cloud18MonthlySysopsCost               float64   `json:"cloud18-monthly-sysops-cost,string"`
+	Cloud18MonthlyDbopsCost                float64   `json:"cloud18-monthly-dbops-cost,string"`
+	Cloud18CostCurrency                    string    `json:"cloud18-cost-currency"`
+	Cloud18InfraCPUFreq                    string    `json:"cloud18-infra-cpu-freq"`
+	Cloud18InfraCPUModel                   string    `json:"cloud18-infra-cpu-model"`
+	Cloud18InfraGeoLocalizations           string    `json:"cloud18-infra-geo-localizations"`
+	Cloud18InfraPublicBandwidth            float64   `json:"cloud18-infra-public-bandwidth,string"`
+	Cloud18InfraDataCenters                string    `json:"cloud18-infra-data-centers"`
+	Cloud18OpenDbops                       bool      `json:"cloud18-open-dbops,string"`
+	Cloud18SubscribedDbops                 bool      `json:"cloud18-subscribed-dbops,string"`
+	Cloud18OpenSysops                      bool      `json:"cloud18-open-sysops,string"`
+	Cloud18DatabaseReadWriteSplitSrvRecord string    `json:"cloud18-database-read-write-split-srv-record"`
+	Cloud18DatabaseReadSrvRecord           string    `json:"cloud18-database-read-srv-record"`
+	Cloud18DatabaseReadWriteSrvRecord      string    `json:"cloud18-database-read-write-srv-record"`
+	Cloud18SlaResponseTime                 float64   `json:"cloud18-sla-response-time,string"`
+	Cloud18SlaRepairTime                   float64   `json:"cloud18-sla-repair-time,string"`
+	Cloud18SlaProvisionTime                float64   `json:"cloud18-sla-provision-time,string"`
+	Cloud18PromotionPct                    float64   `json:"cloud18-promotion-pct,string"`
+	Cloud18ExtDbOps                        string    `json:"cloud18-external-dbops"`
+	Cloud18ExtSysOps                       string    `json:"cloud18-external-sysops"`
+	Cloud18InfraCertifications             string    `json:"cloud18-infra-certifications"`
+	IsDown                                 bool      `json:"isDown"`
+	IsMasterDown                           bool      `json:"isMasterDown"`
+	IsFailable                             bool      `json:"isFailable"`
+	IsProvisioned                          bool      `json:"isProvisioned"`
+	LastUpdate                             time.Time `json:"lastUpdate"`
 }
 
 type PeerHealth struct {
@@ -62,11 +67,6 @@ type PeerHealth struct {
 	IsFailable    bool      `json:"isFailable"`
 	IsProvisioned bool      `json:"isProvisioned"`
 	LastUpdate    time.Time `json:"lastUpdate"`
-}
-
-type PeerClusterData struct {
-	PeerCluster PeerCluster `json:"cluster"`
-	Health      PeerHealth  `json:"health"`
 }
 
 // PeerManager manages peer clusters.
@@ -266,50 +266,34 @@ func (pm *PeerManager) GetCluster(hashID string) (*PeerCluster, bool) {
 }
 
 // GetUserClusters retrieves all clusters a user has access to.
-func (pm *PeerManager) GetUserClusters(username string) []*PeerClusterData {
+func (pm *PeerManager) GetUserClusters(username string) []*PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := []*PeerClusterData{}
+	clusters := []*PeerCluster{}
 	if pcs, ok := pm.PeerUserClusters[username]; ok {
-		for pcname, pc := range pcs {
-			ph := pm.PeerHealth[pcname]
-			if ph == nil {
-				ph = &PeerHealth{}
-			}
-			pcd := PeerClusterData{
-				PeerCluster: *pc,
-				Health:      *ph,
-			}
-			clusters = append(clusters, &pcd)
+		for _, pc := range pcs {
+			clusters = append(clusters, pc)
 		}
 	}
 	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+		return clusters[i].ClusterName < clusters[j].ClusterName
 	})
 	return clusters
 }
 
 // ListClusters returns all clusters.
-func (pm *PeerManager) ListClusters() []*PeerClusterData {
+func (pm *PeerManager) ListClusters() []*PeerCluster {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := make([]*PeerClusterData, 0, len(pm.PeerClusters))
-	for pcname, pc := range pm.PeerClusters {
-		ph := pm.PeerHealth[pcname]
-		if ph == nil {
-			ph = &PeerHealth{}
-		}
-		pcd := PeerClusterData{
-			PeerCluster: *pc,
-			Health:      *ph,
-		}
-		clusters = append(clusters, &pcd)
+	clusters := make([]*PeerCluster, 0, len(pm.PeerClusters))
+	for _, pc := range pm.PeerClusters {
+		clusters = append(clusters, pc)
 	}
 
 	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+		return clusters[i].ClusterName < clusters[j].ClusterName
 	})
 
 	return clusters
@@ -326,17 +310,13 @@ func (pm *PeerManager) GetSaleClustersJSON() ([]byte, error) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	clusters := make([]PeerClusterData, 0, len(pm.PeerForSale))
-	for pcname, pc := range pm.PeerForSale {
-		ph := pm.PeerHealth[pcname]
-		if ph == nil {
-			ph = &PeerHealth{}
-		}
-		clusters = append(clusters, PeerClusterData{PeerCluster: *pc, Health: *ph})
+	clusters := make([]*PeerCluster, 0, len(pm.PeerForSale))
+	for _, pc := range pm.PeerForSale {
+		clusters = append(clusters, pc)
 	}
 
 	sort.Slice(clusters, func(i, j int) bool {
-		return clusters[i].PeerCluster.ClusterName < clusters[j].PeerCluster.ClusterName
+		return clusters[i].ClusterName < clusters[j].ClusterName
 	})
 
 	return json.MarshalIndent(clusters, "", "\t")
@@ -351,8 +331,8 @@ func (pm *PeerManager) removeClusterFromUsers(hashID string) {
 
 func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 	hashID := GetPeerHashID(pc)
-	var booked bool
 	userlist := make(map[string]struct{})
+	var forSale bool = pc.Cloud18Shared
 	for _, acl := range strings.Split(pc.ApiCredentialsAclAllow, ",") {
 		uname, _, _, roles := misc.SplitAcls(acl)
 		if _, ok := pm.UserClusterAccess[uname]; !ok {
@@ -365,16 +345,16 @@ func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 		pm.UserClusterAccess[uname][hashID] = struct{}{}
 		pm.PeerUserClusters[uname][hashID] = pc
 		userlist[uname] = struct{}{}
-		if !booked {
+		if forSale {
 			isSponsor := strings.Contains(roles, "sponsor")
 			if isSponsor {
-				booked = true
+				forSale = false
 				continue
 			}
 
 			isPending := strings.Contains(roles, "pending")
 			if isPending {
-				booked = true
+				forSale = false
 				continue
 			}
 		}
@@ -387,10 +367,10 @@ func (pm *PeerManager) ReloadUsers(pc *PeerCluster) {
 		}
 	}
 
-	if booked {
-		delete(pm.PeerForSale, hashID)
-	} else {
+	if forSale {
 		pm.PeerForSale[hashID] = pc
+	} else {
+		delete(pm.PeerForSale, hashID)
 	}
 }
 
@@ -412,8 +392,13 @@ func (pm *PeerManager) GetHealthStatus(pclient *PeerClient) error {
 
 		for clustername, status := range healths {
 			hashID := GetHashID(pclient.baseURL, clustername)
-			status.LastUpdate = update
-			pm.PeerHealth[hashID] = &status
+			if pc, exists := pm.PeerClusters[hashID]; exists {
+				pc.IsDown = status.IsDown
+				pc.IsMasterDown = status.IsMasterDown
+				pc.IsFailable = status.IsFailable
+				pc.IsProvisioned = status.IsProvisioned
+				pc.LastUpdate = update
+			}
 		}
 	}
 
