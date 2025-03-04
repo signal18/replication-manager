@@ -70,7 +70,7 @@ type PeerHealth struct {
 }
 
 type PeerNodeStatus struct {
-	Error      error
+	Error      string
 	LastUpdate time.Time
 }
 
@@ -334,7 +334,7 @@ func (pm *PeerManager) GetAllHealthStatus() {
 	for url, nodestat := range pm.PeerURL {
 		// Skip if the URL is not valid.
 		if !misc.IsValidPublicURL(url) {
-			nodestat.Error = fmt.Errorf("not a valid public URL")
+			nodestat.Error = fmt.Sprintf("not a valid public URL")
 			continue
 		}
 
@@ -347,18 +347,18 @@ func (pm *PeerManager) GetAllHealthStatus() {
 		// Login if no token is set in the client.
 		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
-				nodestat.Error = fmt.Errorf("failed to login: %s", err)
+				nodestat.Error = fmt.Sprintf("failed to login: %s", err)
 				continue
 			}
 		}
 
 		if time.Since(nodestat.LastUpdate) > time.Minute {
 			if err := pm.GetHealthStatus(pclient); err != nil {
-				nodestat.Error = fmt.Errorf("failed to get health status: %s", err)
+				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
 				continue
 			}
 			nodestat.LastUpdate = time.Now()
-			nodestat.Error = nil
+			nodestat.Error = ""
 		}
 	}
 }
