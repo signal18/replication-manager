@@ -22,7 +22,6 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -550,18 +549,6 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 				cluster.failSendCount = 0
 			}
 		}()
-	}
-
-	if cluster.Conf.Cloud18 && cluster.MeetUserID != "" {
-		meetClient, err := meethelper.GetMeetClient(cluster.MeetUserID, cluster.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not get meet client: %s", err)
-		} else {
-			err := alert.PostMeetMessage(meetClient, cluster.Conf.Cloud18AlertSlackChannel)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not send meet alert: %s", err)
-			}
-		}
 	}
 
 	if cluster.Conf.AlertScript != "" {

@@ -47,6 +47,21 @@ func NewSlackManager() *SlackManager {
 }
 
 // IsHookActive checks if a given hook type is active.
+func (s *SlackManager) HasActiveHook() bool {
+	var active bool
+	s.hook.Range(func(key, value interface{}) bool {
+		sh := value.(*SlackmanHook)
+		if sh.Enabled {
+			active = true
+			return false
+		}
+		return true
+	})
+
+	return active
+}
+
+// IsHookActive checks if a given hook type is active.
 func (s *SlackManager) IsHookActive(hooktype string) bool {
 	sh := s.GetHook(hooktype)
 	if sh == nil {
