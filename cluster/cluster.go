@@ -446,6 +446,8 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.LogSlack = slackman.NewSlackManager()
 	cluster.LogSlack.SetFormatter(&log.TextFormatter{FullTimestamp: true})
+	// Don't write to stdout
+	cluster.LogSlack.SetOutput(io.Discard)
 
 	cluster.LogSlack.SetHookConfig("slack", slackman.SlackConfig{
 		URL:            cluster.Conf.SlackURL,
