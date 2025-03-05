@@ -180,11 +180,11 @@ export const globalClustersSlice = createSlice({
       .addCase(getClusters.fulfilled, (state, action) => {
         state.loading = false
         state.clusters = action.payload.data
-        state.isDownList = action.payload.data.reduce((acc, cluster) => {
+        state.isDownList = action.payload.data?.reduce((acc, cluster) => {
           acc[cluster.name] = cluster.isDown
           return acc
         }, {})
-        state.isFailableList = action.payload.data.reduce((acc, cluster) => {
+        state.isFailableList = action.payload.data?.reduce((acc, cluster) => {
           acc[cluster.name] = cluster.isFailable
           return acc
         }, {})
