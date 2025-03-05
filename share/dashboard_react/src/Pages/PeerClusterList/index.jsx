@@ -233,7 +233,7 @@ function PeerClusterList({ onLogin, mode }) {
     <>
       {(search !== "" || plan !== "") && (
         <>
-          <Flex className={styles.filterWrapper}>
+          <Flex className={styles.filterWrapper} gap={4}>
             <Dropdown label={"Domain"} options={domainOptions} className={styles.dropdownButton} selectedValue={domain} onChange={(opt) => fdispatch({ type: 'domain', value: opt.value })} />
             <Dropdown label={"Subdomain"} options={subdomainOptions} className={styles.dropdownButton} selectedValue={subdomain} onChange={(opt) => fdispatch({ type: 'subdomain', value: opt.value })} />
             <Dropdown label={"Zone"} options={zoneOptions} className={styles.dropdownButton} selectedValue={zone} onChange={(opt) => fdispatch({ type: 'zone', value: opt.value })} />
