@@ -1973,6 +1973,7 @@ func GetMonitorType() map[string]string {
 		"myproxy":    "proxy",
 		"extproxy":   "proxy",
 		"sphinx":     "proxy",
+		"app":        "app",
 	}
 }
 

@@ -182,8 +182,8 @@ function toggleTraffic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat`)
 }
 
-function addServer(clusterName, host, port, dbType, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${dbType}`)
+function addServer(clusterName, host, port, monitorType, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}`)
 }
 
 function dropServer(clusterName, host, port, baseURL) {
