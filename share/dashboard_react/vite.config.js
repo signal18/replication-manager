@@ -13,7 +13,6 @@ export default defineConfig({
         secure: false
       }
     }
-    
   },
   plugins: [react(), viteCompression({ algorithm: 'gzip' }), basicSSL()],
   css: {
@@ -27,5 +26,20 @@ export default defineConfig({
          @import './src/styles/_global.scss';`
       }
     }
-  }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            let prefix = 'js'
+            if (id.endsWith("css")){
+              prefix = 'css'
+            }
+            return prefix+'/'+id.toString().split('node_modules/')[1].split('/')[0].toString();
+          }
+        } 
+      }
+    },
+  },
 })

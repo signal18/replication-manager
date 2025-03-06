@@ -115,10 +115,10 @@ func (repman *ReplicationManager) httpserver() {
 	} else {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
-		router.PathPrefix("/images/").Handler(repman.DashboardFSHandler())
-		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
-		router.PathPrefix("/static/").Handler(repman.DashboardFSHandler())
-		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
+		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 

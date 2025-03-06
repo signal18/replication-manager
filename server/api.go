@@ -227,9 +227,9 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
-		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
-		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
@@ -1546,7 +1546,7 @@ func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", repman.Conf.CacheStaticMaxAge))
-		w.Header().Set("Etag", repman.Version)
+		w.Header().Set("Etag", repman.Fullversion)
 
 		h.ServeHTTP(w, r)
 	})
