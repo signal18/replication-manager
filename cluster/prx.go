@@ -25,7 +25,6 @@ import (
 	"github.com/signal18/replication-manager/router/proxysql"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/spf13/pflag"
 )
 
@@ -41,6 +40,7 @@ type Proxy struct {
 	TunnelPort      int                  `json:"tunnelPort"`
 	TunnelWritePort int                  `json:"tunnelWritePort"`
 	Tunnel          bool                 `json:"tunnel"`
+	Conn            *sqlx.DB             `json:"-"` // Connection to the master via proxy
 	User            string               `json:"-"`
 	Pass            string               `json:"-"`
 	WritePort       int                  `json:"writePort"`
@@ -246,34 +246,51 @@ func (cluster *Cluster) newProxyList() error {
 }
 
 func (cluster *Cluster) InjectProxiesTraffic() {
-	var definer string
 	// Found server from ServerId
 	if cluster.GetMaster() != nil {
 		for _, pr := range cluster.Proxies {
-			if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy {
-				// Does not yet understand CREATE OR REPLACE VIEW
-				continue
-			}
-			db, err := pr.GetClusterConnection()
-			if err != nil {
-				cluster.SetState("ERR00050", state.State{ErrType: "WARN", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
-			} else {
-				if pr.GetType() == config.ConstProxyMyProxy {
-					definer = "DEFINER = root@localhost"
-				} else {
-					definer = ""
-				}
-				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
-
-				if err != nil {
-					cluster.SetState("ERR00050", state.State{ErrType: "WARN", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
-					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-
-				}
-				db.Close()
+			injectsuccess := cluster.InjectProxy(pr)
+			if injectsuccess {
+				break
 			}
 		}
 	}
+}
+
+func (cluster *Cluster) InjectProxy(pr DatabaseProxy) bool {
+	var definer string
+
+	if pr.GetState() != stateProxyRunning {
+		return false
+	}
+
+	if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy {
+		// Does not yet understand CREATE OR REPLACE VIEW
+		return false
+	}
+	db, err := pr.GetClusterConnection()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Can't get a proxy connection: %s", err)
+	} else {
+		defer db.Close()
+		if pr.GetType() == config.ConstProxyMyProxy {
+			definer = "DEFINER = root@localhost"
+		} else {
+			definer = ""
+		}
+		_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Can't inject traffic in proxy: %s", err)
+			db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+
+			_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
+			if err != nil {
+				return false
+			}
+		}
+	}
+
+	return true
 }
 
 func (cluster *Cluster) IsProxyEqualMaster() bool {
