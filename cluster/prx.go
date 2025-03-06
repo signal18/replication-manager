@@ -282,11 +282,7 @@ func (cluster *Cluster) InjectProxy(pr DatabaseProxy) bool {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "Can't inject traffic in proxy: %s", err)
 			db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
-
-			_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
-			if err != nil {
-				return false
-			}
+			return false
 		}
 	}
 
