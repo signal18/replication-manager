@@ -10,6 +10,15 @@ export const getMeetInfo = createAsyncThunk('meet/getMeetInfo', async (_, thunkA
     handleError(error, thunkAPI);
     throw error; // Ensure the error is thrown to trigger the rejected state
   }
+},
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { meet } = getState();
+    if (meet.isFetchingInfo) {
+      return false;
+    }
+  }
 });
 
 export const postMeetMessage = createAsyncThunk('meet/postMeetMessage', async ({ channelId, message }, thunkAPI) => {
@@ -248,6 +257,7 @@ export const joinChannel = createAsyncThunk(
 const meetSlice = createSlice({
   name: 'meet',
   initialState: {
+    isFetchingInfo: false,
     meetInfo: null,
     messages: {},  // Stocke les messages par channelId
     loading: false,
@@ -260,7 +270,11 @@ const meetSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      .addCase(getMeetInfo.pending, (state) => {
+        state.isFetchingInfo = true;
+      })
       .addCase(getMeetInfo.fulfilled, (state, action) => {
+        state.isFetchingInfo = false;
         state.meetInfo = action.payload.data;
         localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
@@ -275,7 +289,8 @@ const meetSlice = createSlice({
         state.loading = true;
       })
       .addCase(getMeetInfo.rejected, (state, action) => {
-        state.meetError = true; 
+        state.isFetchingInfo = false;
+        state.meetError = true;
         state.meetInfo = null;
       })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
