@@ -1,0 +1,84 @@
+.channelsContainer {
+    max-height: 1000px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background-color:var(--body-bg-color);
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+
+    .channelsTreeView{
+        
+        .channelsTreeViewTitle {
+            
+            .channelsType {
+                display: flex;
+                flex-grow: 1;
+                margin-right: 5px;
+    
+                .channelName {
+                    font-weight: bold;
+                    display: flex;
+                    align-items: center;
+                }
+
+                .channelsTypeButton {
+                    color-scheme: teal;
+                    size: small;
+                    display: flex;
+                    margin-left: auto;
+                }
+            }
+        }
+
+        .channelsTreeViewContent{
+            padding: none;
+
+            .channelsType {
+                font-weight: bold;
+
+                .channelsTypeButton {
+                    background-color: inherit;
+                    color: var(--text-color);
+                    size: small;
+                    margin-left: auto;
+                }
+            }
+
+            .channelsGroup {
+                .channelsType {
+                    font-weight: bold;
+                }
+                .channelsTypeButton {
+                    color-scheme: teal;
+                    size: small;
+                    margin-left: auto;
+                }
+                .channelsOfAGroup {
+                    .channel {
+                        display: flex;
+                        margin-bottom: 2px;
+                        justify-content: space-between;
+                        width: 100%;
+                        align-items: center;
+                        padding: 4px;
+
+                        .channelContent {
+                            display: flex;
+                            justify-content: space-between;
+                        }
+
+                        .channelUnreadMessages {
+                            align-items: center;
+                            padding: 4px;
+                        }
+
+                        .channelActionsButtons{
+                            display: flex;
+                            margin-left: auto;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

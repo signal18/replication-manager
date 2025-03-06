@@ -189,10 +189,10 @@ export const toggleTraffic = createAsyncThunk('cluster/toggleTraffic', async ({ 
 
 export const addServer = createAsyncThunk(
   'cluster/addServer',
-  async ({ clusterName, host, port, dbType }, thunkAPI) => {
+  async ({ clusterName, host, port, monitorType }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.addServer(clusterName, host, port, dbType, baseURL)
+      const { data, status } = await clusterService.addServer(clusterName, host, port, monitorType, baseURL)
       showSuccessBanner('New server added!', status, thunkAPI)
       return { data, status }
     } catch (error) {

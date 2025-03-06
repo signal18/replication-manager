@@ -324,7 +324,7 @@ func (cluster *Cluster) RotatePasswords() error {
 	return nil
 }
 
-func (cluster *Cluster) SendVaultTokenByMail(Conf config.Config) error {
+func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
 	subj := "Replication-Manager Vault Token"
 	msg := "Here's your vault token: " + Conf.Secrets["vault-token"].Value + ". This token allows you to view your passwords at the following address in complete security.\n" + Conf.VaultServerAddr
 

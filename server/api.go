@@ -8,7 +8,6 @@ package server
 
 import (
 	"bytes"
-	"compress/zlib"
 	"context"
 	"crypto/md5"
 	cryptorand "crypto/rand"
@@ -33,8 +32,6 @@ import (
 	"github.com/buger/jsonparser"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/iancoleman/strcase"
-	"github.com/klauspost/compress/zstd"
-	"github.com/klauspost/pgzip"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
@@ -48,11 +45,12 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
-	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/signal18/replication-manager/utils/tty"
 	httpSwagger "github.com/swaggo/http-swagger"
 )
@@ -62,6 +60,11 @@ import (
 var signingKey, verificationKey []byte
 var apiPass string
 var apiUser string
+
+type AuthToken struct {
+	Token  string `json:"token"`
+	UserID string `json:"user_id"`
+}
 
 func (repman *ReplicationManager) initKeys() {
 	repman.Lock()
@@ -208,8 +211,6 @@ func (repman *ReplicationManager) apiserver() {
 		router.PathPrefix("/graphite/").Handler(http.StripPrefix("/graphite/", graphiteProxy))
 	}
 
-	router.PathPrefix("/meet/").Handler(http.StripPrefix("/meet/", repman.proxyToURL("https://meet.signal18.io/api/v4")))
-
 	// Define the dynamic proxy route with Base64-encoded peer URL and arbitrary route
 	router.HandleFunc("/peer/{encodedpeer}/{route:.*}", repman.DynamicPeerHandler)
 
@@ -272,12 +273,20 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/clusters/peers", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerClusters)),
 	))
+	router.Handle("/api/peers", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPeerNodes)),
+	))
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))
 	router.Handle("/api/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStatus)),
 	))
+
+	router.Handle("/api/health", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxHealth)),
+	))
+
 	router.Handle("/api/timeout", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTimeout)),
 	))
@@ -301,7 +310,7 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
-
+	repman.apiMeetProtectedHandler(router)
 	repman.apiDatabaseUnprotectedHandler(router)
 	repman.apiDatabaseProtectedHandler(router)
 	repman.apiClusterUnprotectedHandler(router)
@@ -369,12 +378,7 @@ func (repman *ReplicationManager) apiserver() {
 /////////////////////////////////////////
 
 func (repman *ReplicationManager) handleOriginValidator(origin string) bool {
-	for _, cl := range repman.PeerClusters {
-		if cl.ApiPublicUrl == origin {
-			return true
-		}
-	}
-	return false
+	return repman.PeerManager.HasPeerURL(origin)
 }
 
 func (repman *ReplicationManager) isValidRequest(r *http.Request) (bool, error) {
@@ -548,21 +552,67 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	var tok string
 	var userInfo interface{}
+	var userID string
 
-	if repman.Conf.Cloud18 && strings.Contains(user.Username, "@") {
-		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
-		if tok == "" {
-			http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
-			return
+	if repman.Conf.Cloud18 {
+		meetUser := user.Username
+		meetPassword := user.Password
+
+		//to check user role before getting meet token and client
+		//if dbops or sysops, we use the cloud18-git-user of the config if exist to connect to the support
+		for _, cl := range repman.Clusters {
+			u := cl.APIUsers[user.Username]
+			if (u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] || u.Roles[config.RoleSysOps] || u.Roles[config.RoleExtSysOps]) && (repman.Conf.Cloud18GitUser != "" && repman.Conf.Cloud18GitPassword != "") {
+				meetUser = repman.Conf.Cloud18GitUser
+				meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
+			}
 		}
 
-		userInfo = struct {
-			Name     string
-			Role     string
-			Password string
-			Email    string `json:"email"`
-			Profile  string `json:"profile"`
-		}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
+		//to get meet token and create a client while login
+		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
+			}
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
+		}
+
+		if strings.Contains(user.Username, "@") {
+			tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+			if tok == "" {
+				http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
+				return
+			}
+
+			userInfo = struct {
+				Name     string
+				Role     string
+				Password string
+				Email    string `json:"email"`
+				Profile  string `json:"profile"`
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
+
+		} else {
+			loggedIn := false
+			for _, cl := range repman.Clusters {
+				//validate user credentials
+				if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+					continue
+				}
+				loggedIn = true
+				userInfo = struct {
+					Name     string
+					Role     string
+					Password string
+				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password)}
+			}
+
+			if !loggedIn {
+				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+		}
 
 	} else {
 		loggedIn := false
@@ -614,7 +664,13 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	//create a token instance using the token string
 	specs := r.Header.Get("Accept")
-	resp := token{tokenString}
+	//resp := token{tokenString}
+
+	resp := AuthToken{
+		Token:  tokenString,
+		UserID: userID,
+	}
+
 	if strings.Contains(specs, "text/html") {
 		w.Write([]byte(tokenString))
 		return
@@ -978,13 +1034,51 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 	}
 }
 
+// handlerMuxPeerNodes handles the request to retrieve all peer nodes status.
+// @Summary Retrieve peer nodes status
+// @Description This endpoint retrieves the status of all peer nodes.
+// @Tags Cloud18
+// @Produce application/json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {array} peer.PeerNodeStatus "List of peer nodes"
+// @Failure 401 {string} string "Unauthenticated resource"
+// @Failure 500 {string} string "Failed to get token claims or Error Marshal"
+// @Router /api/peers [get]
+func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *http.Request) {
+	ok, err := repman.isValidRequest(r)
+	if !ok {
+		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		return
+	}
+
+	uinfo, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
+		return
+	}
+
+	peerUser := uinfo["User"]
+	if peerUser == "admin" {
+		peerUser = repman.Conf.Cloud18GitUser
+	}
+
+	cl, err := repman.PeerManager.GetPeerNodesJSON()
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(cl)
+}
+
 // handlerMuxPeerClusters handles the request to retrieve peer clusters for a user.
 // @Summary Retrieve peer clusters for a user
 // @Description This endpoint retrieves the peer clusters that a user has access to.
 // @Tags Cloud18
 // @Produce application/json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Success 200 {array} config.PeerCluster "List of peer clusters"
+// @Success 200 {array} peer.PeerCluster "List of peer clusters"
 // @Failure 401 {string} string "Unauthenticated resource"
 // @Failure 500 {string} string "Failed to get token claims or Error Marshal"
 // @Router /api/clusters/peers [get]
@@ -1006,23 +1100,12 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 		peerUser = repman.Conf.Cloud18GitUser
 	}
 
-	peer := make([]config.PeerCluster, 0)
-	booked := strings.Split(repman.PeerBooked[peerUser], ",")
-	for _, cl := range repman.PeerClusters {
-		if misc.IsValidPublicURL(cl.ApiPublicUrl) {
-			// fmt.Println("Peer cluster is valid")
-			// fmt.Println(cl.ApiCredentialsAclAllowExternal + "," + cl.ApiCredentialsAclAllow)
-			if strings.Contains(cl.ApiCredentialsAclAllowExternal+","+cl.ApiCredentialsAclAllow, peerUser) || slices.Contains(booked, cl.Cloud18Domain+"/"+cl.Cloud18SubDomain+"/"+cl.ClusterName) {
-				peer = append(peer, cl)
-			}
-		}
-	}
-
-	cl, err := json.MarshalIndent(peer, "", "\t")
+	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser)
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(cl)
 }
@@ -1033,7 +1116,7 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 // @Tags Cloud18
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Produce application/json
-// @Success 200 {array} config.PeerCluster "List of peer clusters available for sale"
+// @Success 200 {array} peer.PeerCluster "List of peer clusters available for sale"
 // @Failure 401 {string} string "Unauthenticated resource"
 // @Failure 500 {string} string "Failed to get token claims or Error Marshal"
 // @Router /api/clusters/for-sale [get]
@@ -1044,33 +1127,12 @@ func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseW
 		return
 	}
 
-	uinfo, err := repman.GetJWTClaims(r)
-	if err != nil {
-		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
-		return
-	}
-
-	peerUser := uinfo["User"]
-	if peerUser == "admin" {
-		peerUser = repman.Conf.Cloud18GitUser
-	}
-
-	shared := make([]config.PeerCluster, 0)
-	booked := strings.Split(repman.PeerBooked[peerUser], ",")
-	for _, cl := range repman.PeerClusters {
-		if slices.Contains(booked, cl.Cloud18Domain+"/"+cl.Cloud18SubDomain+"/"+cl.ClusterName) {
-			continue
-		}
-		if !strings.Contains(cl.ApiCredentialsAclAllowExternal, "sponsor") && !strings.Contains(cl.ApiCredentialsAclAllowExternal, "pending") && !cl.Cloud18Peer {
-			shared = append(shared, cl)
-		}
-	}
-
-	cl, err := json.MarshalIndent(shared, "", "\t")
+	cl, err := repman.PeerManager.GetSaleClustersJSON()
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(cl)
 }
@@ -1546,12 +1608,7 @@ func (repman *ReplicationManager) RecoveryMiddleware(next http.Handler) http.Han
 
 // isAllowedPeer checks if a given peer URL is in the allowed list
 func (repman *ReplicationManager) IsAllowedPeer(peerURL string) bool {
-	for _, pcl := range repman.PeerClusters {
-		if peerURL == pcl.ApiPublicUrl {
-			return true
-		}
-	}
-	return false
+	return repman.PeerManager.HasPeerURL(peerURL)
 }
 
 // isAllowedPeer checks if a given peer URL is in the allowed list
@@ -1604,6 +1661,8 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 	parsedPeerURL.Path = parsedPeerURL.Path + "/" + route
 
 	var user userCredentials
+	var status int
+	var body []byte
 	if route == "api/login" {
 		//decode request into UserCredentials struct
 		err = json.NewDecoder(r.Body).Decode(&user)
@@ -1628,92 +1687,18 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 
 		user.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
 
-		// Marshal the modified JSON back to a byte slice
-		loginBody, err := json.Marshal(user)
-		if err != nil {
-			http.Error(w, "Failed to marshal modified JSON", http.StatusInternalServerError)
-			return
-		}
+		status, body = repman.PeerLogin(parsedPeerURL, user)
 
-		r.Body = io.NopCloser(bytes.NewBuffer(loginBody))
-		r.ContentLength = int64(len(loginBody)) // Update content length
+	} else {
+		// Forward the request to the peer URL
+		status, body = repman.PeerRequestForwarder(parsedPeerURL, r)
 	}
 
-	// Log the forwarding request
-	log.Printf("Forwarding request to: %s", parsedPeerURL.String())
-
-	// Create a new request to forward to Peer
-	req, err := http.NewRequest(r.Method, parsedPeerURL.String(), r.Body)
-	if err != nil {
-		http.Error(w, "Failed to create request: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Copy Content-Type and other headers from the original request
-	req.Header = r.Header.Clone()
-
-	// logForwardedRequest(req)
-
-	// Send the request to GoApp 2
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, "Error forwarding request: "+err.Error(), http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	// logResponse(resp)
-
-	var body []byte
-
-	// Check if the response is compressed with either zstd, gzip, or deflate
-	switch resp.Header.Get("Content-Encoding") {
-	case "zstd":
-		// Handle zstd encoding
-		decoder, err := zstd.NewReader(resp.Body)
-		if err != nil {
-			http.Error(w, "Failed to create zstd decoder: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer decoder.Close()
-		body, err = io.ReadAll(decoder)
-
-	case "gzip":
-		// Handle gzip encoding
-		reader, err := pgzip.NewReader(resp.Body)
-		if err != nil {
-			http.Error(w, "Failed to create gzip reader: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer reader.Close()
-		body, err = io.ReadAll(reader)
-
-	case "deflate":
-		// Handle deflate encoding
-		reader, err := zlib.NewReader(resp.Body)
-		if err != nil {
-			http.Error(w, "Failed to create deflate reader: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		defer reader.Close()
-		body, err = io.ReadAll(reader)
-
-	default:
-		// Handle uncompressed response
-		body, err = io.ReadAll(resp.Body)
-	}
-
-	if err != nil {
-		http.Error(w, "Failed to read response body: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Forward the response back to the React client
-	w.WriteHeader(resp.StatusCode)
+	w.WriteHeader(status)
 	w.Write(body)
 }
 
+/*
 // logRequest logs details of the incoming HTTP request
 func logRequest(r *http.Request) {
 	log.Printf("Incoming Request -> Method: %s, URL: %s", r.Method, r.URL.String())
@@ -1745,7 +1730,7 @@ func logResponse(resp *http.Response) {
 		log.Printf("Response Body: %s", string(body))
 		resp.Body = io.NopCloser(bytes.NewReader(body)) // Reset the body for further use
 	}
-}
+}*/
 
 // handlerTerminal handles the WebSocket connection for a terminal session.
 // @Summary Terminal
@@ -2065,4 +2050,27 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Email sent successfully"))
+}
+
+// handlerMuxHealth handles the HTTP request to retrieve the status of all privileged clusters.
+// @Summary Get Cluster Health
+// @Description Returns the health status of all privileged clusters.
+// @Tags Cluster
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} map[string]peer.PeerHealth "List of cluster health statuses"
+// @Failure 500 {string} string "Error getting JWT claims"
+// @Router /api/health [get]
+func (repman *ReplicationManager) handlerMuxHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	healths := make(map[string]peer.PeerHealth)
+	for _, mycluster := range repman.Clusters {
+		healths[mycluster.Name] = mycluster.GetPeerHealth()
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(healths)
 }

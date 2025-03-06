@@ -18,7 +18,9 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/signal18/replication-manager/utils/meethelper"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -82,6 +84,31 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 	}
 
 	if conf.Cloud18GitUser != "" && conf.Cloud18GitPassword != "" && conf.Cloud18 {
+		gituser := conf.Cloud18GitUser
+		gitpassword := conf.GetDecryptedValue("cloud18-gitlab-password")
+		acces_tok, err := githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+		if err != nil {
+			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
+				repman.Logrus.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			}
+			conf.Cloud18 = false
+			return err
+		}
+
+		//to get meet token and create a client while login
+		userID, err := meethelper.CreateMeetUserClient(gituser, gitpassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "Error retrieving meet token: %s", err)
+			}
+		} else {
+			repman.MeetUserID = userID
+			for _, cluster := range repman.Clusters {
+				cluster.MeetUserID = userID
+			}
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
+		}
+
 		if conf.Cloud18Domain == "" {
 			return fmt.Errorf("Cloud18Domain is empty")
 		}
@@ -92,15 +119,6 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 
 		if conf.Cloud18SubDomainZone == "" {
 			return fmt.Errorf("Cloud18SubDomainZone is empty")
-		}
-
-		acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-		if err != nil {
-			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
-			}
-			conf.Cloud18 = false
-			return err
 		}
 
 		repman.SetCloudPartner()
@@ -227,19 +245,23 @@ func (repman *ReplicationManager) PushAllConfigsToGit() error {
 }
 
 func (repman *ReplicationManager) PullCloud18Configs() {
-	if repman.IsGitPull {
+	gm := repman.ConfigManager.GetGitManager()
+	if gm == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGit, config.LvlErr, "Git manager not initialized")
 		return
 	}
-	// Set Flag as Git Pull, prevent new cluster save / push is processed
-	repman.SetIsGitPull(true)
-	defer repman.SetIsGitPull(false)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Queue Pulling Cloud18 Configs")
+	repman.ConfigManager.GitPullDir() // Queue the pull
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Waiting for Pulling Cloud18 Configs")
 
-	// Wait if any cluster is saving config
-	for _, cl := range repman.Clusters {
-		for cl.IsSavingConfig {
-			time.Sleep(100 * time.Millisecond)
-		}
-	}
+	// Wait for start pull signal
+	<-gm.PullCh
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Pulling Cloud18 Configs")
+
+	defer func() {
+		// Inform the GitManager that the pull is done
+		gm.DonePullCh <- struct{}{}
+	}()
 
 	pullDir := repman.Conf.WorkingDir + "/.pull"
 	filePath := pullDir + "/cloud18.toml"
@@ -255,6 +277,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		if repman.Conf.Cloud18 {
 			repman.CheckCloud18Config(filePath)
 			repman.LoadPeerJson()
+			repman.UpdateLocalPeer()
 			repman.LoadPartnersJson()
 		}
 	}
@@ -289,7 +312,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					if err != nil {
 						repman.Logrus.Errorf("Config error in " + repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
 					}
-					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), repman.Conf)
+					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), *repman.Conf)
 					repman.StartCluster(f.Name())
 					repman.Clusters[f.Name()].IsGitPull = true
 					for _, cluster := range repman.Clusters {
@@ -352,7 +375,6 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	fstat, err := os.Stat(filePath)
 	if err != nil {
-		repman.PeerClusters = make([]config.PeerCluster, 0)
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
@@ -362,6 +384,7 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 	modTime := fstat.ModTime()
 
 	if oldModTime, ok := repman.ModTimes["peer"]; ok && oldModTime.Equal(modTime) {
+		repman.PeerManager.GetAllHealthStatus()
 		return nil // No changes in the file modification time
 	}
 
@@ -369,7 +392,6 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		repman.PeerClusters = make([]config.PeerCluster, 0)
 		if !os.IsNotExist(err) {
 			repman.Logrus.Errorf("failed reading peer file: %v", err)
 		}
@@ -382,18 +404,22 @@ func (repman *ReplicationManager) LoadPeerJson() error {
 
 	// Compare with the existing checksum
 	if oldHash, ok := repman.CheckSumConfig["peer"]; ok && bytes.Equal(oldHash.Sum(nil), newHash.Sum(nil)) {
+		repman.PeerManager.GetAllHealthStatus()
 		return nil // No changes in the file content
 	}
 
 	// Decode JSON
-	var PeerList []config.PeerCluster
+	var PeerList []*peer.PeerCluster
 	if err := json.Unmarshal(content, &PeerList); err != nil {
 		repman.Logrus.Errorf("failed to decode peer JSON: %v", err)
 		return err
 	}
 
+	if len(PeerList) > 0 {
+		repman.PeerManager.BatchUpdateClusters(PeerList, true)
+	}
+
 	// Update state
-	repman.PeerClusters = PeerList
 	repman.CheckSumConfig["peer"] = newHash
 
 	return nil

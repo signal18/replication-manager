@@ -892,7 +892,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 }
 
 func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
-	cluster.Configurator.SetConfig(cluster.Conf)
+	cluster.Configurator.SetConfig(*cluster.Conf)
 	//splitmonitoringuser := cluster.Conf.User
 
 	var err error
@@ -937,7 +937,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 }
 
 func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
-	cluster.Configurator.SetConfig(cluster.Conf)
+	cluster.Configurator.SetConfig(*cluster.Conf)
 
 	//splitreplicationuser := cluster.Conf.RplUser
 
@@ -2077,6 +2077,14 @@ func (cluster *Cluster) SetLogGitLevel(value int) {
 		cluster.Conf.LogGit = false
 	}
 }
+func (cluster *Cluster) SetLogSupportLevel(value int) {
+	cluster.Conf.LogSupportLevel = value
+	if value > 0 {
+		cluster.Conf.LogSupport = true
+	} else {
+		cluster.Conf.LogSupport = false
+	}
+}
 func (cluster *Cluster) SetLogBackupStreamLevel(value int) {
 	cluster.Conf.LogBackupStreamLevel = value
 	if value > 0 {
@@ -2290,14 +2298,32 @@ func (cluster *Cluster) SetAlertScript(value string) {
 
 func (cluster *Cluster) SetAlertSlackChannel(value string) {
 	cluster.Conf.SlackChannel = value
+	cluster.LogSlack.SetChannel("slack", value)
 }
 
 func (cluster *Cluster) SetAlertSlackUrl(value string) {
 	cluster.Conf.SlackURL = value
+	cluster.LogSlack.SetURL("slack", value)
 }
 
 func (cluster *Cluster) SetAlertSlackUser(value string) {
 	cluster.Conf.SlackUser = value
+	cluster.LogSlack.SetUser("slack", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackChannel(value string) {
+	cluster.Conf.Cloud18AlertSlackChannel = value
+	cluster.LogSlack.SetChannel("cloud18", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackUrl(value string) {
+	cluster.Conf.Cloud18AlertSlackURL = value
+	cluster.LogSlack.SetURL("cloud18", value)
+}
+
+func (cluster *Cluster) SetCloud18AlertSlackUser(value string) {
+	cluster.Conf.Cloud18AlertSlackUser = value
+	cluster.LogSlack.SetUser("cloud18", value)
 }
 
 func (cluster *Cluster) SetAlertTeamsProxyUrl(value string) {

@@ -12,18 +12,14 @@ import (
 func (cluster *Cluster) InitMailer() error {
 	var m *mailer.Mailer
 	var err error
-	if cluster.Conf.MailMaxPool > 0 {
-		m, err = mailer.NewMailerWithPool(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify, cluster.Conf.MailMaxPool, cluster.Conf.MailTimeout)
-	} else {
-		m, err = mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify)
-	}
+	m, err = mailer.NewMailer(cluster.Conf.MailSMTPAddr, cluster.Conf.MailFrom, cluster.Conf.MailSMTPUser, cluster.Conf.GetDecryptedValue("mail-smtp-password"), cluster.Conf.MailSMTPTLSSkipVerify, cluster.Conf.MailTimeout, cluster.Conf.MailMaxPool)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
 		return err
 	}
 
 	cluster.Mailer = m
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster mailed initialized successfully")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster mailer initialized successfully")
 
 	return nil
 }

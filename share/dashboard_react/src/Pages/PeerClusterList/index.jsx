@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useReducer, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterPeers, getClusterForSale, getTermsData } from '../../redux/globalClustersSlice'
 import { Box, Flex, HStack, Text, Wrap } from '@chakra-ui/react'
@@ -9,17 +9,98 @@ import TableType2 from '../../components/TableType2'
 import styles from './styles.module.scss'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import TagPill from '../../components/TagPill'
-import { HiCreditCard, HiTag } from 'react-icons/hi'
+import { HiCreditCard, HiExclamation, HiQuestionMarkCircle, HiTag } from 'react-icons/hi'
 import { peerLogin, setBaseURL } from '../../redux/authSlice'
 import { getClusterData, clusterSubscribe } from '../../redux/clusterSlice'
 import TermsModal from '../../components/Modals/TermsModal'
 import { showErrorToast } from '../../redux/toastSlice'
+import CheckOrCrossIcon from '../../components/Icons/CheckOrCrossIcon'
+import SearchBox from '../../components/SearchBox'
+import Dropdown from '../../components/Dropdown'
+
+const defaultFilter = { domain: "", subdomain: "", zone: "", plan: "", search: "", domainOptions: [], subdomainOptions: [], zoneOptions: [], planOptions: [] }
+
+const filterReducer = (state, action) => {
+  switch (action.type) {
+    case 'domain':
+      return { ...state, domain: action.value }
+    case 'subdomain':
+      return { ...state, subdomain: action.value }
+    case 'zone':
+      return { ...state, zone: action.value }
+    case 'plan':
+      return { ...state, plan: action.value }
+    case 'search':
+      return { ...state, search: action.value }
+    case 'domain-options':
+      return { ...state, domainOptions: action.value }
+    case 'subdomain-options':
+      return { ...state, subdomainOptions: action.value }
+    case 'zone-options':
+      return { ...state, zoneOptions: action.value }
+    case 'plan-options':
+      return { ...state, planOptions: action.value }
+    case 'set':
+      return { ...state, ...action.value }
+    case 'reset':
+      return defaultFilter
+    default:
+      return state
+  }
+}
+
+const filterFunc = (cluster, domain, subdomain, zone, plan, search) => {
+  let found = true
+  if (domain !== "") {
+    found = cluster['cloud18-domain'] === domain
+  }
+  if (subdomain !== "") {
+    found = found && cluster['cloud18-sub-domain'] === subdomain
+  }
+  if (zone !== "") {
+    found = found && cluster['cloud18-sub-domain-zone'] === zone
+  }
+  if (plan !== "") {
+    if (plan === "-") {
+      found = found && cluster['prov-service-plan'] === ""
+    } else {
+      found = found && cluster['prov-service-plan'] === plan
+    }
+  }
+  if (search !== "") {
+    found = found && cluster['cluster-name'].toLowerCase().includes(search.toLowerCase())
+  }
+  return found
+}
+
+const getOption = (option) => {
+  return { name: option || "-", value: option || "-" }
+}
+
+const getDomainOptions = (clusterlist) => {
+  return [{ name: "Select domain", value: "" }, ...[...new Set(clusterlist?.map(cluster => cluster['cloud18-domain']))].map(option => getOption(option))]
+}
+
+const getSubDomainOptions = (clusterlist, domain = "") => {
+  return [{ name: "Select subdomain", value: "" }, ...[...new Set(clusterlist?.filter((cluster) => domain === "" || cluster['cloud18-domain'] === domain).map(cluster => cluster['cloud18-sub-domain']))].map(option => getOption(option))]
+}
+
+const getZone = (clusterlist, domain = "", subdomain = "") => {
+  return [{ name: "Select zone", value: "" }, ...[...new Set(clusterlist?.filter((cluster) => (domain === "" || cluster['cloud18-domain'] === domain) && (subdomain === "" || cluster["cloud18-sub-domain"] === subdomain)).map(cluster => cluster['cloud18-sub-domain-zone']))].map(option => getOption(option))]
+}
+
+const getPlanOptions = (clusterlist, domain = "", subdomain = "", zone = "") => {
+  return [{ name: "Select plan", value: "" }, ...[...new Set(clusterlist?.filter((cluster) => (domain === "" || cluster['cloud18-domain'] === domain) && (subdomain === "" || cluster["cloud18-sub-domain"] === subdomain) && (zone === "" || cluster["cloud18-sub-domain-zone"] === zone)).map(cluster => cluster['prov-service-plan']))].map(option => getOption(option))]
+}
 
 function PeerClusterList({ onLogin, mode }) {
   const dispatch = useDispatch()
   const [clusters, setClusters] = useState([])
+  const [filter, fdispatch] = useReducer(filterReducer, defaultFilter)
   const [finalTerms, setFinalTerms] = useState(``)
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
+
+  const { domain, subdomain, zone, plan, search, domainOptions, subdomainOptions, zoneOptions, planOptions } = filter
 
   const {
     globalClusters: { loading, clusterPeers, clusterForSale, monitor, terms },
@@ -36,12 +117,14 @@ function PeerClusterList({ onLogin, mode }) {
 
   useEffect(() => {
     if (clusterPeers?.length > 0 && mode !== 'shared') {
-      setClusters(clusterPeers)
+      setClusters(clusterPeers?.filter((cluster) => filterFunc(cluster, domain, subdomain, zone, plan, search)) || [])
+      fdispatch({ type: "set", value: { domainOptions: getDomainOptions(clusterPeers), subdomainOptions: getSubDomainOptions(clusterPeers, domain), zoneOptions: getZone(clusterPeers, domain, subdomain), planOptions: getPlanOptions(clusterPeers, domain, subdomain, zone) } })
     }
     if (clusterForSale?.length > 0 && mode === 'shared') {
-      setClusters(clusterForSale)
+      setClusters(clusterForSale?.filter((cluster) => filterFunc(cluster, domain, subdomain, zone, plan, search)) || [])
+      fdispatch({ type: "set", value: { domainOptions: getDomainOptions(clusterForSale), subdomainOptions: getSubDomainOptions(clusterForSale, domain), zoneOptions: getZone(clusterForSale, domain, subdomain), planOptions: getPlanOptions(clusterForSale, domain, subdomain, zone) } })
     }
-  }, [clusterPeers,clusterForSale])
+  }, [clusterPeers, clusterForSale, search, domain, subdomain, zone, plan])
 
   let header = `
 | Label | Value |
@@ -49,18 +132,18 @@ function PeerClusterList({ onLogin, mode }) {
 `
 
   const parseTerms = useCallback((cluster, newterms = ``) => {
-      let servicePlan = Object.entries(cluster)
-        .filter(([key]) => !([].includes(key))) // fields to remove
-        .map(([key, value]) => `| ${key} | ${value} |`)
-        .join("\n");
-      let finalterm = newterms
-        .replace(`<<user>>`, user?.username)
-        .replace(`<<cluster>>`, cluster?.["cluster-name"])
-        .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
-        .replace(`<<date>>`, (new Date()).toLocaleDateString())
-      setFinalTerms(finalterm)
-      openTermsModal()
-    },[user?.username])
+    let servicePlan = Object.entries(cluster)
+      .filter(([key]) => !([].includes(key))) // fields to remove
+      .map(([key, value]) => `| ${key} | ${value} |`)
+      .join("\n");
+    let finalterm = newterms
+      .replace(`<<user>>`, user?.username)
+      .replace(`<<cluster>>`, cluster?.["cluster-name"])
+      .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
+      .replace(`<<date>>`, (new Date()).toLocaleDateString())
+    setFinalTerms(finalterm)
+    openTermsModal()
+  }, [user?.username])
 
   const openTermsModal = () => {
     setIsTermsModalOpen(true)
@@ -137,20 +220,39 @@ function PeerClusterList({ onLogin, mode }) {
         }
 
         dispatch(setBaseURL({ baseURL: '' }));
-        showErrorToast({
+        dispatch(showErrorToast({
           status: 'error',
           title: 'Peer login failed',
           description: resp?.payload?.data || "Peer login failed"
-        })
+        }));
       }
     })
   };
 
-
   return !loading && clusters?.length === 0 ? (
-    <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />
+    <>
+      {(search !== "" || plan !== "") && (
+        <>
+          <Flex className={styles.filterWrapper} gap={4}>
+            <Dropdown label={"Domain"} options={domainOptions} className={styles.dropdownButton} selectedValue={domain} onChange={(opt) => fdispatch({ type: 'domain', value: opt.value })} />
+            <Dropdown label={"Subdomain"} options={subdomainOptions} className={styles.dropdownButton} selectedValue={subdomain} onChange={(opt) => fdispatch({ type: 'subdomain', value: opt.value })} />
+            <Dropdown label={"Zone"} options={zoneOptions} className={styles.dropdownButton} selectedValue={zone} onChange={(opt) => fdispatch({ type: 'zone', value: opt.value })} />
+            <Dropdown label={"Plan"} options={planOptions} className={styles.dropdownButton} selectedValue={plan} onChange={(opt) => fdispatch({ type: 'plan', value: opt.value })} />
+            <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={(v) => { fdispatch({ type: 'search', value: v }) }} />
+          </Flex>
+        </>
+      )}
+      {search === "" && <NotFound text={mode === 'shared' ? 'No shared peer cluster found!' : 'No peer cluster found!'} />}
+    </>
   ) : (
     <>
+      <Flex className={styles.filterWrapper} gap={4}>
+        <Dropdown label={"Domain"} options={domainOptions} className={styles.dropdownButton} selectedValue={domain} onChange={(opt) => fdispatch({ type: 'domain', value: opt.value })} />
+        <Dropdown label={"Subdomain"} options={subdomainOptions} className={styles.dropdownButton} selectedValue={subdomain} onChange={(opt) => fdispatch({ type: 'subdomain', value: opt.value })} />
+        <Dropdown label={"Zone"} options={zoneOptions} className={styles.dropdownButton} selectedValue={zone} onChange={(opt) => fdispatch({ type: 'zone', value: opt.value })} />
+        <Dropdown label={"Plan"} options={planOptions} className={styles.dropdownButton} selectedValue={plan} onChange={(opt) => fdispatch({ type: 'plan', value: opt.value })} />
+        <SearchBox className={styles.searchBox} value={search} size='md' placeholder='Search' onChange={(v) => { fdispatch({ type: 'search', value: v }) }} />
+      </Flex>
       <Flex className={styles.clusterList}>
         {clusters?.map((clusterItem) => {
           const headerText = `${clusterItem['cluster-name']}\n`
@@ -162,7 +264,7 @@ function PeerClusterList({ onLogin, mode }) {
           const currency = clusterItem['cloud18-cost-currency']
 
           const isPending = clusterItem?.['api-credentials-acl-allow']?.includes('pending')
-        const isSponsor = clusterItem?.['api-credentials-acl-allow']?.includes('sponsor')
+          const isSponsor = clusterItem?.['api-credentials-acl-allow']?.includes('sponsor')
 
           const dataObject = [
             {
@@ -176,6 +278,53 @@ function PeerClusterList({ onLogin, mode }) {
                   </Wrap>
                 </>
               )
+            },
+            {
+              key: 'Is Healthy', value: (
+                <HStack spacing='4'>
+                  {clusterItem?.lastUpdate == "0001-01-01T00:00:00Z" ? (
+                    <>
+                      <CustomIcon icon={HiQuestionMarkCircle} color='gray' />
+                      <Text>Unknown</Text>
+                    </>
+                  ) : clusterItem?.isDown || clusterItem?.isMasterDown ? (
+                    <>
+                      <CheckOrCrossIcon isValid={false} />
+                      <Text>No</Text>
+                    </>
+                  ) : !clusterItem?.isFailable ? (
+                    <>
+                      <CustomIcon icon={HiExclamation} color='orange' />
+                      <Text>Warning</Text>
+                    </>
+                  ) : (
+                    <>
+                      <CheckOrCrossIcon isValid={true} />
+                      <Text>Yes</Text>
+                    </>
+                  )}
+                </HStack>
+              )
+            },
+            {
+              key: 'Is Provisioned', value: (<HStack spacing='4'>
+                {clusterItem?.lastUpdate == "0001-01-01T00:00:00Z" ? (
+                  <>
+                    <CustomIcon icon={HiQuestionMarkCircle} color='gray' />
+                    <Text>Unknown</Text>
+                  </>
+                ) : clusterItem?.isProvisioned ? (
+                  <>
+                    <CheckOrCrossIcon isValid={true} />
+                    <Text>Yes</Text>
+                  </>
+                ) : (
+                  <>
+                    <CheckOrCrossIcon isValid={false} />
+                    <Text>No</Text>
+                  </>
+                )}
+              </HStack>)
             },
             { key: 'Service Plan', value: clusterItem['prov-service-plan'] },
             { key: 'Geo Zone', value: clusterItem['cloud18-infra-geo-localizations'] },
@@ -226,7 +375,7 @@ function PeerClusterList({ onLogin, mode }) {
             { key: 'Time To Response', value: clusterItem['cloud18-sla-response-time'] + "Hours" },
             { key: 'Time To Repair', value: clusterItem['cloud18-sla-repair-time'] + "Hours" },
             { key: 'Time To Provision', value: clusterItem['cloud18-sla-provision-time'] + "Hours" },
-            { key: 'Certifications', value: clusterItem['cloud18-infra-certifications']  },
+            { key: 'Certifications', value: clusterItem['cloud18-infra-certifications'] },
             { key: 'Infrastructure', value: clusterItem['prov-orchestrator'] + " " + clusterItem['cloud18-platform-description'] },
             /*  {
                 key: 'Share',
@@ -258,7 +407,7 @@ function PeerClusterList({ onLogin, mode }) {
                     as="button"
                     className={styles.btnHeading}
                     onClick={() => { handlePeerCluster(clusterItem) }}>
-                    <CustomIcon icon={ isSponsor || isPending ? (HiCreditCard): (AiOutlineCluster)} fill={ isSponsor ? "green" : isPending ? "orange" : "gray" }  />
+                    <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
                     <span className={styles.cardHeaderText}>{headerText}</span>
                   </HStack>
                 }

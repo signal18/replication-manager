@@ -34,6 +34,9 @@ func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Route
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/health", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterHealth)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
 	))
@@ -329,6 +332,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/send-email", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/send-alert/{hooktype}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
@@ -2201,6 +2209,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchLogConfigLoad()
 	case "log-git":
 		mycluster.SwitchLogGit()
+	case "log-support":
+		mycluster.SwitchLogSupport()
 	case "log-backup-stream":
 		mycluster.SwitchLogBackupStream()
 	case "log-orchestrator":
@@ -2247,6 +2257,13 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchCloud18SubscribedDbops()
 	case "cloud18-open-sysops":
 		mycluster.SwitchCloud18OpenSysops()
+	case "cloud18-alert":
+		mycluster.Conf.SwitchCloud18Alert()
+		if mycluster.Conf.Cloud18Alert {
+			mycluster.LogSlack.Activate("cloud18", true)
+		} else {
+			mycluster.LogSlack.Deactivate("cloud18", true)
+		}
 	case "topology-staging":
 		mycluster.SwitchTopologyStaging()
 	default:
@@ -2571,7 +2588,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "db-servers-credential":
 		mycluster.Conf.User = value
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		mycluster.ReloadConfig(mycluster.Conf)
+		mycluster.ReloadConfig(*mycluster.Conf)
 		//mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
@@ -2693,6 +2710,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-git-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetLogGitLevel(val)
+	case "log-support-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.SetLogSupportLevel(val)
 	case "log-backup-stream-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBackupStreamLevel(val)
@@ -2764,15 +2784,46 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-slack-channel":
 		mycluster.SetAlertSlackChannel(value)
 	case "alert-slack-url":
-		mycluster.SetAlertSlackUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
+	case "cloud18-alert":
+		if mycluster.Conf.Cloud18Alert != isactive {
+			mycluster.Conf.Cloud18Alert = isactive
+			if mycluster.Conf.Cloud18Alert {
+				mycluster.LogSlack.Activate("cloud18", true)
+			} else {
+				mycluster.LogSlack.Deactivate("cloud18", true)
+			}
+		}
+	case "cloud18-alert-slack-channel":
+		mycluster.SetCloud18AlertSlackChannel(value)
+	case "cloud18-alert-slack-url":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetCloud18AlertSlackUrl(string(val))
+	case "cloud18-alert-slack-user":
+		mycluster.SetCloud18AlertSlackUser(value)
 	case "alert-teams-proxy-url":
-		mycluster.SetAlertTeamsProxyUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertTeamsProxyUrl(string(val))
 	case "alert-teams-state":
 		mycluster.SetAlertTeamsState(value)
 	case "alert-teams-url":
-		mycluster.SetAlertTeamsUrl(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
 		mycluster.SetMonitoringAlertTriggerl(value)
 	case "mail-smtp-addr":
@@ -2798,6 +2849,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerAlertDisableTime(val)
 	case "cloud18":
 		mycluster.Conf.Cloud18 = (value == "true")
+		if mycluster.Conf.Cloud18 && mycluster.Conf.Cloud18Alert {
+			mycluster.LogSlack.Activate("cloud18", true)
+		} else {
+			mycluster.LogSlack.Deactivate("cloud18", true)
+		}
 	case "cloud18-domain":
 		mycluster.Conf.Cloud18Domain = value
 	case "cloud18-sub-domain":
@@ -2960,7 +3016,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetInteractive(strings.ToLower(value) == "on")
 	case "failover-readonly-state":
 		mycluster.SetReadOnly(strings.ToLower(value) == "on")
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "failover-restart-unsafe":
 		mycluster.Conf.FailRestartUnsafe = isactive
 	case "failover-at-sync":
@@ -3085,10 +3141,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProxysqlOn = isactive
 	case "proxy-servers-read-on-master":
 		mycluster.Conf.PRXServersReadOnMaster = isactive
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-read-on-master-no-slave":
 		mycluster.Conf.PRXServersReadOnMasterNoSlave = isactive
-		mycluster.Configurator.Init(mycluster.Conf, mycluster.Logrus)
+		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-backend-compression":
 		mycluster.Conf.PRXServersBackendCompression = isactive
 	case "database-heartbeat":
@@ -3236,6 +3292,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 			mycluster.Conf.LogGit = isactive
 		}
+	case "log-support":
+		if mycluster.Conf.LogSupport != isactive {
+			if isactive {
+				mycluster.Conf.LogSupportLevel = 1
+			} else {
+				mycluster.Conf.LogSupportLevel = 0
+			}
+			mycluster.Conf.LogSupport = isactive
+		}
 	case "log-backup-stream":
 		if mycluster.Conf.LogBackupStream != isactive {
 			if isactive {
@@ -3376,7 +3441,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.SetApiTokenTimeout(val)
 	case "cloud18":
 		if value == "true" {
-			if err := repman.InitGitConfig(&repman.Conf); err != nil {
+			if err := repman.InitGitConfig(repman.Conf); err != nil {
 				if strings.Contains(err.Error(), "invalid_grant") {
 					return fmt.Errorf("invalid_grant")
 				}
@@ -3504,6 +3569,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-git-level":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetLogGitLevel(val)
+	case "log-support-level":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.SetLogSupportLevel(val)
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
@@ -3611,6 +3679,8 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "mail-smtp-tls-skip-verify":
 		repman.Conf.SwitchMailSmtpTlsSkipVerify()
 		repman.Mailer.UpdateTLSConfig(repman.Conf.MailSMTPTLSSkipVerify)
+	case "log-support":
+		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	default:
 		return errors.New("Setting not found")
 	}
@@ -4023,11 +4093,11 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
-	repman.InitConfig(repman.Conf, true)
+	repman.InitConfig(*repman.Conf, true)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		//mycluster.ReloadConfig(repman.Confs[vars["clusterName"]])
-		mycluster.ReloadConfig(mycluster.Conf)
+		mycluster.ReloadConfig(*mycluster.Conf)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -4443,7 +4513,7 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.Conf)
+		err := e.Encode(*mycluster.Conf)
 		if err != nil {
 			http.Error(w, "Encoding error in settings", 500)
 			return
@@ -6158,5 +6228,91 @@ func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.Respon
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+type MeetAlertMessage struct {
+	Fields  log.Fields `json:"fields"`
+	Message string     `json:"message"`
+}
+
+// handlerMuxSendCloud18Alert handles the HTTP request to send a cloud18 alert for a given cluster.
+// @Summary Send Cloud18 Alert
+// @Description	Send a cloud18 alert for the specified cluster.
+// @Tags Cloud18
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param hooktype path string true "Hook Type" Enums(cloud18, slack)
+// @Param body body MeetAlertMessage true "Alert Message"
+// @Success 200 {string} string "Task queue reset"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/send-alert/{hooktype} [post]
+func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	hooktype := vars["hooktype"]
+
+	if hooktype == "" {
+		http.Error(w, "No hook type", 500)
+		return
+	}
+
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		var post MeetAlertMessage
+		//decode request into post struct
+		err := json.NewDecoder(r.Body).Decode(&post)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, "Error in request")
+			return
+		}
+
+		if mycluster.LogSlack.IsHookActive(hooktype) {
+			mycluster.LogSlack.WithFields(post.Fields).Warnf(post.Message)
+		} else {
+			http.Error(w, "No slack hook", 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Message sent via logrus"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterHealth handles the HTTP request to retrieve the status of a specified cluster.
+// @Summary Get Cluster Health
+// @Description	Get the health status of the specified cluster.
+// @Tags ClusterHealth
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} peer.PeerHealth "Cluster health fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/health [get]
+func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(mycluster.GetPeerHealth())
+	} else {
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
 }

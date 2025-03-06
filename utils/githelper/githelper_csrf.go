@@ -1,60 +1,13 @@
 package githelper
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"regexp"
+
+	"github.com/signal18/replication-manager/utils/misc"
 )
-
-// Extract a token using regex (CSRF-related or others)
-func extractToken(body, pattern string) (string, error) {
-	re := regexp.MustCompile(pattern)
-	matches := re.FindStringSubmatch(body)
-	if len(matches) < 2 {
-		return "", fmt.Errorf("failed to extract token with pattern: %s", pattern)
-	}
-	return matches[1], nil
-}
-
-// Perform an HTTP GET request and return the response body as a string (CSRF-related)
-func getRequestCSRF(client *http.Client, url string) (string, error) {
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("failed GET request to %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-	return string(body), nil
-}
-
-// Perform an HTTP POST request with form data and return the response body as a string (CSRF-related)
-func postRequestCSRF(client *http.Client, url string, form url.Values, headers map[string]string) (string, error) {
-	req, err := http.NewRequest("POST", url, bytes.NewBufferString(form.Encode()))
-	if err != nil {
-		return "", fmt.Errorf("failed to create POST request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	for key, value := range headers {
-		req.Header.Set(key, value)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed POST request to %s: %v", url, err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %v", err)
-	}
-	return string(body), nil
-}
 
 func CreatePersonalAccessTokenCSRF(gitlabUser, gitlabPassword, tokenName string) (string, error) {
 	// Replace with your values
@@ -66,12 +19,12 @@ func CreatePersonalAccessTokenCSRF(gitlabUser, gitlabPassword, tokenName string)
 
 	// 1. Get the login page to retrieve CSRF token
 	loginPageURL := fmt.Sprintf("%s/users/sign_in", gitlabHost)
-	body, err := getRequestCSRF(client, loginPageURL)
+	body, err := misc.GetRequest(client, loginPageURL)
 	if err != nil {
 		return "", err
 	}
 
-	csrfToken, err := extractToken(body, `name="authenticity_token" value="([^"]+)"`)
+	csrfToken, err := misc.ExtractValue(body, `name="authenticity_token" value="([^"]+)"`)
 	if err != nil {
 		return "", err
 	}
@@ -82,19 +35,19 @@ func CreatePersonalAccessTokenCSRF(gitlabUser, gitlabPassword, tokenName string)
 		"user[password]":     {gitlabPassword},
 		"authenticity_token": {csrfToken},
 	}
-	_, err = postRequestCSRF(client, loginPageURL, form, nil)
+	_, err = misc.PostRequest(client, loginPageURL, form, nil)
 	if err != nil {
 		return "", err
 	}
 
 	// 3. Access personal access tokens page to retrieve new CSRF token
 	tokensPageURL := fmt.Sprintf("%s/-/user_settings/personal_access_tokens", gitlabHost)
-	body, err = getRequestCSRF(client, tokensPageURL)
+	body, err = misc.GetRequest(client, tokensPageURL)
 	if err != nil {
 		return "", err
 	}
 
-	csrfToken, err = extractToken(body, `name="csrf-token" content="([^"]+)"`)
+	csrfToken, err = misc.ExtractValue(body, `name="csrf-token" content="([^"]+)"`)
 	if err != nil {
 		return "", err
 	}
@@ -109,7 +62,7 @@ func CreatePersonalAccessTokenCSRF(gitlabUser, gitlabPassword, tokenName string)
 	headers := map[string]string{
 		"X-CSRF-Token": csrfToken,
 	}
-	body, err = postRequestCSRF(client, tokensPageURL, form, headers)
+	body, err = misc.PostRequest(client, tokensPageURL, form, headers)
 	if err != nil {
 		return "", err
 	}
@@ -117,5 +70,5 @@ func CreatePersonalAccessTokenCSRF(gitlabUser, gitlabPassword, tokenName string)
 	fmt.Println("New PAT Token:", body)
 
 	// 5. Scrape the personal access token from the response
-	return extractToken(body, `"new_token":"([^"]+)"`)
+	return misc.ExtractValue(body, `"new_token":"([^"]+)"`)
 }

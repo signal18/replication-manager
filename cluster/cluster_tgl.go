@@ -168,7 +168,7 @@ func (cluster *Cluster) SwitchInteractive() {
 
 func (cluster *Cluster) SwitchReadOnly() {
 	cluster.Conf.ReadOnly = !cluster.Conf.ReadOnly
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchRplChecks() {
@@ -340,12 +340,12 @@ func (cluster *Cluster) SwitchProxyServersBackendCompression() {
 
 func (cluster *Cluster) SwitchProxyServersReadOnMaster() {
 	cluster.Conf.PRXServersReadOnMaster = !cluster.Conf.PRXServersReadOnMaster
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchProxyServersReadOnMasterNoSlave() {
 	cluster.Conf.PRXServersReadOnMasterNoSlave = !cluster.Conf.PRXServersReadOnMasterNoSlave
-	cluster.Configurator.Init(cluster.Conf, cluster.Logrus)
+	cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)
 }
 
 func (cluster *Cluster) SwitchProxySQL() {
@@ -517,6 +517,15 @@ func (cluster *Cluster) SwitchLogGit() {
 		cluster.Conf.LogGitLevel = 1
 	}
 	cluster.Conf.LogGit = !cluster.Conf.LogGit
+}
+
+func (cluster *Cluster) SwitchLogSupport() {
+	if cluster.Conf.LogSupport {
+		cluster.Conf.LogSupportLevel = 0
+	} else {
+		cluster.Conf.LogSupportLevel = 1
+	}
+	cluster.Conf.LogSupport = !cluster.Conf.LogSupport
 }
 
 func (cluster *Cluster) SwitchLogBackupStream() {

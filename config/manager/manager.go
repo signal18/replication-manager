@@ -2,6 +2,7 @@ package manager
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	git_https "github.com/go-git/go-git/v5/plumbing/transport/http"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 // ConfigSaveTask holds the parameters for saving a config and additional waiting functionality
@@ -24,8 +26,9 @@ type ConfigSaveTask struct {
 	WaitGroup *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
 }
 
-type ConfigPushTask struct {
-	conf        config.Config
+type ConfigGitTask struct {
+	TaskType    string
+	conf        *config.Config
 	clusterList []string
 	WaitGroup   *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
 }
@@ -46,24 +49,46 @@ type ClusterManager struct {
 }
 
 // Push Manager
-type PushManager struct {
+type GitManager struct {
 	logger        *config.LogrusWrapper
-	IsPushing     bool             // Flag to indicate if a push is in progress
-	tasks         []ConfigPushTask // Slice of tasks for the push queue
-	mutex         *sync.Mutex      // Mutex for safe access to tasks
-	cond          *sync.Cond       // Condition variable for waiting and notifying tasks
-	stopCh        chan struct{}    // Stop channel to signal the goroutine to stop
-	CommitManager *CommitManager   // Commit manager
+	IsPushing     bool            // Flag to indicate if a push is in progress
+	tasks         []ConfigGitTask // Slice of tasks for the push queue
+	mutex         *sync.Mutex     // Mutex for safe access to tasks
+	cond          *sync.Cond      // Condition variable for waiting and notifying tasks
+	stopCh        chan struct{}   // Stop channel to signal the goroutine to stop
+	PullCh        chan struct{}   // Signal to start pull
+	DonePullCh    chan struct{}   // Signal to finish pull
+	CommitManager *CommitManager  // Commit manager
 }
 
-func NewPushManager(logger *config.LogrusWrapper) *PushManager {
-	return &PushManager{
+func NewGitManager(logger *config.LogrusWrapper) *GitManager {
+	return &GitManager{
 		logger:        logger,
-		tasks:         []ConfigPushTask{},
+		tasks:         []ConfigGitTask{},
 		mutex:         &sync.Mutex{},
 		stopCh:        make(chan struct{}), // Initialize stop channel for the push manager
+		PullCh:        make(chan struct{}),
+		DonePullCh:    make(chan struct{}),
 		CommitManager: NewCommitManager(1, 10, logger),
 	}
+}
+
+func (gm *GitManager) SplitTaskQueue() (ConfigGitTask, []ConfigGitTask, []ConfigGitTask) {
+	// Split the tasks into two queues
+	// One for pull and one for push
+	pullTasks := []ConfigGitTask{}
+	pushTasks := []ConfigGitTask{}
+	currentTask := gm.tasks[0]
+
+	for _, task := range gm.tasks[1:] {
+		if task.TaskType == "pull" {
+			pullTasks = append(pullTasks, task)
+		} else {
+			pushTasks = append(pushTasks, task)
+		}
+	}
+
+	return currentTask, pullTasks, pushTasks
 }
 
 type CommitManager struct {
@@ -186,7 +211,7 @@ type ConfigManager struct {
 	stopOnce    sync.Once                  // Ensures Stop() runs only once
 	isStopping  bool                       // Prevents new saves after stopping
 	clusterData map[string]*ClusterManager // Map of clusters and their respective managers
-	pushManager *PushManager               // Push manager
+	gitManager  *GitManager                // Pull Push manager
 }
 
 // NewConfigManager initializes the manager
@@ -196,21 +221,25 @@ func NewConfigManager(logger *config.LogrusWrapper, minWorker, maxWorker int) *C
 		clusterData: make(map[string]*ClusterManager),
 		gitMutex:    &sync.Mutex{},
 		configWg:    &sync.WaitGroup{},
-		pushManager: NewPushManager(logger),
+		gitManager:  NewGitManager(logger),
 	}
 
-	newcm.pushManager.cond = sync.NewCond(newcm.pushManager.mutex)
+	newcm.gitManager.cond = sync.NewCond(newcm.gitManager.mutex)
 
-	newcm.SetWorker(minWorker, maxWorker)
+	newcm.SetWorker(1, 1)
 
 	go newcm.processGitPush() // Start the persistent goroutine for the push manager
 
 	return newcm
 }
 
+func (cm *ConfigManager) GetGitManager() *GitManager {
+	return cm.gitManager
+}
+
 func (cm *ConfigManager) SetWorker(min, max int) {
-	cm.pushManager.CommitManager.workerMin = min
-	cm.pushManager.CommitManager.workerLimit = max
+	cm.gitManager.CommitManager.workerMin = min
+	cm.gitManager.CommitManager.workerLimit = max
 }
 
 func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Config) {
@@ -309,72 +338,110 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 }
 
 // GitPush waits for active saves, blocks new ones, and pushes changes
-func (cm *ConfigManager) GitPush(conf config.Config, clusterList []string, wait bool) {
+func (cm *ConfigManager) GitPush(conf *config.Config, clusterList []string, wait bool) {
 
-	configPushTask := ConfigPushTask{conf: conf, clusterList: clusterList}
+	configGitTask := ConfigGitTask{conf: conf, clusterList: clusterList, TaskType: "push"}
 
 	if wait {
 		wg := sync.WaitGroup{}
-		configPushTask.WaitGroup = &wg
-		configPushTask.WaitGroup.Add(1)
+		configGitTask.WaitGroup = &wg
+		configGitTask.WaitGroup.Add(1)
 	}
 
-	fmt.Println("Locking push mutex")
+	cm.logger.Debugln("default", config.ConstLogModGit, "Locking push mutex")
 	// Lock the cluster's mutex to safely add to the task slice
-	cm.pushManager.mutex.Lock()
-	fmt.Println("Appending to push queue")
-	cm.pushManager.tasks = append(cm.pushManager.tasks, configPushTask)
+	cm.gitManager.mutex.Lock()
+	cm.logger.Debugln("default", config.ConstLogModGit, "Appending to push queue")
+	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
 	// Signal the goroutine that a new task is available
-	cm.pushManager.mutex.Unlock()
-	cm.pushManager.cond.Signal()
+	cm.logger.Debugln("default", config.ConstLogModGit, "Unlocking push mutex")
+	cm.gitManager.mutex.Unlock()
+	cm.logger.Debugln("default", config.ConstLogModGit, "Signal push mutex")
+	cm.gitManager.cond.Signal()
 
 	// If a WaitGroup pointer is provided, add to the wait group
-	if configPushTask.WaitGroup != nil {
-		configPushTask.WaitGroup.Wait()
+	if configGitTask.WaitGroup != nil {
+		configGitTask.WaitGroup.Wait()
 	}
+}
+
+// Pulls the latest changes from the git repository for .pull
+func (cm *ConfigManager) GitPullDir() {
+
+	configGitTask := ConfigGitTask{TaskType: "pull"}
+
+	cm.logger.Debugln("default", config.ConstLogModGit, "Locking pull mutex")
+	// Lock the cluster's mutex to safely add to the task slice
+	cm.gitManager.mutex.Lock()
+	cm.logger.Debugln("default", config.ConstLogModGit, "Appending to pull queue")
+	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
+	// Signal the goroutine that a new task is available
+	cm.logger.Debugln("default", config.ConstLogModGit, "Unlocking pull mutex")
+	cm.gitManager.mutex.Unlock()
+	cm.logger.Debugln("default", config.ConstLogModGit, "Signal pull mutex")
+	cm.gitManager.cond.Signal()
 }
 
 // processClusterQueue processes the tasks in the slice for a given cluster
 func (cm *ConfigManager) processGitPush() {
 	for {
-		cm.pushManager.mutex.Lock()
+		cm.gitManager.mutex.Lock()
 
 		// Wait until there is at least one task in the queue
-		for len(cm.pushManager.tasks) == 0 {
-			cm.pushManager.cond.Wait()
+		for len(cm.gitManager.tasks) == 0 {
+			cm.gitManager.cond.Wait()
 			cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Waking up goroutine.")
 		}
 
 		// Check for the stop signal before processing
 		select {
-		case <-cm.pushManager.stopCh: // Stop signal for the goroutine
+		case <-cm.gitManager.stopCh: // Stop signal for the goroutine
 			cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Stopping goroutine.")
-			cm.pushManager.mutex.Unlock()
+			cm.gitManager.mutex.Unlock()
 			return
 		default:
-			// Process the first task in the queue
-			configPushTask := cm.pushManager.tasks[0]
-			skippedTasks := cm.pushManager.tasks[1:]
-			cm.pushManager.tasks = make([]ConfigPushTask, 0) // remove the current batch since they doing the same thing
-			cm.pushManager.mutex.Unlock()
+			// Process the first task in the queue and skip same type tasks
+			configGitTask, pull, push := cm.gitManager.SplitTaskQueue()
+			var skippedTasks []ConfigGitTask
+			if configGitTask.TaskType == "pull" {
+				skippedTasks = pull
+				cm.gitManager.tasks = push
+			} else {
+				skippedTasks = push
+				cm.gitManager.tasks = pull
+			}
+			cm.gitManager.mutex.Unlock()
 
 			cm.logger.Debugf("default", config.ConstLogModGit, "Locking git mutex")
 			cm.gitMutex.Lock() // Block new config saves
 			cm.logger.Debugf("default", config.ConstLogModGit, "Waiting for active saves to finish...")
 			cm.configWg.Wait() // Ensure all active saves finish
 
-			cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Starting Git push...")
-			// Execute the save function and handle potential errors
-			if err := cm.PushAllConfigsToGit(configPushTask.conf, configPushTask.clusterList); err != nil {
-				// Execute the Git push function and handle potential errors
-				cm.logger.Errorf("default", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
+			if configGitTask.TaskType == "pull" {
+				cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Starting Git pull...")
+
+				// Inform the pull process to start pulling
+				cm.gitManager.PullCh <- struct{}{}
+
+				// Wait for the pull process to finish
+				<-cm.gitManager.DonePullCh
+
+				cm.logger.Infof("default", config.ConstLogModGit, "[Git] Git pull completed successfully.")
+
 			} else {
-				cm.logger.Infof("default", config.ConstLogModGit, "[Git] Git push completed successfully.")
+				cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Starting Git push...")
+				// Execute the save function and handle potential errors
+				if err := cm.PushAllConfigsToGit(configGitTask.conf, configGitTask.clusterList); err != nil {
+					// Execute the Git push function and handle potential errors
+					cm.logger.Errorf("default", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
+				} else {
+					cm.logger.Infof("default", config.ConstLogModGit, "[Git] Git push completed successfully.")
+				}
 			}
 
 			// If a WaitGroup pointer is provided, mark the task as done
-			if configPushTask.WaitGroup != nil {
-				configPushTask.WaitGroup.Done()
+			if configGitTask.WaitGroup != nil {
+				configGitTask.WaitGroup.Done()
 			}
 
 			for _, task := range skippedTasks {
@@ -407,22 +474,22 @@ func (cm *ConfigManager) Stop() {
 		cm.logger.Infof("default", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")
 		cm.configWg.Wait()
 
-		close(cm.pushManager.stopCh) // Send stop signal to the push manager
-		cm.pushManager.cond.Signal() // Wake up the push manager
+		close(cm.gitManager.stopCh) // Send stop signal to the push manager
+		cm.gitManager.cond.Signal() // Wake up the push manager
 		cm.logger.Infof("default", config.ConstLogModGeneral, "[Shutdown] Config manager stopped.")
 	})
 }
 
-func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []string) error {
+func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []string) error {
 	defer func() {
 		if r := recover(); r != nil {
 			cm.logger.Errorf("default", config.ConstLogModGeneral, "Error pushing to git: %v", r)
 		}
 	}()
 
-	cm.pushManager.IsPushing = true
+	cm.gitManager.IsPushing = true
 	defer func() {
-		cm.pushManager.IsPushing = false
+		cm.gitManager.IsPushing = false
 	}()
 
 	if conf.GitUrl == "" {
@@ -430,15 +497,15 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 		return nil
 	}
 
-	cm.AddPullToGitignore(&conf)
-	cm.AddTempDirToGitignore(&conf)
+	cm.AddPullToGitignore(conf)
+	cm.AddTempDirToGitignore(conf)
 
 	cm.logger.Infof("default", config.ConstLogModGit, "Pushing All Configs To Git")
 
-	err := cm.PushConfigToGit(&conf, clusterList)
+	err := cm.PushConfigToGit(conf, clusterList)
 	if err != nil && err == transport.ErrRepositoryNotFound {
 		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.PushConfigToGit(&conf, clusterList)
+		err := cm.PushConfigToGit(conf, clusterList)
 		if err != nil {
 			cm.logger.Errorf("default", config.ConstLogModGit, "Error pushing to git: %v", err)
 			return err
@@ -446,7 +513,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 	}
 
 	// Count the commits
-	commits, err := cm.CountAllCommits(&conf)
+	commits, err := cm.CountAllCommits(conf)
 	if err != nil {
 		cm.logger.Warnf("default", config.ConstLogModGit, "Error counting commits: %v", err)
 		return err
@@ -454,7 +521,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf config.Config, clusterList []s
 
 	if commits >= 10 {
 		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.ShallowClone(&conf)
+		err := cm.ShallowClone(conf)
 		if err != nil {
 			cm.logger.Errorf("default", config.ConstLogModGit, "Error shallow cloning: %v", err)
 			return err
@@ -474,7 +541,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			fmt.Println("Error creating .gitignore:", err)
+			cm.logger.Errorf("default", config.ConstLogModGit, "Error creating .gitignore:", err)
 		}
 		return
 	}
@@ -482,7 +549,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Println("Error opening .gitignore:", err)
+		cm.logger.Errorf("default", config.ConstLogModGit, "Error opening .gitignore:", err)
 		return
 	}
 	defer file.Close()
@@ -498,7 +565,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		fmt.Println("Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("default", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
 		return
 	}
 
@@ -506,7 +573,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			fmt.Println("Error appending to .gitignore:", err)
+			cm.logger.Errorf("default", config.ConstLogModGit, "Error appending to .gitignore:", err)
 		}
 	}
 }
@@ -521,7 +588,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			fmt.Println("Error creating .gitignore:", err)
+			cm.logger.Errorf("default", config.ConstLogModGit, "Error creating .gitignore:", err)
 		}
 		return
 	}
@@ -529,7 +596,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		fmt.Println("Error opening .gitignore:", err)
+		cm.logger.Errorf("default", config.ConstLogModGit, "Error opening .gitignore:", err)
 		return
 	}
 	defer file.Close()
@@ -545,7 +612,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		fmt.Println("Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("default", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
 		return
 	}
 
@@ -553,7 +620,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			fmt.Println("Error appending to .gitignore:", err)
+			cm.logger.Errorf("default", config.ConstLogModGit, "Error appending to .gitignore:", err)
 		}
 	}
 }
@@ -634,18 +701,23 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Add .toml files
 		for _, file := range files {
 			if filepath.Ext(file.Name()) == ".toml" {
-				cwg.Add(1)
 				fpath := filepath.Join(name, file.Name())
-				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
+				_, err := file.Info()
+				if err != nil {
+					cm.logger.Warnf("default", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
+					continue
+				}
+				cwg.Add(1)
+				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: fpath, W: w, WaitGroup: &cwg})
 			}
 		}
 
 		// Add agents.json and queryrules.json if they exist
-		for _, jsonFile := range []string{"agents.json", "queryrules.json"} {
+		for _, jsonFile := range []string{"agents.json", "queryrules.json", "clusterstate.json"} {
 			jsonPath := filepath.Join(name, jsonFile)
 			if _, err := os.Stat(filepath.Join(path, jsonPath)); !os.IsNotExist(err) {
 				cwg.Add(1)
-				cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
+				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
 			}
 		}
 	}
@@ -654,14 +726,14 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	defaultToml := "default.toml"
 	if _, err := os.Stat(filepath.Join(path, defaultToml)); !os.IsNotExist(err) {
 		cwg.Add(1)
-		cm.pushManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w, WaitGroup: &cwg})
+		cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: "default", Filename: defaultToml, W: w, WaitGroup: &cwg})
 	}
 
 	cwg.Wait()
 
 	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
 
-	if cm.pushManager.CommitManager.IsStopping {
+	if cm.gitManager.CommitManager.IsStopping {
 		cm.logger.Info("default", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
 		return nil
 	}
@@ -688,7 +760,32 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		"Push took: %s", time.Since(pushStart))
 
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot push: %s", err)
+		if errors.Is(err, transport.ErrAuthenticationRequired) {
+			acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if err != nil {
+				cm.logger.Errorf("default", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
+				conf.Cloud18 = false
+				return err
+			}
+
+			tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if personal_access_token == "" {
+				personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
+				if err != nil {
+					cm.logger.Errorf("default", config.ConstLogModGit, "Error creating personal access token: %v", err)
+					return err
+				}
+
+				var Secrets config.Secret
+				Secrets.Value = personal_access_token
+				Secrets.OldValue = conf.Secrets["git-acces-token"].Value
+				conf.GitAccesToken = personal_access_token
+				conf.Secrets["git-acces-token"] = Secrets
+			}
+		} else {
+			cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot push: %s", err)
+		}
 	}
 
 	return err

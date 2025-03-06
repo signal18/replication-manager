@@ -3,18 +3,21 @@
   flex-wrap: wrap;
   gap: rem(16);
 }
+
 .cardWrapper {
   margin-top: rem(16);
   display: flex;
 
   .table {
     margin-top: 0;
+
     .rowLabel,
     .rowValue {
       padding-top: rem(8) !important;
       padding-bottom: rem(8) !important;
       padding-left: rem(8) !important;
     }
+
     .rowLabel {
       background-color: var(--quaternary-color);
     }
@@ -29,13 +32,30 @@
     width: 100%;
     font-weight: bold;
   }
+
   .btnAddUser {
     margin-left: auto;
   }
+
   .cloud18Tag {
     font-size: rem(12);
     border-radius: $border-radius-xs;
     padding: rem(4);
     background-color: var(--gray-color);
   }
+}
+
+.filterWrapper {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin-bottom: rem(16);
+}
+
+.dropdownButton {
+  width: rem(200) !important;
+}
+
+.searchBox {
+  width: rem(250) !important
 }

@@ -509,11 +509,6 @@ func (cluster *Cluster) CheckAlert(state state.State, resolved bool) {
 		return
 	}
 
-	// exit even earlier
-	if cluster.Conf.MailTo == "" && cluster.Conf.AlertScript == "" {
-		return
-	}
-
 	if strings.Contains(cluster.Conf.MonitoringAlertTrigger, state.ErrKey) {
 		a := alert.Alert{
 			Instance: cluster.GetInstanceAddress(),
@@ -535,6 +530,7 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cancel alert caused by alert disabled from scheduler")
 		return nil
 	}
+
 	if cluster.Conf.MailTo != "" {
 		if cluster.Mailer == nil {
 			if err := cluster.InitMailer(); err != nil {
@@ -545,14 +541,27 @@ func (cluster *Cluster) SendAlert(alert alert.Alert) error {
 		go func() {
 			err := alert.EmailMessage(cluster.GetAlertRecipients(true, true), cluster.Mailer)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
+				if cluster.failSendCount < 3 {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Could not send mail alert: %s", err)
+				}
+				cluster.failSendCount++
+			} else {
+				cluster.failSendCount = 0
 			}
 		}()
 	}
 
-	cluster.BashScriptAlert(alert)
+	if cluster.Conf.AlertScript != "" {
+		cluster.BashScriptAlert(alert)
+	}
 
 	return nil
+}
+
+func (cluster *Cluster) CheckSendMail() {
+	if cluster.failSendCount > 3 {
+		cluster.SetState("WARN0138", state.State{ErrType: "WARN", ErrDesc: clusterError["WARN0138"], ErrFrom: "CHECK"})
+	}
 }
 
 func (cluster *Cluster) CheckAllTableChecksum() {

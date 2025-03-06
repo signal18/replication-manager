@@ -1,0 +1,84 @@
+.mattermostDrawerContent {
+  background-color: var(--quaternary-color)!important;
+  color: var(--text-color);
+
+  .mattermostChatHeader {
+    background-color: var(--primary-color);
+    color: #fff;
+  }
+
+  .mattermostContainer {
+    width: 100%;
+    gap: 1rem;
+
+    .accordionPanel {
+      gap: 0.5rem;  // 12px / 16 = 0.75rem*
+      height: 85vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+
+      .messagesWrapper {
+        overflow-y: auto;
+        max-height: calc(100vh - 200px);
+        height: 100%;
+        display: flex;
+        flex-grow: 1;
+        flex-direction: column;
+        justify-content: end; 
+        transition: height 0.3s ease-in-out;
+        &.expanded { 
+          height: calc(100vh - 50px);
+        }
+        
+        .messagesContainer {
+          max-height: none;
+          height: 100%;
+          overflow-y: auto;
+          margin-bottom: 10px;
+          padding: 10px;
+          border-radius: 8px;
+          box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+          font-family: "Open Sans", sans-serif;
+          background-color:var(--body-bg-color);
+          border: 1px solid #ccc;
+          flex-grow: 1;
+        }
+
+        .newPost {
+          background-color: var(--body-bg-color);
+          border-radius: 0.25rem;  // 4px / 16 = 0.25rem
+          border: 1px solid #ccc;
+          transition: border-color 0.3s ease;
+          box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+
+          .newPostInput {
+            width: 100%;
+            padding: 0.75rem;  // 12px / 16 = 0.75rem
+            font-size: 0.875rem;  // 14px / 16 = 0.875rem
+            margin-top: 0.5rem;  // 8px / 16 = 0.5rem
+            min-height: 3.75rem;  // 120px / 16 = 7.5rem
+            resize: vertical;
+            border: none;
+
+            &:focus {
+              outline: none;
+            }
+          }
+
+          .emojiButton {
+            background-color: inherit;
+          }
+          .meetingButton {
+            background-color: inherit;
+          }
+
+          .newPostSendButton {
+            color: var(--text-color);
+            background-color: inherit;
+          }
+        }
+      }
+    }
+  }
+}

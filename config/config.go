@@ -144,6 +144,8 @@ type Config struct {
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
 	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
 	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
+	LogSupport                                bool                   `scope:"server" mapstructure:"log-support" toml:"log-support" json:"logSupport"`
+	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -756,6 +758,10 @@ type Config struct {
 	Cloud18SalesUnsubscribeScript             string                 `mapstructure:"cloud18-sales-unsubscribe-script"  toml:"cloud18-sales-unsubscribe-script" json:"cloud18SalesUnsubscribeScript"`
 	Cloud18SalesExternalOpsValidateScript     string                 `mapstructure:"cloud18-sales-external-ops-validate-script"  toml:"cloud18-sales-external-ops-validate-script" json:"cloud18SalesExternalOpsValidateScript"`
 	Cloud18SalesExternalOpsStopScript         string                 `mapstructure:"cloud18-sales-external-ops-stop-script"  toml:"cloud18-sales-external-ops-stop-script" json:"cloud18SalesExternalOpsStopScript"`
+	Cloud18Alert                              bool                   `mapstructure:"cloud18-alert"  toml:"cloud18-alert" json:"cloud18Alert"`
+	Cloud18AlertSlackChannel                  string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
+	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
+	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
@@ -798,49 +804,6 @@ type ConfigVariableType struct {
 type Secret struct {
 	OldValue string
 	Value    string
-}
-
-type PeerCluster struct {
-	ClusterName                            string   `json:"cluster-name"`
-	PeerUsers                              []string `json:"peer-users"`
-	ApiPublicUrl                           string   `json:"api-public-url"`
-	ApiCredentialsAclAllow                 string   `json:"api-credentials-acl-allow"`
-	ApiCredentialsAclAllowExternal         string   `json:"api-credentials-acl-allow-external"`
-	ProvDbMemory                           int      `json:"prov-db-memory,string"`
-	ProvDbCpuCores                         int      `json:"prov-db-cpu-cores,string"`
-	ProvDbDiskIops                         int64    `json:"prov-db-disk-iops,string"`
-	ProvDbDiskSize                         int64    `json:"prov-db-disk-size,string"`
-	ProvServicePlan                        string   `json:"prov-service-plan"`
-	ProvOrchestrator                       string   `json:"prov-orchestrator"`
-	Cloud18Domain                          string   `json:"cloud18-domain"`
-	Cloud18PlatformDescription             string   `json:"cloud18-platform-description"`
-	Cloud18Shared                          bool     `json:"cloud18-shared,string"`
-	Cloud18Peer                            bool     `json:"cloud18-peer,string"`
-	Cloud18SubDomain                       string   `json:"cloud18-sub-domain"`
-	Cloud18SubDomainZone                   string   `json:"cloud18-sub-domain-zone"`
-	Cloud18MonthlyInfraCost                float64  `json:"cloud18-monthly-infra-cost,string"`
-	Cloud18MonthlyLicenseCost              float64  `json:"cloud18-monthly-license-cost,string"`
-	Cloud18MonthlySysopsCost               float64  `json:"cloud18-monthly-sysops-cost,string"`
-	Cloud18MonthlyDbopsCost                float64  `json:"cloud18-monthly-dbops-cost,string"`
-	Cloud18CostCurrency                    string   `json:"cloud18-cost-currency"`
-	Cloud18InfraCPUFreq                    string   `json:"cloud18-infra-cpu-freq"`
-	Cloud18InfraCPUModel                   string   `json:"cloud18-infra-cpu-model"`
-	Cloud18InfraGeoLocalizations           string   `json:"cloud18-infra-geo-localizations"`
-	Cloud18InfraPublicBandwidth            float64  `json:"cloud18-infra-public-bandwidth,string"`
-	Cloud18InfraDataCenters                string   `json:"cloud18-infra-data-centers"`
-	Cloud18OpenDbops                       bool     `json:"cloud18-open-dbops,string"`
-	Cloud18SubscribedDbops                 bool     `json:"cloud18-subscribed-dbops,string"`
-	Cloud18OpenSysops                      bool     `json:"cloud18-open-sysops,string"`
-	Cloud18DatabaseReadWriteSplitSrvRecord string   `json:"cloud18-database-read-write-split-srv-record"`
-	Cloud18DatabaseReadSrvRecord           string   `json:"cloud18-database-read-srv-record"`
-	Cloud18DatabaseReadWriteSrvRecord      string   `json:"cloud18-database-read-write-srv-record"`
-	Cloud18SlaResponseTime                 float64  `json:"cloud18-sla-response-time,string"`
-	Cloud18SlaRepairTime                   float64  `json:"cloud18-sla-repair-time,string"`
-	Cloud18SlaProvisionTime                float64  `json:"cloud18-sla-provision-time,string"`
-	Cloud18PromotionPct                    float64  `json:"cloud18-promotion-pct,string"`
-	Cloud18ExtDbOps                        string   `json:"cloud18-external-dbops"`
-	Cloud18ExtSysOps                       string   `json:"cloud18-external-sysops"`
-	Cloud18InfraCertifications             string   `json:"cloud18-infra-certifications"`
 }
 
 type Partner struct {
@@ -1197,6 +1160,7 @@ const (
 	ConstLogModTask           = 17
 	ConstLogModArchive        = 18
 	ConstLogModMailer         = 19
+	ConstLogModSupport        = 20
 	ConstLogModApp            = 21
 )
 
@@ -1307,7 +1271,8 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"cloud18-dba-user-credentials":          {"", ""},
 		"cloud18-sponsor-user-credentials":      {"", ""},
 		"vault-token":                           {"", ""},
-		"api-oauth-client-secret":               {"", ""}}
+		"api-oauth-client-secret":               {"", ""},
+		"meet-token":                            {"", ""}}
 
 	for k := range conf.Secrets {
 
@@ -1694,6 +1659,7 @@ func (conf *Config) CloneConfigFromGit(url string, user string, tok string, dir 
 			URL:               url,
 			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
 			Auth:              auth,
+			Depth:             1,
 		})
 
 		if err != nil {
@@ -1962,51 +1928,6 @@ func GetBackupLogicalType() map[string]bool {
 	}
 }
 
-func GetCloud18PeerClusters() []PeerCluster {
-	return []PeerCluster{
-		PeerCluster{
-			ClusterName:                "Bench",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Stephane dev Small 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "10.8.0.50:10005",
-		},
-		PeerCluster{
-			ClusterName:                "Marie",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Priyanka dev 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.marie-dev.svc.cloud18:10005",
-		},
-		PeerCluster{
-			ClusterName:                "Ahmad",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Ahamd dev 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.ahmad.svc.cloud18:10005",
-		},
-		PeerCluster{
-			ClusterName:                "rs1small",
-			PeerUsers:                  []string{"stephane@signal18.io", "ahmad@signal18.io", "guillaume@signal18.io"},
-			Cloud18Domain:              "signal18",
-			Cloud18PlatformDescription: "Small 16G RAM NVME 4cores 3xMariaDB 2xProxySQL MasterSlave",
-			Cloud18Shared:              false,
-			Cloud18SubDomain:           "ovh-1",
-			Cloud18SubDomainZone:       "fr",
-			ApiPublicUrl:               "repman.ahmad.svc.cloud18:10005",
-		},
-	}
-}
-
 func (conf *Config) GetOrchestratorsProv() []ConfigVariableType {
 
 	return []ConfigVariableType{
@@ -2057,6 +1978,7 @@ func GetMonitorType() map[string]string {
 		"myproxy":    "proxy",
 		"extproxy":   "proxy",
 		"sphinx":     "proxy",
+		"app":        "app",
 	}
 }
 
@@ -3050,6 +2972,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogArchiveLevel >= lvl
 		case module == ConstLogModMailer:
 			return conf.LogMailerLevel >= lvl
+		case module == ConstLogModSupport:
+			return conf.LogSupportLevel >= lvl
 		}
 	}
 
@@ -3187,6 +3111,8 @@ func GetTagsForLog(module int) string {
 		return "conf"
 	case ConstLogModGit:
 		return "git"
+	case ConstLogModSupport:
+		return "support"
 	case ConstLogModBackupStream:
 		return "backup"
 	case ConstLogModOrchestrator:
@@ -3301,6 +3227,10 @@ func (conf *Config) SwitchCloud18Shared() {
 	}
 }
 
+func (conf *Config) SwitchCloud18Alert() {
+	conf.Cloud18Alert = !conf.Cloud18Alert
+}
+
 func (conf *Config) SwitchCloud18() {
 	conf.Cloud18 = !conf.Cloud18
 }
@@ -3321,6 +3251,15 @@ func (conf *Config) SetLogGitLevel(value int) {
 		conf.GitMonitoringTicker = 30
 	} else {
 		conf.GitMonitoringTicker = 300
+	}
+}
+
+func (conf *Config) SetLogSupportLevel(value int) {
+	conf.LogSupportLevel = value
+	if value > 0 {
+		conf.LogSupport = true
+	} else {
+		conf.LogSupport = false
 	}
 }
 
@@ -3492,7 +3431,7 @@ func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) Er
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
-				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprint("error parsing %s with no default: %s", f.Name, err)}
+				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("error parsing %s with no default: %s", f.Name, err)}
 				continue
 			}
 

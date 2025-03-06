@@ -981,109 +981,6 @@ definitions:
       sysopsEmail:
         type: string
     type: object
-  config.PeerCluster:
-    properties:
-      api-credentials-acl-allow:
-        type: string
-      api-credentials-acl-allow-external:
-        type: string
-      api-public-url:
-        type: string
-      cloud18-cost-currency:
-        type: string
-      cloud18-database-read-srv-record:
-        type: string
-      cloud18-database-read-write-split-srv-record:
-        type: string
-      cloud18-database-read-write-srv-record:
-        type: string
-      cloud18-domain:
-        type: string
-      cloud18-external-dbops:
-        type: string
-      cloud18-external-sysops:
-        type: string
-      cloud18-infra-certifications:
-        type: string
-      cloud18-infra-cpu-freq:
-        type: string
-      cloud18-infra-cpu-model:
-        type: string
-      cloud18-infra-data-centers:
-        type: string
-      cloud18-infra-geo-localizations:
-        type: string
-      cloud18-infra-public-bandwidth:
-        example: "0"
-        type: string
-      cloud18-monthly-dbops-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-infra-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-license-cost:
-        example: "0"
-        type: string
-      cloud18-monthly-sysops-cost:
-        example: "0"
-        type: string
-      cloud18-open-dbops:
-        example: "false"
-        type: string
-      cloud18-open-sysops:
-        example: "false"
-        type: string
-      cloud18-peer:
-        example: "false"
-        type: string
-      cloud18-platform-description:
-        type: string
-      cloud18-promotion-pct:
-        example: "0"
-        type: string
-      cloud18-shared:
-        example: "false"
-        type: string
-      cloud18-sla-provision-time:
-        example: "0"
-        type: string
-      cloud18-sla-repair-time:
-        example: "0"
-        type: string
-      cloud18-sla-response-time:
-        example: "0"
-        type: string
-      cloud18-sub-domain:
-        type: string
-      cloud18-sub-domain-zone:
-        type: string
-      cloud18-subscribed-dbops:
-        example: "false"
-        type: string
-      cluster-name:
-        type: string
-      peer-users:
-        items:
-          type: string
-        type: array
-      prov-db-cpu-cores:
-        example: "0"
-        type: string
-      prov-db-disk-iops:
-        example: "0"
-        type: string
-      prov-db-disk-size:
-        example: "0"
-        type: string
-      prov-db-memory:
-        example: "0"
-        type: string
-      prov-orchestrator:
-        type: string
-      prov-service-plan:
-        type: string
-    type: object
   config.PointInTimeMeta:
     properties:
       backup:
@@ -1615,6 +1512,14 @@ definitions:
         type: string
       cloud18:
         type: boolean
+      cloud18Alert:
+        type: boolean
+      cloud18AlertSlackChannel:
+        type: string
+      cloud18AlertSlackUrl:
+        type: string
+      cloud18AlertSlackUser:
+        type: string
       cloud18CostCurrency:
         type: string
       cloud18DatabaseReadSrvRecord:
@@ -2019,6 +1924,10 @@ definitions:
         type: boolean
       logSstLevel:
         description: internal replication-manager sst
+        type: integer
+      logSupport:
+        type: boolean
+      logSupportLevel:
         type: integer
       logSyslog:
         type: boolean
@@ -2893,6 +2802,9 @@ definitions:
       serverId:
         type: integer
     type: object
+  logrus.Fields:
+    additionalProperties: true
+    type: object
   mailer.Email:
     properties:
       attachments:
@@ -2973,6 +2885,134 @@ definitions:
     properties:
       pid:
         type: integer
+    type: object
+  peer.PeerCluster:
+    properties:
+      api-credentials-acl-allow:
+        type: string
+      api-credentials-acl-allow-external:
+        type: string
+      api-public-url:
+        type: string
+      cloud18-cost-currency:
+        type: string
+      cloud18-database-read-srv-record:
+        type: string
+      cloud18-database-read-write-split-srv-record:
+        type: string
+      cloud18-database-read-write-srv-record:
+        type: string
+      cloud18-domain:
+        type: string
+      cloud18-external-dbops:
+        type: string
+      cloud18-external-sysops:
+        type: string
+      cloud18-infra-certifications:
+        type: string
+      cloud18-infra-cpu-freq:
+        type: string
+      cloud18-infra-cpu-model:
+        type: string
+      cloud18-infra-data-centers:
+        type: string
+      cloud18-infra-geo-localizations:
+        type: string
+      cloud18-infra-public-bandwidth:
+        example: "0"
+        type: string
+      cloud18-monthly-dbops-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-infra-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-license-cost:
+        example: "0"
+        type: string
+      cloud18-monthly-sysops-cost:
+        example: "0"
+        type: string
+      cloud18-open-dbops:
+        example: "false"
+        type: string
+      cloud18-open-sysops:
+        example: "false"
+        type: string
+      cloud18-peer:
+        example: "false"
+        type: string
+      cloud18-platform-description:
+        type: string
+      cloud18-promotion-pct:
+        example: "0"
+        type: string
+      cloud18-shared:
+        example: "false"
+        type: string
+      cloud18-sla-provision-time:
+        example: "0"
+        type: string
+      cloud18-sla-repair-time:
+        example: "0"
+        type: string
+      cloud18-sla-response-time:
+        example: "0"
+        type: string
+      cloud18-sub-domain:
+        type: string
+      cloud18-sub-domain-zone:
+        type: string
+      cloud18-subscribed-dbops:
+        example: "false"
+        type: string
+      cluster-name:
+        type: string
+      isDown:
+        type: boolean
+      isFailable:
+        type: boolean
+      isMasterDown:
+        type: boolean
+      isProvisioned:
+        type: boolean
+      lastUpdate:
+        type: string
+      prov-db-cpu-cores:
+        example: "0"
+        type: string
+      prov-db-disk-iops:
+        example: "0"
+        type: string
+      prov-db-disk-size:
+        example: "0"
+        type: string
+      prov-db-memory:
+        example: "0"
+        type: string
+      prov-orchestrator:
+        type: string
+      prov-service-plan:
+        type: string
+    type: object
+  peer.PeerHealth:
+    properties:
+      isDown:
+        type: boolean
+      isFailable:
+        type: boolean
+      isMasterDown:
+        type: boolean
+      isProvisioned:
+        type: boolean
+      lastUpdate:
+        type: string
+    type: object
+  peer.PeerNodeStatus:
+    properties:
+      error: {}
+      lastUpdate:
+        type: string
     type: object
   proxysql.QueryRule:
     properties:
@@ -3092,6 +3132,13 @@ definitions:
       status:
         type: string
       uuid:
+        type: string
+    type: object
+  server.MeetAlertMessage:
+    properties:
+      fields:
+        $ref: '#/definitions/logrus.Fields'
+      message:
         type: string
     type: object
   server.ReplicationManager:
@@ -3993,6 +4040,55 @@ paths:
       summary: Rotate passwords for a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/send-alert/{hooktype}:
+    post:
+      consumes:
+      - application/json
+      description: Send a cloud18 alert for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Hook Type
+        enum:
+        - cloud18
+        - slack
+        in: path
+        name: hooktype
+        required: true
+        type: string
+      - description: Alert Message
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.MeetAlertMessage'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Send Cloud18 Alert
+      tags:
+      - Cloud18
   /api/clusters/{clusterName}/actions/send-email:
     post:
       consumes:
@@ -4936,6 +5032,39 @@ paths:
       summary: Retrieve Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
+  /api/clusters/{clusterName}/health:
+    get:
+      description: Get the health status of the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Cluster health fetched
+          schema:
+            $ref: '#/definitions/peer.PeerHealth'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Cluster Health
+      tags:
+      - ClusterHealth
   /api/clusters/{clusterName}/jobs:
     get:
       description: This endpoint retrieves the job entries for the specified cluster.
@@ -10900,7 +11029,7 @@ paths:
           description: List of peer clusters available for sale
           schema:
             items:
-              $ref: '#/definitions/config.PeerCluster'
+              $ref: '#/definitions/peer.PeerCluster'
             type: array
         "401":
           description: Unauthenticated resource
@@ -10931,7 +11060,7 @@ paths:
           description: List of peer clusters
           schema:
             items:
-              $ref: '#/definitions/config.PeerCluster'
+              $ref: '#/definitions/peer.PeerCluster'
             type: array
         "401":
           description: Unauthenticated resource
@@ -11136,6 +11265,34 @@ paths:
       summary: Send Email
       tags:
       - AlertMailer
+  /api/health:
+    get:
+      consumes:
+      - application/json
+      description: Returns the health status of all privileged clusters.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of cluster health statuses
+          schema:
+            additionalProperties:
+              $ref: '#/definitions/peer.PeerHealth'
+            type: object
+        "500":
+          description: Error getting JWT claims
+          schema:
+            type: string
+      summary: Get Cluster Health
+      tags:
+      - Cluster
   /api/heartbeat:
     get:
       consumes:
@@ -11221,6 +11378,36 @@ paths:
       summary: Handles replication manager requests
       tags:
       - Public
+  /api/peers:
+    get:
+      description: This endpoint retrieves the status of all peer nodes.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of peer nodes
+          schema:
+            items:
+              $ref: '#/definitions/peer.PeerNodeStatus'
+            type: array
+        "401":
+          description: Unauthenticated resource
+          schema:
+            type: string
+        "500":
+          description: Failed to get token claims or Error Marshal
+          schema:
+            type: string
+      summary: Retrieve peer nodes status
+      tags:
+      - Cloud18
   /api/prometheus:
     get:
       description: Fetches Prometheus metrics for all servers in all clusters managed

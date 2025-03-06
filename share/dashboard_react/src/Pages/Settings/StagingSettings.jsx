@@ -18,7 +18,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
       key: 'Topology staging',
       value: (
         <RMSwitch
-          confirmTitle={'Confirm switch settings for cloud18-shared?'}
+          confirmTitle={'Confirm switch settings for topology-staging?'}
           onChange={() =>
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'topology-staging' }))
           }

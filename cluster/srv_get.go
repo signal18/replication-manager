@@ -742,7 +742,7 @@ func (server *ServerMonitor) GetCluster() *Cluster {
 	return server.ClusterGroup
 }
 
-func (server *ServerMonitor) GetClusterConfig() config.Config {
+func (server *ServerMonitor) GetClusterConfig() *config.Config {
 	return server.GetCluster().Conf
 }
 

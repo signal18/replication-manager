@@ -55,13 +55,13 @@ import (
 	"github.com/signal18/replication-manager/etc"
 	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
-	"github.com/signal18/replication-manager/utils/peerclient"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
@@ -80,8 +80,7 @@ type ReplicationManager struct {
 	MemProfile           string                            `json:"memprofile"`
 	CpuProfile           string                            `json:"cpuprofile"`
 	Clusters             map[string]*cluster.Cluster       `json:"-"`
-	PeerClusters         []config.PeerCluster              `json:"-"`
-	PeerBooked           map[string]string                 `json:"-"`
+	PeerManager          *peer.PeerManager                 `json:"-"`
 	Partners             []config.Partner                  `json:"partners"`
 	Partner              config.Partner                    `json:"partner"`
 	Agents               []opensvc.Host                    `json:"agents"`
@@ -92,7 +91,7 @@ type ReplicationManager struct {
 	ClusterList          []string                          `json:"clusters"`
 	ImmutableClusterList []string                          `json:"-"`
 	Tests                []string                          `json:"tests"`
-	Conf                 config.Config                     `json:"config"`
+	Conf                 *config.Config                    `json:"config"`
 	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
 	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
 	DefaultFlagMap       map[string]interface{}            `json:"-"`
@@ -126,36 +125,36 @@ type ReplicationManager struct {
 	exit                                             bool
 	isStarted                                        bool
 	Confs                                            map[string]config.Config
-	VersionConfs                                     map[string]*config.ConfVersion    `json:"-"`
-	grpcServer                                       *grpc.Server                      `json:"-"`
-	grpcWrapped                                      *grpcweb.WrappedGrpcServer        `json:"-"`
-	V3Up                                             chan bool                         `json:"-"`
-	v3Config                                         Repmanv3Config                    `json:"-"`
-	cloud18CheckSum                                  hash.Hash                         `json:"-"`
-	clog                                             *clog.Logger                      `json:"-"`
-	cApiLog                                          *clog.Logger                      `json:"-"`
-	Logrus                                           *log.Logger                       `json:"-"`
-	ApiLogAdapter                                    *ApiLogAdapter                    `json:"-"`
-	IsSavingConfig                                   bool                              `json:"isSavingConfig"`
-	HasSavingConfigQueue                             bool                              `json:"hasSavingConfigQueue"`
-	IsGitPull                                        bool                              `json:"isGitPull"`
-	IsGitPush                                        bool                              `json:"isGitPush"`
-	GitPushLock                                      sync.Mutex                        `json:"-"`
-	IsNeedGitPush                                    bool                              `json:"-"`
-	CanConnectVault                                  bool                              `json:"canConnectVault"`
-	IsExportPush                                     bool                              `json:"-"`
-	errorConnectVault                                error                             `json:"-"`
-	globalScheduler                                  *cron.Cron                        `json:"-"`
-	CheckSumConfig                                   map[string]hash.Hash              `json:"-"`
-	peerClientMap                                    map[string]*peerclient.PeerClient `json:"-"`
-	Mailer                                           *mailer.Mailer                    `json:"-"`
-	IsHttpListenerReady                              bool                              `json:"-"`
-	IsApiListenerReady                               bool                              `json:"-"`
-	Terms                                            []byte                            `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
-	TermsDT                                          time.Time                         `json:"termsDT"`
-	ModTimes                                         map[string]time.Time              `json:"termsDT"`
-	SessionManager                                   *tty.SessionManager               `json:"-"`
-	ConfigManager                                    *manager.ConfigManager            `json:"-"`
+	VersionConfs                                     map[string]*config.ConfVersion `json:"-"`
+	grpcServer                                       *grpc.Server                   `json:"-"`
+	grpcWrapped                                      *grpcweb.WrappedGrpcServer     `json:"-"`
+	V3Up                                             chan bool                      `json:"-"`
+	v3Config                                         Repmanv3Config                 `json:"-"`
+	cloud18CheckSum                                  hash.Hash                      `json:"-"`
+	clog                                             *clog.Logger                   `json:"-"`
+	cApiLog                                          *clog.Logger                   `json:"-"`
+	Logrus                                           *log.Logger                    `json:"-"`
+	ApiLogAdapter                                    *ApiLogAdapter                 `json:"-"`
+	IsSavingConfig                                   bool                           `json:"isSavingConfig"`
+	HasSavingConfigQueue                             bool                           `json:"hasSavingConfigQueue"`
+	IsGitPull                                        bool                           `json:"isGitPull"`
+	IsGitPush                                        bool                           `json:"isGitPush"`
+	GitPushLock                                      sync.Mutex                     `json:"-"`
+	IsNeedGitPush                                    bool                           `json:"-"`
+	CanConnectVault                                  bool                           `json:"canConnectVault"`
+	IsExportPush                                     bool                           `json:"-"`
+	errorConnectVault                                error                          `json:"-"`
+	globalScheduler                                  *cron.Cron                     `json:"-"`
+	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
+	Mailer                                           *mailer.Mailer                 `json:"-"`
+	IsHttpListenerReady                              bool                           `json:"-"`
+	IsApiListenerReady                               bool                           `json:"-"`
+	Terms                                            []byte                         `json:"-"` //Will be fetched by /api/terms later to prevent excessive data
+	TermsDT                                          time.Time                      `json:"termsDT"`
+	ModTimes                                         map[string]time.Time           `json:"termsDT"`
+	SessionManager                                   *tty.SessionManager            `json:"-"`
+	ConfigManager                                    *manager.ConfigManager         `json:"-"`
+	MeetUserID                                       string                         `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -559,6 +558,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
 	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
 
+	flags.BoolVar(&conf.LogSupport, "log-support", false, "To log messages errors or warns from mattermost")
+	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 1, "Log Support Level")
+
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
 	flags.IntVar(&conf.CacheStaticMaxAge, "cache-static-max-age", 18000, "Cache Max Age Duration for static files")
@@ -917,6 +919,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18SalesUnsubscribeScript, "cloud18-sales-unsubscribe-script", "", "Script when user unsubscribe to the cloud18 service")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsValidateScript, "cloud18-sales-external-ops-validate-script", "", "Script when admin validate external ops")
 	flags.StringVar(&conf.Cloud18SalesExternalOpsStopScript, "cloud18-sales-external-ops-stop-script", "", "Script when partnership with external ops ended")
+	flags.BoolVar(&conf.Cloud18Alert, "cloud18-alert", true, "Enable Cloud 18 alerting")
+	flags.StringVar(&conf.Cloud18AlertSlackChannel, "cloud18-alert-slack-channel", "signal18_alert", "Alert channel for cloud18")
+	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
+	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
@@ -1140,13 +1146,17 @@ func (repman *ReplicationManager) MergeOnStart(conf config.Config) error {
 }
 
 func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) {
+	if repman.Conf == nil {
+		repman.Conf = new(config.Config)
+	}
+
 	if repman.Logrus == nil {
 		repman.Logrus = log.New()
 	}
 	if repman.ConfigManager == nil {
-		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(&repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
 	}
-	repman.PeerClusters = make([]config.PeerCluster, 0)
+	repman.PeerManager = peer.NewPeerManager()
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
@@ -1439,7 +1449,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		if k == nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
 		}
-		repman.Conf = conf
+		*repman.Conf = conf
 
 	}
 	//	backupvipersave := viper.GetViper()
@@ -1470,6 +1480,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.InitGitConfig(&conf)
 	}
 
+	repman.PeerManager.SetPeerCredentials(conf.Cloud18GitUser, conf.GetDecryptedPassword("git-password", conf.Secrets["cloud18-gitlab-password"].Value))
+	repman.PeerManager.SetApiPublicURL(conf.APIPublicURL)
+
 	//add config from cluster to the config map
 	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
@@ -1482,9 +1495,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//fmt.Printf("%+v\n", fistRead.AllSettings())
 	repman.Confs = confs
-	repman.Conf = conf
+	*repman.Conf = conf
 	repman.ViperConfig = fistRead
-	repman.ConfigManager.UpdateLoggerConfig("default", &repman.Conf)
+	repman.ConfigManager.UpdateLoggerConfig("default", repman.Conf)
 	repman.ConfigManager.SetWorker(repman.Conf.GitMinWorker, repman.Conf.GitMaxWorker)
 }
 
@@ -1842,12 +1855,12 @@ func (repman *ReplicationManager) Run() error {
 	repman.cApiLog = clog.New()
 	repman.clog = clog.New()
 	repman.CheckSumConfig = make(map[string]hash.Hash)
-	repman.PeerBooked = make(map[string]string)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
+	repman.UpdateLocalPeer()
 
 	repman.clog.SetLevel(config.ToLogrusLevel(repman.Conf.LogGraphiteLevel))
 	if repman.CpuProfile != "" {
@@ -1987,7 +2000,7 @@ func (repman *ReplicationManager) Run() error {
 			},
 		})
 
-		go graphite.RunCarbon(&repman.Conf)
+		go graphite.RunCarbon(repman.Conf)
 		repman.Logrus.WithFields(log.Fields{
 			"metricport": repman.Conf.GraphiteCarbonPort,
 			"httpport":   repman.Conf.GraphiteCarbonServerPort,
@@ -2019,7 +2032,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.CheckAndRotateLog(carbonApiLog, ExpectedUser)
 		})
 
-		go graphite.RunCarbonApi(&repman.Conf)
+		go graphite.RunCarbonApi(repman.Conf)
 		repman.Logrus.WithField("apiport", repman.Conf.GraphiteCarbonApiPort).Info("Carbon server API started")
 	}
 
@@ -2154,6 +2167,11 @@ func (repman *ReplicationManager) Run() error {
 				repman.PullCloud18Configs()
 				repman.ReloadTerms()
 			}
+
+			if repman.Conf.Cloud18 {
+				repman.PeerManager.GetAllHealthStatus()
+				repman.UpdateLocalPeer()
+			}
 		}
 
 		counter++
@@ -2227,7 +2245,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	// Reload Users
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
-	repman.ConfigManager.UpdateLoggerConfig(clusterName, &repman.currentCluster.Conf)
+	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
 	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
 
 	go repman.currentCluster.Run()
@@ -2625,10 +2643,6 @@ func (repman *ReplicationManager) Overwrite() (bool, error) {
 	var has_changed bool
 
 	if repman.Conf.ConfRewrite {
-		var myconf = make(map[string]config.Config)
-
-		myconf["overwrite-default"] = repman.Conf
-
 		file, err := os.OpenFile(repman.Conf.WorkingDir+"/overwrite.toml", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {

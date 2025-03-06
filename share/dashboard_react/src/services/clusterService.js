@@ -182,8 +182,8 @@ function toggleTraffic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat`)
 }
 
-function addServer(clusterName, host, port, dbType, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${dbType}`)
+function addServer(clusterName, host, port, monitorType, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}`)
 }
 
 function dropServer(clusterName, host, port, baseURL) {
@@ -372,8 +372,8 @@ function resetSlaveAll(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/reset-slave-all`)
 }
 
-function cancelServerJob(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/cancel-job`)
+function cancelServerJob(clusterName, serverId, taskName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/job-cancel/${taskName}`)
 }
 //#endregion Server management APIs
 

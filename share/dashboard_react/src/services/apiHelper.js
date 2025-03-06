@@ -16,8 +16,9 @@ const authConfig = {
     }
   },
   3: { // Mattermost API
-    resolveUrl: (apiUrl) => `https://meet.signal18.io/api/v4/${apiUrl}`,
-    getToken: () => localStorage.getItem('meet_token')
+    //resolveUrl: (apiUrl) => `https://meet.signal18.io/api/v4/${apiUrl}`,
+    resolveUrl: (apiUrl) => `/meet/${apiUrl}`,
+    getToken: () => localStorage.getItem('user_token')
   }
 };
 
@@ -27,10 +28,12 @@ const buildHeaders = (authValue, contentType, baseUrl) => {
   const encodedBaseUrl = baseUrl.length > 0 ? toBase64(baseUrl) : "";
   const { getToken } = authConfig[authValue] || {};
   const token = getToken ? getToken(encodedBaseUrl) : null;
+  const userID = localStorage.getItem('userID');
 
   return {
     ...getContentType(contentType),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(userID ? { 'X-User-ID': userID } : {}),
     Accept: '*/*',
   };
 };
@@ -56,6 +59,11 @@ const handleResponse = async (response) => {
       }
     }
   }
+  else if (contentType && contentType.includes('application/octet-stream')) {
+    data = await response.blob();
+  } else {
+    data = await response.text();
+  }
 
   return { data, status: response.status };
 };
@@ -66,12 +74,19 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
     headerURL = ''
   }
   const url = resolveUrl(apiUrl, authValue, baseUrl);
-  const headers = buildHeaders(authValue, 'json', headerURL);
+  const headers = {
+    ...buildHeaders(authValue, params instanceof FormData ? '' : 'json', headerURL),
+  };
+
+  if (params instanceof FormData) {
+    delete headers['Content-Type'];
+  }
 
   const options = {
     method,
     headers,
-    ...(params ? { body: JSON.stringify(params) } : {})
+    credentials: 'include',
+    ...(params ? { body: params instanceof FormData ? params : JSON.stringify(params) } : {})
   };
 
   try {

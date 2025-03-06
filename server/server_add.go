@@ -15,13 +15,13 @@ import (
 
 func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead string) error {
 	var myconf = make(map[string]config.Config)
-	myconf[clusterName] = repman.Conf
+	myconf[clusterName] = *repman.Conf
 	repman.Lock()
 	repman.ClusterList = append(repman.ClusterList, clusterName)
-	repman.Confs[clusterName] = repman.Conf
+	repman.Confs[clusterName] = *repman.Conf
 
 	repman.VersionConfs[clusterName] = new(config.ConfVersion)
-	repman.VersionConfs[clusterName].ConfInit = repman.Conf
+	repman.VersionConfs[clusterName].ConfInit = *repman.Conf
 
 	repman.ImmuableFlagMaps[clusterName] = repman.ImmuableFlagMaps["default"]
 	repman.DynamicFlagMaps[clusterName] = repman.DynamicFlagMaps["default"]

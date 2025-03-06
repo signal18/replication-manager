@@ -1,9 +1,12 @@
-package peerclient
+package peer
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -14,20 +17,33 @@ type PeerClient struct {
 	headers map[string]string
 }
 
+type PeerCredential struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
 // NewPeerClient initializes a new PeerClient
 func NewPeerClient(baseURL string, timeout time.Duration) *PeerClient {
+	urlparse, err := url.Parse(baseURL)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse URL: %s", err))
+	}
 	return &PeerClient{
 		client: &http.Client{
 			Timeout: timeout,
 		},
-		baseURL: baseURL,
+		baseURL: urlparse.String(),
 		headers: make(map[string]string),
 	}
 }
 
 // SetBaseURL allows changing the base URL dynamically
 func (pc *PeerClient) SetBaseURL(baseURL string) {
-	pc.baseURL = baseURL
+	urlparse, err := url.Parse(baseURL)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse URL: %s", err))
+	}
+	pc.baseURL = urlparse.String()
 }
 
 // SetHeader sets a custom header for all requests
@@ -51,7 +67,7 @@ func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, [
 
 	resp, err := pc.client.Do(req)
 	if err != nil {
-		return resp.StatusCode, nil, fmt.Errorf("request failed: %w", err)
+		return http.StatusInternalServerError, nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -61,7 +77,7 @@ func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, [
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return resp.StatusCode, respBody, fmt.Errorf("peer status %d: %s", resp.StatusCode, string(respBody))
+		return resp.StatusCode, respBody, fmt.Errorf("peer %s status %d: %s", pc.baseURL, resp.StatusCode, string(respBody))
 	}
 
 	return resp.StatusCode, respBody, nil
@@ -85,4 +101,34 @@ func (pc *PeerClient) Put(endpoint string, payload io.Reader) (int, []byte, erro
 // Delete sends a DELETE request
 func (pc *PeerClient) Delete(endpoint string) (int, []byte, error) {
 	return pc.DoRequest(http.MethodDelete, endpoint, nil)
+}
+
+func (pc *PeerClient) PeerLogin(username, password string) error {
+
+	// Marshal the modified JSON back to a byte slice
+	loginBody, err := json.Marshal(PeerCredential{Username: username, Password: password})
+	if err != nil {
+		return err
+	}
+	// Send the request to GoApp 2
+	status, body, err := pc.Post("api/login", bytes.NewBuffer(loginBody))
+	if err != nil {
+		return err
+	}
+
+	if status != http.StatusOK {
+		return err
+	}
+
+	var AuthToken struct {
+		Token string `json:"token"`
+	}
+
+	if err := json.Unmarshal(body, &AuthToken); err != nil {
+		return err
+	}
+
+	pc.SetHeader("Authorization", "Bearer "+AuthToken.Token)
+
+	return nil
 }

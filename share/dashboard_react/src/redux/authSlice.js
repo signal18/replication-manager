@@ -71,7 +71,7 @@ export const authSlice = createSlice({
       const { payload, meta } = action
       const { data } = payload
       const { arg } = meta
-
+      localStorage.setItem('userID', typeof data === 'string' ? JSON.parse(data)?.user_id : data?.user_id)
       localStorage.setItem('user_token', typeof data === 'string' ? JSON.parse(data)?.token : data?.token)
       localStorage.setItem('username', arg.username)
       state.isLogged = true

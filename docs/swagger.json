@@ -232,7 +232,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/config.PeerCluster"
+                                "$ref": "#/definitions/peer.PeerCluster"
                             }
                         }
                     },
@@ -277,7 +277,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/config.PeerCluster"
+                                "$ref": "#/definitions/peer.PeerCluster"
                             }
                         }
                     },
@@ -1402,6 +1402,78 @@
                 "responses": {
                     "200": {
                         "description": "Successfully rotated passwords",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/send-alert/{hooktype}": {
+            "post": {
+                "description": "Send a cloud18 alert for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Send Cloud18 Alert",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "cloud18",
+                            "slack"
+                        ],
+                        "type": "string",
+                        "description": "Hook Type",
+                        "name": "hooktype",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Alert Message",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.MeetAlertMessage"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task queue reset",
                         "schema": {
                             "type": "string"
                         }
@@ -2804,6 +2876,55 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/health": {
+            "get": {
+                "description": "Get the health status of the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterHealth"
+                ],
+                "summary": "Get Cluster Health",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Cluster health fetched",
+                        "schema": {
+                            "$ref": "#/definitions/peer.PeerHealth"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -11416,6 +11537,48 @@
                 }
             }
         },
+        "/api/health": {
+            "get": {
+                "description": "Returns the health status of all privileged clusters.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cluster"
+                ],
+                "summary": "Get Cluster Health",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of cluster health statuses",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "$ref": "#/definitions/peer.PeerHealth"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting JWT claims",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/heartbeat": {
             "get": {
                 "description": "Returns the heartbeat status of the replication manager.",
@@ -11537,6 +11700,51 @@
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/peers": {
+            "get": {
+                "description": "This endpoint retrieves the status of all peer nodes.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Cloud18"
+                ],
+                "summary": "Retrieve peer nodes status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of peer nodes",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthenticated resource",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Failed to get token claims or Error Marshal",
                         "schema": {
                             "type": "string"
                         }
@@ -12175,50 +12383,816 @@
                 }
             }
         },
-        "/replication/{clusterName}/{serverName}/slave-late-status": {
+
+        "/meet/info": {
             "get": {
-                "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
-                "produces": [
-                    "text/plain"
-                ],
+                "summary": "Retrieve Meet user information",
+                "description": "Fetch user-related information, including available channels and unread messages.",
                 "tags": [
-                    "replication"
+                    "Meet"
                 ],
-                "summary": "Check if server is in Slave Late state",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
                         "required": true
                     },
                     {
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true,
                         "type": "string",
-                        "description": "Server Name",
-                        "name": "serverName",
+                        "description": "User ID for authentication"
+                    }
+                ],
+                "responses": {
+                    "200": { 
+                        "description": "User information retrieved successfully.",
+                        "schema": {
+                                "$ref": "#/definitions/meet.MeetInfo"
+                            }
+                    },
+                    "401": { 
+                        "description": "Unauthorized user.",
+                        "schema": {
+                            "type": "string"
+                        } 
+                    },
+                    "500": { 
+                        "description": "Internal server error.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/read/{channelId}/{page}": {
+            "get": {
+                "summary": "Retrieve messages from a channel",
+                "description": "Fetch the messages from a specific channel.",
+                "tags": ["Meet"],
+                "parameters": [
+                    {
+                        "name": "channelId",
                         "in": "path",
-                        "required": true
+                        "required": true,
+                        "type": "string",
+                        "description": "Channel ID to fetch messages from"
+                    },
+                    {
+                        "name": "page",
+                        "in": "path",
+                        "required": true,
+                        "type": "integer",
+                        "description": "page number fetch messages from"
                     },
                     {
                         "type": "string",
-                        "description": "Server Port",
-                        "name": "serverPort",
-                        "in": "path"
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true,
+                        "type": "string",
+                        "description": "User ID for authentication"
+                    }
+                ],
+                "responses": {
+                    "200": { 
+                        "description": "Messages retrieved successfully.",
+                        "schema": {
+                            "$ref": "#/definitions/meet.MeetChannelMessages"
+                        }
+                    },
+                    "401": { 
+                        "description": "Unauthorized user.",
+                        "schema": {
+                            "type": "string"
+                        } 
+                    },
+                    "500": { 
+                        "description": "Internal server error.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/post/{channelId}": {
+            "post": {
+                "summary": "Post a message to a channel",
+                "description": "Post a message to a specified channel.",
+                "tags": ["Meet"],
+                "parameters": [
+                    {
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true,
+                        "type": "string",
+                        "description": "Channel ID to send message to"
+                    },
+                    {
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "message": {
+                                    "type": "string",
+                                    "description": "Message content"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true,
+                        "type": "string",
+                        "description": "User ID for authentication"
+                    }
+                ],
+                "responses": {
+                    "200": { 
+                        "description": "Message sent successfully.",
+                        "schema": {
+                            "$ref": "#/definitions/meet.PostMeetMessage"
+                        }
+                    },
+                    "401": { 
+                        "description": "Unauthorized user.",
+                        "schema": {
+                            "type": "string"
+                        } 
+                    },
+                    "500": { 
+                        "description": "Internal server error.",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/post/jitsi/{channelId}/{meetingId}": {
+            "post": {
+                "description": "Posts a Jitsi meeting link to a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Post Jitsi meeting link",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    },
+                    {
+                    "name": "meetingId",
+                    "in": "path",
+                    "description": "ID of the Jitsi meeting",
+                    "required": true,
+                    "type": "string"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "200 -Server is in Slave Late state!",
-                        "schema": {
-                            "type": "string"
-                        }
+                    "description": "Jitsi meeting link posted successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.PostJitsiMeeting"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
                     },
                     "500": {
-                        "description": "500 -No valid server!\" \"500 -Server is not in Slave Late state!\" \"500 -No cluster!",
-                        "schema": {
-                            "type": "string"
-                        }
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/view/{channelId}": {
+            "get": {
+                "description": "Views messages in a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "View meet messages",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Messages viewed successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.ViewMeetMessages"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/create/direct/{userId}": {
+            "post": {
+                "description": "Creates a direct channel with a specific user.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Create direct channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "userId",
+                    "in": "path",
+                    "description": "ID of the user",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Direct channel created successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.CreateMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/create/private/{channelName}": {
+            "post": {
+                "description": "Creates a private channel with a specific name.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Create private channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelName",
+                    "in": "path",
+                    "description": "Name of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Private channel created successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.CreateMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/create/public/{channelName}": {
+            "post": {
+                "description": "Creates a public channel with a specific name.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Create public channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelName",
+                    "in": "path",
+                    "description": "Name of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Public channel created successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.CreateMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/delete/{channelId}": {
+            "get": {
+                "description": "Deletes a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Delete channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Channel deleted successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.DeleteMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/leave/{channelId}": {
+            "post": {
+                "description": "Leaves a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Leave channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Channel left successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.LeaveMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/add/{channelId}/{userId}": {
+            "post": {
+                "description": "Adds a user to a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Add user to channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    },
+                    {
+                    "name": "userId",
+                    "in": "path",
+                    "description": "ID of the user",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "User added to channel successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.AddUserMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/join/{channelId}": {
+            "post": {
+                "description": "Joins a specific channel.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Join channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "Channel joined successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.JoinMeetChannel"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/logout": {
+            "post": {
+                "description": "Logs out the user and sets their status to offline.",
+                "consumes": ["application/json"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Logout user",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "User logged out successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.LogoutMeet"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/upload/{channelId}": {
+            "post": {
+                "description": "Uploads a file to a specific channel.",
+                "consumes": ["multipart/form-data"],
+                "produces": ["application/json"],
+                "tags": ["Meet"],
+                "summary": "Upload file to channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "channelId",
+                    "in": "path",
+                    "description": "ID of the channel",
+                    "required": true,
+                    "type": "string"
+                    },
+                    {
+                    "name": "file",
+                    "in": "formData",
+                    "description": "File to upload",
+                    "required": true,
+                    "type": "file"
+                    },
+                    {
+                    "name": "message",
+                    "in": "formData",
+                    "description": "Message to accompany the file",
+                    "required": false,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "File uploaded successfully",
+                    "schema": {
+                        "$ref": "#/definitions/server.UploadMeetFile"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
+                    }
+                }
+            }
+        },
+        "/meet/download/{fileId}": {
+            "get": {
+                "description": "Downloads a file from a specific channel.",
+                "produces": ["application/octet-stream"],
+                "tags": ["Meet"],
+                "summary": "Download file from channel",
+                "parameters": [
+                    {
+                    "type": "string",
+                    "default": "Bearer \u003cAdd access token here\u003e",
+                    "description": "Insert your access token",
+                    "name": "Authorization",
+                    "in": "header",
+                    "required": true
+                    },
+                    {
+                    "name": "fileId",
+                    "in": "path",
+                    "description": "ID of the file",
+                    "required": true,
+                    "type": "string"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                    "description": "File downloaded successfully",
+                    "schema": {
+                        "type": "file"
+                    }
+                    },
+                    "400": {
+                    "description": "Bad Request",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "401": {
+                    "description": "Unauthorized",
+                    "schema": {
+                        "type": "string"
+                    }
+                    },
+                    "500": {
+                    "description": "Internal Server Error",
+                    "schema": {
+                        "type": "string"
+                    }
                     }
                 }
             }
@@ -13692,152 +14666,6 @@
                 }
             }
         },
-        "config.PeerCluster": {
-            "type": "object",
-            "properties": {
-                "api-credentials-acl-allow": {
-                    "type": "string"
-                },
-                "api-credentials-acl-allow-external": {
-                    "type": "string"
-                },
-                "api-public-url": {
-                    "type": "string"
-                },
-                "cloud18-cost-currency": {
-                    "type": "string"
-                },
-                "cloud18-database-read-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-database-read-write-split-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-database-read-write-srv-record": {
-                    "type": "string"
-                },
-                "cloud18-domain": {
-                    "type": "string"
-                },
-                "cloud18-external-dbops": {
-                    "type": "string"
-                },
-                "cloud18-external-sysops": {
-                    "type": "string"
-                },
-                "cloud18-infra-certifications": {
-                    "type": "string"
-                },
-                "cloud18-infra-cpu-freq": {
-                    "type": "string"
-                },
-                "cloud18-infra-cpu-model": {
-                    "type": "string"
-                },
-                "cloud18-infra-data-centers": {
-                    "type": "string"
-                },
-                "cloud18-infra-geo-localizations": {
-                    "type": "string"
-                },
-                "cloud18-infra-public-bandwidth": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-dbops-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-infra-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-license-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-monthly-sysops-cost": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-open-dbops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-open-sysops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-peer": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-platform-description": {
-                    "type": "string"
-                },
-                "cloud18-promotion-pct": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-shared": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cloud18-sla-provision-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sla-repair-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sla-response-time": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "cloud18-sub-domain": {
-                    "type": "string"
-                },
-                "cloud18-sub-domain-zone": {
-                    "type": "string"
-                },
-                "cloud18-subscribed-dbops": {
-                    "type": "string",
-                    "example": "false"
-                },
-                "cluster-name": {
-                    "type": "string"
-                },
-                "peer-users": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    }
-                },
-                "prov-db-cpu-cores": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-disk-iops": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-disk-size": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-db-memory": {
-                    "type": "string",
-                    "example": "0"
-                },
-                "prov-orchestrator": {
-                    "type": "string"
-                },
-                "prov-service-plan": {
-                    "type": "string"
-                }
-            }
-        },
         "config.PointInTimeMeta": {
             "type": "object",
             "properties": {
@@ -14629,6 +15457,18 @@
                 "cloud18": {
                     "type": "boolean"
                 },
+                "cloud18Alert": {
+                    "type": "boolean"
+                },
+                "cloud18AlertSlackChannel": {
+                    "type": "string"
+                },
+                "cloud18AlertSlackUrl": {
+                    "type": "string"
+                },
+                "cloud18AlertSlackUser": {
+                    "type": "string"
+                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -15233,6 +16073,12 @@
                 },
                 "logSstLevel": {
                     "description": "internal replication-manager sst",
+                    "type": "integer"
+                },
+                "logSupport": {
+                    "type": "boolean"
+                },
+                "logSupportLevel": {
                     "type": "integer"
                 },
                 "logSyslog": {
@@ -16546,6 +17392,10 @@
                 }
             }
         },
+        "logrus.Fields": {
+            "type": "object",
+            "additionalProperties": true
+        },
         "mailer.Email": {
             "type": "object",
             "properties": {
@@ -16667,6 +17517,190 @@
             "properties": {
                 "pid": {
                     "type": "integer"
+                }
+            }
+        },
+        "peer.PeerCluster": {
+            "type": "object",
+            "properties": {
+                "api-credentials-acl-allow": {
+                    "type": "string"
+                },
+                "api-credentials-acl-allow-external": {
+                    "type": "string"
+                },
+                "api-public-url": {
+                    "type": "string"
+                },
+                "cloud18-cost-currency": {
+                    "type": "string"
+                },
+                "cloud18-database-read-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-database-read-write-split-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-database-read-write-srv-record": {
+                    "type": "string"
+                },
+                "cloud18-domain": {
+                    "type": "string"
+                },
+                "cloud18-external-dbops": {
+                    "type": "string"
+                },
+                "cloud18-external-sysops": {
+                    "type": "string"
+                },
+                "cloud18-infra-certifications": {
+                    "type": "string"
+                },
+                "cloud18-infra-cpu-freq": {
+                    "type": "string"
+                },
+                "cloud18-infra-cpu-model": {
+                    "type": "string"
+                },
+                "cloud18-infra-data-centers": {
+                    "type": "string"
+                },
+                "cloud18-infra-geo-localizations": {
+                    "type": "string"
+                },
+                "cloud18-infra-public-bandwidth": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-dbops-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-infra-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-license-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-monthly-sysops-cost": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-open-dbops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-open-sysops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-peer": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-platform-description": {
+                    "type": "string"
+                },
+                "cloud18-promotion-pct": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-shared": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cloud18-sla-provision-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sla-repair-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sla-response-time": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "cloud18-sub-domain": {
+                    "type": "string"
+                },
+                "cloud18-sub-domain-zone": {
+                    "type": "string"
+                },
+                "cloud18-subscribed-dbops": {
+                    "type": "string",
+                    "example": "false"
+                },
+                "cluster-name": {
+                    "type": "string"
+                },
+                "isDown": {
+                    "type": "boolean"
+                },
+                "isFailable": {
+                    "type": "boolean"
+                },
+                "isMasterDown": {
+                    "type": "boolean"
+                },
+                "isProvisioned": {
+                    "type": "boolean"
+                },
+                "lastUpdate": {
+                    "type": "string"
+                },
+                "prov-db-cpu-cores": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-disk-iops": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-disk-size": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-db-memory": {
+                    "type": "string",
+                    "example": "0"
+                },
+                "prov-orchestrator": {
+                    "type": "string"
+                },
+                "prov-service-plan": {
+                    "type": "string"
+                }
+            }
+        },
+        "peer.PeerHealth": {
+            "type": "object",
+            "properties": {
+                "isDown": {
+                    "type": "boolean"
+                },
+                "isFailable": {
+                    "type": "boolean"
+                },
+                "isMasterDown": {
+                    "type": "boolean"
+                },
+                "isProvisioned": {
+                    "type": "boolean"
+                },
+                "lastUpdate": {
+                    "type": "string"
+                }
+            }
+        },
+        "peer.PeerNodeStatus": {
+            "type": "object",
+            "properties": {
+                "error": {},
+                "lastUpdate": {
+                    "type": "string"
                 }
             }
         },
@@ -16851,6 +17885,17 @@
                     "type": "string"
                 },
                 "uuid": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.MeetAlertMessage": {
+            "type": "object",
+            "properties": {
+                "fields": {
+                    "$ref": "#/definitions/logrus.Fields"
+                },
+                "message": {
                     "type": "string"
                 }
             }
@@ -17185,6 +18230,246 @@
                 },
                 "suffix": {
                     "type": "string"
+                }
+            }
+        },
+        "meet.MeetInfo": {
+            "type": "object",
+            "properties": {
+                "userId": {
+                    "type":"string"
+                },
+                "channelIdsOpen":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "channelIdsPrivate":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "channelIdsDirect":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "channelIdsOpenJoin":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "unReadMessagesByChannel":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "allUsers":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "statusUsers":{
+                    "type":"object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                }
+            }
+
+        },
+        "meet.MeetChannelMessages": {
+            "type": "object",
+            "properties": {
+                "channelId":{
+                    "type":"string"
+                },
+                "channelType":{
+                    "type":"string"
+                },
+                "message":{
+                    "$ref":"#/definitions/meet.MeetMessages"
+                },
+                "unReadMessages":{
+                    "type":"integer"
+                }
+            }
+        },
+        "meet.MeetMessages": {
+            "type": "object",
+            "properties": {
+                "id":{
+                    "type":"string"
+                },
+                "overrideUserName":{
+                    "type":"string"
+                },
+                "channelId":{
+                    "type":"string"
+                },
+                "message":{
+                    "type":"string"
+                },
+                "createAt":{
+                    "type":"integer"
+                },
+                "fileIds":{
+                    "type":"array",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "fileMetadata":{
+                    "type":"array",
+                    "additionalProperties": {
+                        "type": "object"
+                    }
+                },
+                "alertMetadata":{
+                    "type":"array",
+                    "additionalProperties": {
+                        "type": "object"
+                    }
+                },
+                "meetMetadata":{
+                    "type":"array",
+                    "additionalProperties": {
+                        "type": "object"
+                    }
+                }
+            }
+        },
+        "meet.PostMeetMessage": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "message":{
+                    "type":"string"
+                },
+                "channel":{
+                    "type":"string"
+                },
+                "user":{
+                    "type":"string"
+                },
+                "message_id":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.PostJitsiMeeting": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channel":{
+                    "type":"string"
+                },
+                "user":{
+                    "type":"string"
+                },
+                "message_id":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.ViewMeetMessages": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channel":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.CreateMeetChannel": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channelId":{
+                    "type":"string"
+                },
+                "channelName":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.DeleteMeetChannel": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channel":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.LeaveMeetChannel": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channelId":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.AddUserMeetChannel": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channelId":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.JoinMeetChannel": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "channelId":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.LogoutMeet": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                }
+            }
+        },
+        "meet.UploadMeetFile": {
+            "type": "object",
+            "properties": {
+                "status":{
+                    "type":"string"
+                },
+                "fileName":{
+                    "type":"string"
+                },
+                "channel":{
+                    "type":"string"
                 }
             }
         }

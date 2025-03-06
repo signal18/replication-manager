@@ -1,5 +1,5 @@
-import { Box, Flex, Image, Spacer, Text, HStack, VStack } from '@chakra-ui/react'
-import React, { useEffect, useState } from 'react'
+import { Box, Flex, Image, Spacer, Text, HStack, VStack, Button, useDisclosure } from '@chakra-ui/react'
+import React, { useState, useEffect} from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { logout } from '../../redux/authSlice'
 import ThemeIcon from '../Icons/ThemeIcon'
@@ -16,6 +16,8 @@ import RMButton from '../RMButton'
 import RMIconButton from '../RMIconButton'
 import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
+import MattermostIntegration from '../../Pages/Mattermost';
+import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -23,14 +25,48 @@ function Navbar({ username }) {
   const [alertModalType, setAlertModalType] = useState('')
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
+  const { meetInfo, unreadMessagesByChannel, meetError } = useSelector((state) => state?.meet)
+  const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
   const [logoText, setLogoText] = useState('REPLICATION MANAGER')
+
   const {
     common: { isMobile, isDesktop },
     globalClusters: { monitor },
-    cluster: { clusterAlerts, clusterData }
+    cluster: { clusterAlerts, clusterData },
+    auth: { isLogged }
   } = useSelector((state) => state)
 
+  useEffect(() => {
+    if (isLogged){
+      localStorage.setItem('chatOpen', isChatOpen);
+    }
+  }, [isChatOpen, isLogged]);
+
+  //to get the meet info
+  useEffect(() => {
+    if (isLogged) {
+      dispatch(getMeetInfo());
+    }else{
+      localStorage.removeItem('chatOpen');
+      localStorage.removeItem('selectedChannel');
+      localStorage.removeItem('userID')
+    }
+  }, [isLogged, dispatch]);
+
+  useEffect(() => {
+    if (meetInfo) {
+      const totalUnreadMessages = Object.values(unreadMessagesByChannel).reduce((acc, count) => acc + count, 0)
+      setUnreadMessagesCount(totalUnreadMessages)
+    }
+  }, [unreadMessagesByChannel, meetInfo]);
+
+  //to toggle chat and save state
+  const toggleChat = () => {
+    setIsChatOpen(prevState => !prevState);
+  };
+  //
   useEffect(() => {
     let text = logoText;
     if (clusterData?.partner?.Name) {
@@ -61,6 +97,10 @@ function Navbar({ username }) {
   }
 
   const handleLogout = () => {
+    dispatch(logoutFromMeet())
+    localStorage.removeItem('chatOpen');
+    localStorage.removeItem('selectedChannel');
+    localStorage.removeItem('userID')
     dispatch(logout())
     dispatch(clearCluster())
   }
@@ -89,8 +129,12 @@ function Navbar({ username }) {
 
         {isAuthorized() && isDesktop && <RefreshCounter clusterName={clusterData?.name} />}
 
+
         <Spacer />
         <HStack spacing='4'>
+          
+
+
           {isAuthorized() && clusterData && (
             <Flex className={styles.alerts}>
               <AlertBadge
@@ -111,7 +155,23 @@ function Navbar({ username }) {
 
           {isAuthorized() && (
             <>
-              {username && isDesktop && <Text>{`Welcome, ${username}`}</Text>}
+              {username && isDesktop && (
+                  <>
+                      <Text>{`Welcome, ${username}`}</Text>
+                      {monitor?.config?.cloud18 && (
+                        <Flex className={styles.chatIcon}>
+                          <AlertBadge
+                            isSupport={true}
+                            isConnect={!meetError}
+                            text={meetError ? 'Support (disconnected)' : 'Support'}
+                            count={unreadMessagesCount || 0}
+                            onClick={toggleChat}
+                            showText={!isMobile}
+                          />
+                        </Flex>
+                      )}
+                  </>
+              )}
               {isMobile ? (
                 <RMIconButton onClick={openLogoutModal} border='none' icon={FaPowerOff} />
               ) : (
@@ -130,8 +190,12 @@ function Navbar({ username }) {
           )}
 
           <ThemeIcon />
+
         </HStack>
       </Flex>
+
+      <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)}  />
+
       {isAuthorized() && !isDesktop && (
         <Box mx='auto' p='8px' marginTop='60px'>
           <RefreshCounter clusterName={clusterData?.name} />

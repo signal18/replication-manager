@@ -25,10 +25,10 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const { theme } = useTheme()
   const [host, setHost] = useState('')
   const [port, setPort] = useState(0)
-  const [dbType, setDbType] = useState('')
+  const [monitorType, setMonitorType] = useState('')
   const [hostError, setHostError] = useState('')
   const [portError, setPortError] = useState('')
-  const [dbTypeError, setDbTypeError] = useState('')
+  const [monitorTypeError, setMonitorTypeError] = useState('')
 
   const handleCreateNewServer = () => {
     setHostError('')
@@ -44,12 +44,12 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       return
     }
 
-    if (!dbType) {
-      setDbTypeError('Database type is required')
+    if (!monitorType) {
+      setMonitorTypeError('Monitor type is required')
       return
     }
 
-    dispatch(addServer({ clusterName, host, port, dbType }))
+    dispatch(addServer({ clusterName, host, port, monitorType }))
     closeModal()
   }
 
@@ -71,13 +71,13 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               <Input id='port' type='number' isRequired={true} value={port} onChange={(e) => setPort(e.target.value)} />
               <FormErrorMessage>{portError}</FormErrorMessage>
             </FormControl>
-            <FormControl isInvalid={dbTypeError}>
-              <FormLabel htmlFor='dbType'>Database type</FormLabel>
+            <FormControl isInvalid={monitorTypeError}>
+              <FormLabel htmlFor='monitorType'>Monitor type</FormLabel>
               <Dropdown
-                id='dbType'
+                id='monitorType'
                 isMenuPortalTarget={false}
                 onChange={(option) => {
-                  setDbType(option.value)
+                  setMonitorType(option.value)
                 }}
                 options={[
                   { name: 'MariaDB', value: 'mariadb' },
@@ -91,7 +91,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   { name: 'VIP', value: 'extvip' }
                 ]}
               />
-              <FormErrorMessage>{dbTypeError}</FormErrorMessage>
+              <FormErrorMessage>{monitorTypeError}</FormErrorMessage>
             </FormControl>
           </Stack>
         </ModalBody>
