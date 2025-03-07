@@ -373,7 +373,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
 			case "ALERT":
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Errorf(cliformat, args...)
-				if cluster.LogSlack.IsHookActive("cloud18") {
+				if cluster.Conf.Cloud18Alert {
 					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "alert", "module": tag}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
