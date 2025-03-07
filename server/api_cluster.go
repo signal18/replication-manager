@@ -5077,7 +5077,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "User %s registered as sponsor successfully", userform.Username)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "User %s registered as sponsor successfully", userform.Username)
 
 	if repman.Conf.Cloud18SalesSubscriptionValidateScript != "" {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Executing script after sponsor validated")
@@ -5090,7 +5090,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 
 	err = repman.SendSponsorActivationMail(mycluster, userform)
 	if err != nil {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send sponsor activation email to %s: %v", userform.Username, err)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Failed to send sponsor activation email to %s: %v", userform.Username, err)
 		http.Error(w, "Error sending email :"+err.Error(), 500)
 		return
 	}
@@ -5101,7 +5101,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 
 	err = repman.SendSponsorCredentialsMail(mycluster)
 	if err != nil {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to send sponsor db credentials to %s: %v", userform.Username, err)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Failed to send sponsor db credentials to %s: %v", userform.Username, err)
 		http.Error(w, "Error sending email :"+err.Error(), 500)
 		return
 	}
@@ -5170,7 +5170,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pending subscription for %s is rejected!")
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Pending subscription for %s is rejected!")
 
 	err = repman.SendPendingRejectionMail(mycluster, userform)
 	if err != nil {
@@ -5228,9 +5228,9 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 			return
 		}
 
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Ending subscription from sponsor %s for cluster %s by %s", userform.Username, mycluster.Name, uinfomap["User"])
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Ending subscription from sponsor %s for cluster %s by %s", userform.Username, mycluster.Name, uinfomap["User"])
 	} else {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Ending subscription for cluster %s by %s", mycluster.Name, uinfomap["User"])
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Ending subscription for cluster %s by %s", mycluster.Name, uinfomap["User"])
 	}
 
 	err = repman.EndSubscription(userform, mycluster)
