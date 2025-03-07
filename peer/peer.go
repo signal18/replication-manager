@@ -381,12 +381,6 @@ func (pm *PeerManager) GetAllHealthStatus() {
 			pm.Clients[url] = pclient
 		}
 
-		if time.Since(nodestat.LastUpdate) < (time.Duration(pm.Interval) * time.Second) {
-			continue
-		}
-
-		nodestat.LastUpdate = time.Now()
-
 		// Login if no token is set in the client.
 		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
@@ -395,12 +389,13 @@ func (pm *PeerManager) GetAllHealthStatus() {
 			}
 		}
 
-		if time.Since(nodestat.LastUpdate) > time.Minute {
+		if time.Since(nodestat.LastUpdate) > time.Duration(pm.Interval)*time.Second {
 			if err := pm.GetHealthStatus(pclient); err != nil {
 				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
 				continue
 			}
 			nodestat.Error = ""
+			nodestat.LastUpdate = time.Now()
 		}
 	}
 }
