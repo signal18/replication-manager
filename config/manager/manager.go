@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -503,9 +504,11 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	cm.logger.Infof("default", config.ConstLogModGit, "Pushing All Configs To Git")
 
 	err := cm.PushConfigToGit(conf, clusterList)
-	if err != nil && err == transport.ErrRepositoryNotFound {
-		os.RemoveAll(conf.WorkingDir + "/.git")
-		err := cm.PushConfigToGit(conf, clusterList)
+	if err != nil {
+		if err == transport.ErrRepositoryNotFound || err == io.EOF {
+			os.RemoveAll(conf.WorkingDir + "/.git")
+			err = cm.PushConfigToGit(conf, clusterList)
+		}
 		if err != nil {
 			cm.logger.Errorf("default", config.ConstLogModGit, "Error pushing to git: %v", err)
 			return err
