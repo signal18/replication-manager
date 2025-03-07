@@ -163,8 +163,36 @@ func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	return http.FileServer(http.FS(sub))
+
+	fileServer := http.FileServerFS(sub)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the requested file is a .js file
+		if strings.HasSuffix(r.URL.Path, ".js") {
+			// Check if the corresponding .gz file exists
+			gzPath := r.URL.Path + ".gz"
+			fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					log.Println("WalkDir error:", err)
+					return err
+				}
+
+				if "/"+path == gzPath {
+					w.Header().Set("Content-Encoding", "gzip")
+					w.Header().Set("Content-Type", "application/javascript")
+					r.URL.Path = path
+					return fs.SkipAll
+				}
+				return nil
+			})
+
+		}
+		fileServer.ServeHTTP(w, r)
+	})
+
 }
+
+var filewalked bool
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")

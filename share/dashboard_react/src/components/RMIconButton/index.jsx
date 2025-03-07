@@ -1,24 +1,28 @@
-import React from 'react'
+import React, { forwardRef } from 'react'
 import { IconButton as ChakraIconButton, Tooltip } from '@chakra-ui/react'
 import CustomIcon from '../Icons/CustomIcon'
 import styles from './styles.module.scss'
 
-function RMIconButton({
-  onClick,
-  size = 'sm',
-  variant = 'solid',
-  icon,
-  iconFontsize = '1.5rem',
-  iconFillColor,
-  tooltip,
-  style,
-  className,
-  colorScheme,
-  ...rest
-}) {
+const RMIconButton = forwardRef(
+  ({
+      onClick,
+      size = 'sm',
+      variant = 'solid',
+      icon,
+      iconFontsize = '1.5rem',
+      iconFillColor,
+      tooltip,
+      style,
+      className,
+      colorScheme,
+      ...rest
+    },
+    ref
+  ) => {
   return tooltip ? (
-    <Tooltip label={tooltip}>
+    <Tooltip as={"div"} label={tooltip}>
       <ChakraIconButton
+        ref={ref}
         style={style}
         className={`${colorScheme ? '' : styles.button} ${className}`}
         onClick={onClick}
@@ -31,6 +35,7 @@ function RMIconButton({
     </Tooltip>
   ) : (
     <ChakraIconButton
+      ref={ref}
       style={style}
       className={`${colorScheme ? '' : styles.button} ${className}`}
       onClick={onClick}
@@ -41,6 +46,6 @@ function RMIconButton({
       {...rest}
     />
   )
-}
+})
 
 export default RMIconButton

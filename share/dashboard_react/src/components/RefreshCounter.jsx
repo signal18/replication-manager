@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useDispatch } from 'react-redux'
 import { HStack } from '@chakra-ui/react'
 import { HiPlay, HiStop, HiRefresh, HiOutlineInformationCircle } from 'react-icons/hi'
