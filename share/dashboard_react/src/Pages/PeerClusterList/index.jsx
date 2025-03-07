@@ -403,10 +403,7 @@ function PeerClusterList({ onLogin, mode }) {
                 className={styles.card}
                 width={'400px'}
                 header={
-                  <HStack
-                    as="div"
-                    className={styles.btnHeading}
-                    onClick={() => { handlePeerCluster(clusterItem) }}>
+                  <HStack as="div" className={styles.btnHeading} cursor={'pointer'} onClick={() => { handlePeerCluster(clusterItem) }}>
                     <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
                     <span className={styles.cardHeaderText}>{headerText}</span>
                   </HStack>
