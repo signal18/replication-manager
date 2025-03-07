@@ -2,7 +2,6 @@ package cluster
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -24,19 +23,41 @@ func (cluster *Cluster) InitMailer() error {
 	return nil
 }
 
-func (cluster *Cluster) GetAlertRecipients(sendDbOps, sendSysOps bool) string {
-	to := strings.Split(cluster.Conf.MailTo, ",")
+type AlertRecipient struct {
+	To        string
+	DbOps     bool
+	SysOps    bool
+	ExtDbOps  bool
+	ExtSysOps bool
+	Sponsor   bool
+	All       bool
+}
+
+func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
+	list := make(map[string]struct{})
+
+	to := strings.Split(recipient.To, ",")
 
 	if cluster.Conf.Cloud18 {
-		if cluster.Conf.Cloud18GitUser != "" && !slices.Contains(to, cluster.Conf.Cloud18GitUser) {
-			to = append(to, cluster.Conf.Cloud18GitUser)
+		if recipient.All || (recipient.SysOps && cluster.Conf.Cloud18GitUser != "") {
+			list[cluster.Conf.Cloud18GitUser] = struct{}{}
 		}
-		if sendDbOps && cluster.Conf.Cloud18ExternalDbOps != "" && !slices.Contains(to, cluster.Conf.Cloud18ExternalDbOps) {
-			to = append(to, cluster.Conf.Cloud18ExternalDbOps)
+		if recipient.All || (recipient.ExtSysOps && cluster.Conf.Cloud18ExternalSysOps != "" && cluster.Conf.Cloud18ExternalSysOps != cluster.Conf.Cloud18GitUser) {
+			list[cluster.Conf.Cloud18ExternalSysOps] = struct{}{}
 		}
-		if sendSysOps && cluster.Conf.Cloud18ExternalSysOps != "" && !slices.Contains(to, cluster.Conf.Cloud18ExternalSysOps) {
-			to = append(to, cluster.Conf.Cloud18ExternalSysOps)
+		if recipient.All || (recipient.DbOps && cluster.Conf.Cloud18DbOps != "" && cluster.Conf.Cloud18DbOps != cluster.Conf.Cloud18GitUser) {
+			list[cluster.Conf.Cloud18DbOps] = struct{}{}
 		}
+		if recipient.All || (recipient.ExtDbOps && cluster.Conf.Cloud18ExternalDbOps != "" && cluster.Conf.Cloud18ExternalDbOps != cluster.Conf.Cloud18GitUser) {
+			list[cluster.Conf.Cloud18ExternalDbOps] = struct{}{}
+		}
+		if recipient.All || recipient.Sponsor {
+			list[cluster.GetSponsorEmail()] = struct{}{}
+		}
+	}
+
+	for email, _ := range list {
+		to = append(to, email)
 	}
 
 	return strings.Join(to, ",")
