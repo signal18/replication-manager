@@ -86,11 +86,12 @@ type PeerManager struct {
 	PeerUserClusters  map[string]map[string]*PeerCluster
 	UserClusterAccess map[string]map[string]struct{} // Optimized mapping for user access to clusters
 	Clients           map[string]*PeerClient
+	Interval          int
 	MissingSince      time.Time
 }
 
 // NewPeerManager initializes a new PeerManager.
-func NewPeerManager() *PeerManager {
+func NewPeerManager(interval int) *PeerManager {
 	return &PeerManager{
 		PeerClusters:      make(map[string]*PeerCluster),
 		PeerForSale:       make(map[string]*PeerCluster),
@@ -98,7 +99,12 @@ func NewPeerManager() *PeerManager {
 		UserClusterAccess: make(map[string]map[string]struct{}),
 		PeerURL:           make(map[string]*PeerNodeStatus),
 		Clients:           make(map[string]*PeerClient),
+		Interval:          interval,
 	}
+}
+
+func (pm *PeerManager) SetInterval(interval int) {
+	pm.Interval = interval
 }
 
 // SetPeerUser sets the username for peer communication.
@@ -375,6 +381,12 @@ func (pm *PeerManager) GetAllHealthStatus() {
 			pm.Clients[url] = pclient
 		}
 
+		if time.Since(nodestat.LastUpdate) < (time.Duration(pm.Interval) * time.Second) {
+			continue
+		}
+
+		nodestat.LastUpdate = time.Now()
+
 		// Login if no token is set in the client.
 		if token, ok := pclient.headers["Authorization"]; !ok || token == "" {
 			if err := pclient.PeerLogin(pm.PeerUser, pm.PeerPassword); err != nil {
@@ -388,7 +400,6 @@ func (pm *PeerManager) GetAllHealthStatus() {
 				nodestat.Error = fmt.Sprintf("failed to get health status: %s", err)
 				continue
 			}
-			nodestat.LastUpdate = time.Now()
 			nodestat.Error = ""
 		}
 	}
