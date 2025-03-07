@@ -384,7 +384,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				}
 			case "START":
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Warnf(cliformat, args...)
-				if cluster.Conf.SlackURL != "" {
+				if cluster.LogSlack.HasActiveHook() {
 					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Slack", "module": tag}).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
