@@ -471,7 +471,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("slack", true)
 	}
 
-	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" {
+	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18Alert {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
