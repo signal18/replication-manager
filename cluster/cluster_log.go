@@ -546,16 +546,20 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 		// wrap logrus levels
 		if resolved {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
-			if cluster.LogSlack.HasActiveHook() {
-				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "RESOLV"}).Infof(st.ErrDesc)
+			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+				if cluster.LogSlack.HasActiveHook() {
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "RESOLV"}).Infof(st.ErrDesc)
+				}
 			}
 		} else {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
-			if cluster.LogSlack.HasActiveHook() {
-				if st.ErrType == "ERROR" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Errorf(st.ErrDesc)
-				} else {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Warnf(st.ErrDesc)
+			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+				if cluster.LogSlack.HasActiveHook() {
+					if st.ErrType == "ERROR" {
+						cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Errorf(st.ErrDesc)
+					} else {
+						cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Warnf(st.ErrDesc)
+					}
 				}
 			}
 		}
