@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/go-git/go-git/v5"
@@ -93,16 +92,13 @@ func (gm *GitManager) SplitTaskQueue() (ConfigGitTask, []ConfigGitTask, []Config
 }
 
 type CommitManager struct {
-	logger        *config.LogrusWrapper
-	W             *git.Worktree
-	commitQueue   []GitAddTask // Slice for commit tasks
-	mu            sync.Mutex   // Mutex to protect commitQueue
-	stopCh        chan struct{}
-	wg            sync.WaitGroup
-	workerLimit   int
-	workerMin     int
-	currentWorker atomic.Int32
-	IsStopping    bool
+	logger      *config.LogrusWrapper
+	W           *git.Worktree
+	commitQueue []GitAddTask // Slice for commit tasks
+	mu          sync.Mutex   // Mutex to protect commitQueue
+	stopCh      chan struct{}
+	wg          sync.WaitGroup
+	IsStopping  bool
 }
 
 func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) *CommitManager {
@@ -110,8 +106,6 @@ func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) 
 		logger:      logger,
 		commitQueue: []GitAddTask{},
 		stopCh:      make(chan struct{}),
-		workerLimit: workerLimit,
-		workerMin:   workerMin,
 	}
 
 	cmm.Start()
@@ -119,11 +113,7 @@ func NewCommitManager(workerMin, workerLimit int, logger *config.LogrusWrapper) 
 }
 
 func (cmm *CommitManager) Start() {
-	for i := 0; i < cmm.workerMin; i++ {
-		cmm.wg.Add(1)
-		cmm.currentWorker.Add(1)
-		go cmm.processCommitQueue()
-	}
+	go cmm.processCommitQueue()
 }
 
 func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
@@ -138,12 +128,6 @@ func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
 		}
 	default:
 		cmm.commitQueue = append(cmm.commitQueue, task)
-		// Start a new worker if the queue is not empty and the current worker count is less than the limit
-		if len(cmm.commitQueue) > int(cmm.currentWorker.Load()) && int(cmm.currentWorker.Load()) < cmm.workerLimit {
-			cmm.currentWorker.Add(1)
-			cmm.wg.Add(1)
-			go cmm.processCommitQueue()
-		}
 	}
 }
 
@@ -159,11 +143,6 @@ func (cmm *CommitManager) processCommitQueue() {
 			cmm.mu.Lock()
 			if len(cmm.commitQueue) == 0 {
 				cmm.mu.Unlock()
-
-				if int(cmm.currentWorker.Load()) > cmm.workerMin {
-					cmm.currentWorker.Add(-1)
-					return
-				}
 
 				time.Sleep(100 * time.Millisecond) // Avoid busy waiting
 				continue
@@ -216,7 +195,7 @@ type ConfigManager struct {
 }
 
 // NewConfigManager initializes the manager
-func NewConfigManager(logger *config.LogrusWrapper, minWorker, maxWorker int) *ConfigManager {
+func NewConfigManager(logger *config.LogrusWrapper) *ConfigManager {
 	newcm := &ConfigManager{
 		logger:      logger,
 		clusterData: make(map[string]*ClusterManager),
@@ -227,8 +206,6 @@ func NewConfigManager(logger *config.LogrusWrapper, minWorker, maxWorker int) *C
 
 	newcm.gitManager.cond = sync.NewCond(newcm.gitManager.mutex)
 
-	newcm.SetWorker(1, 1)
-
 	go newcm.processGitPush() // Start the persistent goroutine for the push manager
 
 	return newcm
@@ -236,11 +213,6 @@ func NewConfigManager(logger *config.LogrusWrapper, minWorker, maxWorker int) *C
 
 func (cm *ConfigManager) GetGitManager() *GitManager {
 	return cm.gitManager
-}
-
-func (cm *ConfigManager) SetWorker(min, max int) {
-	cm.gitManager.CommitManager.workerMin = min
-	cm.gitManager.CommitManager.workerLimit = max
 }
 
 func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Config) {

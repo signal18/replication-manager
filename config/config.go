@@ -712,8 +712,6 @@ type Config struct {
 	GitUsername                               string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
-	GitMinWorker                              int                    `scope:"server" mapstructure:"git-min-worker" toml:"git-min-worker" json:"gitMinWorker"`
-	GitMaxWorker                              int                    `scope:"server" mapstructure:"git-max-worker" toml:"git-max-worker" json:"gitMaxWorker"`
 	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
 	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
