@@ -17,13 +17,13 @@ import { useTheme } from '../../ThemeProvider'
 import parentStyles from './styles.module.scss'
 import remarkGFM from 'remark-gfm'
 
-function TermsModal({ title = 'Terms and Conditions', submitText = 'I agree with all terms and condition mentioned above', isOpen, closeModal, onAgreeTerms, above = <></>, terms = ``, below = <></> }) {
+function TermsModal({ title = 'Terms and Conditions', submitText = 'I agree with all terms and condition mentioned above', isOpen, closeModal, onAgreeTerms, above = <></>, terms = ``, below = <></>, cluster }) {
   const { theme } = useTheme()
   const [agree, setAgree] = useState(false)
 
   const handleSubmit = () => {
     if (onAgreeTerms) {
-      onAgreeTerms()
+      onAgreeTerms(cluster)
     }
   }
 
