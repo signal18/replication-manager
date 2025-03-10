@@ -12,7 +12,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func (cluster *Cluster) K8SProvisionAppService(appi app.AppInterface) {
+func (cluster *Cluster) K8SProvisionAppService(apl *app.App) {
 	clientset, err := cluster.K8SConnectAPI()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
@@ -21,7 +21,7 @@ func (cluster *Cluster) K8SProvisionAppService(appi app.AppInterface) {
 	}
 
 	deploymentsClient := clientset.AppsV1().Deployments(cluster.Name)
-	port, _ := strconv.Atoi(appi.GetPort())
+	port, _ := strconv.Atoi(apl.GetPort())
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: cluster.Name + "-deployment",
@@ -42,11 +42,11 @@ func (cluster *Cluster) K8SProvisionAppService(appi app.AppInterface) {
 				Spec: apiv1.PodSpec{
 					Containers: []apiv1.Container{
 						{
-							Name:  appi.GetName(),
-							Image: appi.GetAppDockerImg(),
+							Name:  apl.GetName(),
+							Image: apl.GetAppDockerImg(),
 							Ports: []apiv1.ContainerPort{
 								{
-									Name:          appi.GetName(),
+									Name:          apl.GetName(),
 									Protocol:      apiv1.ProtocolTCP,
 									ContainerPort: int32(port),
 								},
@@ -71,13 +71,13 @@ func (cluster *Cluster) K8SProvisionAppService(appi app.AppInterface) {
 	return
 }
 
-func (cluster *Cluster) K8SUnprovisionAppService(appi app.AppInterface) {
+func (cluster *Cluster) K8SUnprovisionAppService(apl *app.App) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) K8SStartAppService(server app.AppInterface) error {
+func (cluster *Cluster) K8SStartAppService(server *app.App) error {
 	return errors.New("Can't start app")
 }
-func (cluster *Cluster) K8SStopAppService(server app.AppInterface) error {
+func (cluster *Cluster) K8SStopAppService(server *app.App) error {
 	return errors.New("Can't stop app")
 }

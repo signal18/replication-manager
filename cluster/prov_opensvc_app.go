@@ -22,28 +22,28 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) OpenSVCUnprovisionAppService(prx app.AppInterface) {
+func (cluster *Cluster) OpenSVCUnprovisionAppService(apl *app.App) {
 	opensvc := cluster.OpenSVCConnect()
 	//agents := opensvc.GetNodes()
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		err := opensvc.PurgeServiceV2(cluster.GetName(), prx.GetServiceName(), prx.GetAgent())
+		err := opensvc.PurgeServiceV2(cluster.GetName(), apl.GetServiceName(), apl.GetAgent())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
 			cluster.errorChan <- err
 		}
-		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+prx.GetName(), prx.GetAgent())
+		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+apl.GetName(), apl.GetAgent())
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
 			cluster.errorChan <- err
 		}
 	} else {
-		node, _ := cluster.FoundAppAgent(prx)
+		node, _ := cluster.FoundAppAgent(apl)
 		for _, svc := range node.Svc {
-			if prx.GetServiceName() == svc.Svc_name {
+			if apl.GetServiceName() == svc.Svc_name {
 				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
 				err := cluster.OpenSVCWaitDequeue(opensvc, idaction)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", prx.GetId(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't unprovision app %s, %s", apl.GetId(), err)
 				}
 			}
 		}
@@ -51,7 +51,7 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(prx app.AppInterface) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OpenSVCStopAppService(server app.AppInterface) error {
+func (cluster *Cluster) OpenSVCStopAppService(server *app.App) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
@@ -73,7 +73,7 @@ func (cluster *Cluster) OpenSVCStopAppService(server app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartAppService(server app.AppInterface) error {
+func (cluster *Cluster) OpenSVCStartAppService(server *app.App) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.GetName())
@@ -95,9 +95,9 @@ func (cluster *Cluster) OpenSVCStartAppService(server app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCProvisionAppService(pri app.AppInterface) error {
+func (cluster *Cluster) OpenSVCProvisionAppService(apl *app.App) error {
 	svc := cluster.OpenSVCConnect()
-	agent, err := cluster.FoundAppAgent(pri)
+	agent, err := cluster.FoundAppAgent(apl)
 	if err != nil {
 		cluster.errorChan <- err
 		return err
@@ -105,20 +105,20 @@ func (cluster *Cluster) OpenSVCProvisionAppService(pri app.AppInterface) error {
 	// Unprovision if already in OpenSVC
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		var idsrv string
-		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + pri.GetName())
+		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + apl.GetName())
 		if err == nil {
 			idsrv = mysrv.Svc_id
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+pri.GetName(), idsrv)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+apl.GetName(), idsrv)
 
 		} else {
-			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+pri.GetName(), "MariaDB")
+			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+apl.GetName(), "MariaDB")
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC app service")
 				cluster.errorChan <- err
 				return err
 			}
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+pri.GetName(), idsrv)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+apl.GetName(), idsrv)
 
 		err = svc.DeteteServiceTags(idsrv)
 		if err != nil {
@@ -141,39 +141,38 @@ func (cluster *Cluster) OpenSVCProvisionAppService(pri app.AppInterface) error {
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
-	if prx, ok := pri.(*app.App); ok {
-		if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-			res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), prx)
-			if err != nil {
-				cluster.errorChan <- err
-				return err
-			}
-			err = svc.CreateTemplateV2(cluster.Name, prx.ServiceName, prx.Agent, res)
-			if err != nil {
-				cluster.errorChan <- err
-				return err
-			}
-		} else {
-			if strings.Contains(svc.ProvAppAgents, agent.Node_name) {
-				res, err := cluster.GetNginxTemplate(svc, strings.Join(srvlist, " "), agent, prx)
-				if err != nil {
-					cluster.errorChan <- err
-					return err
-				}
-				idtemplate, err := svc.CreateTemplate(prx.GetServiceName(), res)
-				if err != nil {
-					cluster.errorChan <- err
-					return err
-				}
 
-				idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, prx.GetServiceName())
-				cluster.OpenSVCWaitDequeue(svc, idaction)
-				task := svc.GetAction(strconv.Itoa(idaction))
-				if task != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
-				}
+	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
+		res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), apl)
+		if err != nil {
+			cluster.errorChan <- err
+			return err
+		}
+		err = svc.CreateTemplateV2(cluster.Name, apl.ServiceName, apl.Agent, res)
+		if err != nil {
+			cluster.errorChan <- err
+			return err
+		}
+	} else {
+		if strings.Contains(svc.ProvAppAgents, agent.Node_name) {
+			res, err := cluster.GetNginxTemplate(svc, strings.Join(srvlist, " "), agent, apl)
+			if err != nil {
+				cluster.errorChan <- err
+				return err
+			}
+			idtemplate, err := svc.CreateTemplate(apl.GetServiceName(), res)
+			if err != nil {
+				cluster.errorChan <- err
+				return err
+			}
+
+			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, apl.GetServiceName())
+			cluster.OpenSVCWaitDequeue(svc, idaction)
+			task := svc.GetAction(strconv.Itoa(idaction))
+			if task != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
 			}
 		}
 	}
@@ -181,11 +180,11 @@ func (cluster *Cluster) OpenSVCProvisionAppService(pri app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri app.AppInterface) (string, error) {
+func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, apl *app.App) (string, error) {
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = pri.OpenSVCGetAppDefaultSection()
+	svcsection["DEFAULT"] = apl.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	if pri.OpenSVCGetAppDiskType() != "volume" {
+	if apl.OpenSVCGetAppDiskType() != "volume" {
 		svcsection["disk#0000"] = cluster.OpenSVCGetDiskZpoolDockerPrivateSection()
 		svcsection["disk#00"] = cluster.OpenSVCGetDiskLoopbackDockerPrivateSection()
 		svcsection["disk#01"] = cluster.OpenSVCGetDiskLoopbackPodSection()
@@ -196,17 +195,14 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri app.AppInter
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
 		}
-		svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(pri)
+		svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(apl)
 	}
 
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(pri.GetPort())
+	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(apl.GetPort())
+	svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(apl)
 
-	if app, ok := pri.(*app.App); ok {
-		svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(app)
-	}
-
-	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, pri)
+	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -217,7 +213,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, pri app.AppInter
 
 }
 
-func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi app.AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi *app.App) map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = appi.GetAgent()
 	if appi.OpenSVCGetAppDiskPool() == "zpool" && appi.OpenSVCGetAppAgentsFailover() != "" {
@@ -253,7 +249,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi app.AppInterface) map[s
 	return svcdefault
 }
 
-func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appi app.AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appi *app.App) map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
 	svcvol["size"] = "{env.size}"
@@ -262,7 +258,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appi app.AppInterface) ma
 	return svcvol
 }
 
-func (cluster *Cluster) FoundAppAgent(app app.AppInterface) (opensvc.Host, error) {
+func (cluster *Cluster) FoundAppAgent(app *app.App) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	agents, err := svc.GetNodes()
 	if err != nil {
@@ -286,7 +282,7 @@ func (cluster *Cluster) FoundAppAgent(app app.AppInterface) (opensvc.Host, error
 	return agent, errors.New("Indice not found in apps agent list")
 }
 
-func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app app.AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app *app.App) map[string]string {
 	ips := strings.Split(app.OpenSVCGetAppGateway(), ".")
 	masks := strings.Split(app.OpenSVCGetAppNetMask(), ".")
 	for i, mask := range masks {
@@ -325,7 +321,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app app.AppInter
 	return svcenv
 }
 
-func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app app.AppInterface) string {
+func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app *app.App) string {
 	i := 0
 	ipPods := ""
 	//if !cluster.Conf.ProvNetCNI {
@@ -376,7 +372,7 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 	return conf
 }
 
-func (cluster *Cluster) OpenSVCGetAppContainerSection(server app.AppInterface) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppContainerSection(server *app.App) map[string]string {
 	svccontainer := make(map[string]string)
 	if slices.Contains([]string{"docker", "podman", "oci"}, server.OpenSVCGetAppServiceType()) {
 		svccontainer["tags"] = ""
@@ -396,7 +392,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(server app.AppInterface) m
 	return svccontainer
 }
 
-func (cluster *Cluster) GetNginxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi app.AppInterface) (string, error) {
+func (cluster *Cluster) GetNginxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi *app.App) (string, error) {
 
 	conf := `
 [DEFAULT]

@@ -10,41 +10,27 @@ import (
 	"github.com/signal18/replication-manager/cluster/app"
 )
 
-func (cluster *Cluster) LocalhostProvisionAppService(appi app.AppInterface) error {
-	appi.GetAppConfig()
+func (cluster *Cluster) LocalhostProvisionAppService(apl *app.App) error {
+	err := apl.LocalhostProvisionService(cluster.errorChan)
+	cluster.errorChan <- err
+	return err
+}
 
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		err := apl.LocalhostProvisionService(cluster.errorChan)
-		cluster.errorChan <- err
-		return err
-	}
+func (cluster *Cluster) LocalhostUnprovisionAppService(apl *app.App) error {
+	apl.LocalhostUnprovisionService(cluster.errorChan)
+	cluster.errorChan <- nil
+	return nil
+}
+
+func (cluster *Cluster) LocalhostStartAppService(apl *app.App) error {
+	apl.LocalhostStartService()
 
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) LocalhostUnprovisionAppService(appi app.AppInterface) error {
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.LocalhostUnprovisionService(cluster.errorChan)
-	}
-
-	cluster.errorChan <- nil
-	return nil
-}
-
-func (cluster *Cluster) LocalhostStartAppService(appi app.AppInterface) error {
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.LocalhostStartService()
-	}
-
-	cluster.errorChan <- nil
-	return nil
-}
-
-func (cluster *Cluster) LocalhostStopAppService(appi app.AppInterface) error {
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.LocalhostStopService()
-	}
+func (cluster *Cluster) LocalhostStopAppService(apl *app.App) error {
+	apl.LocalhostStopService()
 
 	return nil
 }

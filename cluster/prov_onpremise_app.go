@@ -17,7 +17,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (cluster *Cluster) OnPremiseConnectApp(server app.AppInterface) (*sshclient.Client, error) {
+func (cluster *Cluster) OnPremiseConnectApp(apl *app.App) (*sshclient.Client, error) {
 
 	if cluster.IsInFailover() {
 		return nil, errors.New("OnPremise Provisioning cancel during connect")
@@ -30,13 +30,13 @@ func (cluster *Cluster) OnPremiseConnectApp(server app.AppInterface) (*sshclient
 
 	key := cluster.OnPremiseGetSSHKey()
 	if password != "" {
-		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
+		client, err := sshcli.DialWithPasswd(misc.Unbracket(apl.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {
 			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
 		}
 		return client, nil
 	} else {
-		client, err := sshcli.DialWithKey(misc.Unbracket(server.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
+		client, err := sshcli.DialWithKey(misc.Unbracket(apl.GetHost())+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 		if err != nil {
 			return nil, errors.New("OnPremise Provisioning via SSH %s" + err.Error())
 		}
@@ -44,42 +44,28 @@ func (cluster *Cluster) OnPremiseConnectApp(server app.AppInterface) (*sshclient
 	}
 }
 
-func (cluster *Cluster) OnPremiseProvisionAppService(appi app.AppInterface) error {
-	appi.GetAppConfig()
+func (cluster *Cluster) OnPremiseProvisionAppService(apl *app.App) error {
+	err := apl.OnPremiseProvisionService(cluster.errorChan)
+	cluster.errorChan <- err
+	return err
+}
 
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		err := apl.OnPremiseProvisionService(cluster.errorChan)
-		cluster.errorChan <- err
-		return err
-	}
+func (cluster *Cluster) OnPremiseUnprovisionAppService(apl *app.App) error {
+	apl.OnPremiseUnprovisionService(cluster.errorChan)
 
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) OnPremiseUnprovisionAppService(appi app.AppInterface) error {
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.OnPremiseUnprovisionService(cluster.errorChan)
-	}
+func (cluster *Cluster) OnPremiseStartAppService(apl *app.App) error {
+	apl.OnPremiseStartService(cluster.errorChan)
 
 	cluster.errorChan <- nil
 	return nil
 }
 
-func (cluster *Cluster) OnPremiseStartAppService(appi app.AppInterface) error {
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.OnPremiseStartService(cluster.errorChan)
-	}
-
-	cluster.errorChan <- nil
-	return nil
-}
-
-func (cluster *Cluster) OnPremiseStopAppService(appi app.AppInterface) error {
-
-	if apl, ok := appi.(*app.AppWebDevOps); ok {
-		apl.OnPremiseStopService(cluster.errorChan)
-	}
+func (cluster *Cluster) OnPremiseStopAppService(apl *app.App) error {
+	apl.OnPremiseStopService(cluster.errorChan)
 
 	return nil
 }

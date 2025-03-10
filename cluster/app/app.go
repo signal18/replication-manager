@@ -12,6 +12,7 @@ package app
 
 import (
 	"hash/crc64"
+	"net/http"
 	"os"
 	"sync"
 
@@ -26,7 +27,7 @@ import (
 
 var AppConfig config.AppConfig
 
-type AppList []AppInterface
+type AppList []*App
 
 type App struct {
 	AppInterface
@@ -274,4 +275,37 @@ func (app *App) AddDefaultFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDataGitBranch, "app-data-git-branch", "", "Application data git branch")
 	flags.StringVar(&conf.AppDataVolumes, "app-data-volumes", "", "Application data volumes")
 	flags.StringVar(&conf.AppLogVolumes, "app-log-volumes", "", "Application log volumes")
+}
+
+func (app *App) Init() {
+	webappdir := app.Datadir + "/var"
+
+	if _, err := os.Stat(webappdir); os.IsNotExist(err) {
+		app.GetAppConfig()
+		os.Symlink(app.Datadir+"/init/data", webappdir)
+	}
+}
+
+func (app *App) Refresh() error {
+	resp, err := http.Get(app.GetURL())
+	status := StateWebDown
+	if err == nil {
+		status = StateWebRunning
+		resp.Body.Close()
+	}
+
+	app.State = status
+	return nil
+}
+
+func (app *App) Failover() {
+	app.BackendsStateChange()
+}
+
+func (app *App) BackendsStateChange() {
+	app.Refresh()
+}
+
+func (app *App) CertificatesReload() error {
+	return nil
 }

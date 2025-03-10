@@ -14,7 +14,7 @@ import (
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
-func (app *AppWebDevOps) LocalhostProvisionService(errorChan chan error) error {
+func (app *App) LocalhostProvisionService(errorChan chan error) error {
 
 	out := &bytes.Buffer{}
 	path := app.Datadir + "/var"
@@ -41,7 +41,7 @@ func (app *AppWebDevOps) LocalhostProvisionService(errorChan chan error) error {
 	return nil
 }
 
-func (app *AppWebDevOps) LocalhostStartService() error {
+func (app *App) LocalhostStartService() error {
 	app.GetAppConfig()
 	//init haproxy do start or reload
 	app.Init()
@@ -49,7 +49,7 @@ func (app *AppWebDevOps) LocalhostStartService() error {
 	return nil
 }
 
-func (app *AppWebDevOps) LocalhostStopService() error {
+func (app *App) LocalhostStopService() error {
 
 	pid, err := os.ReadFile(app.Datadir + "/var/nginx.pid")
 	if err != nil {
@@ -60,7 +60,7 @@ func (app *AppWebDevOps) LocalhostStopService() error {
 	return nil
 }
 
-func (app *AppWebDevOps) LocalhostUnprovisionService(errorChan chan error) error {
+func (app *App) LocalhostUnprovisionService(errorChan chan error) error {
 	app.LocalhostStopService()
 	os.RemoveAll(app.Datadir + "/var")
 	errorChan <- nil

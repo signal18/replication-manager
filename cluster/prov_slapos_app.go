@@ -2,20 +2,20 @@ package cluster
 
 import "github.com/signal18/replication-manager/cluster/app"
 
-func (cluster *Cluster) SlapOSProvisionAppService(appi app.AppInterface) {
+func (cluster *Cluster) SlapOSProvisionAppService(apl *app.App) {
 
 }
 
-func (cluster *Cluster) SlapOSUnprovisionAppService(appi app.AppInterface) {
+func (cluster *Cluster) SlapOSUnprovisionAppService(apl *app.App) {
 
 }
 
-func (cluster *Cluster) SlapOSStartAppService(server app.AppInterface) error {
-	server.SetWaitStartCookie()
+func (cluster *Cluster) SlapOSStartAppService(apl *app.App) error {
+	apl.SetWaitStartCookie()
 	return nil
 }
 
-func (cluster *Cluster) SlapOSStopAppService(server app.AppInterface) error {
-	server.SetWaitStopCookie()
+func (cluster *Cluster) SlapOSStopAppService(apl *app.App) error {
+	apl.SetWaitStopCookie()
 	return nil
 }

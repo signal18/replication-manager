@@ -203,27 +203,27 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) InitAppService(appi app.AppInterface) error {
+func (cluster *Cluster) InitAppService(apl *app.App) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		go cluster.OpenSVCProvisionAppService(appi)
+		go cluster.OpenSVCProvisionAppService(apl)
 	case config.ConstOrchestratorKubernetes:
-		go cluster.K8SProvisionAppService(appi)
+		go cluster.K8SProvisionAppService(apl)
 	case config.ConstOrchestratorSlapOS:
-		go cluster.SlapOSProvisionAppService(appi)
+		go cluster.SlapOSProvisionAppService(apl)
 	case config.ConstOrchestratorLocalhost:
-		go cluster.LocalhostProvisionAppService(appi)
+		go cluster.LocalhostProvisionAppService(apl)
 	case config.ConstOrchestratorOnPremise:
-		go cluster.OnPremiseProvisionAppService(appi)
+		go cluster.OnPremiseProvisionAppService(apl)
 	default:
 		return nil
 	}
-	cluster.ProvisionAppScript(appi)
+	cluster.ProvisionAppScript(apl)
 	select {
 	case err := <-cluster.errorChan:
 		cluster.StateMachine.RemoveFailoverState()
 		if err == nil {
-			appi.SetProvisionCookie()
+			apl.SetProvisionCookie()
 		} else {
 			return err
 		}
@@ -310,28 +310,28 @@ func (cluster *Cluster) Unprovision() error {
 		}
 	}
 
-	for _, appi := range cluster.Apps {
+	for _, apl := range cluster.Apps {
 		/*	prx, ok := pri.(*Proxy)
 			if !ok {
 				continue
 			}*/
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
-			go cluster.OpenSVCUnprovisionAppService(appi)
+			go cluster.OpenSVCUnprovisionAppService(apl)
 		case config.ConstOrchestratorKubernetes:
-			go cluster.K8SUnprovisionAppService(appi)
+			go cluster.K8SUnprovisionAppService(apl)
 		case config.ConstOrchestratorSlapOS:
-			go cluster.SlapOSUnprovisionAppService(appi)
+			go cluster.SlapOSUnprovisionAppService(apl)
 		case config.ConstOrchestratorLocalhost:
-			go cluster.LocalhostUnprovisionAppService(appi)
+			go cluster.LocalhostUnprovisionAppService(apl)
 		case config.ConstOrchestratorOnPremise:
-			go cluster.OnPremiseUnprovisionAppService(appi)
+			go cluster.OnPremiseUnprovisionAppService(apl)
 		default:
 
 		}
-		cluster.UnprovisionAppScript(appi)
+		cluster.UnprovisionAppScript(apl)
 	}
-	for _, appi := range cluster.Apps {
+	for _, apl := range cluster.Apps {
 		/*	prx, ok := pri.(*Proxy)
 			if !ok {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "Unprovision proxy continue ")
@@ -340,12 +340,12 @@ func (cluster *Cluster) Unprovision() error {
 		select {
 		case err := <-cluster.errorChan:
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+appi.GetName())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+apl.GetName())
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+appi.GetName())
-				appi.DelProvisionCookie()
-				appi.DelRestartCookie()
-				appi.DelReprovisionCookie()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+apl.GetName())
+				apl.DelProvisionCookie()
+				apl.DelRestartCookie()
+				apl.DelReprovisionCookie()
 			}
 		}
 	}
@@ -415,27 +415,27 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) UnprovisionAppService(appi app.AppInterface) error {
+func (cluster *Cluster) UnprovisionAppService(apl *app.App) error {
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		go cluster.OpenSVCUnprovisionAppService(appi)
+		go cluster.OpenSVCUnprovisionAppService(apl)
 	case config.ConstOrchestratorKubernetes:
-		go cluster.K8SUnprovisionAppService(appi)
+		go cluster.K8SUnprovisionAppService(apl)
 	case config.ConstOrchestratorSlapOS:
-		go cluster.SlapOSUnprovisionAppService(appi)
+		go cluster.SlapOSUnprovisionAppService(apl)
 	case config.ConstOrchestratorLocalhost:
-		go cluster.LocalhostUnprovisionAppService(appi)
+		go cluster.LocalhostUnprovisionAppService(apl)
 	case config.ConstOrchestratorOnPremise:
-		go cluster.OnPremiseUnprovisionAppService(appi)
+		go cluster.OnPremiseUnprovisionAppService(apl)
 	default:
 	}
-	cluster.UnprovisionAppScript(appi)
+	cluster.UnprovisionAppScript(apl)
 	select {
 	case err := <-cluster.errorChan:
 		if err == nil {
-			appi.DelProvisionCookie()
-			appi.DelReprovisionCookie()
-			appi.DelRestartCookie()
+			apl.DelProvisionCookie()
+			apl.DelReprovisionCookie()
+			apl.DelRestartCookie()
 		}
 		return err
 	}
@@ -495,7 +495,7 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	return err
 }
 
-func (cluster *Cluster) StopAppService(server app.AppInterface) error {
+func (cluster *Cluster) StopAppService(server *app.App) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 
@@ -544,7 +544,7 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	return err
 }
 
-func (cluster *Cluster) StartAppService(server app.AppInterface) error {
+func (cluster *Cluster) StartAppService(server *app.App) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
 	switch cluster.GetOrchestrator() {
