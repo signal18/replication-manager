@@ -241,7 +241,7 @@ func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) ProvisionAppScript(server app.AppInterface) error {
+func (cluster *Cluster) ProvisionAppScript(server *app.App) error {
 	if cluster.Conf.ProvProxyBootstrapScript == "" {
 		return nil
 	}
@@ -269,7 +269,7 @@ func (cluster *Cluster) ProvisionAppScript(server app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) UnprovisionAppScript(server app.AppInterface) error {
+func (cluster *Cluster) UnprovisionAppScript(server *app.App) error {
 	if cluster.Conf.ProvProxyCleanupScript == "" {
 		return nil
 	}
@@ -298,7 +298,7 @@ func (cluster *Cluster) UnprovisionAppScript(server app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) StartAppScript(server app.AppInterface) error {
+func (cluster *Cluster) StartAppScript(server *app.App) error {
 	if cluster.Conf.ProvProxyStartScript == "" {
 		return nil
 	}
@@ -326,7 +326,7 @@ func (cluster *Cluster) StartAppScript(server app.AppInterface) error {
 	return nil
 }
 
-func (cluster *Cluster) StopAppScript(server app.AppInterface) error {
+func (cluster *Cluster) StopAppScript(server *app.App) error {
 	if cluster.Conf.ProvProxyStopScript == "" {
 		return nil
 	}

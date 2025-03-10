@@ -18,7 +18,6 @@ import (
 	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -184,25 +183,13 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, apl *app.App) (s
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = apl.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	if apl.OpenSVCGetAppDiskType() != "volume" {
-		svcsection["disk#0000"] = cluster.OpenSVCGetDiskZpoolDockerPrivateSection()
-		svcsection["disk#00"] = cluster.OpenSVCGetDiskLoopbackDockerPrivateSection()
-		svcsection["disk#01"] = cluster.OpenSVCGetDiskLoopbackPodSection()
-		svcsection["disk#0001"] = cluster.OpenSVCGetDiskLoopbackSnapshotPodSection()
-		svcsection["fs#00"] = cluster.OpenSVCGetFSDockerPrivateSection()
-		svcsection["fs#01"] = cluster.OpenSVCGetFSPodSection()
-	} else {
-		if cluster.Conf.ProvDockerDaemonPrivate {
-			svcsection["volume#00"] = cluster.OpenSVCGetVolumeDockerSection()
-		}
-		svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(apl)
-	}
+	svcsection["volume#data"] = cluster.OpenSVCGetAppVolumeDataSection(apl)
 
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(apl.GetPort())
 	svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(apl)
 
-	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
+	// svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -216,8 +203,8 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, apl *app.App) (s
 func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi *app.App) map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = appi.GetAgent()
-	if appi.OpenSVCGetAppDiskPool() == "zpool" && appi.OpenSVCGetAppAgentsFailover() != "" {
-		svcdefault["nodes"] = appi.GetAgent() + "," + appi.OpenSVCGetAppAgentsFailover()
+	if appi.GetAppDiskPool() == "zpool" && appi.GetAppAgentsFailover() != "" {
+		svcdefault["nodes"] = appi.GetAgent() + "," + appi.GetAppAgentsFailover()
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
@@ -227,16 +214,16 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(appi *app.App) map[string]st
 		svcdefault["orchestrate"] = "ha"
 	}
 	svcdefault["app"] = cluster.Conf.ProvCodeApp
-	if appi.OpenSVCGetAppServiceType() == "docker" {
+	if appi.GetAppServiceType() == "docker" {
 		if cluster.Conf.ProvDockerDaemonPrivate {
 			svcdefault["docker_daemon_private"] = "true"
-			if appi.OpenSVCGetAppDiskType() != "volume" {
+			if appi.GetAppDiskType() != "volume" {
 				svcdefault["docker_data_dir"] = "{env.base_dir}/docker"
 
 			} else {
 				svcdefault["docker_data_dir"] = "{name}-docker/docker"
 			}
-			if appi.OpenSVCGetAppDiskPool() == "zpool" {
+			if appi.GetAppDiskPool() == "zpool" {
 				svcdefault["docker_daemon_args"] = " --storage-driver=zfs"
 			} else {
 				svcdefault["docker_daemon_args"] = " --storage-driver=overlay"
@@ -253,7 +240,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appi *app.App) map[string
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
 	svcvol["size"] = "{env.size}"
-	svcvol["pool"] = appi.OpenSVCGetAppDiskPool()
+	svcvol["pool"] = appi.GetAppDiskPool()
 
 	return svcvol
 }
@@ -282,105 +269,105 @@ func (cluster *Cluster) FoundAppAgent(app *app.App) (opensvc.Host, error) {
 	return agent, errors.New("Indice not found in apps agent list")
 }
 
-func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app *app.App) map[string]string {
-	ips := strings.Split(app.OpenSVCGetAppGateway(), ".")
-	masks := strings.Split(app.OpenSVCGetAppNetMask(), ".")
-	for i, mask := range masks {
-		if mask == "0" {
-			ips[i] = "0"
-		}
-	}
-	network := strings.Join(ips, ".")
+// func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app *app.App) map[string]string {
+// 	ips := strings.Split(app.GetAppGateway(), ".")
+// 	masks := strings.Split(app.GetAppNetMask(), ".")
+// 	for i, mask := range masks {
+// 		if mask == "0" {
+// 			ips[i] = "0"
+// 		}
+// 	}
+// 	network := strings.Join(ips, ".")
 
-	if app.GetVIP() != "" && app.OpenSVCGetRouteAddr() == "" {
-		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
-		app.OpenSVCSetRouteAddr(routeaddr)
-		app.OpenSVCSetRoutePort(routeport)
-	}
-	svcenv := make(map[string]string)
-	svcenv["nodes"] = app.GetAgent()
-	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = app.OpenSVCGetAppDiskSize() + "g"
-	svcenv["ip_pod01"] = app.GetHost()
-	svcenv["port_pod01"] = app.GetPort()
-	svcenv["network"] = network
-	svcenv["gateway"] = app.OpenSVCGetAppGateway()
-	svcenv["netmask"] = app.OpenSVCGetAppNetMask()
-	svcenv["vip_addr"] = app.OpenSVCGetRouteAddr()
-	svcenv["vip_port"] = app.OpenSVCGetRoutePort()
-	svcenv["vip_netmask"] = app.OpenSVCGetRouteMask()
-	svcenv["port_http"] = "80"
-	svcenv["proxy_ips"] = proxies
-	svcenv["port_telnet"] = app.GetPort()
-	svcenv["port_admin"] = app.GetPort()
-	svcenv["user_admin"] = app.GetUser()
-	svcenv["password_admin"] = app.GetPass()
-	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
-	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
+// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
+// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
+// 		app.OpenSVCSetRouteAddr(routeaddr)
+// 		app.OpenSVCSetRoutePort(routeport)
+// 	}
+// 	svcenv := make(map[string]string)
+// 	svcenv["nodes"] = app.GetAgent()
+// 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
+// 	svcenv["size"] = app.GetAppDiskSize() + "g"
+// 	svcenv["ip_pod01"] = app.GetHost()
+// 	svcenv["port_pod01"] = app.GetPort()
+// 	svcenv["network"] = network
+// 	svcenv["gateway"] = app.GetAppGateway()
+// 	svcenv["netmask"] = app.GetAppNetMask()
+// 	svcenv["vip_addr"] = app.GetRouteAddr()
+// 	svcenv["vip_port"] = app.GetRoutePort()
+// 	svcenv["vip_netmask"] = app.GetRouteMask()
+// 	svcenv["port_http"] = "80"
+// 	svcenv["proxy_ips"] = proxies
+// 	svcenv["port_telnet"] = app.GetPort()
+// 	svcenv["port_admin"] = app.GetPort()
+// 	svcenv["user_admin"] = app.GetUser()
+// 	svcenv["password_admin"] = app.GetPass()
+// 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
+// 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
-	return svcenv
-}
+// 	return svcenv
+// }
 
-func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app *app.App) string {
-	i := 0
-	ipPods := ""
-	//if !cluster.Conf.ProvNetCNI {
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetHost() + `
-	`
-	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetPort() + `
-`
-	/*} else {
-		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-	}
-	ips := strings.Split(collector.ProvAppNetGateway, ".")
-	masks := strings.Split(collector.ProvAppNetMask, ".")
-	for i, mask := range masks {
-			if mask == "0" {
-				ips[i] = "0"
-			}
-		}
-		network := strings.Join(ips, ".")
-	*/
-	if app.GetVIP() != "" && app.OpenSVCGetRouteAddr() == "" {
-		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
-		app.OpenSVCSetRouteAddr(routeaddr)
-		app.OpenSVCSetRoutePort(routeport)
-	}
+// func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app *app.App) string {
+// 	i := 0
+// 	ipPods := ""
+// 	//if !cluster.Conf.ProvNetCNI {
+// 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetHost() + `
+// 	`
+// 	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetPort() + `
+// `
+// 	/*} else {
+// 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
+// 	}
+// 	ips := strings.Split(collector.ProvAppNetGateway, ".")
+// 	masks := strings.Split(collector.ProvAppNetMask, ".")
+// 	for i, mask := range masks {
+// 			if mask == "0" {
+// 				ips[i] = "0"
+// 			}
+// 		}
+// 		network := strings.Join(ips, ".")
+// 	*/
+// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
+// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
+// 		app.OpenSVCSetRouteAddr(routeaddr)
+// 		app.OpenSVCSetRoutePort(routeport)
+// 	}
 
-	conf := `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvAppDisk + `
-` + ipPods + `
-` + portPods + `
-sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
-vip_addr = ` + app.OpenSVCGetRouteAddr() + `
-vip_port  = ` + app.OpenSVCGetRoutePort() + `
-vip_netmask =  ` + app.OpenSVCGetRouteMask() + `
-port_http = 80
-base_dir = /srv/{namespace}-{svcname}
-backend_ips = ` + servers + `
-port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
-port_telnet = ` + app.GetPort() + `
-port_admin = ` + app.GetPort() + `
-user_admin = ` + app.GetUser() + `
-password_admin = ` + app.GetPass() + `
-mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-`
+// 	conf := `
+// [env]
+// nodes = ` + agent.Node_name + `
+// size = ` + collector.ProvAppDisk + `
+// ` + ipPods + `
+// ` + portPods + `
+// sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
+// vip_addr = ` + app.GetRouteAddr() + `
+// vip_port  = ` + app.GetRoutePort() + `
+// vip_netmask =  ` + app.GetRouteMask() + `
+// port_http = 80
+// base_dir = /srv/{namespace}-{svcname}
+// backend_ips = ` + servers + `
+// port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
+// port_telnet = ` + app.GetPort() + `
+// port_admin = ` + app.GetPort() + `
+// user_admin = ` + app.GetUser() + `
+// password_admin = ` + app.GetPass() + `
+// mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
+// mrm_cluster_name = ` + cluster.GetClusterName() + `
+// `
 
-	return conf
-}
+// 	return conf
+// }
 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(server *app.App) map[string]string {
 	svccontainer := make(map[string]string)
-	if slices.Contains([]string{"docker", "podman", "oci"}, server.OpenSVCGetAppServiceType()) {
+	if slices.Contains([]string{"docker", "podman", "oci"}, server.GetAppServiceType()) {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.nginx_img}"
 		svccontainer["rm"] = "true"
-		svccontainer["type"] = server.OpenSVCGetAppServiceType()
-		if server.OpenSVCGetAppDiskType() != "volume" {
+		svccontainer["type"] = server.GetAppServiceType()
+		if server.GetAppDiskType() != "volume" {
 			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/nginx:/usr/local/etc/nginx:rw ` + server.GetAppDockerRunArgs()
 		} else {
 			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
@@ -414,7 +401,7 @@ orchestrate = start
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerNginxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
+	// conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
 	log.Println(conf)
 	return conf, nil
 }

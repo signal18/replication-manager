@@ -19,7 +19,6 @@ import (
 	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
 	"github.com/spf13/pflag"
@@ -30,7 +29,6 @@ var AppConfig config.AppConfig
 type AppList []*App
 
 type App struct {
-	AppInterface
 	Id                    string                     `json:"id"`
 	Name                  string                     `json:"name"`
 	Domain                string                     `json:"domain"`
@@ -73,108 +71,14 @@ type App struct {
 	Version               *version.Version      `json:"-"`
 }
 
-type AppInterface interface {
-	AddFlags(flags *pflag.FlagSet, conf *config.AppConfig)
-	Init()
-	Refresh() error
-	Failover()
-	GetType() string
-	IsRunning() bool
-	IsIgnored() bool
-	GetFailCount() int
-	SetFailCount(c int)
-	DelLock()
-	SetLock()
-	GetAgent() string
-	GetName() string
-	GetHost() string
-	GetPort() string
-	GetUser() string
-	GetPass() string
-	GetURL() string
-	GetId() string
-	GetState() string
-	GetServiceName() string
-	GetOrchestrator() string
-	GetPrevState() string
-	SetPrevState(state string)
-	GetClustername() string
-	IsDown() bool
-	GetAppConfig() string
-	GetDatadir() string
-	GetConfigDatadir() string
-	GetConfigConfigdir() string
-	GetEnv() map[string]string
-	GetSshEnv() string
-	GetInitContainer(collector opensvc.Collector) string
-	OpenSVCGetAppDefaultSection() map[string]string
-	OpenSVCGetAppDiskPool() string
-	OpenSVCGetAppDiskType() string
-	OpenSVCGetAppAgentsFailover() string
-	OpenSVCGetAppDiskSize() string
-	OpenSVCGetAppServiceType() string
-	OpenSVCGetAppGateway() string
-	OpenSVCGetAppNetMask() string
-	OpenSVCGetRouteAddr() string
-	OpenSVCGetRoutePort() string
-	OpenSVCGetRouteMask() string
-	OpenSVCGetAppCpuCores() string
-	OpenSVCGetAppMemory() string
-	OpenSVCGetAppVolumeData() string
-	GetAppDockerImg() string
-	GetAppDockerRunArgs() string
-	OpenSVCSetRouteAddr(addr string)
-	OpenSVCSetRoutePort(port string)
-	GetVIP() string
-	SetSuspect()
-	SetID()
-	SetDataDir()
-	SetServiceName(namespace string)
-	SetProvAppImage(value string) error
-	SetProvAppAgents(value string) error
-	SetProvAppDiskSize(value string) error
-	SetProvAppServiceType(value string) error
-	SetProvAppCpuCores(value string) error
-	SetProvAppMemory(value string) error
-	SetProvAppVolumeData(value string) error
-	SetProvAppDockerImg(value string) error
-	SetProvAppDockerRunArgs(value string) error
-	SetProvAppGateway(value string) error
-	SetProvAppNetMask(value string) error
-	SetProvAppRouteAddr(value string) error
-	SetProvAppRoutePort(value string) error
-	SetProvAppRouteMask(value string) error
-	SetProvAppType(value string) error
-	SetProvAppDiskPool(value string) error
-	SetProvAppDiskType(value string) error
-	SetProvAppAgentsFailover(value string) error
-	SetProvisionCookie() error
-	SetUnprovisionCookie() error
-	SetReprovCookie() error
-	SetRestartCookie() error
-	SetWaitStartCookie() error
-	SetWaitStopCookie() error
-	HasProvisionCookie() bool
-	HasUnprovisionCookie() bool
-	HasReprovCookie() bool
-	HasRestartCookie() bool
-	HasWaitStartCookie() bool
-	HasWaitStopCookie() bool
-	HasConfigCookie() bool
-	DelProvisionCookie() error
-	DelUnprovisionCookie() error
-	DelReprovisionCookie() error
-	DelRestartCookie() error
-	DelWaitStartCookie() error
-	DelWaitStopCookie() error
-}
-
 type ClusterInterface interface {
 	GetName() string
 	GetHost() string
 	GetPort() string
 	GetCrcTable() *crc64.Table
 	GetConf() *config.Config
+	GetDbPass() string
+	GetDbUser() string
 	GetConfigurator() configurator.Configurator
 	GetAPIUserByUsername(username string) (clusterauth.APIUser, bool)
 	IsInFailover() bool

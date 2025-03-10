@@ -191,3 +191,19 @@ func (app *App) GetSshEnv() string {
 	}
 	return "export REPLICATION_MANAGER_URL=\"https://" + app.Cluster.GetConf().MonitorAddress + ":" + app.Cluster.GetConf().APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + app.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + app.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + app.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + app.Cluster.GetName() + "\"\n"
 }
+
+func (app *App) GetEnv() map[string]string {
+	return app.GetBaseEnv()
+}
+
+func (app *App) GetBaseEnv() map[string]string {
+	return map[string]string{}
+}
+
+func (app *App) GetUser() string {
+	return app.User
+}
+
+func (app *App) GetPass() string {
+	return app.Pass
+}

@@ -2428,7 +2428,7 @@ func (repman *ReplicationManager) handlerMuxSetClusterAppSetting(w http.Response
 	}
 }
 
-func (repman *ReplicationManager) setClusterAppSetting(mycluster *cluster.Cluster, app app.AppInterface, name, value string) error {
+func (repman *ReplicationManager) setClusterAppSetting(mycluster *cluster.Cluster, app *app.App, name, value string) error {
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
 

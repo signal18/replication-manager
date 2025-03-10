@@ -128,23 +128,23 @@ func (app *App) SetProvAppAgents(value string) error {
 	app.AppConfig.ProvAppAgents = value
 	return nil
 }
-func (app *App) SetAppDiskSize(value string) error {
+func (app *App) SetProvAppDiskSize(value string) error {
 	app.AppConfig.ProvAppDiskSize = value
 	return nil
 }
-func (app *App) SetAppCores(value string) error {
+func (app *App) SetProvAppCpuCores(value string) error {
 	app.AppConfig.ProvAppCpuCores = value
 	return nil
 }
-func (app *App) SetAppMemorySize(value string) error {
+func (app *App) SetProvAppMemory(value string) error {
 	app.AppConfig.ProvAppMemory = value
 	return nil
 }
-func (app *App) SetAppVolumeData(value string) error {
+func (app *App) SetProvAppVolumeData(value string) error {
 	app.AppConfig.ProvAppVolumeData = value
 	return nil
 }
-func (app *App) SetAppDockerRunArgs(value string) error {
+func (app *App) SetProvAppDockerRunArgs(value string) error {
 	app.AppConfig.ProvAppDockerRunArgs = value
 	return nil
 }
