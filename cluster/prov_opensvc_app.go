@@ -154,7 +154,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(apl *app.App) error {
 		}
 	} else {
 		if strings.Contains(svc.ProvAppAgents, agent.Node_name) {
-			res, err := cluster.GetNginxTemplate(svc, strings.Join(srvlist, " "), agent, apl)
+			res, err := cluster.GetAppTemplate(svc, strings.Join(srvlist, " "), agent, apl)
 			if err != nil {
 				cluster.errorChan <- err
 				return err
@@ -379,7 +379,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(server *app.App) map[strin
 	return svccontainer
 }
 
-func (cluster *Cluster) GetNginxTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi *app.App) (string, error) {
+func (cluster *Cluster) GetAppTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi *app.App) (string, error) {
 
 	conf := `
 [DEFAULT]
