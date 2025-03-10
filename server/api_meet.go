@@ -16,6 +16,7 @@ import (
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/config"
+	_ "github.com/signal18/replication-manager/docs"
 	"github.com/signal18/replication-manager/utils/meethelper"
 )
 
@@ -70,8 +71,15 @@ func (repman *ReplicationManager) apiMeetProtectedHandler(router *mux.Router) {
 	// /////////////////////////
 }
 
-// Meet Handler
-// to send user info to the front (userID, All available channels, allusers id for private chat)
+// @Summary Retrieve Meet user information.
+// @Description Fetch user-related information, including available channels and unread messages.
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Success 200 {array} map[string]interface{} "User information retrieved successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/info [get]
 func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -125,6 +133,17 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 
 }
 
+// @Summary Retrieve messages from a channel
+// @Description Fetch the messages from a specific channel.
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "Channel ID to fetch messages from"
+// @Param page path integer true "page number fetch messages from"
+// @Success 200 {object} meethelper.MeetChannelMessages "Messages retrieved successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/read/{channelId}/{page} [get]
 func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -183,6 +202,17 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 
 }
 
+// @Summary Post a message to a channel
+// @Description Post a message to a specified channel.
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "Channel ID"
+// @Param body body map[string]string true "Message content"
+// @Success 200 {array} map[string]interface{} "Message sent successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/post/{channelId} [post]
 func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -247,6 +277,17 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Post Jitsi meeting link
+// @Description Posts a Jitsi meeting link to a specific channel.
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "Channel ID"
+// @Param meetingId path string true "ID of the Jitsi meeting"
+// @Success 200 {array} map[string]interface{} "Jitsi meeting link posted successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/post/jitsi/{channelId}/{meetingId} [post]
 func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -310,6 +351,16 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary View meet messages
+// @Description Views messages in a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "Channel ID to fetch messages from"
+// @Success 200 {array} map[string]interface{} "Messages viewed successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/view/{channelId} [get]
 func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -363,6 +414,16 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 
 }
 
+// @Summary Create direct channel
+// @Description Creates a direct channel with a specific user
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param userId path string true "ID of the user"
+// @Success 200 {array} map[string]interface{} "Direct channel created successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/create/direct/{userId} [get]
 func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -418,6 +479,16 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Create private channel
+// @Description Creates a private channel with a specific name
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelName path string true "Name of the new channel"
+// @Success 200 {array} map[string]interface{} "Private channel created successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/create/private/{channelName} [get]
 func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -470,6 +541,16 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Create public channel
+// @Description Creates a public channel with a specific name
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelName path string true "Name of the new channel"
+// @Success 200 {array} map[string]interface{} "Public channel created successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/create/public/{channelName} [get]
 func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -524,6 +605,16 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Delete channel
+// @Description Deletes a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "ID of the channel to delete"
+// @Success 200 {array} map[string]interface{} "Channel deleted successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/delete/{channelId} [get]
 func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -577,6 +668,16 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Leave channel
+// @Description Leaves a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "ID of the channel to leave"
+// @Success 200 {array} map[string]interface{} "Channel left successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/leave/{channelId} [get]
 func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -630,6 +731,17 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Add user to channel
+// @Description Adds a user to a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "ID of the channel"
+// @Param userId path string true "ID of the user to add"
+// @Success 200 {array} map[string]interface{} "User added to the channel successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/add/{channelId}/{userId} [get]
 func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -691,6 +803,16 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Join channel
+// @Description Joins a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "ID of the channel to join"
+// @Success 200 {array} map[string]interface{} "Channel joined successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/join/{channelId} [get]
 func (repman *ReplicationManager) JoinChannelMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -744,6 +866,15 @@ func (repman *ReplicationManager) JoinChannelMeetHandler(w http.ResponseWriter, 
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Logout meet user
+// @Description Logs out the user and sets their status to offline
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Success 200 {array} map[string]interface{} "User logged out successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/logout [get]
 func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -788,6 +919,20 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Upload file to channel
+// @Description Uploads a file to a specific channel
+// @Tags Meet
+// @Consume multipart/form-data
+// @Produces application/json,
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param channelId path string true "Channel ID"
+// @Param file formData file true "File to upload"
+// @Param message formData string false "Message to accompany the file"
+// @Success 200 {array} map[string]interface{} "File uploaded successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/upload/{channelId} [post]
 func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -863,6 +1008,16 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 	json.NewEncoder(w).Encode(response)
 }
 
+// @Summary Download file from channel
+// @Description Downloads a file from a specific channel
+// @Tags Meet
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param X-User-ID header string true "User ID for authentication"
+// @Param fileId path string true "File ID"
+// @Success 200 {file} file "File downloaded successfully"
+// @Failure 401 {string} string "Unauthorized user"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /meet/download/{fileId} [get]
 func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")

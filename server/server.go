@@ -354,7 +354,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	flags.StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
 	flags.IntVar(&conf.MonitorCaptureFileKeep, "monitoring-capture-file-keep", 5, "Purge capture file keep that number of them")
-	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087", "List of errno triggering an alert to be send")
+	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 
@@ -553,8 +553,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
 	flags.StringVar(&conf.GitAccesToken, "git-acces-token", "", "GitHub personnal acces token")
 	flags.IntVar(&conf.GitMonitoringTicker, "git-monitoring-ticker", 300, "Git monitoring interval in seconds")
-	flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
-	flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
+	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
+	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
 	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
 
@@ -923,6 +923,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackChannel, "cloud18-alert-slack-channel", "signal18_alert", "Alert channel for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
+	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
@@ -1154,9 +1155,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus = log.New()
 	}
 	if repman.ConfigManager == nil {
-		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus), conf.GitMinWorker, conf.GitMaxWorker)
+		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus))
 	}
-	repman.PeerManager = peer.NewPeerManager()
+	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
@@ -1498,7 +1499,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	*repman.Conf = conf
 	repman.ViperConfig = fistRead
 	repman.ConfigManager.UpdateLoggerConfig("default", repman.Conf)
-	repman.ConfigManager.SetWorker(repman.Conf.GitMinWorker, repman.Conf.GitMaxWorker)
+	repman.PeerManager.SetInterval(repman.Conf.Cloud18HealthRefreshInterval)
 }
 
 func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, ImmuableMap map[string]interface{}, DynamicMap map[string]interface{}, cluster string, conf config.Config) config.Config {
@@ -2070,6 +2071,15 @@ func (repman *ReplicationManager) Run() error {
 		cluster.SetClusterList(repman.Clusters)
 		cluster.SetCarbonLogger(repman.clog)
 	}
+
+	// Send email message
+	addr := repman.Conf.MonitorAddress
+	if repman.Conf.Cloud18 {
+		addr = repman.Conf.APIPublicURL
+	}
+	msg := fmt.Sprintf("Alert: Replication-Manager started\nVersion: %s\nTimestamp: %s\nMonitor: %s\n", repman.Conf.Version, time.Now().Format("2006-01-02 15:04:05"), addr)
+	subj := "Replication-Manager started"
+	go repman.SendEmailMessage(msg, subj, repman.Conf.MailTo, false, nil)
 
 	repman.ReadCloud18Config()
 

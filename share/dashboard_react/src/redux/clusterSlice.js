@@ -10,7 +10,16 @@ export const getClusterData = createAsyncThunk('cluster/getClusterData', async (
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.cluster) {
+        return false;
+      }
+    }
+  });
 
 export const getClusterAlerts = createAsyncThunk('cluster/getClusterAlerts', async ({ clusterName }, thunkAPI) => {
   try {
@@ -30,7 +39,16 @@ export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', asy
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.master) {
+        return false;
+      }
+    }
+  });
 
 export const getClusterServers = createAsyncThunk('cluster/getClusterServers', async ({ clusterName }, thunkAPI) => {
   try {
@@ -40,7 +58,16 @@ export const getClusterServers = createAsyncThunk('cluster/getClusterServers', a
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.servers) {
+        return false;
+      }
+    }
+  });
 
 export const getClusterProxies = createAsyncThunk('cluster/getClusterProxies', async ({ clusterName }, thunkAPI) => {
   try {
@@ -50,7 +77,16 @@ export const getClusterProxies = createAsyncThunk('cluster/getClusterProxies', a
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.proxies) {
+        return false;
+      }
+    }
+  });
 
 export const getClusterCertificates = createAsyncThunk(
   'cluster/getClusterCertificates',
@@ -1022,10 +1058,10 @@ export const dropUser = createAsyncThunk(
   }
 )
 
-export const clusterSubscribe = createAsyncThunk('auth/clusterSubscribe', async ({  password, clusterName, baseURL }, thunkAPI) => {
+export const clusterSubscribe = createAsyncThunk('auth/clusterSubscribe', async ({ password, clusterName, baseURL }, thunkAPI) => {
   try {
     const { data, status } = await clusterService.clusterSubscribe(thunkAPI.getState().auth.user.username, password, clusterName, baseURL)
-    if (status === 200) { 
+    if (status === 200) {
       showSuccessBanner(`Register user to peer cluster sent!`, status, thunkAPI)
       return { data, status }
     } else {
@@ -1046,7 +1082,7 @@ export const acceptSubscription = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.acceptSubscription(clusterName, username, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Subscription accepted successfully!`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1125,7 +1161,7 @@ export const subscribeExternalRole = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.subscribeExternalRole(clusterName, username, roles, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Role '${roles}' for '${username}' is requested successful!`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1144,7 +1180,7 @@ export const quoteExternalRole = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.quoteExternalRole(clusterName, username, roles, cost, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Role '${roles}' for '${username}' is quoteed successful!`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1163,7 +1199,7 @@ export const acceptExternalRole = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.acceptExternalRole(clusterName, username, roles, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Role '${roles}' for '${username}' is accepted successful!`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1182,7 +1218,7 @@ export const refuseExternalRole = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.refuseExternalRole(clusterName, username, roles, reason, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Role '${roles}' for '${username}' is refused !`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1202,7 +1238,7 @@ export const endExternalRole = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.endExternalRole(clusterName, username, roles, reason, baseURL)
-      if (status === 200) { 
+      if (status === 200) {
         showSuccessBanner(`Role '${roles}' is deactivated from '${username}'!`, status, thunkAPI)
         return { data, status }
       } else {
@@ -1217,6 +1253,14 @@ export const endExternalRole = createAsyncThunk(
 
 const initialState = {
   loading: false,
+  isFetching: {
+    cluster: false,
+    alerts: false,
+    master: false,
+    servers: false,
+    proxies: false,
+    certificates: false,
+  },
   error: null,
   clusterData: null,
   clusterAlerts: null,
@@ -1225,7 +1269,7 @@ const initialState = {
   clusterProxies: null,
   clusterCertificates: null,
   clusterStates: null,
-  backups : {
+  backups: {
     snapshots: null,
     stats: null
   },
@@ -1297,15 +1341,20 @@ export const clusterSlice = createSlice({
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
+          state.isFetching.cluster = false
           state.clusterData = action.payload.data
         } else if (action.type.includes('getClusterAlerts')) {
+          state.isFetching.alerts = false
           state.clusterAlerts = action.payload.data
         } else if (action.type.includes('getClusterMaster')) {
+          state.isFetching.master = false
           state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
+          state.isFetching.servers = false
           state.clusterServers = action.payload.data
-          state.clusterStates = action.payload.data.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',')
+          state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
         } else if (action.type.includes('getClusterProxies')) {
+          state.isFetching.proxies = false
           state.clusterProxies = action.payload.data
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
@@ -1344,6 +1393,53 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'query-response-time') {
             state.database.responsetime = action.payload.data
           }
+        }
+      }
+    )
+
+    builder.addMatcher(
+      isAnyOf(
+        getClusterData.pending,
+        getClusterAlerts.pending,
+        getClusterMaster.pending,
+        getClusterServers.pending,
+        getClusterProxies.pending,
+        getClusterCertificates.pending,
+      ),
+      (state, action) => {
+        if (action.type.includes('getClusterData')) {
+          state.isFetching.cluster = true
+        } else if (action.type.includes('getClusterAlerts')) {
+          state.isFetching.alerts = true
+        } else if (action.type.includes('getClusterMaster')) {
+          state.isFetching.master = true
+        } else if (action.type.includes('getClusterServers')) {
+          state.isFetching.servers = true
+        } else if (action.type.includes('getClusterProxies')) {
+          state.isFetching.proxies = true
+        }
+      }
+    )
+
+    builder.addMatcher(
+      isAnyOf(
+        getClusterData.rejected,
+        getClusterAlerts.rejected,
+        getClusterMaster.rejected,
+        getClusterServers.rejected,
+        getClusterProxies.rejected,
+        getClusterCertificates.rejected,
+      ), (state, action) => {
+        if (action.type.includes('getClusterData')) {
+          state.isFetching.cluster = false
+        } else if (action.type.includes('getClusterAlerts')) {
+          state.isFetching.alerts = false
+        } else if (action.type.includes('getClusterMaster')) {
+          state.isFetching.master = false
+        } else if (action.type.includes('getClusterServers')) {
+          state.isFetching.servers = false
+        } else if (action.type.includes('getClusterProxies')) {
+          state.isFetching.proxies = false
         }
       }
     )

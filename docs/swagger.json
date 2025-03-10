@@ -11733,7 +11733,7 @@
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/"
+                                "$ref": "#/definitions/peer.PeerNodeStatus"
                             }
                         }
                     },
@@ -12383,20 +12383,358 @@
                 }
             }
         },
-
+        "/meet/add/{channelId}/{userId}": {
+            "get": {
+                "description": "Adds a user to a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Add user to channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID of the channel",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID of the user to add",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User added to the channel successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/create/direct/{userId}": {
+            "get": {
+                "description": "Creates a direct channel with a specific user",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Create direct channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID of the user",
+                        "name": "userId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Direct channel created successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/create/private/{channelName}": {
+            "get": {
+                "description": "Creates a private channel with a specific name",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Create private channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name of the new channel",
+                        "name": "channelName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Private channel created successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/create/public/{channelName}": {
+            "get": {
+                "description": "Creates a public channel with a specific name",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Create public channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Name of the new channel",
+                        "name": "channelName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Public channel created successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/delete/{channelId}": {
+            "get": {
+                "description": "Deletes a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Delete channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID of the channel to delete",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Channel deleted successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/download/{fileId}": {
+            "get": {
+                "description": "Downloads a file from a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Download file from channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "File ID",
+                        "name": "fileId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "File downloaded successfully",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/meet/info": {
             "get": {
-                "summary": "Retrieve Meet user information",
                 "description": "Fetch user-related information, including available channels and unread messages.",
                 "tags": [
                     "Meet"
                 ],
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
+                "summary": "Retrieve Meet user information.",
                 "parameters": [
                     {
                         "type": "string",
@@ -12407,28 +12745,32 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "User ID for authentication",
                         "name": "X-User-ID",
                         "in": "header",
-                        "required": true,
-                        "type": "string",
-                        "description": "User ID for authentication"
+                        "required": true
                     }
                 ],
                 "responses": {
-                    "200": { 
-                        "description": "User information retrieved successfully.",
+                    "200": {
+                        "description": "User information retrieved successfully",
                         "schema": {
-                                "$ref": "#/definitions/meet.MeetInfo"
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
                             }
+                        }
                     },
-                    "401": { 
-                        "description": "Unauthorized user.",
+                    "401": {
+                        "description": "Unauthorized user",
                         "schema": {
                             "type": "string"
-                        } 
+                        }
                     },
-                    "500": { 
-                        "description": "Internal server error.",
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -12436,26 +12778,14 @@
                 }
             }
         },
-        "/meet/read/{channelId}/{page}": {
+        "/meet/join/{channelId}": {
             "get": {
-                "summary": "Retrieve messages from a channel",
-                "description": "Fetch the messages from a specific channel.",
-                "tags": ["Meet"],
+                "description": "Joins a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Join channel",
                 "parameters": [
-                    {
-                        "name": "channelId",
-                        "in": "path",
-                        "required": true,
-                        "type": "string",
-                        "description": "Channel ID to fetch messages from"
-                    },
-                    {
-                        "name": "page",
-                        "in": "path",
-                        "required": true,
-                        "type": "integer",
-                        "description": "page number fetch messages from"
-                    },
                     {
                         "type": "string",
                         "default": "Bearer \u003cAdd access token here\u003e",
@@ -12465,28 +12795,39 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "User ID for authentication",
                         "name": "X-User-ID",
                         "in": "header",
-                        "required": true,
+                        "required": true
+                    },
+                    {
                         "type": "string",
-                        "description": "User ID for authentication"
+                        "description": "ID of the channel to join",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
-                    "200": { 
-                        "description": "Messages retrieved successfully.",
+                    "200": {
+                        "description": "Channel joined successfully",
                         "schema": {
-                            "$ref": "#/definitions/meet.MeetChannelMessages"
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
                         }
                     },
-                    "401": { 
-                        "description": "Unauthorized user.",
+                    "401": {
+                        "description": "Unauthorized user",
                         "schema": {
                             "type": "string"
-                        } 
+                        }
                     },
-                    "500": { 
-                        "description": "Internal server error.",
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -12494,33 +12835,14 @@
                 }
             }
         },
-        "/meet/post/{channelId}": {
-            "post": {
-                "summary": "Post a message to a channel",
-                "description": "Post a message to a specified channel.",
-                "tags": ["Meet"],
+        "/meet/leave/{channelId}": {
+            "get": {
+                "description": "Leaves a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Leave channel",
                 "parameters": [
-                    {
-                        "name": "channelId",
-                        "in": "path",
-                        "required": true,
-                        "type": "string",
-                        "description": "Channel ID to send message to"
-                    },
-                    {
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "message": {
-                                    "type": "string",
-                                    "description": "Message content"
-                                }
-                            }
-                        }
-                    },
                     {
                         "type": "string",
                         "default": "Bearer \u003cAdd access token here\u003e",
@@ -12530,28 +12852,89 @@
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "User ID for authentication",
                         "name": "X-User-ID",
                         "in": "header",
-                        "required": true,
+                        "required": true
+                    },
+                    {
                         "type": "string",
-                        "description": "User ID for authentication"
+                        "description": "ID of the channel to leave",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
-                    "200": { 
-                        "description": "Message sent successfully.",
+                    "200": {
+                        "description": "Channel left successfully",
                         "schema": {
-                            "$ref": "#/definitions/meet.PostMeetMessage"
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
                         }
                     },
-                    "401": { 
-                        "description": "Unauthorized user.",
+                    "401": {
+                        "description": "Unauthorized user",
                         "schema": {
                             "type": "string"
-                        } 
+                        }
                     },
-                    "500": { 
-                        "description": "Internal server error.",
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/logout": {
+            "get": {
+                "description": "Logs out the user and sets their status to offline",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Logout meet user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User logged out successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -12562,637 +12945,367 @@
         "/meet/post/jitsi/{channelId}/{meetingId}": {
             "post": {
                 "description": "Posts a Jitsi meeting link to a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
+                "tags": [
+                    "Meet"
+                ],
                 "summary": "Post Jitsi meeting link",
                 "parameters": [
                     {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "meetingId",
-                    "in": "path",
-                    "description": "ID of the Jitsi meeting",
-                    "required": true,
-                    "type": "string"
+                        "type": "string",
+                        "description": "Channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "ID of the Jitsi meeting",
+                        "name": "meetingId",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                    "description": "Jitsi meeting link posted successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.PostJitsiMeeting"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Jitsi meeting link posted successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
                     },
                     "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
         },
-        "/meet/view/{channelId}": {
+        "/meet/post/{channelId}": {
+            "post": {
+                "description": "Post a message to a specified channel.",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Post a message to a channel",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Message content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Message sent successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/meet/read/{channelId}/{page}": {
             "get": {
-                "description": "Views messages in a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "View meet messages",
+                "description": "Fetch the messages from a specific channel.",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "Retrieve messages from a channel",
                 "parameters": [
                     {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel ID to fetch messages from",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "page number fetch messages from",
+                        "name": "page",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                    "description": "Messages viewed successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.ViewMeetMessages"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Messages retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/meethelper.MeetChannelMessages"
+                        }
                     },
                     "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/create/direct/{userId}": {
-            "post": {
-                "description": "Creates a direct channel with a specific user.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Create direct channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "userId",
-                    "in": "path",
-                    "description": "ID of the user",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Direct channel created successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.CreateMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/create/private/{channelName}": {
-            "post": {
-                "description": "Creates a private channel with a specific name.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Create private channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelName",
-                    "in": "path",
-                    "description": "Name of the channel",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Private channel created successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.CreateMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/create/public/{channelName}": {
-            "post": {
-                "description": "Creates a public channel with a specific name.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Create public channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelName",
-                    "in": "path",
-                    "description": "Name of the channel",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Public channel created successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.CreateMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/delete/{channelId}": {
-            "get": {
-                "description": "Deletes a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Delete channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Channel deleted successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.DeleteMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/leave/{channelId}": {
-            "post": {
-                "description": "Leaves a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Leave channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Channel left successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.LeaveMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/add/{channelId}/{userId}": {
-            "post": {
-                "description": "Adds a user to a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Add user to channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
-                    },
-                    {
-                    "name": "userId",
-                    "in": "path",
-                    "description": "ID of the user",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "User added to channel successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.AddUserMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/join/{channelId}": {
-            "post": {
-                "description": "Joins a specific channel.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Join channel",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    },
-                    {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "Channel joined successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.JoinMeetChannel"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
-                    }
-                }
-            }
-        },
-        "/meet/logout": {
-            "post": {
-                "description": "Logs out the user and sets their status to offline.",
-                "consumes": ["application/json"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
-                "summary": "Logout user",
-                "parameters": [
-                    {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                    "description": "User logged out successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.LogoutMeet"
-                    }
-                    },
-                    "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
-                    },
-                    "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
         },
         "/meet/upload/{channelId}": {
             "post": {
-                "description": "Uploads a file to a specific channel.",
-                "consumes": ["multipart/form-data"],
-                "produces": ["application/json"],
-                "tags": ["Meet"],
+                "description": "Uploads a file to a specific channel",
+                "tags": [
+                    "Meet"
+                ],
                 "summary": "Upload file to channel",
                 "parameters": [
                     {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "channelId",
-                    "in": "path",
-                    "description": "ID of the channel",
-                    "required": true,
-                    "type": "string"
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "file",
-                    "in": "formData",
-                    "description": "File to upload",
-                    "required": true,
-                    "type": "file"
+                        "type": "string",
+                        "description": "Channel ID",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
                     },
                     {
-                    "name": "message",
-                    "in": "formData",
-                    "description": "Message to accompany the file",
-                    "required": false,
-                    "type": "string"
+                        "type": "file",
+                        "description": "File to upload",
+                        "name": "file",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Message to accompany the file",
+                        "name": "message",
+                        "in": "formData"
                     }
                 ],
                 "responses": {
                     "200": {
-                    "description": "File uploaded successfully",
-                    "schema": {
-                        "$ref": "#/definitions/server.UploadMeetFile"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "File uploaded successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
                     },
                     "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
         },
-        "/meet/download/{fileId}": {
+        "/meet/view/{channelId}": {
             "get": {
-                "description": "Downloads a file from a specific channel.",
-                "produces": ["application/octet-stream"],
-                "tags": ["Meet"],
-                "summary": "Download file from channel",
+                "description": "Views messages in a specific channel",
+                "tags": [
+                    "Meet"
+                ],
+                "summary": "View meet messages",
                 "parameters": [
                     {
-                    "type": "string",
-                    "default": "Bearer \u003cAdd access token here\u003e",
-                    "description": "Insert your access token",
-                    "name": "Authorization",
-                    "in": "header",
-                    "required": true
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
                     },
                     {
-                    "name": "fileId",
-                    "in": "path",
-                    "description": "ID of the file",
-                    "required": true,
-                    "type": "string"
+                        "type": "string",
+                        "description": "User ID for authentication",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Channel ID to fetch messages from",
+                        "name": "channelId",
+                        "in": "path",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                    "description": "File downloaded successfully",
-                    "schema": {
-                        "type": "file"
-                    }
-                    },
-                    "400": {
-                    "description": "Bad Request",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Messages viewed successfully",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": true
+                            }
+                        }
                     },
                     "401": {
-                    "description": "Unauthorized",
-                    "schema": {
-                        "type": "string"
-                    }
+                        "description": "Unauthorized user",
+                        "schema": {
+                            "type": "string"
+                        }
                     },
                     "500": {
-                    "description": "Internal Server Error",
-                    "schema": {
-                        "type": "string"
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
+                }
+            }
+        },
+        "/replication/{clusterName}/{serverName}/slave-late-status": {
+            "get": {
+                "description": "Checks if the specified server within the cluster is in a \"Slave Late\" state.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "replication"
+                ],
+                "summary": "Check if server is in Slave Late state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Server is in Slave Late state!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -No valid server!\" \"500 -Server is not in Slave Late state!\" \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
                     }
                 }
             }
@@ -15505,6 +15618,9 @@
                 "cloud18GitUser": {
                     "type": "string"
                 },
+                "cloud18HealthRefreshInterval": {
+                    "type": "integer"
+                },
                 "cloud18InfraCertifications": {
                     "type": "string"
                 },
@@ -17419,6 +17535,154 @@
                 }
             }
         },
+        "meethelper.MeetAlert": {
+            "type": "object",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/meethelper.MeetAlertField"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "userName": {
+                    "type": "string"
+                }
+            }
+        },
+        "meethelper.MeetAlertField": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
+        "meethelper.MeetChannelMessages": {
+            "type": "object",
+            "properties": {
+                "channelId": {
+                    "type": "string"
+                },
+                "channelType": {
+                    "description": "O:Open, P:Private, D:Direct",
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/meethelper.MeetMessage"
+                    }
+                },
+                "unReadMessages": {
+                    "type": "integer"
+                }
+            }
+        },
+        "meethelper.MeetFile": {
+            "type": "object",
+            "properties": {
+                "channelID": {
+                    "type": "string"
+                },
+                "createAt": {
+                    "type": "integer"
+                },
+                "extension": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "mimeType": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "meethelper.MeetMessage": {
+            "type": "object",
+            "properties": {
+                "alertMetadata": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/meethelper.MeetAlert"
+                    }
+                },
+                "channelID": {
+                    "type": "string"
+                },
+                "createAt": {
+                    "type": "integer"
+                },
+                "fileIds": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "fileMetadata": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/meethelper.MeetFile"
+                    }
+                },
+                "id": {
+                    "type": "string"
+                },
+                "meetingMetadata": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/meethelper.MeetingData"
+                    }
+                },
+                "message": {
+                    "type": "string"
+                },
+                "overriveUserName": {
+                    "type": "string"
+                },
+                "userId": {
+                    "type": "string"
+                }
+            }
+        },
+        "meethelper.MeetingData": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "meetLink": {
+                    "type": "string"
+                },
+                "meetName": {
+                    "type": "string"
+                },
+                "text": {
+                    "type": "string"
+                }
+            }
+        },
         "myproxy.Server": {
             "type": "object"
         },
@@ -17698,7 +17962,9 @@
         "peer.PeerNodeStatus": {
             "type": "object",
             "properties": {
-                "error": {},
+                "error": {
+                    "type": "string"
+                },
                 "lastUpdate": {
                     "type": "string"
                 }
@@ -18230,246 +18496,6 @@
                 },
                 "suffix": {
                     "type": "string"
-                }
-            }
-        },
-        "meet.MeetInfo": {
-            "type": "object",
-            "properties": {
-                "userId": {
-                    "type":"string"
-                },
-                "channelIdsOpen":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "channelIdsPrivate":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "channelIdsDirect":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "channelIdsOpenJoin":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "unReadMessagesByChannel":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "integer"
-                    }
-                },
-                "allUsers":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                },
-                "statusUsers":{
-                    "type":"object",
-                    "additionalProperties": {
-                        "type": "string"
-                    }
-                }
-            }
-
-        },
-        "meet.MeetChannelMessages": {
-            "type": "object",
-            "properties": {
-                "channelId":{
-                    "type":"string"
-                },
-                "channelType":{
-                    "type":"string"
-                },
-                "message":{
-                    "$ref":"#/definitions/meet.MeetMessages"
-                },
-                "unReadMessages":{
-                    "type":"integer"
-                }
-            }
-        },
-        "meet.MeetMessages": {
-            "type": "object",
-            "properties": {
-                "id":{
-                    "type":"string"
-                },
-                "overrideUserName":{
-                    "type":"string"
-                },
-                "channelId":{
-                    "type":"string"
-                },
-                "message":{
-                    "type":"string"
-                },
-                "createAt":{
-                    "type":"integer"
-                },
-                "fileIds":{
-                    "type":"array",
-                    "additionalProperties": {
-                        "type": "integer"
-                    }
-                },
-                "fileMetadata":{
-                    "type":"array",
-                    "additionalProperties": {
-                        "type": "object"
-                    }
-                },
-                "alertMetadata":{
-                    "type":"array",
-                    "additionalProperties": {
-                        "type": "object"
-                    }
-                },
-                "meetMetadata":{
-                    "type":"array",
-                    "additionalProperties": {
-                        "type": "object"
-                    }
-                }
-            }
-        },
-        "meet.PostMeetMessage": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "message":{
-                    "type":"string"
-                },
-                "channel":{
-                    "type":"string"
-                },
-                "user":{
-                    "type":"string"
-                },
-                "message_id":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.PostJitsiMeeting": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channel":{
-                    "type":"string"
-                },
-                "user":{
-                    "type":"string"
-                },
-                "message_id":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.ViewMeetMessages": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channel":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.CreateMeetChannel": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channelId":{
-                    "type":"string"
-                },
-                "channelName":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.DeleteMeetChannel": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channel":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.LeaveMeetChannel": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channelId":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.AddUserMeetChannel": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channelId":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.JoinMeetChannel": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "channelId":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.LogoutMeet": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                }
-            }
-        },
-        "meet.UploadMeetFile": {
-            "type": "object",
-            "properties": {
-                "status":{
-                    "type":"string"
-                },
-                "fileName":{
-                    "type":"string"
-                },
-                "channel":{
-                    "type":"string"
                 }
             }
         }

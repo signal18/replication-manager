@@ -163,8 +163,36 @@ func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	return http.FileServer(http.FS(sub))
+
+	fileServer := http.FileServerFS(sub)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check if the requested file is a .js file
+		if strings.HasSuffix(r.URL.Path, ".js") {
+			// Check if the corresponding .gz file exists
+			gzPath := r.URL.Path + ".gz"
+			fs.WalkDir(sub, ".", func(path string, d fs.DirEntry, err error) error {
+				if err != nil {
+					log.Println("WalkDir error:", err)
+					return err
+				}
+
+				if "/"+path == gzPath {
+					w.Header().Set("Content-Encoding", "gzip")
+					w.Header().Set("Content-Type", "application/javascript")
+					r.URL.Path = path
+					return fs.SkipAll
+				}
+				return nil
+			})
+
+		}
+		fileServer.ServeHTTP(w, r)
+	})
+
 }
+
+var filewalked bool
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")
@@ -227,9 +255,9 @@ func (repman *ReplicationManager) apiserver() {
 		router.HandleFunc("/", repman.rootHandler)
 		router.PathPrefix("/terminal/").HandlerFunc(repman.rootHandler)
 		router.PathPrefix("/static/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
-		router.PathPrefix("/app/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/app/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/images/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
-		router.PathPrefix("/assets/").Handler(repman.DashboardFSHandler())
+		router.PathPrefix("/assets/").Handler(repman.handlerStatic(repman.DashboardFSHandler()))
 		router.PathPrefix("/grafana/").Handler(http.StripPrefix("/grafana/", repman.SharedirHandler("grafana")))
 	}
 
@@ -1234,7 +1262,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	}
 
 	// User already listed as pending
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "User %s has subscribed to cluster %s", userform.Username, mycluster.Name)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "User %s has subscribed to cluster %s", userform.Username, mycluster.Name)
 
 	if repman.Conf.Cloud18SalesSubscriptionScript != "" {
 		repman.BashScriptSalesSubscribe(mycluster, userform.Username)
@@ -1546,7 +1574,7 @@ func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		w.Header().Set("Cache-Control", fmt.Sprintf("max-age=%d", repman.Conf.CacheStaticMaxAge))
-		w.Header().Set("Etag", repman.Version)
+		w.Header().Set("Etag", repman.Fullversion)
 
 		h.ServeHTTP(w, r)
 	})

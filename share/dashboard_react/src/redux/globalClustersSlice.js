@@ -10,7 +10,16 @@ export const getClusters = createAsyncThunk('globalClusters/getClusters', async 
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { globalClusters } = getState();
+    if (globalClusters.isFetching.clusters) {
+      return false;
+    }
+  }
+});
 
 export const addCluster = createAsyncThunk('globalClusters/addCluster', async ({ clusterName, formdata }, thunkAPI) => {
   try {
@@ -64,7 +73,16 @@ export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers'
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { globalClusters } = getState();
+    if (globalClusters.isFetching.peers) {
+      return false;
+    }
+  }
+});
 
 export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForSale', async ({ }, thunkAPI) => {
   try {
@@ -73,7 +91,16 @@ export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForS
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { globalClusters } = getState();
+    if (globalClusters.isFetching.forSale) {
+      return false;
+    }
+  }
+});
 
 export const getMonitoredData = createAsyncThunk('globalClusters/getMonitoredData', async ({ }, thunkAPI) => {
   try {
@@ -82,7 +109,16 @@ export const getMonitoredData = createAsyncThunk('globalClusters/getMonitoredDat
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+},
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { globalClusters } = getState();
+    if (globalClusters.isFetching.monitor) {
+      return false;
+    }
+  }
+});
 
 export const switchGlobalSetting = createAsyncThunk(
   'globalClusters/switchGlobalSetting',
@@ -160,6 +196,7 @@ const initialState = {
   isFailableList: {},
   clusterPeers: null,
   clusterForSale: null,
+  isFetching: { clusters: false, monitor: false, peers: false, forSale: false },
   monitor: null,
   terms: ``
 }
@@ -175,9 +212,11 @@ export const globalClustersSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(getClusters.pending, (state) => {
+        state.isFetching.clusters = true
         state.loading = true
       })
       .addCase(getClusters.fulfilled, (state, action) => {
+        state.isFetching.clusters = false
         state.loading = false
         state.clusters = action.payload.data
         state.isDownList = action.payload.data?.reduce((acc, cluster) => {
@@ -190,14 +229,19 @@ export const globalClustersSlice = createSlice({
         }, {})
       })
       .addCase(getClusters.rejected, (state, action) => {
+        state.isFetching.clusters = false
         state.loading = false
         state.error = action.error
       })
-      .addCase(getMonitoredData.pending, (state) => { })
+      .addCase(getMonitoredData.pending, (state) => {
+        state.isFetching.monitor = true
+       })
       .addCase(getMonitoredData.fulfilled, (state, action) => {
+        state.isFetching.monitor = false
         state.monitor = action.payload.data
       })
       .addCase(getMonitoredData.rejected, (state, action) => {
+        state.isFetching.monitor = false
         state.error = action.error
       })
       .addCase(getTermsData.pending, (state) => { })
@@ -207,18 +251,26 @@ export const globalClustersSlice = createSlice({
       .addCase(getTermsData.rejected, (state, action) => {
         state.error = action.error
       })
-      .addCase(getClusterPeers.pending, (state) => { })
+      .addCase(getClusterPeers.pending, (state) => { 
+        state.isFetching.peers = true
+       })
       .addCase(getClusterPeers.fulfilled, (state, action) => {
+        state.isFetching.peers = false
         state.clusterPeers = action.payload.data
       })
       .addCase(getClusterPeers.rejected, (state, action) => {
+        state.isFetching.peers = false
         state.error = action.error
       })
-      .addCase(getClusterForSale.pending, (state) => { })
+      .addCase(getClusterForSale.pending, (state) => {
+        state.isFetching.forSale = true
+       })
       .addCase(getClusterForSale.fulfilled, (state, action) => {
+        state.isFetching.forSale = false
         state.clusterForSale = action.payload.data
       })
       .addCase(getClusterForSale.rejected, (state, action) => {
+        state.isFetching.forSale = false
         state.error = action.error
       })
   }

@@ -138,7 +138,8 @@ function ClusterList({ onClick }) {
                 width={'400px'}
                 header={
                   <HStack
-                    as='button'
+                    as='div'
+                    cursor={'pointer'}
                     className={styles.btnHeading}
                     onClick={() => {
                       dispatch(setCluster({ data: clusterItem }))

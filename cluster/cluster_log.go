@@ -373,8 +373,8 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
 			case "ALERT":
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Errorf(cliformat, args...)
-				if cluster.Conf.SlackURL != "" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Slack", "module": tag}).Errorf(cliformat, args...)
+				if cluster.Conf.Cloud18Alert {
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "alert", "module": tag}).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
 					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover", "module": tag}).Errorf(cliformat, args...)
@@ -384,7 +384,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 				}
 			case "START":
 				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Warnf(cliformat, args...)
-				if cluster.Conf.SlackURL != "" {
+				if cluster.LogSlack.HasActiveHook() {
 					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Slack", "module": tag}).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
@@ -546,16 +546,16 @@ func (cluster *Cluster) LogPrintState(st state.State, resolved bool) int {
 		// wrap logrus levels
 		if resolved {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "RESOLV", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
-			if cluster.LogSlack.HasActiveHook() {
-				cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "RESOLV"}).Infof(st.ErrDesc)
+			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+				if cluster.LogSlack.HasActiveHook() {
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "alert", "status": "RESOLV"}).Infof(st.ErrDesc)
+				}
 			}
 		} else {
 			cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "status": "OPENED", "code": st.ErrKey, "channel": "StdOut"}).Warnf(st.ErrDesc)
-			if cluster.LogSlack.HasActiveHook() {
-				if st.ErrType == "ERROR" {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Errorf(st.ErrDesc)
-				} else {
-					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "Slack", "status": "OPENED"}).Warnf(st.ErrDesc)
+			if strings.Contains(cluster.Conf.MonitoringAlertTrigger, st.ErrKey) {
+				if cluster.LogSlack.HasActiveHook() {
+					cluster.LogSlack.WithFields(log.Fields{"cluster": cluster.Name, "type": "state", "channel": "alert", "status": "OPENED"}).Errorf(st.ErrDesc)
 				}
 			}
 		}

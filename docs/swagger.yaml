@@ -1544,6 +1544,8 @@ definitions:
         type: string
       cloud18GitUser:
         type: string
+      cloud18HealthRefreshInterval:
+        type: integer
       cloud18InfraCertifications:
         type: string
       cloud18InfraCpuFreq:
@@ -2820,6 +2822,103 @@ definitions:
       to:
         type: string
     type: object
+  meethelper.MeetAlert:
+    properties:
+      color:
+        type: string
+      fields:
+        items:
+          $ref: '#/definitions/meethelper.MeetAlertField'
+        type: array
+      id:
+        type: string
+      text:
+        type: string
+      userName:
+        type: string
+    type: object
+  meethelper.MeetAlertField:
+    properties:
+      title:
+        type: string
+      value:
+        type: string
+    type: object
+  meethelper.MeetChannelMessages:
+    properties:
+      channelId:
+        type: string
+      channelType:
+        description: O:Open, P:Private, D:Direct
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/meethelper.MeetMessage'
+        type: array
+      unReadMessages:
+        type: integer
+    type: object
+  meethelper.MeetFile:
+    properties:
+      channelID:
+        type: string
+      createAt:
+        type: integer
+      extension:
+        type: string
+      id:
+        type: string
+      mimeType:
+        type: string
+      name:
+        type: string
+      size:
+        type: integer
+      userId:
+        type: string
+    type: object
+  meethelper.MeetMessage:
+    properties:
+      alertMetadata:
+        items:
+          $ref: '#/definitions/meethelper.MeetAlert'
+        type: array
+      channelID:
+        type: string
+      createAt:
+        type: integer
+      fileIds:
+        items:
+          type: string
+        type: array
+      fileMetadata:
+        items:
+          $ref: '#/definitions/meethelper.MeetFile'
+        type: array
+      id:
+        type: string
+      meetingMetadata:
+        items:
+          $ref: '#/definitions/meethelper.MeetingData'
+        type: array
+      message:
+        type: string
+      overriveUserName:
+        type: string
+      userId:
+        type: string
+    type: object
+  meethelper.MeetingData:
+    properties:
+      id:
+        type: string
+      meetLink:
+        type: string
+      meetName:
+        type: string
+      text:
+        type: string
+    type: object
   myproxy.Server:
     type: object
   opensvc.Addr:
@@ -3010,7 +3109,8 @@ definitions:
     type: object
   peer.PeerNodeStatus:
     properties:
-      error: {}
+      error:
+        type: string
       lastUpdate:
         type: string
     type: object
@@ -11835,6 +11935,608 @@ paths:
       summary: Drop a server monitor from a cluster
       tags:
       - ClusterMonitor
+  /meet/add/{channelId}/{userId}:
+    get:
+      description: Adds a user to a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: ID of the channel
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: ID of the user to add
+        in: path
+        name: userId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: User added to the channel successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Add user to channel
+      tags:
+      - Meet
+  /meet/create/direct/{userId}:
+    get:
+      description: Creates a direct channel with a specific user
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: ID of the user
+        in: path
+        name: userId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Direct channel created successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Create direct channel
+      tags:
+      - Meet
+  /meet/create/private/{channelName}:
+    get:
+      description: Creates a private channel with a specific name
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Name of the new channel
+        in: path
+        name: channelName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Private channel created successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Create private channel
+      tags:
+      - Meet
+  /meet/create/public/{channelName}:
+    get:
+      description: Creates a public channel with a specific name
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Name of the new channel
+        in: path
+        name: channelName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Public channel created successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Create public channel
+      tags:
+      - Meet
+  /meet/delete/{channelId}:
+    get:
+      description: Deletes a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: ID of the channel to delete
+        in: path
+        name: channelId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Channel deleted successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Delete channel
+      tags:
+      - Meet
+  /meet/download/{fileId}:
+    get:
+      description: Downloads a file from a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: File ID
+        in: path
+        name: fileId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: File downloaded successfully
+          schema:
+            type: file
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Download file from channel
+      tags:
+      - Meet
+  /meet/info:
+    get:
+      description: Fetch user-related information, including available channels and
+        unread messages.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      responses:
+        "200":
+          description: User information retrieved successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Retrieve Meet user information.
+      tags:
+      - Meet
+  /meet/join/{channelId}:
+    get:
+      description: Joins a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: ID of the channel to join
+        in: path
+        name: channelId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Channel joined successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Join channel
+      tags:
+      - Meet
+  /meet/leave/{channelId}:
+    get:
+      description: Leaves a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: ID of the channel to leave
+        in: path
+        name: channelId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Channel left successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Leave channel
+      tags:
+      - Meet
+  /meet/logout:
+    get:
+      description: Logs out the user and sets their status to offline
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      responses:
+        "200":
+          description: User logged out successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Logout meet user
+      tags:
+      - Meet
+  /meet/post/{channelId}:
+    post:
+      description: Post a message to a specified channel.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: Message content
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            type: string
+          type: object
+      responses:
+        "200":
+          description: Message sent successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Post a message to a channel
+      tags:
+      - Meet
+  /meet/post/jitsi/{channelId}/{meetingId}:
+    post:
+      description: Posts a Jitsi meeting link to a specific channel.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: ID of the Jitsi meeting
+        in: path
+        name: meetingId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Jitsi meeting link posted successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Post Jitsi meeting link
+      tags:
+      - Meet
+  /meet/read/{channelId}/{page}:
+    get:
+      description: Fetch the messages from a specific channel.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Channel ID to fetch messages from
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: page number fetch messages from
+        in: path
+        name: page
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: Messages retrieved successfully
+          schema:
+            $ref: '#/definitions/meethelper.MeetChannelMessages'
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Retrieve messages from a channel
+      tags:
+      - Meet
+  /meet/upload/{channelId}:
+    post:
+      description: Uploads a file to a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Channel ID
+        in: path
+        name: channelId
+        required: true
+        type: string
+      - description: File to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Message to accompany the file
+        in: formData
+        name: message
+        type: string
+      responses:
+        "200":
+          description: File uploaded successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Upload file to channel
+      tags:
+      - Meet
+  /meet/view/{channelId}:
+    get:
+      description: Views messages in a specific channel
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: User ID for authentication
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Channel ID to fetch messages from
+        in: path
+        name: channelId
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Messages viewed successfully
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "401":
+          description: Unauthorized user
+          schema:
+            type: string
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: View meet messages
+      tags:
+      - Meet
   /replication/{clusterName}/{serverName}/slave-late-status:
     get:
       description: Checks if the specified server within the cluster is in a "Slave

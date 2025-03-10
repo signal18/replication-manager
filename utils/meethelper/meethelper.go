@@ -7,12 +7,14 @@
 package meethelper
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/mattermost/mattermost-server/v6/model"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -100,37 +102,55 @@ type MeetAlertField struct {
 }
 
 func CreateMeetUserClient(userName string, password string, isLogSupport bool) (string, error) {
-
 	if IsMeetUserExist(userName) {
 		return GetUserID(userName), nil
 	}
 
-	meetTok, err := GetMeetToken(userName, password, isLogSupport)
-	if err != nil {
-		return "", err
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
 
-	client := CreateMeetClient(meetTok)
-	if client == nil {
-		return "", fmt.Errorf("Can't create meet client")
-	}
-	userID, err := client.GetMeetUserInfo()
-	if err != nil {
-		return "", err
-	}
+	tokenChan := make(chan string, 1)
+	errChan := make(chan error, 1)
 
-	client.UserID = userID
+	go func() {
+		meetTok, err := GetMeetToken(userName, password, isLogSupport)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		tokenChan <- meetTok
+	}()
 
-	meetUser := MeetUser{
-		UserName: userName,
-		Password: password,
-		Token:    meetTok,
-		UserID:   userID,
+	select {
+	case meetTok := <-tokenChan:
+		client := CreateMeetClient(meetTok)
+		if client == nil {
+			return "", fmt.Errorf("Can't create meet client")
+		}
+		userID, err := client.GetMeetUserInfo()
+		if err != nil {
+			return "", err
+		}
+
+		client.UserID = userID
+
+		meetUser := MeetUser{
+			UserName: userName,
+			Password: password,
+			Token:    meetTok,
+			UserID:   userID,
+		}
+
+		meetUsers = append(meetUsers, meetUser)
+		meetClients = append(meetClients, client)
+		return userID, nil
+
+	case err := <-errChan:
+		return "", fmt.Errorf("error while getting MeetToken: %w", err)
+
+	case <-ctx.Done():
+		return "", fmt.Errorf("timeout while getting MeetToken: %w", ctx.Err())
 	}
-
-	meetUsers = append(meetUsers, meetUser)
-	meetClients = append(meetClients, client)
-	return userID, nil
 }
 
 func IsMeetUserExist(userName string) bool {
@@ -269,8 +289,10 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 	}
 
 	gitCsrfToken, err := misc.ExtractValue(body, "name=\"authenticity_token\" value=\"([^\"]+)\"")
-	if err != nil && isLogSupport {
-		fmt.Println("GetMeetToken: cannot extract CSFR token from gitlab:", err)
+	if err != nil {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: cannot extract CSFR token from gitlab:", err)
+		}
 		return "", err
 	}
 
@@ -281,8 +303,10 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 		"authenticity_token": {gitCsrfToken},
 	}
 	_, err = misc.PostRequest(client, gitlabLoginPageURL, form, nil)
-	if err != nil && isLogSupport {
-		fmt.Println("GetMeetToken: cannot post gitlab login credentials:", err)
+	if err != nil {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: cannot post gitlab login credentials:", err)
+		}
 		return "", err
 	}
 
@@ -291,15 +315,19 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=/signal18/channels/test", meetUrl)
 
 	body, err = misc.GetRequest(client, meetLoginPageURL)
-	if err != nil && isLogSupport {
-		fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
+	if err != nil {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: cannot get login request from mattermost:", err)
+		}
 		return "", err
 	}
 
 	// 2.2 Extract RedirectUrl and unescape it
 	redirectUrl, err := misc.ExtractValue(body, "href=\"([^\"]+)")
-	if err != nil && isLogSupport {
-		fmt.Println("GetMeetToken: cannot extract redirectUrl from mattermost login request", err)
+	if err != nil {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: cannot extract redirectUrl from mattermost login request", err)
+		}
 		return "", err
 	}
 
@@ -308,8 +336,10 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 
 	// 2.3 Forward Oauth code to meet
 	_, err = misc.GetRequest(client, meetAuthURL)
-	if err != nil && isLogSupport {
-		fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
+	if err != nil {
+		if isLogSupport {
+			fmt.Println("GetMeetToken: Oauth code forwarding failed:", err)
+		}
 		return "", err
 	}
 

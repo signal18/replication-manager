@@ -712,8 +712,6 @@ type Config struct {
 	GitUsername                               string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
 	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
-	GitMinWorker                              int                    `scope:"server" mapstructure:"git-min-worker" toml:"git-min-worker" json:"gitMinWorker"`
-	GitMaxWorker                              int                    `scope:"server" mapstructure:"git-max-worker" toml:"git-max-worker" json:"gitMaxWorker"`
 	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
 	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
 	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
@@ -762,6 +760,7 @@ type Config struct {
 	Cloud18AlertSlackChannel                  string                 `mapstructure:"cloud18-alert-slack-channel"  toml:"cloud18-alert-slack-channel" json:"cloud18AlertSlackChannel"`
 	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
 	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
+	Cloud18HealthRefreshInterval              int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`

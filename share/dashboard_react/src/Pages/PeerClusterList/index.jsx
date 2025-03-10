@@ -99,6 +99,7 @@ function PeerClusterList({ onLogin, mode }) {
   const [filter, fdispatch] = useReducer(filterReducer, defaultFilter)
   const [finalTerms, setFinalTerms] = useState(``)
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false)
+  const [item, setItem] = useState({})
 
   const { domain, subdomain, zone, plan, search, domainOptions, subdomainOptions, zoneOptions, planOptions } = filter
 
@@ -142,6 +143,7 @@ function PeerClusterList({ onLogin, mode }) {
       .replace(`<<ervice_plan_infos>>`, header.concat(servicePlan))
       .replace(`<<date>>`, (new Date()).toLocaleDateString())
     setFinalTerms(finalterm)
+    setItem(cluster)
     openTermsModal()
   }, [user?.username])
 
@@ -403,10 +405,7 @@ function PeerClusterList({ onLogin, mode }) {
                 className={styles.card}
                 width={'400px'}
                 header={
-                  <HStack
-                    as="button"
-                    className={styles.btnHeading}
-                    onClick={() => { handlePeerCluster(clusterItem) }}>
+                  <HStack as="div" className={styles.btnHeading} cursor={'pointer'} onClick={() => { handlePeerCluster(clusterItem) }}>
                     <CustomIcon icon={isSponsor || isPending ? (HiCreditCard) : (AiOutlineCluster)} fill={isSponsor ? "green" : isPending ? "orange" : "gray"} />
                     <span className={styles.cardHeaderText}>{headerText}</span>
                   </HStack>
@@ -424,7 +423,7 @@ function PeerClusterList({ onLogin, mode }) {
           )
         })}
       </Flex>
-      {isTermsModalOpen && <TermsModal terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onSaveModal={handleSubscribeModal} />}
+      {isTermsModalOpen && <TermsModal cluster={item} terms={finalTerms} isOpen={isTermsModalOpen} closeModal={closeTermsModal} onAgreeTerms={handleSubscribeModal} />}
     </>
   )
 }

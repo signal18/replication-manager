@@ -463,7 +463,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
 		URL:            cluster.Conf.Cloud18AlertSlackURL,
-		AcceptedLevels: logrus_slack.LevelThreshold(log.ErrorLevel), // Only send Error level to alert channel
+		AcceptedLevels: logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
 		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
 		User:           cluster.Conf.Cloud18AlertSlackUser,
 		Icon:           ":ghost:",
@@ -474,7 +474,7 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("slack", true)
 	}
 
-	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18GitUser != "" {
+	if cluster.Conf.Cloud18 && cluster.Conf.Cloud18Alert {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
@@ -483,7 +483,7 @@ func (cluster *Cluster) InitFromConf() {
 	if cluster.Conf.MailTo != "" {
 		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version + "\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05")
 		subj := "Replication-Manager started"
-		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(true, true))
+		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{DbOps: true, SysOps: false, Sponsor: true, ExtSysOps: true, ExtDbOps: true}))
 	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
