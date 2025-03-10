@@ -184,12 +184,11 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, apl *app.App) (s
 	svcsection["DEFAULT"] = apl.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection["volume#data"] = cluster.OpenSVCGetAppVolumeDataSection(apl)
+	svcsection["container#00"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
 
-	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(apl.GetPort())
 	svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(apl)
-
-	// svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -269,95 +268,95 @@ func (cluster *Cluster) FoundAppAgent(app *app.App) (opensvc.Host, error) {
 	return agent, errors.New("Indice not found in apps agent list")
 }
 
-// func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app *app.App) map[string]string {
-// 	ips := strings.Split(app.GetAppGateway(), ".")
-// 	masks := strings.Split(app.GetAppNetMask(), ".")
-// 	for i, mask := range masks {
-// 		if mask == "0" {
-// 			ips[i] = "0"
-// 		}
-// 	}
-// 	network := strings.Join(ips, ".")
+func (cluster *Cluster) OpenSVCGetAppEnvSection(proxies string, app *app.App) map[string]string {
+	// 	ips := strings.Split(app.GetAppGateway(), ".")
+	// 	masks := strings.Split(app.GetAppNetMask(), ".")
+	// 	for i, mask := range masks {
+	// 		if mask == "0" {
+	// 			ips[i] = "0"
+	// 		}
+	// 	}
+	// 	network := strings.Join(ips, ".")
 
-// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
-// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
-// 		app.OpenSVCSetRouteAddr(routeaddr)
-// 		app.OpenSVCSetRoutePort(routeport)
-// 	}
-// 	svcenv := make(map[string]string)
-// 	svcenv["nodes"] = app.GetAgent()
-// 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-// 	svcenv["size"] = app.GetAppDiskSize() + "g"
-// 	svcenv["ip_pod01"] = app.GetHost()
-// 	svcenv["port_pod01"] = app.GetPort()
-// 	svcenv["network"] = network
-// 	svcenv["gateway"] = app.GetAppGateway()
-// 	svcenv["netmask"] = app.GetAppNetMask()
-// 	svcenv["vip_addr"] = app.GetRouteAddr()
-// 	svcenv["vip_port"] = app.GetRoutePort()
-// 	svcenv["vip_netmask"] = app.GetRouteMask()
-// 	svcenv["port_http"] = "80"
-// 	svcenv["proxy_ips"] = proxies
-// 	svcenv["port_telnet"] = app.GetPort()
-// 	svcenv["port_admin"] = app.GetPort()
-// 	svcenv["user_admin"] = app.GetUser()
-// 	svcenv["password_admin"] = app.GetPass()
-// 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
-// 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
+	// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
+	// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
+	// 		app.OpenSVCSetRouteAddr(routeaddr)
+	// 		app.OpenSVCSetRoutePort(routeport)
+	// 	}
+	svcenv := make(map[string]string)
+	svcenv["nodes"] = app.GetAgent()
+	// 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
+	// 	svcenv["size"] = app.GetAppDiskSize() + "g"
+	// 	svcenv["ip_pod01"] = app.GetHost()
+	// 	svcenv["port_pod01"] = app.GetPort()
+	// 	svcenv["network"] = network
+	// 	svcenv["gateway"] = app.GetAppGateway()
+	// 	svcenv["netmask"] = app.GetAppNetMask()
+	// 	svcenv["vip_addr"] = app.GetRouteAddr()
+	// 	svcenv["vip_port"] = app.GetRoutePort()
+	// 	svcenv["vip_netmask"] = app.GetRouteMask()
+	// 	svcenv["port_http"] = "80"
+	// 	svcenv["proxy_ips"] = proxies
+	// 	svcenv["port_telnet"] = app.GetPort()
+	// 	svcenv["port_admin"] = app.GetPort()
+	// 	svcenv["user_admin"] = app.GetUser()
+	// 	svcenv["password_admin"] = app.GetPass()
+	// 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
+	// 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
-// 	return svcenv
-// }
+	return svcenv
+}
 
-// func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app *app.App) string {
-// 	i := 0
-// 	ipPods := ""
-// 	//if !cluster.Conf.ProvNetCNI {
-// 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetHost() + `
-// 	`
-// 	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetPort() + `
-// `
-// 	/*} else {
-// 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-// 	}
-// 	ips := strings.Split(collector.ProvAppNetGateway, ".")
-// 	masks := strings.Split(collector.ProvAppNetMask, ".")
-// 	for i, mask := range masks {
-// 			if mask == "0" {
-// 				ips[i] = "0"
-// 			}
-// 		}
-// 		network := strings.Join(ips, ".")
-// 	*/
-// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
-// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
-// 		app.OpenSVCSetRouteAddr(routeaddr)
-// 		app.OpenSVCSetRoutePort(routeport)
-// 	}
+func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, servers string, agent opensvc.Host, app *app.App) string {
+	// 	i := 0
+	// 	ipPods := ""
+	// 	//if !cluster.Conf.ProvNetCNI {
+	// 	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetHost() + `
+	// 	`
+	// 	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetPort() + `
+	// `
+	// 	/*} else {
+	// 		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
+	// 	}
+	// 	ips := strings.Split(collector.ProvAppNetGateway, ".")
+	// 	masks := strings.Split(collector.ProvAppNetMask, ".")
+	// 	for i, mask := range masks {
+	// 			if mask == "0" {
+	// 				ips[i] = "0"
+	// 			}
+	// 		}
+	// 		network := strings.Join(ips, ".")
+	// 	*/
+	// 	if app.GetVIP() != "" && app.GetRouteAddr() == "" {
+	// 		routeaddr, routeport := misc.SplitHostPort(app.GetVIP())
+	// 		app.OpenSVCSetRouteAddr(routeaddr)
+	// 		app.OpenSVCSetRoutePort(routeport)
+	// 	}
 
-// 	conf := `
-// [env]
-// nodes = ` + agent.Node_name + `
-// size = ` + collector.ProvAppDisk + `
-// ` + ipPods + `
-// ` + portPods + `
-// sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
-// vip_addr = ` + app.GetRouteAddr() + `
-// vip_port  = ` + app.GetRoutePort() + `
-// vip_netmask =  ` + app.GetRouteMask() + `
-// port_http = 80
-// base_dir = /srv/{namespace}-{svcname}
-// backend_ips = ` + servers + `
-// port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
-// port_telnet = ` + app.GetPort() + `
-// port_admin = ` + app.GetPort() + `
-// user_admin = ` + app.GetUser() + `
-// password_admin = ` + app.GetPass() + `
-// mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
-// mrm_cluster_name = ` + cluster.GetClusterName() + `
-// `
+	conf := `
+[env]
+nodes = ` + agent.Node_name + `
+size = ` + collector.ProvAppDisk
+	// ` + ipPods + `
+	// ` + portPods + `
+	// sphinx_img = ` + cluster.Conf.ProvSphinxImg + `
+	// vip_addr = ` + app.GetRouteAddr() + `
+	// vip_port  = ` + app.GetRoutePort() + `
+	// vip_netmask =  ` + app.GetRouteMask() + `
+	// port_http = 80
+	// base_dir = /srv/{namespace}-{svcname}
+	// backend_ips = ` + servers + `
+	// port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
+	// port_telnet = ` + app.GetPort() + `
+	// port_admin = ` + app.GetPort() + `
+	// user_admin = ` + app.GetUser() + `
+	// password_admin = ` + app.GetPass() + `
+	// mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
+	// mrm_cluster_name = ` + cluster.GetClusterName() + `
+	// `
 
-// 	return conf
-// }
+	return conf
+}
 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(server *app.App) map[string]string {
 	svccontainer := make(map[string]string)
@@ -401,7 +400,7 @@ orchestrate = start
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
 	conf = conf + cluster.GetPodDockerNginxTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	// conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
+	conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
 	log.Println(conf)
 	return conf, nil
 }
