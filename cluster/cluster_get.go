@@ -732,7 +732,7 @@ func (cluster *Cluster) GetServerFromURL(url string) *ServerMonitor {
 	return nil
 }
 
-func (cluster *Cluster) GetAppFromName(name string) app.AppInterface {
+func (cluster *Cluster) GetAppFromName(name string) *app.App {
 	for _, pr := range cluster.Apps {
 		if pr.GetId() == name {
 			return pr
