@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 )
@@ -213,6 +214,119 @@ func (cluster *Cluster) StartProxyScript(server DatabaseProxy) error {
 }
 
 func (cluster *Cluster) StopProxyScript(server DatabaseProxy) error {
+	if cluster.Conf.ProvProxyStopScript == "" {
+		return nil
+	}
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyStopScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stdoutIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stderrIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	wg.Wait()
+	if err := scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s", err)
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) ProvisionAppScript(server app.AppInterface) error {
+	if cluster.Conf.ProvProxyBootstrapScript == "" {
+		return nil
+	}
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyBootstrapScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stdoutIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stderrIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	wg.Wait()
+	if err := scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s", err)
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) UnprovisionAppScript(server app.AppInterface) error {
+	if cluster.Conf.ProvProxyCleanupScript == "" {
+		return nil
+	}
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyCleanupScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stdoutIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stderrIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	wg.Wait()
+	if err := scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s", err)
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) StartAppScript(server app.AppInterface) error {
+	if cluster.Conf.ProvProxyStartScript == "" {
+		return nil
+	}
+	scriptCmd := exec.Command(cluster.Conf.ProvProxyStartScript, misc.Unbracket(server.GetHost()), server.GetPort(), server.GetUser(), server.GetPass(), cluster.Name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", strings.Replace(scriptCmd.String(), server.GetPass(), "XXXX", 1))
+
+	stdoutIn, _ := scriptCmd.StdoutPipe()
+	stderrIn, _ := scriptCmd.StderrPipe()
+	scriptCmd.Start()
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stdoutIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	go func() {
+		defer wg.Done()
+		cluster.CopyLogs(stderrIn, config.ConstLogModOrchestrator, config.LvlDbg, server.GetName())
+	}()
+	wg.Wait()
+	if err := scriptCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, " %s", err)
+		return err
+	}
+	return nil
+}
+
+func (cluster *Cluster) StopAppScript(server app.AppInterface) error {
 	if cluster.Conf.ProvProxyStopScript == "" {
 		return nil
 	}

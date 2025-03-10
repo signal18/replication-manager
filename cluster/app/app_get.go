@@ -15,8 +15,80 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (app *App) GetAppDockerImg() string {
+	return app.AppConfig.ProvAppDockerImg
+}
+
+func (app *App) GetAppDockerRunArgs() string {
+	return app.AppConfig.ProvAppDockerRunArgs
+}
+
 func (app *App) GetJanitorWeight() string {
 	return app.Weight
+}
+
+func (app *App) GetAppDiskPool() string {
+	return app.AppConfig.ProvAppDiskPool
+}
+
+func (app *App) GetAppDiskType() string {
+	return app.AppConfig.ProvAppDiskType
+}
+
+func (app *App) GetAppAgents() string {
+	return app.AppConfig.ProvAppAgents
+}
+
+func (app *App) GetAppAgentsFailover() string {
+	return app.AppConfig.ProvAppAgentsFailover
+}
+
+func (app *App) GetAppGateway() string {
+	return app.AppConfig.ProvAppGateway
+}
+
+func (app *App) GetAppNetMask() string {
+	return app.AppConfig.ProvAppNetmask
+}
+
+func (app *App) GetAppRouteAddr() string {
+	return app.AppConfig.ProvAppRouteAddr
+}
+
+func (app *App) GetAppRoutePort() string {
+	return app.AppConfig.ProvAppRoutePort
+}
+
+func (app *App) GetAppRouteMask() string {
+	return app.AppConfig.ProvAppRouteMask
+}
+
+func (app *App) OpenSVCSetRouteAddr(addr string) {
+	app.AppConfig.ProvAppRouteAddr = addr
+}
+
+func (app *App) OpenSVCSetRoutePort(port string) {
+	app.AppConfig.ProvAppRoutePort = port
+}
+
+func (app *App) GetAppDiskSize() string {
+	return app.AppConfig.ProvAppDiskSize
+}
+
+func (app *App) GetAppServiceType() string {
+	return app.AppConfig.ProvAppType
+}
+
+func (app *App) GetAppCpuCores() string {
+	return app.AppConfig.ProvAppCpuCores
+}
+
+func (app *App) GetAppMemory() string {
+	return app.AppConfig.ProvAppMemory
+}
+
+func (app *App) GetAppVolumeData() string {
+	return app.AppConfig.ProvAppVolumeData
 }
 
 func (app *App) GetAppConfig() string {

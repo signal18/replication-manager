@@ -24,6 +24,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/cluster/app"
+	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/archiver"
@@ -351,6 +352,10 @@ func (cluster *Cluster) GetProxies() proxyList {
 
 func (cluster *Cluster) GetConf() *config.Config {
 	return cluster.Conf
+}
+
+func (cluster *Cluster) GetConfigurator() configurator.Configurator {
+	return cluster.Configurator
 }
 
 func (cluster *Cluster) GetWaitTrx() int64 {

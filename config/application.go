@@ -34,4 +34,8 @@ type AppConfig struct {
 	AppDataGitBranch         string `mapstructure:"app-data-git-branch" toml:"app-data-git-branch" json:"appDataBranch"`
 	AppDataVolumes           string `mapstructure:"app-data-volumes" toml:"app-data-volumes" json:"appDataVolumes"`
 	AppLogVolumes            string `mapstructure:"app-log-volumes" toml:"app-log-volumes" json:"appLogVolumes"`
+	AppWeights               string `mapstructure:"app-weights" toml:"app-weights" json:"appWeights"`
+	OnPremiseStartScript     string `mapstructure:"on-premise-start-script" toml:"on-premise-start-script" json:"onPremiseStartScript"`
+	OnPremiseStopScript      string `mapstructure:"on-premise-stop-script" toml:"on-premise-stop-script" json:"onPremiseStopScript"`
+	SlapOSAppPartitions      string `mapstructure:"slapos-app-partitions" toml:"slapos-app-partitions" json:"slaposAppPartitions"`
 }

@@ -1,0 +1,83 @@
+package cluster
+
+import (
+	"context"
+	"errors"
+	"strconv"
+
+	"github.com/signal18/replication-manager/cluster/app"
+	"github.com/signal18/replication-manager/config"
+	appsv1 "k8s.io/api/apps/v1"
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+func (cluster *Cluster) K8SProvisionAppService(appi app.AppInterface) {
+	clientset, err := cluster.K8SConnectAPI()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot init Kubernetes client API %s ", err)
+		cluster.errorChan <- err
+		return
+	}
+
+	deploymentsClient := clientset.AppsV1().Deployments(cluster.Name)
+	port, _ := strconv.Atoi(appi.GetPort())
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: cluster.Name + "-deployment",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: int32Ptr(1),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "repication-manager",
+				},
+			},
+			Template: apiv1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "repication-manager",
+					},
+				},
+				Spec: apiv1.PodSpec{
+					Containers: []apiv1.Container{
+						{
+							Name:  appi.GetName(),
+							Image: appi.GetAppDockerImg(),
+							Ports: []apiv1.ContainerPort{
+								{
+									Name:          appi.GetName(),
+									Protocol:      apiv1.ProtocolTCP,
+									ContainerPort: int32(port),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create Deployment
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating deployment...")
+	result, err := deploymentsClient.Create(context.TODO(), deployment, metav1.CreateOptions{})
+
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot deploy Kubernetes service %s ", err)
+		cluster.errorChan <- err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created deployment %q.\n", result.GetObjectMeta().GetName())
+	cluster.errorChan <- nil
+	return
+}
+
+func (cluster *Cluster) K8SUnprovisionAppService(appi app.AppInterface) {
+	cluster.errorChan <- nil
+}
+
+func (cluster *Cluster) K8SStartAppService(server app.AppInterface) error {
+	return errors.New("Can't start app")
+}
+func (cluster *Cluster) K8SStopAppService(server app.AppInterface) error {
+	return errors.New("Can't stop app")
+}

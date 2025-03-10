@@ -385,10 +385,10 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(server app.AppInterface) m
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = server.OpenSVCGetAppServiceType()
 		if server.OpenSVCGetAppDiskType() != "volume" {
-			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/nginx:/usr/local/etc/nginx:rw ` + server.OpenSVCGetAppDockerRunArgs()
+			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/nginx:/usr/local/etc/nginx:rw ` + server.GetAppDockerRunArgs()
 		} else {
 			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
-			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.OpenSVCGetAppDockerRunArgs()
+			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.GetAppDockerRunArgs()
 			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/nginx:/usr/local/etc/nginx:rw`
 		}
 	}

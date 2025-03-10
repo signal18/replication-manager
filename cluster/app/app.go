@@ -24,6 +24,8 @@ import (
 	"github.com/spf13/pflag"
 )
 
+var AppConfig config.AppConfig
+
 type AppList []AppInterface
 
 type App struct {
@@ -38,6 +40,8 @@ type App struct {
 	Port                  string                     `json:"port"`
 	AppConfig             config.AppConfig           `json:"config"`
 	Cluster               ClusterInterface           `json:"clustername"`
+	User                  string                     `json:"user"`
+	Pass                  string                     `json:"-"`
 	Configurator          *configurator.Configurator `json:"-"`
 	Datadir               string                     `json:"datadir"`
 	State                 string                     `json:"state"`
@@ -69,7 +73,7 @@ type App struct {
 }
 
 type AppInterface interface {
-	AddFlags(flags *pflag.FlagSet, conf *config.Config)
+	AddFlags(flags *pflag.FlagSet, conf *config.AppConfig)
 	Init()
 	Refresh() error
 	Failover()
@@ -95,6 +99,7 @@ type AppInterface interface {
 	SetPrevState(state string)
 	GetClustername() string
 	IsDown() bool
+	GetAppConfig() string
 	GetDatadir() string
 	GetConfigDatadir() string
 	GetConfigConfigdir() string
@@ -115,8 +120,8 @@ type AppInterface interface {
 	OpenSVCGetAppCpuCores() string
 	OpenSVCGetAppMemory() string
 	OpenSVCGetAppVolumeData() string
-	OpenSVCGetAppDockerImg() string
-	OpenSVCGetAppDockerRunArgs() string
+	GetAppDockerImg() string
+	GetAppDockerRunArgs() string
 	OpenSVCSetRouteAddr(addr string)
 	OpenSVCSetRoutePort(port string)
 	GetVIP() string
@@ -168,8 +173,12 @@ type ClusterInterface interface {
 	GetHost() string
 	GetPort() string
 	GetCrcTable() *crc64.Table
-	GetConf() config.Config
+	GetConf() *config.Config
+	GetConfigurator() configurator.Configurator
 	GetAPIUserByUsername(username string) (clusterauth.APIUser, bool)
+	IsInFailover() bool
+	OnPremiseGetSSHKey() string
+	LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{})
 }
 
 const (
@@ -229,4 +238,40 @@ func NewAppInstance(cluster ClusterInterface, placement int, apptype, url, domai
 	}
 
 	return app
+}
+
+func (app *App) AddDefaultFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
+	flags.StringVar(&conf.ProvAppType, "prov-app-type", "", "Application type")
+	flags.StringVar(&conf.ProvAppDiskPool, "prov-app-disk-pool", "", "Application disk pool")
+	flags.StringVar(&conf.ProvAppDiskType, "prov-app-disk-type", "", "Application disk type")
+	flags.StringVar(&conf.ProvAppDockerImg, "prov-app-docker-img", "", "Application docker image")
+	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "Application agents")
+	flags.StringVar(&conf.ProvAppDiskSize, "prov-app-disk-size", "", "Application disk size")
+	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "", "Application CPU cores")
+	flags.StringVar(&conf.ProvAppMemory, "prov-app-memory", "", "Application memory")
+	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "", "Application volume data")
+	flags.StringVar(&conf.ProvAppDockerRunArgs, "prov-app-docker-run-args", "", "Application docker run args")
+	flags.StringVar(&conf.ProvAppAgentsFailover, "prov-app-agents-failover", "", "Application agents failover")
+	flags.StringVar(&conf.ProvAppNetIface, "prov-app-net-iface", "", "Application net iface")
+	flags.StringVar(&conf.ProvAppNetmask, "prov-app-net-mask", "", "Application net mask")
+	flags.StringVar(&conf.ProvAppGateway, "prov-app-net-gateway", "", "Application net gateway")
+	flags.StringVar(&conf.ProvAppRouteAddr, "prov-app-route-addr", "", "Application route addr")
+	flags.StringVar(&conf.ProvAppRoutePort, "prov-app-route-port", "", "Application route port")
+	flags.StringVar(&conf.ProvAppRouteMask, "prov-app-route-mask", "", "Application route mask")
+	flags.StringVar(&conf.ProvAppRoutePolicy, "prov-app-route-policy", "", "Application route policy")
+	flags.StringVar(&conf.AppHosts, "app-hosts", "", "Application hosts")
+	flags.StringVar(&conf.AppRunCommand, "app-run-command", "", "Application run command")
+	flags.StringVar(&conf.AppConfigGitCloneUrl, "app-config-git-clone-url", "", "Application config git clone url")
+	flags.StringVar(&conf.AppConfigGitUser, "app-config-git-user", "", "Application config git user")
+	flags.StringVar(&conf.AppConfigGitPassword, "app-config-git-password", "", "Application config git password")
+	flags.StringVar(&conf.AppConfigGitBranch, "app-config-git-branch", "", "Application config git branch")
+	flags.StringVar(&conf.AppConfigSecretVariables, "app-config-secret-variables", "", "Application config secret variables")
+	flags.StringVar(&conf.AppConfigEnvVariables, "app-config-env-variables", "", "Application config env variables")
+	flags.StringVar(&conf.AppConfigVolumes, "app-config-volumes", "", "Application config volumes")
+	flags.StringVar(&conf.AppDataGitCloneUrl, "app-data-git-clone-url", "", "Application data git clone url")
+	flags.StringVar(&conf.AppDataGitUser, "app-data-git-user", "", "Application data git user")
+	flags.StringVar(&conf.AppDataGitPassword, "app-data-git-password", "", "Application data git password")
+	flags.StringVar(&conf.AppDataGitBranch, "app-data-git-branch", "", "Application data git branch")
+	flags.StringVar(&conf.AppDataVolumes, "app-data-volumes", "", "Application data volumes")
+	flags.StringVar(&conf.AppLogVolumes, "app-log-volumes", "", "Application log volumes")
 }

@@ -50,6 +50,7 @@ import (
 	termbox "github.com/nsf/termbox-go"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
@@ -671,6 +672,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithSphinx == "ON" {
 		sphinxprx := new(cluster.SphinxProxy)
 		sphinxprx.AddFlags(flags, conf)
+	}
+	if WithApp == "ON" {
+		webdevopsapp := new(app.App)
+		webdevopsapp.AddDefaultFlags(flags, &app.AppConfig)
 	}
 
 	myproxyprx := new(cluster.MyProxyProxy)

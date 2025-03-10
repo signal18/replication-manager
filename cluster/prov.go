@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
@@ -202,6 +203,34 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	return nil
 }
 
+func (cluster *Cluster) InitAppService(appi app.AppInterface) error {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		go cluster.OpenSVCProvisionAppService(appi)
+	case config.ConstOrchestratorKubernetes:
+		go cluster.K8SProvisionAppService(appi)
+	case config.ConstOrchestratorSlapOS:
+		go cluster.SlapOSProvisionAppService(appi)
+	case config.ConstOrchestratorLocalhost:
+		go cluster.LocalhostProvisionAppService(appi)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseProvisionAppService(appi)
+	default:
+		return nil
+	}
+	cluster.ProvisionAppScript(appi)
+	select {
+	case err := <-cluster.errorChan:
+		cluster.StateMachine.RemoveFailoverState()
+		if err == nil {
+			appi.SetProvisionCookie()
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) Unprovision() error {
 
 	cluster.StateMachine.SetFailoverState()
@@ -280,6 +309,47 @@ func (cluster *Cluster) Unprovision() error {
 			}
 		}
 	}
+
+	for _, appi := range cluster.Apps {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				continue
+			}*/
+		switch cluster.GetOrchestrator() {
+		case config.ConstOrchestratorOpenSVC:
+			go cluster.OpenSVCUnprovisionAppService(appi)
+		case config.ConstOrchestratorKubernetes:
+			go cluster.K8SUnprovisionAppService(appi)
+		case config.ConstOrchestratorSlapOS:
+			go cluster.SlapOSUnprovisionAppService(appi)
+		case config.ConstOrchestratorLocalhost:
+			go cluster.LocalhostUnprovisionAppService(appi)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionAppService(appi)
+		default:
+
+		}
+		cluster.UnprovisionAppScript(appi)
+	}
+	for _, appi := range cluster.Apps {
+		/*	prx, ok := pri.(*Proxy)
+			if !ok {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "Unprovision proxy continue ")
+				continue
+			}*/
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+appi.GetName())
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+appi.GetName())
+				appi.DelProvisionCookie()
+				appi.DelRestartCookie()
+				appi.DelReprovisionCookie()
+			}
+		}
+	}
+
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionSecret()
@@ -345,6 +415,33 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
+func (cluster *Cluster) UnprovisionAppService(appi app.AppInterface) error {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		go cluster.OpenSVCUnprovisionAppService(appi)
+	case config.ConstOrchestratorKubernetes:
+		go cluster.K8SUnprovisionAppService(appi)
+	case config.ConstOrchestratorSlapOS:
+		go cluster.SlapOSUnprovisionAppService(appi)
+	case config.ConstOrchestratorLocalhost:
+		go cluster.LocalhostUnprovisionAppService(appi)
+	case config.ConstOrchestratorOnPremise:
+		go cluster.OnPremiseUnprovisionAppService(appi)
+	default:
+	}
+	cluster.UnprovisionAppScript(appi)
+	select {
+	case err := <-cluster.errorChan:
+		if err == nil {
+			appi.DelProvisionCookie()
+			appi.DelReprovisionCookie()
+			appi.DelRestartCookie()
+		}
+		return err
+	}
+	return nil
+}
+
 func (cluster *Cluster) RollingUpgrade() {
 }
 
@@ -398,6 +495,31 @@ func (cluster *Cluster) StopProxyService(server DatabaseProxy) error {
 	return err
 }
 
+func (cluster *Cluster) StopAppService(server app.AppInterface) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Stopping Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	var err error
+
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		err = cluster.OpenSVCStopAppService(server)
+	case config.ConstOrchestratorKubernetes:
+		err = cluster.K8SStopAppService(server)
+	case config.ConstOrchestratorSlapOS:
+		err = cluster.SlapOSStopAppService(server)
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseStopAppService(server)
+	case config.ConstOrchestratorLocalhost:
+		err = cluster.LocalhostStopAppService(server)
+	default:
+		return errors.New("No valid orchestrator")
+	}
+	cluster.StopAppScript(server)
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
+}
+
 func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
 	var err error
@@ -416,6 +538,30 @@ func (cluster *Cluster) StartProxyService(server DatabaseProxy) error {
 		return errors.New("No valid orchestrator")
 	}
 	cluster.StartProxyScript(server)
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
+}
+
+func (cluster *Cluster) StartAppService(server app.AppInterface) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Starting Proxy service %s", cluster.Name+"/svc/"+server.GetName())
+	var err error
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		err = cluster.OpenSVCStartAppService(server)
+	case config.ConstOrchestratorKubernetes:
+		err = cluster.K8SStartAppService(server)
+	case config.ConstOrchestratorSlapOS:
+		err = cluster.SlapOSStartAppService(server)
+	case config.ConstOrchestratorOnPremise:
+		err = cluster.OnPremiseStartAppService(server)
+	case config.ConstOrchestratorLocalhost:
+		err = cluster.LocalhostStartAppService(server)
+	default:
+		return errors.New("No valid orchestrator")
+	}
+	cluster.StartAppScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}

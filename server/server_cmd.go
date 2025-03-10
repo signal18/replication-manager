@@ -44,6 +44,8 @@ var (
 	WithSphinx            string = "ON"
 	WithBackup            string = "ON"
 	WithReact             string = "ON"
+	WithApp               string = "ON"
+	WithWebDevOps         string = "ON"
 	// FullVersion is the semantic version number + git commit hash
 	FullVersion string
 	// Build is the build date of replication-manager
