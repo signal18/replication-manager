@@ -344,6 +344,7 @@ func (repman *ReplicationManager) apiserver() {
 	repman.apiClusterUnprotectedHandler(router)
 	repman.apiClusterProtectedHandler(router)
 	repman.apiProxyProtectedHandler(router)
+	repman.apiAppProtectedHandler(router)
 
 	tlsConfig := Repmanv3TLS{
 		Enabled: false,
