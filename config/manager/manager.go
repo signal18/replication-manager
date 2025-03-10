@@ -122,7 +122,7 @@ func (cmm *CommitManager) AddFileToCommit(task GitAddTask) {
 
 	select {
 	case <-cmm.stopCh:
-		cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping, rejecting task: %s", task.Filename)
+		cmm.logger.Infof("none", config.ConstLogModGit, "CommitManager is stopping, rejecting task: %s", task.Filename)
 		if task.WaitGroup != nil {
 			task.WaitGroup.Done()
 		}
@@ -137,7 +137,7 @@ func (cmm *CommitManager) processCommitQueue() {
 	for {
 		select {
 		case <-cmm.stopCh:
-			cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager is stopping.")
+			cmm.logger.Infof("none", config.ConstLogModGit, "CommitManager is stopping.")
 			return
 		default:
 			cmm.mu.Lock()
@@ -165,9 +165,9 @@ func (cmm *CommitManager) addFileToCommit(task GitAddTask) {
 
 	start := time.Now()
 	if _, err := task.W.Add(task.Filename); err == nil {
-		cmm.logger.Debugf("default", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
+		cmm.logger.Debugf("none", config.ConstLogModGit, "File %s added in: %s", task.Filename, time.Since(start))
 	} else {
-		cmm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot add %s: %s", task.Filename, err)
+		cmm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot add %s: %s", task.Filename, err)
 	}
 }
 
@@ -180,7 +180,7 @@ func (cmm *CommitManager) Stop() {
 		}
 	}
 	cmm.wg.Wait()
-	cmm.logger.Infof("default", config.ConstLogModGit, "CommitManager stopped.")
+	cmm.logger.Infof("none", config.ConstLogModGit, "CommitManager stopped.")
 }
 
 // ConfigManager controls config saves & Git push
@@ -321,15 +321,15 @@ func (cm *ConfigManager) GitPush(conf *config.Config, clusterList []string, wait
 		configGitTask.WaitGroup.Add(1)
 	}
 
-	cm.logger.Debugln("default", config.ConstLogModGit, "Locking push mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Locking push mutex")
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.gitManager.mutex.Lock()
-	cm.logger.Debugln("default", config.ConstLogModGit, "Appending to push queue")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Appending to push queue")
 	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
 	// Signal the goroutine that a new task is available
-	cm.logger.Debugln("default", config.ConstLogModGit, "Unlocking push mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Unlocking push mutex")
 	cm.gitManager.mutex.Unlock()
-	cm.logger.Debugln("default", config.ConstLogModGit, "Signal push mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Signal push mutex")
 	cm.gitManager.cond.Signal()
 
 	// If a WaitGroup pointer is provided, add to the wait group
@@ -343,15 +343,15 @@ func (cm *ConfigManager) GitPullDir() {
 
 	configGitTask := ConfigGitTask{TaskType: "pull"}
 
-	cm.logger.Debugln("default", config.ConstLogModGit, "Locking pull mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Locking pull mutex")
 	// Lock the cluster's mutex to safely add to the task slice
 	cm.gitManager.mutex.Lock()
-	cm.logger.Debugln("default", config.ConstLogModGit, "Appending to pull queue")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Appending to pull queue")
 	cm.gitManager.tasks = append(cm.gitManager.tasks, configGitTask)
 	// Signal the goroutine that a new task is available
-	cm.logger.Debugln("default", config.ConstLogModGit, "Unlocking pull mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Unlocking pull mutex")
 	cm.gitManager.mutex.Unlock()
-	cm.logger.Debugln("default", config.ConstLogModGit, "Signal pull mutex")
+	cm.logger.Debugln("none", config.ConstLogModGit, "Signal pull mutex")
 	cm.gitManager.cond.Signal()
 }
 
@@ -363,13 +363,13 @@ func (cm *ConfigManager) processGitPush() {
 		// Wait until there is at least one task in the queue
 		for len(cm.gitManager.tasks) == 0 {
 			cm.gitManager.cond.Wait()
-			cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Waking up goroutine.")
+			cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Waking up goroutine.")
 		}
 
 		// Check for the stop signal before processing
 		select {
 		case <-cm.gitManager.stopCh: // Stop signal for the goroutine
-			cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Stopping goroutine.")
+			cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Stopping goroutine.")
 			cm.gitManager.mutex.Unlock()
 			return
 		default:
@@ -385,13 +385,13 @@ func (cm *ConfigManager) processGitPush() {
 			}
 			cm.gitManager.mutex.Unlock()
 
-			cm.logger.Debugf("default", config.ConstLogModGit, "Locking git mutex")
+			cm.logger.Debugf("none", config.ConstLogModGit, "Locking git mutex")
 			cm.gitMutex.Lock() // Block new config saves
-			cm.logger.Debugf("default", config.ConstLogModGit, "Waiting for active saves to finish...")
+			cm.logger.Debugf("none", config.ConstLogModGit, "Waiting for active saves to finish...")
 			cm.configWg.Wait() // Ensure all active saves finish
 
 			if configGitTask.TaskType == "pull" {
-				cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Starting Git pull...")
+				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git pull...")
 
 				// Inform the pull process to start pulling
 				cm.gitManager.PullCh <- struct{}{}
@@ -399,16 +399,16 @@ func (cm *ConfigManager) processGitPush() {
 				// Wait for the pull process to finish
 				<-cm.gitManager.DonePullCh
 
-				cm.logger.Infof("default", config.ConstLogModGit, "[Git] Git pull completed successfully.")
+				cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git pull completed successfully.")
 
 			} else {
-				cm.logger.Debugf("default", config.ConstLogModGit, "[Git] Starting Git push...")
+				cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Starting Git push...")
 				// Execute the save function and handle potential errors
 				if err := cm.PushAllConfigsToGit(configGitTask.conf, configGitTask.clusterList); err != nil {
 					// Execute the Git push function and handle potential errors
-					cm.logger.Errorf("default", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
+					cm.logger.Errorf("none", config.ConstLogModGit, "[Git] Error during push: %v\n", err)
 				} else {
-					cm.logger.Infof("default", config.ConstLogModGit, "[Git] Git push completed successfully.")
+					cm.logger.Infof("none", config.ConstLogModGit, "[Git] Git push completed successfully.")
 				}
 			}
 
@@ -431,7 +431,7 @@ func (cm *ConfigManager) processGitPush() {
 // Stop gracefully shuts down the system
 func (cm *ConfigManager) Stop() {
 	cm.stopOnce.Do(func() {
-		cm.logger.Infof("default", config.ConstLogModGeneral, "[Shutdown] Stopping...")
+		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Stopping...")
 
 		cm.isStopping = true // Prevent new saves
 
@@ -444,19 +444,19 @@ func (cm *ConfigManager) Stop() {
 			cm.clusterData[cluster].cond.Signal() // Wake up the cluster goroutine
 		}
 
-		cm.logger.Infof("default", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")
+		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")
 		cm.configWg.Wait()
 
 		close(cm.gitManager.stopCh) // Send stop signal to the push manager
 		cm.gitManager.cond.Signal() // Wake up the push manager
-		cm.logger.Infof("default", config.ConstLogModGeneral, "[Shutdown] Config manager stopped.")
+		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Config manager stopped.")
 	})
 }
 
 func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []string) error {
 	defer func() {
 		if r := recover(); r != nil {
-			cm.logger.Errorf("default", config.ConstLogModGeneral, "Error pushing to git: %v", r)
+			cm.logger.Errorf("none", config.ConstLogModGeneral, "Error pushing to git: %v", r)
 		}
 	}()
 
@@ -466,14 +466,14 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	}()
 
 	if conf.GitUrl == "" {
-		cm.logger.Infof("default", config.ConstLogModGit, "No Git URL provided, skipping push")
+		cm.logger.Infof("none", config.ConstLogModGit, "No Git URL provided, skipping push")
 		return nil
 	}
 
 	cm.AddPullToGitignore(conf)
 	cm.AddTempDirToGitignore(conf)
 
-	cm.logger.Infof("default", config.ConstLogModGit, "Pushing All Configs To Git")
+	cm.logger.Infof("none", config.ConstLogModGit, "Pushing All Configs To Git")
 
 	err := cm.PushConfigToGit(conf, clusterList)
 	if err != nil {
@@ -482,7 +482,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 			err = cm.PushConfigToGit(conf, clusterList)
 		}
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error pushing to git: %v", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error pushing to git: %v", err)
 			return err
 		}
 	}
@@ -490,7 +490,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 	// Count the commits
 	commits, err := cm.CountAllCommits(conf)
 	if err != nil {
-		cm.logger.Warnf("default", config.ConstLogModGit, "Error counting commits: %v", err)
+		cm.logger.Warnf("none", config.ConstLogModGit, "Error counting commits: %v", err)
 		return err
 	}
 
@@ -498,7 +498,7 @@ func (cm *ConfigManager) PushAllConfigsToGit(conf *config.Config, clusterList []
 		os.RemoveAll(conf.WorkingDir + "/.git")
 		err := cm.ShallowClone(conf)
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error shallow cloning: %v", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error shallow cloning: %v", err)
 			return err
 		}
 	}
@@ -516,7 +516,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error creating .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore:", err)
 		}
 		return
 	}
@@ -524,7 +524,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Error opening .gitignore:", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore:", err)
 		return
 	}
 	defer file.Close()
@@ -540,7 +540,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
 		return
 	}
 
@@ -548,7 +548,7 @@ func (cm *ConfigManager) AddPullToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error appending to .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore:", err)
 		}
 	}
 }
@@ -563,7 +563,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 		// If .gitignore doesn't exist, create it and write the line
 		err := os.WriteFile(gitignoreFile, []byte(lineToAdd+"\n"), 0644)
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error creating .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating .gitignore:", err)
 		}
 		return
 	}
@@ -571,7 +571,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	// Open .gitignore for reading and appending
 	file, err := os.OpenFile(gitignoreFile, os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Error opening .gitignore:", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error opening .gitignore:", err)
 		return
 	}
 	defer file.Close()
@@ -587,7 +587,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	}
 
 	if scanner.Err() != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
+		cm.logger.Errorf("none", config.ConstLogModGit, "Error reading .gitignore:", scanner.Err())
 		return
 	}
 
@@ -595,7 +595,7 @@ func (cm *ConfigManager) AddTempDirToGitignore(conf *config.Config) {
 	if !lineExists {
 		_, err := file.WriteString(lineToAdd + "\n")
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error appending to .gitignore:", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error appending to .gitignore:", err)
 		}
 	}
 }
@@ -607,7 +607,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	path := conf.WorkingDir
 
 	// Log basic information
-	cm.logger.Debugf("default", config.ConstLogModGit, "Push to git: user=%s, dir=%s, clusters=%v", user, path, clusterList)
+	cm.logger.Debugf("none", config.ConstLogModGit, "Push to git: user=%s, dir=%s, clusters=%v", user, path, clusterList)
 
 	auth := &git_https.BasicAuth{
 		Username: user, // Can be any non-empty string
@@ -633,7 +633,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Perform shallow clone for better performance
 		r, err = git.PlainClone(path, false, cloneopt)
 
-		cm.logger.Debugf("default", config.ConstLogModGit, "Clone took: %s", time.Since(start))
+		cm.logger.Debugf("none", config.ConstLogModGit, "Clone took: %s", time.Since(start))
 
 		// Handle repository not found
 		if err != nil {
@@ -642,7 +642,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				r, err = git.PlainClone(path, false, cloneopt)
 			}
 			if err != nil {
-				cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot clone %s: %s", url, err)
+				cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot clone %s: %s", url, err)
 				return err
 			}
 		}
@@ -650,7 +650,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		// Open existing repository
 		r, err = git.PlainOpen(path)
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot open repo: %s\n", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot open repo: %s\n", err)
 			return err
 		}
 	}
@@ -658,7 +658,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	// Open the worktree
 	w, err := r.Worktree()
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot get worktree: %s", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot get worktree: %s", err)
 		return err
 	}
 
@@ -669,7 +669,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 		dirPath := filepath.Join(path, name)
 		files, err := os.ReadDir(dirPath)
 		if err != nil {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Error reading directory %s: %s", dirPath, err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Error reading directory %s: %s", dirPath, err)
 			continue
 		}
 
@@ -679,7 +679,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				fpath := filepath.Join(name, file.Name())
 				_, err := file.Info()
 				if err != nil {
-					cm.logger.Warnf("default", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
+					cm.logger.Warnf("none", config.ConstLogModGit, "Error getting file info for %s: %s", fpath, err)
 					continue
 				}
 				cwg.Add(1)
@@ -706,10 +706,10 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	cwg.Wait()
 
-	cm.logger.Debugf("default", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
+	cm.logger.Debugf("none", config.ConstLogModGit, "Total file add took: %s", time.Since(allstart))
 
 	if cm.gitManager.CommitManager.IsStopping {
-		cm.logger.Info("default", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
+		cm.logger.Info("none", config.ConstLogModGit, "CommitManager is stopping, cancelling commit")
 		return nil
 	}
 
@@ -721,24 +721,24 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			When: time.Now(),
 		},
 	})
-	cm.logger.Debugf("default", config.ConstLogModGit, "Commit took: %s", time.Since(commitStart))
+	cm.logger.Debugf("none", config.ConstLogModGit, "Commit took: %s", time.Since(commitStart))
 
 	if err != nil {
-		cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot commit: %s", err)
+		cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot commit: %s", err)
 		return err
 	}
 
 	// Push changes
 	pushStart := time.Now()
 	err = r.Push(&git.PushOptions{Auth: auth})
-	cm.logger.Debugf("default", config.ConstLogModGit,
+	cm.logger.Debugf("none", config.ConstLogModGit,
 		"Push took: %s", time.Since(pushStart))
 
 	if err != nil {
 		if errors.Is(err, transport.ErrAuthenticationRequired) {
 			acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 			if err != nil {
-				cm.logger.Errorf("default", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
+				cm.logger.Errorf("none", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
 				conf.Cloud18 = false
 				return err
 			}
@@ -748,7 +748,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 			if personal_access_token == "" {
 				personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
 				if err != nil {
-					cm.logger.Errorf("default", config.ConstLogModGit, "Error creating personal access token: %v", err)
+					cm.logger.Errorf("none", config.ConstLogModGit, "Error creating personal access token: %v", err)
 					return err
 				}
 
@@ -759,7 +759,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				conf.Secrets["git-acces-token"] = Secrets
 			}
 		} else {
-			cm.logger.Errorf("default", config.ConstLogModGit, "Git error: cannot push: %s", err)
+			cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot push: %s", err)
 		}
 	}
 
@@ -814,7 +814,7 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 		NoCheckout:        true,
 	})
 
-	cm.logger.Debugf("default", config.ConstLogModGit, "Shallow clone took: %s", time.Since(clonestart))
+	cm.logger.Debugf("none", config.ConstLogModGit, "Shallow clone took: %s", time.Since(clonestart))
 
 	return err
 }
