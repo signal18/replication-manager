@@ -72,31 +72,33 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	OpenSVC              opensvc.Collector                 `json:"-"`
-	Version              string                            `json:"version"`
-	Fullversion          string                            `json:"fullVersion"`
-	Os                   string                            `json:"os"`
-	OsUser               *user.User                        `json:"osUser"`
-	Arch                 string                            `json:"arch"`
-	MemProfile           string                            `json:"memprofile"`
-	CpuProfile           string                            `json:"cpuprofile"`
-	Clusters             map[string]*cluster.Cluster       `json:"-"`
-	PeerManager          *peer.PeerManager                 `json:"-"`
-	Partners             []config.Partner                  `json:"partners"`
-	Partner              config.Partner                    `json:"partner"`
-	Agents               []opensvc.Host                    `json:"agents"`
-	UUID                 string                            `json:"uuid"`
-	Hostname             string                            `json:"hostname"`
-	Status               string                            `json:"status"`
-	SplitBrain           bool                              `json:"spitBrain"`
-	ClusterList          []string                          `json:"clusters"`
-	ImmutableClusterList []string                          `json:"-"`
-	Tests                []string                          `json:"tests"`
-	Conf                 *config.Config                    `json:"config"`
-	ImmutableClusterApps map[string][]string               `json:"-"`
-	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
-	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
-	DefaultFlagMap       map[string]interface{}            `json:"-"`
+	OpenSVC               opensvc.Collector                            `json:"-"`
+	Version               string                                       `json:"version"`
+	Fullversion           string                                       `json:"fullVersion"`
+	Os                    string                                       `json:"os"`
+	OsUser                *user.User                                   `json:"osUser"`
+	Arch                  string                                       `json:"arch"`
+	MemProfile            string                                       `json:"memprofile"`
+	CpuProfile            string                                       `json:"cpuprofile"`
+	Clusters              map[string]*cluster.Cluster                  `json:"-"`
+	PeerManager           *peer.PeerManager                            `json:"-"`
+	Partners              []config.Partner                             `json:"partners"`
+	Partner               config.Partner                               `json:"partner"`
+	Agents                []opensvc.Host                               `json:"agents"`
+	UUID                  string                                       `json:"uuid"`
+	Hostname              string                                       `json:"hostname"`
+	Status                string                                       `json:"status"`
+	SplitBrain            bool                                         `json:"spitBrain"`
+	ClusterList           []string                                     `json:"clusters"`
+	ImmutableClusterList  []string                                     `json:"-"`
+	Tests                 []string                                     `json:"tests"`
+	Conf                  *config.Config                               `json:"config"`
+	ImmuableFlagMaps      map[string]map[string]interface{}            `json:"-"`
+	DynamicFlagMaps       map[string]map[string]interface{}            `json:"-"`
+	DefaultFlagMap        map[string]interface{}                       `json:"-"`
+	ImmutableClusterApps  map[string][]string                          `json:"-"`
+	ImmutableAppsFlagMaps map[string]map[string]map[string]interface{} `json:"-"`
+	DynamicAppsFlagMaps   map[string]map[string]map[string]interface{} `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
@@ -1194,6 +1196,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
+	repman.ImmutableClusterApps = make(map[string][]string)
+	repman.ImmutableAppsFlagMaps = make(map[string]map[string]map[string]interface{})
+	repman.DynamicAppsFlagMaps = make(map[string]map[string]map[string]interface{})
 	repman.Partners = make([]config.Partner, 0)
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
