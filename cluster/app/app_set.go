@@ -120,10 +120,10 @@ func (app *App) SetState(v string) {
 	app.State = v
 }
 
-func (app *App) SetProvAppImage(value string) error {
-	app.AppConfig.ProvAppDockerImg = value
-	return nil
-}
+//	func (app *App) SetProvAppImage(value string) error {
+//		app.AppConfig.ProvAppDockerImg = value
+//		return nil
+//	}
 func (app *App) SetProvAppAgents(value string) error {
 	app.AppConfig.ProvAppAgents = value
 	return nil
@@ -144,7 +144,8 @@ func (app *App) SetProvAppVolumeData(value string) error {
 	app.AppConfig.ProvAppVolumeData = value
 	return nil
 }
-func (app *App) SetProvAppDockerRunArgs(value string) error {
-	app.AppConfig.ProvAppDockerRunArgs = value
-	return nil
-}
+
+// func (app *App) SetProvAppDockerRunArgs(value string) error {
+// 	app.AppConfig.ProvAppDockerRunArgs = value
+// 	return nil
+// }
