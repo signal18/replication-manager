@@ -93,6 +93,7 @@ type ReplicationManager struct {
 	ImmutableClusterList []string                          `json:"-"`
 	Tests                []string                          `json:"tests"`
 	Conf                 *config.Config                    `json:"config"`
+	ImmutableClusterApps map[string][]string               `json:"-"`
 	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
 	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
 	DefaultFlagMap       map[string]interface{}            `json:"-"`
@@ -1061,31 +1062,30 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
-func (repman *ReplicationManager) DiscoverClusterApps(FirstRead *viper.Viper) string {
+func (repman *ReplicationManager) DiscoverClusterApps(FirstRead *viper.Viper) map[string][]string {
 	m := FirstRead.AllKeys()
 
 	var appDiscovery = map[string]map[string]string{}
-	var discoveries []string
+	var discoveries map[string][]string
 	for _, k := range m {
 		if strings.Contains(k, ".app") { // only app config
 			mycluster := strings.Split(k, ".")[0] // cluster name
 			if appDiscovery[mycluster] == nil {
 				appDiscovery[mycluster] = map[string]string{}
+				discoveries[mycluster] = []string{}
 			}
 
-			myapp := strings.Split(k, ".")[2] // app name
-			if strings.HasPrefix(myapp, "saved-") {
-				myapp = strings.TrimPrefix(myapp, "saved-")
-			}
+			myapp := strings.Split(k, ".")[1] // app name
+			myapp = strings.TrimPrefix(myapp, "saved-")
 			_, ok := appDiscovery[mycluster][myapp]
 			if !ok {
 				appDiscovery[mycluster][myapp] = myapp
-				discoveries = append(discoveries, myapp)
+				discoveries[mycluster] = append(discoveries[mycluster], myapp)
 				repman.Logrus.Infof("Cluster discover app from config: %s", strings.Split(k, ".")[0])
 			}
 		}
 	}
-	return strings.Join(discoveries, ",")
+	return discoveries
 }
 
 func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper) {
@@ -1333,6 +1333,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
+	repman.ImmutableClusterApps = repman.DiscoverClusterApps(fistRead)
 
 	tmp_read := fistRead.Sub("Default")
 	if tmp_read != nil {
