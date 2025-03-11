@@ -55,7 +55,7 @@ func (app *App) OpenSVCGetInitContainerSection() map[string]string {
 		svccontainer["detach"] = "false"
 		svccontainer["type"] = "docker"
 		svccontainer["image"] = "alpine"
-		svccontainer["netns"] = "container#01"
+		svccontainer["netns"] = "container#00"
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "30s"
 		svccontainer["optional"] = "true"
