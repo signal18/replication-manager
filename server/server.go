@@ -1035,14 +1035,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 // DicoverClusters from viper merged config send a sperated list of clusters
 func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) string {
 	m := FirstRead.AllKeys()
+	defaults := []string{"default", "saved-default", "overwrite-default"}
 
 	var clusterDiscovery = map[string]string{}
 	var discoveries []string
 	for _, k := range m {
-
-		if strings.Contains(k, ".") {
+		if strings.Contains(k, ".") && !strings.Contains(k, ".app") { // exclude app config
 			mycluster := strings.Split(k, ".")[0]
-			defaults := []string{"default", "saved-default", "overwrite-default"}
 			lowername := strings.ToLower(mycluster)
 			if !slices.Contains(defaults, lowername) {
 				if strings.HasPrefix(mycluster, "saved-") {
@@ -1059,7 +1058,34 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 		}
 	}
 	return strings.Join(discoveries, ",")
+}
 
+// DicoverClusters from viper merged config send a sperated list of clusters
+func (repman *ReplicationManager) DiscoverClusterApps(FirstRead *viper.Viper) string {
+	m := FirstRead.AllKeys()
+
+	var appDiscovery = map[string]map[string]string{}
+	var discoveries []string
+	for _, k := range m {
+		if strings.Contains(k, ".app") { // only app config
+			mycluster := strings.Split(k, ".")[0] // cluster name
+			if appDiscovery[mycluster] == nil {
+				appDiscovery[mycluster] = map[string]string{}
+			}
+
+			myapp := strings.Split(k, ".")[2] // app name
+			if strings.HasPrefix(myapp, "saved-") {
+				myapp = strings.TrimPrefix(myapp, "saved-")
+			}
+			_, ok := appDiscovery[mycluster][myapp]
+			if !ok {
+				appDiscovery[mycluster][myapp] = myapp
+				discoveries = append(discoveries, myapp)
+				repman.Logrus.Infof("Cluster discover app from config: %s", strings.Split(k, ".")[0])
+			}
+		}
+	}
+	return strings.Join(discoveries, ",")
 }
 
 func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper) {
@@ -1368,6 +1394,21 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 					err := fistRead.MergeInConfig()
 					if err != nil {
 						repman.Logrus.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+					}
+				}
+
+				subfiles, err := os.ReadDir(conf.WorkingDir + "/" + f.Name() + "/apps")
+				if err == nil {
+					repman.Logrus.Infof("Parsing saved config from apps directory %s ", conf.WorkingDir+"/"+f.Name()+"/apps")
+					for _, f := range subfiles {
+						if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
+							fistRead.SetConfigName(f.Name())
+							fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/apps/" + f.Name())
+							err := fistRead.MergeInConfig()
+							if err != nil {
+								repman.Logrus.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/apps/" + f.Name() + ":" + err.Error())
+							}
+						}
 					}
 				}
 			}
