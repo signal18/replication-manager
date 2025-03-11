@@ -1068,7 +1068,7 @@ func (repman *ReplicationManager) DiscoverClusterApps(FirstRead *viper.Viper) ma
 	m := FirstRead.AllKeys()
 
 	var appDiscovery = map[string]map[string]string{}
-	var discoveries map[string][]string
+	discoveries := make(map[string][]string)
 	for _, k := range m {
 		if strings.Contains(k, ".app") { // only app config
 			mycluster := strings.Split(k, ".")[0] // cluster name
