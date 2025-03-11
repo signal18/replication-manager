@@ -28,6 +28,14 @@ prov-proxy-agents = "s18-fr-1,s18-fr-2"
 prov-proxy-service-type = "docker"
 prov-proxy-disk-type = "volume"
 prov-proxy-volume-data = "tank"
+prov-app-db-agents = "s18-fr-1,s18-fr-2"
+prov-app-cpu-cores="1"
+prov-app-disk-size="1"
+prov-app-disk-type = "volume"
+prov-app-volume-data = "tank"
+prov-app-memory="512"
+app-hosts="app1,app2"
+
 test=true
 cloud18 = true
 cloud18-gitlab-user="stephane@signal18.io"
