@@ -3,12 +3,9 @@ package cluster
 import (
 	"context"
 	"errors"
-	"strconv"
 
 	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
-	appsv1 "k8s.io/api/apps/v1"
-	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -21,42 +18,7 @@ func (cluster *Cluster) K8SProvisionAppService(apl *app.App) {
 	}
 
 	deploymentsClient := clientset.AppsV1().Deployments(cluster.Name)
-	port, _ := strconv.Atoi(apl.GetPort())
-	deployment := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: cluster.Name + "-deployment",
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: int32Ptr(1),
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app": "repication-manager",
-				},
-			},
-			Template: apiv1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Labels: map[string]string{
-						"app": "repication-manager",
-					},
-				},
-				Spec: apiv1.PodSpec{
-					Containers: []apiv1.Container{
-						{
-							Name:  apl.GetName(),
-							Image: apl.GetAppDockerImg(),
-							Ports: []apiv1.ContainerPort{
-								{
-									Name:          apl.GetName(),
-									Protocol:      apiv1.ProtocolTCP,
-									ContainerPort: int32(port),
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	deployment := apl.GetK8SDeployment()
 
 	// Create Deployment
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Creating deployment...")

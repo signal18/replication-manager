@@ -22,6 +22,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
 	"github.com/spf13/pflag"
+	"k8s.io/client-go/kubernetes"
 )
 
 var AppConfig config.AppConfig
@@ -84,6 +85,7 @@ type ClusterInterface interface {
 	IsInFailover() bool
 	OnPremiseGetSSHKey() string
 	LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{})
+	K8SConnectAPI() (*kubernetes.Clientset, error)
 }
 
 const (
@@ -147,15 +149,13 @@ func NewAppInstance(cluster ClusterInterface, placement int, apptype, url, domai
 
 func (app *App) AddDefaultFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.ProvAppType, "prov-app-type", "", "Application type")
-	flags.StringVar(&conf.ProvAppDiskPool, "prov-app-disk-pool", "", "Application disk pool")
+	flags.StringVar(&conf.ProvAppDiskPool, "prov-app-disk-pool", "none", "[none|zpool|lvm]")
 	flags.StringVar(&conf.ProvAppDiskType, "prov-app-disk-type", "", "Application disk type")
-	flags.StringVar(&conf.ProvAppDockerImg, "prov-app-docker-img", "", "Application docker image")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "Application agents")
 	flags.StringVar(&conf.ProvAppDiskSize, "prov-app-disk-size", "", "Application disk size")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "", "Application CPU cores")
 	flags.StringVar(&conf.ProvAppMemory, "prov-app-memory", "", "Application memory")
-	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "", "Application volume data")
-	flags.StringVar(&conf.ProvAppDockerRunArgs, "prov-app-docker-run-args", "", "Application docker run args")
+	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Application volume data")
 	flags.StringVar(&conf.ProvAppAgentsFailover, "prov-app-agents-failover", "", "Application agents failover")
 	flags.StringVar(&conf.ProvAppNetIface, "prov-app-net-iface", "", "Application net iface")
 	flags.StringVar(&conf.ProvAppNetmask, "prov-app-net-mask", "", "Application net mask")
@@ -165,20 +165,27 @@ func (app *App) AddDefaultFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.ProvAppRouteMask, "prov-app-route-mask", "", "Application route mask")
 	flags.StringVar(&conf.ProvAppRoutePolicy, "prov-app-route-policy", "", "Application route policy")
 	flags.StringVar(&conf.AppHosts, "app-hosts", "", "Application hosts")
-	flags.StringVar(&conf.AppRunCommand, "app-run-command", "", "Application run command")
-	flags.StringVar(&conf.AppConfigGitCloneUrl, "app-config-git-clone-url", "", "Application config git clone url")
-	flags.StringVar(&conf.AppConfigGitUser, "app-config-git-user", "", "Application config git user")
-	flags.StringVar(&conf.AppConfigGitPassword, "app-config-git-password", "", "Application config git password")
-	flags.StringVar(&conf.AppConfigGitBranch, "app-config-git-branch", "", "Application config git branch")
-	flags.StringVar(&conf.AppConfigSecretVariables, "app-config-secret-variables", "", "Application config secret variables")
-	flags.StringVar(&conf.AppConfigEnvVariables, "app-config-env-variables", "", "Application config env variables")
-	flags.StringVar(&conf.AppConfigVolumes, "app-config-volumes", "", "Application config volumes")
-	flags.StringVar(&conf.AppDataGitCloneUrl, "app-data-git-clone-url", "", "Application data git clone url")
-	flags.StringVar(&conf.AppDataGitUser, "app-data-git-user", "", "Application data git user")
-	flags.StringVar(&conf.AppDataGitPassword, "app-data-git-password", "", "Application data git password")
-	flags.StringVar(&conf.AppDataGitBranch, "app-data-git-branch", "", "Application data git branch")
-	flags.StringVar(&conf.AppDataVolumes, "app-data-volumes", "", "Application data volumes")
-	flags.StringVar(&conf.AppLogVolumes, "app-log-volumes", "", "Application log volumes")
+}
+
+func (app *App) AddSectionFlags(flags *pflag.FlagSet, aplconf *config.AppSectionConfig) {
+	flags.StringVar(&aplconf.AppDockerImg, "prov-app-docker-img", "", "Application docker image")
+	flags.StringVar(&aplconf.AppDockerRunArgs, "app-docker-run-args", "", "Application docker run args")
+	flags.StringVar(&aplconf.AppDockerVolumeArgs, "app-docker-volume-args", "", "Mounting volume args when running docker image")
+	flags.StringVar(&aplconf.AppDockerDiskArgs, "app-docker-disk-args", "", "Mounting disk args when running docker image")
+	flags.StringVar(&aplconf.AppRunCommand, "app-run-command", "", "Application run command")
+	flags.StringVar(&aplconf.AppConfigGitCloneUrl, "app-config-git-clone-url", "", "Application config git clone url")
+	flags.StringVar(&aplconf.AppConfigGitUser, "app-config-git-user", "", "Application config git user")
+	flags.StringVar(&aplconf.AppConfigGitPassword, "app-config-git-password", "", "Application config git password")
+	flags.StringVar(&aplconf.AppConfigGitBranch, "app-config-git-branch", "", "Application config git branch")
+	flags.StringVar(&aplconf.AppConfigSecretVariables, "app-config-secret-variables", "", "Application config secret variables")
+	flags.StringVar(&aplconf.AppConfigEnvVariables, "app-config-env-variables", "", "Application config env variables")
+	flags.StringVar(&aplconf.AppConfigVolumes, "app-config-volumes", "", "Application config volumes")
+	flags.StringVar(&aplconf.AppDataGitCloneUrl, "app-data-git-clone-url", "", "Application data git clone url")
+	flags.StringVar(&aplconf.AppDataGitUser, "app-data-git-user", "", "Application data git user")
+	flags.StringVar(&aplconf.AppDataGitPassword, "app-data-git-password", "", "Application data git password")
+	flags.StringVar(&aplconf.AppDataGitBranch, "app-data-git-branch", "", "Application data git branch")
+	flags.StringVar(&aplconf.AppDataVolumes, "app-data-volumes", "", "Application data volumes")
+	flags.StringVar(&aplconf.AppLogVolumes, "app-log-volumes", "", "Application log volumes")
 }
 
 func (app *App) Init() {

@@ -11,16 +11,108 @@
 package app
 
 import (
+	"strings"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (app *App) GetAppDockerImg() string {
-	return app.AppConfig.ProvAppDockerImg
+func (app *App) GetAppDockerImg(section string) string {
+	appsection, ok := app.AppConfig.GetSection(section)
+	if !ok {
+		return ""
+	}
+	return appsection.AppDockerImg
 }
 
-func (app *App) GetAppDockerRunArgs() string {
-	return app.AppConfig.ProvAppDockerRunArgs
+func (app *App) GetAppDockerRunArgs(section string) string {
+	appsection, ok := app.AppConfig.GetSection(section)
+	if !ok {
+		return ""
+	}
+	return appsection.AppDockerRunArgs
+}
+
+func (app *App) GetAppDockerDiskArgs(section string) string {
+	appsection, ok := app.AppConfig.GetSection(section)
+	if !ok {
+		return ""
+	}
+	return appsection.AppDockerDiskArgs
+}
+
+func (app *App) GetAppDockerVolumeArgs(section string) string {
+	appsection, ok := app.AppConfig.GetSection(section)
+	if !ok {
+		return ""
+	}
+	return appsection.AppDockerVolumeArgs
+}
+
+func (app *App) GetAppVolumeDataDirectories() string {
+	var out string
+	dirs := make(map[string]struct{})
+	for _, sconf := range app.AppConfig.Sections {
+		if sconf.AppDataVolumes != "" {
+			mpoints := strings.Split(sconf.AppDataVolumes, " ")
+			for _, mpoint := range mpoints {
+				dir := strings.Split(mpoint, ":")[0]
+				if _, ok := dirs[dir]; !ok {
+					out = out + dir + " "
+					dirs[dir] = struct{}{}
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+
+	return out[:len(out)-1] // remove trailing space
+}
+
+func (app *App) GetAppVolumeConfigDirectories() string {
+	var out string
+	dirs := make(map[string]struct{})
+	for _, sconf := range app.AppConfig.Sections {
+		if sconf.AppConfigVolumes != "" {
+			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
+			for _, mpoint := range mpoints {
+				dir := strings.Split(mpoint, ":")[0]
+				if _, ok := dirs[dir]; !ok {
+					out = out + dir + " "
+					dirs[dir] = struct{}{}
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+
+	return out[:len(out)-1] // remove trailing space
+}
+
+func (app *App) GetAppLogConfigDirectories() string {
+	var out string
+	dirs := make(map[string]struct{})
+	for _, sconf := range app.AppConfig.Sections {
+		if sconf.AppConfigVolumes != "" {
+			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
+			for _, mpoint := range mpoints {
+				dir := strings.Split(mpoint, ":")[0]
+				if _, ok := dirs[dir]; !ok {
+					out = out + dir + " "
+					dirs[dir] = struct{}{}
+				}
+			}
+		}
+	}
+	if len(out) == 0 {
+		return ""
+	}
+
+	return out[:len(out)-1] // remove trailing space
 }
 
 func (app *App) GetJanitorWeight() string {

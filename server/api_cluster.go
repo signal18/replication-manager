@@ -2433,8 +2433,10 @@ func (repman *ReplicationManager) setClusterAppSetting(mycluster *cluster.Cluste
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
 
 	switch name {
-	case "prov-app-docker-img":
-		mycluster.SetProvAppImage(app.GetName(), value)
+	// case "prov-app-docker-img":
+	// 	mycluster.SetProvAppImage(app.GetName(), value)
+	// case "prov-app-docker-run-args":
+	// 	mycluster.SetAppDockerRunArgs(app.GetName(), value)
 	case "prov-app-agents":
 		mycluster.SetProvAppAgents(app.GetName(), value)
 	case "prov-app-disk-size":
@@ -2445,8 +2447,6 @@ func (repman *ReplicationManager) setClusterAppSetting(mycluster *cluster.Cluste
 		mycluster.SetAppMemorySize(app.GetName(), value)
 	case "prov-app-volume-data":
 		mycluster.SetAppVolumeData(app.GetName(), value)
-	case "prov-app-docker-run-args":
-		mycluster.SetAppDockerRunArgs(app.GetName(), value)
 	default:
 		return errors.New("Setting not found")
 	}

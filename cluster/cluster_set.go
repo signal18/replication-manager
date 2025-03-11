@@ -1878,16 +1878,16 @@ func (cluster *Cluster) SetProvProxyServiceType(value string) error {
 	return nil
 }
 
-func (cluster *Cluster) SetProvAppImage(name, value string) error {
-	app := cluster.GetAppFromName(name)
-	if app == nil {
-		return errors.New("App not found")
-	}
+// func (cluster *Cluster) SetProvAppImage(name, value string) error {
+// 	app := cluster.GetAppFromName(name)
+// 	if app == nil {
+// 		return errors.New("App not found")
+// 	}
 
-	app.SetProvAppImage(value)
-	cluster.SetAppsReprovCookie()
-	return nil
-}
+//		app.SetProvAppImage(value)
+//		cluster.SetAppsReprovCookie()
+//		return nil
+//	}
 func (cluster *Cluster) SetProvAppAgents(name, value string) error {
 	app := cluster.GetAppFromName(name)
 	if app == nil {
@@ -1938,16 +1938,17 @@ func (cluster *Cluster) SetAppVolumeData(name, value string) error {
 	cluster.SetAppsReprovCookie()
 	return nil
 }
-func (cluster *Cluster) SetAppDockerRunArgs(name, value string) error {
-	app := cluster.GetAppFromName(name)
-	if app == nil {
-		return errors.New("App not found")
-	}
 
-	app.SetProvAppDockerRunArgs(value)
-	cluster.SetAppsReprovCookie()
-	return nil
-}
+// func (cluster *Cluster) SetAppDockerRunArgs(name, value string) error {
+// 	app := cluster.GetAppFromName(name)
+// 	if app == nil {
+// 		return errors.New("App not found")
+// 	}
+
+// 	app.SetProvAppDockerRunArgs(value)
+// 	cluster.SetAppsReprovCookie()
+// 	return nil
+// }
 
 func (cluster *Cluster) Exit() {
 	cluster.exit = true

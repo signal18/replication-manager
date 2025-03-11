@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -183,12 +182,12 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(servers string, apl *app.App) (s
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = apl.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	svcsection["volume#data"] = cluster.OpenSVCGetAppVolumeDataSection(apl)
+	svcsection["volume#data"] = apl.OpenSVCGetAppVolumeDataSection()
 	svcsection["container#00"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(servers, apl)
 
-	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(apl.GetPort())
-	svcsection["container# app"] = cluster.OpenSVCGetAppContainerSection(apl)
+	svcsection["container#init"] = apl.OpenSVCGetInitContainerSection()
+	svcsection = apl.OpenSVCGetAllContainerSections(svcsection)
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
@@ -356,26 +355,6 @@ size = ` + collector.ProvAppDisk
 	// `
 
 	return conf
-}
-
-func (cluster *Cluster) OpenSVCGetAppContainerSection(server *app.App) map[string]string {
-	svccontainer := make(map[string]string)
-	if slices.Contains([]string{"docker", "podman", "oci"}, server.GetAppServiceType()) {
-		svccontainer["tags"] = ""
-		svccontainer["netns"] = "container#01"
-		svccontainer["image"] = "{env.nginx_img}"
-		svccontainer["rm"] = "true"
-		svccontainer["type"] = server.GetAppServiceType()
-		if server.GetAppDiskType() != "volume" {
-			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/nginx:/usr/local/etc/nginx:rw ` + server.GetAppDockerRunArgs()
-		} else {
-			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
-			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 " + server.GetAppDockerRunArgs()
-			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/nginx:/usr/local/etc/nginx:rw`
-		}
-	}
-
-	return svccontainer
 }
 
 func (cluster *Cluster) GetAppTemplate(collector opensvc.Collector, servers string, agent opensvc.Host, appi *app.App) (string, error) {
