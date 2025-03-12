@@ -85,8 +85,9 @@ type Cluster struct {
 	Crashes                       crashList              `json:"dbServersCrashes"` //This will be purged on all db node up
 	FailoverHistory               crashList              `json:"failoverHistory"`  //This will be used for PITR
 	Proxies                       proxyList              `json:"-"`
-	Apps                          app.AppList            `json:"-"`
 	ProxyIdList                   []string               `json:"proxyServers"`
+	Apps                          app.AppList            `json:"-"`
+	AppsIdList                    []string               `json:"appServers"`
 	FailoverCtr                   int                    `json:"failoverCounter"`
 	FailoverTs                    int64                  `json:"failoverLastTime"`
 	Status                        string                 `json:"activePassiveStatus"`
@@ -547,6 +548,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.CheckDefaultUser(true)
 	cluster.SetToolVersions()
 	cluster.StartResticRepo()
+	cluster.DiscoverClusterApps()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {

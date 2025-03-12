@@ -22,6 +22,8 @@ type AppConfig struct {
 	OnPremiseStartScript  string                      `mapstructure:"on-premise-start-script" toml:"on-premise-start-script" json:"onPremiseStartScript"`
 	OnPremiseStopScript   string                      `mapstructure:"on-premise-stop-script" toml:"on-premise-stop-script" json:"onPremiseStopScript"`
 	SlapOSAppPartitions   string                      `mapstructure:"slapos-app-partitions" toml:"slapos-app-partitions" json:"slaposAppPartitions"`
+	ImmutableFlagMap      map[string]interface{}      `mapstructure:"-" toml:"-" json:"-"`
+	DynamicFlagMap        map[string]interface{}      `mapstructure:"-" toml:"-" json:"-"`
 	Sections              map[string]AppSectionConfig `mapstructure:"-" toml:"-" json:"-"`
 }
 
@@ -32,22 +34,24 @@ func (ac *AppConfig) GetSection(section string) (AppSectionConfig, bool) {
 
 // AppSectionConfig is a struct that holds the configuration for each section (container) of the application
 type AppSectionConfig struct {
-	AppDockerImg             string `mapstructure:"app-docker-img" toml:"app-docker-img" json:"provAppDockerImg"`
-	AppDockerRunArgs         string `mapstructure:"app-docker-run-args" toml:"app-docker-run-args" json:"provAppDockerRunArgs"`
-	AppDockerDiskArgs        string `mapstructure:"app-docker-disk-args" toml:"app-docker-disk-args" json:"provAppDockerDiskArgs"`
-	AppDockerVolumeArgs      string `mapstructure:"app-docker-volume-args" toml:"app-docker-volume-args" json:"provAppDockerVolumeArgs"`
-	AppRunCommand            string `mapstructure:"app-run-command" toml:"app-run-command" json:"appRunCommand"`
-	AppConfigGitCloneUrl     string `mapstructure:"app-config-git-clone-url" toml:"app-config-git-clone-url" json:"appConfigGitCloneUrl"`
-	AppConfigGitUser         string `mapstructure:"app-config-git-user" toml:"app-config-git-user" json:"appConfigGitUser"`
-	AppConfigGitPassword     string `mapstructure:"app-config-git-password" toml:"app-config-git-password" json:"appConfigGitPassword"`
-	AppConfigGitBranch       string `mapstructure:"app-config-git-branch" toml:"app-config-git-branch" json:"appConfigGitBranch"`
-	AppConfigSecretVariables string `mapstructure:"app-config-secret-variables" toml:"app-config-secret-variables" json:"appConfigSecretVariables"`
-	AppConfigEnvVariables    string `mapstructure:"app-config-env-variables" toml:"app-config-env-variables" json:"appConfigEnvVariable"`
-	AppConfigVolumes         string `mapstructure:"app-config-volumes" toml:"app-config-volumes" json:"appConfigVolumes"`
-	AppDataGitCloneUrl       string `mapstructure:"app-data-git-clone-url" toml:"app-data-git-clone-url" json:"appDataGitCloneUrl"`
-	AppDataGitUser           string `mapstructure:"app-data-git-user" toml:"app-data-git-user" json:"appDataGitUser"`
-	AppDataGitPassword       string `mapstructure:"app-data-git-password" toml:"app-data-git-password" json:"appDataGitPassword"`
-	AppDataGitBranch         string `mapstructure:"app-data-git-branch" toml:"app-data-git-branch" json:"appDataBranch"`
-	AppDataVolumes           string `mapstructure:"app-data-volumes" toml:"app-data-volumes" json:"appDataVolumes"`
-	AppLogVolumes            string `mapstructure:"app-log-volumes" toml:"app-log-volumes" json:"appLogVolumes"`
+	AppDockerImg             string                 `mapstructure:"app-docker-img" toml:"app-docker-img" json:"provAppDockerImg"`
+	AppDockerRunArgs         string                 `mapstructure:"app-docker-run-args" toml:"app-docker-run-args" json:"provAppDockerRunArgs"`
+	AppDockerDiskArgs        string                 `mapstructure:"app-docker-disk-args" toml:"app-docker-disk-args" json:"provAppDockerDiskArgs"`
+	AppDockerVolumeArgs      string                 `mapstructure:"app-docker-volume-args" toml:"app-docker-volume-args" json:"provAppDockerVolumeArgs"`
+	AppRunCommand            string                 `mapstructure:"app-run-command" toml:"app-run-command" json:"appRunCommand"`
+	AppConfigGitCloneUrl     string                 `mapstructure:"app-config-git-clone-url" toml:"app-config-git-clone-url" json:"appConfigGitCloneUrl"`
+	AppConfigGitUser         string                 `mapstructure:"app-config-git-user" toml:"app-config-git-user" json:"appConfigGitUser"`
+	AppConfigGitPassword     string                 `mapstructure:"app-config-git-password" toml:"app-config-git-password" json:"appConfigGitPassword"`
+	AppConfigGitBranch       string                 `mapstructure:"app-config-git-branch" toml:"app-config-git-branch" json:"appConfigGitBranch"`
+	AppConfigSecretVariables string                 `mapstructure:"app-config-secret-variables" toml:"app-config-secret-variables" json:"appConfigSecretVariables"`
+	AppConfigEnvVariables    string                 `mapstructure:"app-config-env-variables" toml:"app-config-env-variables" json:"appConfigEnvVariable"`
+	AppConfigVolumes         string                 `mapstructure:"app-config-volumes" toml:"app-config-volumes" json:"appConfigVolumes"`
+	AppDataGitCloneUrl       string                 `mapstructure:"app-data-git-clone-url" toml:"app-data-git-clone-url" json:"appDataGitCloneUrl"`
+	AppDataGitUser           string                 `mapstructure:"app-data-git-user" toml:"app-data-git-user" json:"appDataGitUser"`
+	AppDataGitPassword       string                 `mapstructure:"app-data-git-password" toml:"app-data-git-password" json:"appDataGitPassword"`
+	AppDataGitBranch         string                 `mapstructure:"app-data-git-branch" toml:"app-data-git-branch" json:"appDataBranch"`
+	AppDataVolumes           string                 `mapstructure:"app-data-volumes" toml:"app-data-volumes" json:"appDataVolumes"`
+	AppLogVolumes            string                 `mapstructure:"app-log-volumes" toml:"app-log-volumes" json:"appLogVolumes"`
+	ImmutableFlagMap         map[string]interface{} `mapstructure:"-" toml:"-" json:"-"`
+	DynamicFlagMap           map[string]interface{} `mapstructure:"-" toml:"-" json:"-"`
 }

@@ -17,8 +17,13 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
+func (app *App) GetSectionConfig(section string) (config.AppSectionConfig, bool) {
+	appsection, ok := app.SectionConfigMap[section]
+	return appsection, ok
+}
+
 func (app *App) GetAppDockerImg(section string) string {
-	appsection, ok := app.AppConfig.GetSection(section)
+	appsection, ok := app.GetSectionConfig(section)
 	if !ok {
 		return ""
 	}
@@ -26,7 +31,7 @@ func (app *App) GetAppDockerImg(section string) string {
 }
 
 func (app *App) GetAppDockerRunArgs(section string) string {
-	appsection, ok := app.AppConfig.GetSection(section)
+	appsection, ok := app.GetSectionConfig(section)
 	if !ok {
 		return ""
 	}
@@ -34,7 +39,7 @@ func (app *App) GetAppDockerRunArgs(section string) string {
 }
 
 func (app *App) GetAppDockerDiskArgs(section string) string {
-	appsection, ok := app.AppConfig.GetSection(section)
+	appsection, ok := app.GetSectionConfig(section)
 	if !ok {
 		return ""
 	}
@@ -42,7 +47,7 @@ func (app *App) GetAppDockerDiskArgs(section string) string {
 }
 
 func (app *App) GetAppDockerVolumeArgs(section string) string {
-	appsection, ok := app.AppConfig.GetSection(section)
+	appsection, ok := app.GetSectionConfig(section)
 	if !ok {
 		return ""
 	}
@@ -52,7 +57,7 @@ func (app *App) GetAppDockerVolumeArgs(section string) string {
 func (app *App) GetAppVolumeDataDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.AppConfig.Sections {
+	for _, sconf := range app.SectionConfigMap {
 		if sconf.AppDataVolumes != "" {
 			mpoints := strings.Split(sconf.AppDataVolumes, " ")
 			for _, mpoint := range mpoints {
@@ -74,7 +79,7 @@ func (app *App) GetAppVolumeDataDirectories() string {
 func (app *App) GetAppVolumeConfigDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.AppConfig.Sections {
+	for _, sconf := range app.SectionConfigMap {
 		if sconf.AppConfigVolumes != "" {
 			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
 			for _, mpoint := range mpoints {
@@ -96,7 +101,7 @@ func (app *App) GetAppVolumeConfigDirectories() string {
 func (app *App) GetAppLogConfigDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.AppConfig.Sections {
+	for _, sconf := range app.SectionConfigMap {
 		if sconf.AppConfigVolumes != "" {
 			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
 			for _, mpoint := range mpoints {
@@ -184,11 +189,6 @@ func (app *App) GetAppVolumeData() string {
 }
 
 func (app *App) GetAppConfig() string {
-	app.Logger.Infof(app.Cluster.GetName(), config.ConstLogModApp, "App Config generation "+app.Datadir+"/config.tar.gz")
-	err := app.Configurator.GenerateAppConfig(app.Datadir, app.Cluster.GetConf().WorkingDir+"/"+app.Cluster.GetName(), app.GetEnv(), app.RepMgrVersion)
-	if err != nil {
-		app.Logger.Errorf(app.Cluster.GetName(), config.ConstLogModApp, "%s/config.tar.gz error: %s", app.Datadir, err)
-	}
 	return ""
 }
 

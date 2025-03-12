@@ -50,7 +50,6 @@ import (
 	termbox "github.com/nsf/termbox-go"
 
 	"github.com/signal18/replication-manager/cluster"
-	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
@@ -72,33 +71,30 @@ import (
 var RepMan *ReplicationManager
 
 type ReplicationManager struct {
-	OpenSVC               opensvc.Collector                            `json:"-"`
-	Version               string                                       `json:"version"`
-	Fullversion           string                                       `json:"fullVersion"`
-	Os                    string                                       `json:"os"`
-	OsUser                *user.User                                   `json:"osUser"`
-	Arch                  string                                       `json:"arch"`
-	MemProfile            string                                       `json:"memprofile"`
-	CpuProfile            string                                       `json:"cpuprofile"`
-	Clusters              map[string]*cluster.Cluster                  `json:"-"`
-	PeerManager           *peer.PeerManager                            `json:"-"`
-	Partners              []config.Partner                             `json:"partners"`
-	Partner               config.Partner                               `json:"partner"`
-	Agents                []opensvc.Host                               `json:"agents"`
-	UUID                  string                                       `json:"uuid"`
-	Hostname              string                                       `json:"hostname"`
-	Status                string                                       `json:"status"`
-	SplitBrain            bool                                         `json:"spitBrain"`
-	ClusterList           []string                                     `json:"clusters"`
-	ImmutableClusterList  []string                                     `json:"-"`
-	Tests                 []string                                     `json:"tests"`
-	Conf                  *config.Config                               `json:"config"`
-	ImmuableFlagMaps      map[string]map[string]interface{}            `json:"-"`
-	DynamicFlagMaps       map[string]map[string]interface{}            `json:"-"`
-	DefaultFlagMap        map[string]interface{}                       `json:"-"`
-	ImmutableClusterApps  map[string][]string                          `json:"-"`
-	ImmutableAppsFlagMaps map[string]map[string]map[string]interface{} `json:"-"`
-	DynamicAppsFlagMaps   map[string]map[string]map[string]interface{} `json:"-"`
+	OpenSVC              opensvc.Collector                 `json:"-"`
+	Version              string                            `json:"version"`
+	Fullversion          string                            `json:"fullVersion"`
+	Os                   string                            `json:"os"`
+	OsUser               *user.User                        `json:"osUser"`
+	Arch                 string                            `json:"arch"`
+	MemProfile           string                            `json:"memprofile"`
+	CpuProfile           string                            `json:"cpuprofile"`
+	Clusters             map[string]*cluster.Cluster       `json:"-"`
+	PeerManager          *peer.PeerManager                 `json:"-"`
+	Partners             []config.Partner                  `json:"partners"`
+	Partner              config.Partner                    `json:"partner"`
+	Agents               []opensvc.Host                    `json:"agents"`
+	UUID                 string                            `json:"uuid"`
+	Hostname             string                            `json:"hostname"`
+	Status               string                            `json:"status"`
+	SplitBrain           bool                              `json:"spitBrain"`
+	ClusterList          []string                          `json:"clusters"`
+	ImmutableClusterList []string                          `json:"-"`
+	Tests                []string                          `json:"tests"`
+	Conf                 *config.Config                    `json:"config"`
+	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
+	DynamicFlagMaps      map[string]map[string]interface{} `json:"-"`
+	DefaultFlagMap       map[string]interface{}            `json:"-"`
 	//Adding default flags from AddFlags
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
@@ -676,10 +672,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		sphinxprx := new(cluster.SphinxProxy)
 		sphinxprx.AddFlags(flags, conf)
 	}
-	if WithApp == "ON" {
-		webdevopsapp := new(app.App)
-		webdevopsapp.AddDefaultFlags(flags, &app.AppConfig)
-	}
 
 	myproxyprx := new(cluster.MyProxyProxy)
 	myproxyprx.AddFlags(flags, conf)
@@ -1063,33 +1055,6 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 	return strings.Join(discoveries, ",")
 }
 
-// DicoverClusters from viper merged config send a sperated list of clusters
-func (repman *ReplicationManager) DiscoverClusterApps(FirstRead *viper.Viper) map[string][]string {
-	m := FirstRead.AllKeys()
-
-	var appDiscovery = map[string]map[string]string{}
-	discoveries := make(map[string][]string)
-	for _, k := range m {
-		if strings.Contains(k, ".app") { // only app config
-			mycluster := strings.Split(k, ".")[0] // cluster name
-			if appDiscovery[mycluster] == nil {
-				appDiscovery[mycluster] = map[string]string{}
-				discoveries[mycluster] = []string{}
-			}
-
-			myapp := strings.Split(k, ".")[1] // app name
-			myapp = strings.TrimPrefix(myapp, "saved-")
-			_, ok := appDiscovery[mycluster][myapp]
-			if !ok {
-				appDiscovery[mycluster][myapp] = myapp
-				discoveries[mycluster] = append(discoveries[mycluster], myapp)
-				repman.Logrus.Infof("Cluster discover app from config: %s", strings.Split(k, ".")[0])
-			}
-		}
-	}
-	return discoveries
-}
-
 func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper) {
 	m := viper.AllSettings()
 	//m := viper.AllSettings()
@@ -1196,9 +1161,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.VersionConfs = make(map[string]*config.ConfVersion)
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
-	repman.ImmutableClusterApps = make(map[string][]string)
-	repman.ImmutableAppsFlagMaps = make(map[string]map[string]map[string]interface{})
-	repman.DynamicAppsFlagMaps = make(map[string]map[string]map[string]interface{})
 	repman.Partners = make([]config.Partner, 0)
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
@@ -1338,7 +1300,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
-	repman.ImmutableClusterApps = repman.DiscoverClusterApps(fistRead)
 
 	tmp_read := fistRead.Sub("Default")
 	if tmp_read != nil {
@@ -1403,20 +1364,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 					}
 				}
 
-				subfiles, err := os.ReadDir(conf.WorkingDir + "/" + f.Name() + "/apps")
-				if err == nil {
-					repman.Logrus.Infof("Parsing saved config from apps directory %s ", conf.WorkingDir+"/"+f.Name()+"/apps")
-					for _, f := range subfiles {
-						if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
-							fistRead.SetConfigName(f.Name())
-							fistRead.SetConfigFile(conf.WorkingDir + "/" + f.Name() + "/apps/" + f.Name())
-							err := fistRead.MergeInConfig()
-							if err != nil {
-								repman.Logrus.Fatal("Config error in " + conf.WorkingDir + "/" + f.Name() + "/apps/" + f.Name() + ":" + err.Error())
-							}
-						}
-					}
-				}
 			}
 		}
 
@@ -1605,7 +1552,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 				if v != nil {
 					clustImmuableMap[f] = v
 				}
-
 			}
 		}
 

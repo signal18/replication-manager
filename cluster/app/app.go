@@ -21,7 +21,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
-	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -30,42 +29,43 @@ var AppConfig config.AppConfig
 type AppList []*App
 
 type App struct {
-	Id                    string                     `json:"id"`
-	Name                  string                     `json:"name"`
-	Domain                string                     `json:"domain"`
-	Type                  string                     `json:"type"`
-	Host                  string                     `json:"host"`
-	HostCnf               string                     `json:"-"`
-	HostIPV6              string                     `json:"hostIPV6"`
-	Port                  string                     `json:"port"`
-	AppConfig             config.AppConfig           `json:"config"`
-	Cluster               ClusterInterface           `json:"clustername"`
-	User                  string                     `json:"user"`
-	Pass                  string                     `json:"-"`
-	Configurator          *configurator.Configurator `json:"-"`
-	Datadir               string                     `json:"datadir"`
-	State                 string                     `json:"state"`
-	PrevState             string                     `json:"prevState"`
-	FailCount             int                        `json:"failCount"`
-	SlapOSDatadir         string                     `json:"slaposDatadir"`
-	Process               *os.Process                `json:"process"`
-	IsCompute             bool                       `json:"isCompute"`
-	ConfigGitCloneUrl     string                     `json:"configGitCloneUrl"`
-	ConfigGitUser         string                     `json:"configGitUser"`
-	ConfigGitPassword     string                     `json:"configGitPassword"`
-	ConfigGitBranch       string                     `json:"configGitBranch"`
-	ConfigSecretVariables map[string]string          `json:"-"`
-	ConfigEnvVariables    map[string]string          `json:"-"`
-	ConfigVolumeMount     map[string]string          `json:"configVolumeMount"`
-	DataGitCloneUrl       string                     `json:"dataGitCloneUrl"`
-	DataGitUser           string                     `json:"dataGitUser"`
-	DataGitPassword       string                     `json:"-"`
-	DataGitBranch         string                     `json:"dataGitBranch"`
-	DataVolumeMount       map[string]string          `json:"dataVolumeMount"`
-	LogVolumeMount        map[string]string          `json:"logVolumeMount"`
-	ServiceName           string                     `json:"serviceName"`
-	Agent                 string                     `json:"agent"`
-	Weight                string                     `json:"weight"`
+	Id                    string                             `json:"id"`
+	Name                  string                             `json:"name"`
+	Domain                string                             `json:"domain"`
+	Type                  string                             `json:"type"`
+	Host                  string                             `json:"host"`
+	HostCnf               string                             `json:"-"`
+	HostIPV6              string                             `json:"hostIPV6"`
+	Port                  string                             `json:"port"`
+	AppConfig             config.AppConfig                   `json:"config"`
+	SectionConfigMap      map[string]config.AppSectionConfig `json:"deployConfigs"`
+	Cluster               ClusterInterface                   `json:"clustername"`
+	User                  string                             `json:"user"`
+	Pass                  string                             `json:"-"`
+	Configurator          *configurator.Configurator         `json:"-"`
+	Datadir               string                             `json:"datadir"`
+	State                 string                             `json:"state"`
+	PrevState             string                             `json:"prevState"`
+	FailCount             int                                `json:"failCount"`
+	SlapOSDatadir         string                             `json:"slaposDatadir"`
+	Process               *os.Process                        `json:"process"`
+	IsCompute             bool                               `json:"isCompute"`
+	ConfigGitCloneUrl     string                             `json:"configGitCloneUrl"`
+	ConfigGitUser         string                             `json:"configGitUser"`
+	ConfigGitPassword     string                             `json:"configGitPassword"`
+	ConfigGitBranch       string                             `json:"configGitBranch"`
+	ConfigSecretVariables map[string]string                  `json:"-"`
+	ConfigEnvVariables    map[string]string                  `json:"-"`
+	ConfigVolumeMount     map[string]string                  `json:"configVolumeMount"`
+	DataGitCloneUrl       string                             `json:"dataGitCloneUrl"`
+	DataGitUser           string                             `json:"dataGitUser"`
+	DataGitPassword       string                             `json:"-"`
+	DataGitBranch         string                             `json:"dataGitBranch"`
+	DataVolumeMount       map[string]string                  `json:"dataVolumeMount"`
+	LogVolumeMount        map[string]string                  `json:"logVolumeMount"`
+	ServiceName           string                             `json:"serviceName"`
+	Agent                 string                             `json:"agent"`
+	Weight                string                             `json:"weight"`
 	Lock                  sync.Mutex
 	Logger                *config.LogrusWrapper `json:"-"`
 	RepMgrVersion         string                `json:"-"`
@@ -74,8 +74,6 @@ type App struct {
 
 type ClusterInterface interface {
 	GetName() string
-	GetHost() string
-	GetPort() string
 	GetCrcTable() *crc64.Table
 	GetConf() *config.Config
 	GetDbPass() string
@@ -84,7 +82,7 @@ type ClusterInterface interface {
 	GetAPIUserByUsername(username string) (clusterauth.APIUser, bool)
 	IsInFailover() bool
 	OnPremiseGetSSHKey() string
-	LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{})
+	LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int
 	K8SConnectAPI() (*kubernetes.Clientset, error)
 }
 
@@ -111,15 +109,14 @@ const (
 	stateProxyDesync  string = "ProxyDesync"
 )
 
-func NewAppInstance(cluster ClusterInterface, placement int, apptype, url, domain string, name string, compute bool) *App {
+func NewAppInstance(cluster ClusterInterface, placement int, host, domain, name string) *App {
 	app := new(App)
-	app.Type = apptype
-	app.HostCnf = url // store host from config file
+	app.SectionConfigMap = make(map[string]config.AppSectionConfig)
+	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
-	app.Version, _ = version.NewVersionFromString(apptype, "")
 	app.FailCount = 0
 
-	app.Host, app.Port = misc.SplitHostPort(url)
+	app.Host, app.Port = misc.SplitHostPort(host)
 	app.Name = name
 	if app.Name == "" {
 		app.Name = app.Host
@@ -147,45 +144,12 @@ func NewAppInstance(cluster ClusterInterface, placement int, apptype, url, domai
 	return app
 }
 
-func (app *App) AddDefaultFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
-	flags.StringVar(&conf.ProvAppType, "prov-app-type", "", "Application type")
-	flags.StringVar(&conf.ProvAppDiskPool, "prov-app-disk-pool", "none", "[none|zpool|lvm]")
-	flags.StringVar(&conf.ProvAppDiskType, "prov-app-disk-type", "", "Application disk type")
-	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "Application agents")
-	flags.StringVar(&conf.ProvAppDiskSize, "prov-app-disk-size", "", "Application disk size")
-	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "", "Application CPU cores")
-	flags.StringVar(&conf.ProvAppMemory, "prov-app-memory", "", "Application memory")
-	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Application volume data")
-	flags.StringVar(&conf.ProvAppAgentsFailover, "prov-app-agents-failover", "", "Application agents failover")
-	flags.StringVar(&conf.ProvAppNetIface, "prov-app-net-iface", "", "Application net iface")
-	flags.StringVar(&conf.ProvAppNetmask, "prov-app-net-mask", "", "Application net mask")
-	flags.StringVar(&conf.ProvAppGateway, "prov-app-net-gateway", "", "Application net gateway")
-	flags.StringVar(&conf.ProvAppRouteAddr, "prov-app-route-addr", "", "Application route addr")
-	flags.StringVar(&conf.ProvAppRoutePort, "prov-app-route-port", "", "Application route port")
-	flags.StringVar(&conf.ProvAppRouteMask, "prov-app-route-mask", "", "Application route mask")
-	flags.StringVar(&conf.ProvAppRoutePolicy, "prov-app-route-policy", "", "Application route policy")
-	flags.StringVar(&conf.AppHosts, "app-hosts", "", "Application hosts")
+func NewAppConfig() *config.AppConfig {
+	return &config.AppConfig{}
 }
 
-func (app *App) AddSectionFlags(flags *pflag.FlagSet, aplconf *config.AppSectionConfig) {
-	flags.StringVar(&aplconf.AppDockerImg, "prov-app-docker-img", "", "Application docker image")
-	flags.StringVar(&aplconf.AppDockerRunArgs, "app-docker-run-args", "", "Application docker run args")
-	flags.StringVar(&aplconf.AppDockerVolumeArgs, "app-docker-volume-args", "", "Mounting volume args when running docker image")
-	flags.StringVar(&aplconf.AppDockerDiskArgs, "app-docker-disk-args", "", "Mounting disk args when running docker image")
-	flags.StringVar(&aplconf.AppRunCommand, "app-run-command", "", "Application run command")
-	flags.StringVar(&aplconf.AppConfigGitCloneUrl, "app-config-git-clone-url", "", "Application config git clone url")
-	flags.StringVar(&aplconf.AppConfigGitUser, "app-config-git-user", "", "Application config git user")
-	flags.StringVar(&aplconf.AppConfigGitPassword, "app-config-git-password", "", "Application config git password")
-	flags.StringVar(&aplconf.AppConfigGitBranch, "app-config-git-branch", "", "Application config git branch")
-	flags.StringVar(&aplconf.AppConfigSecretVariables, "app-config-secret-variables", "", "Application config secret variables")
-	flags.StringVar(&aplconf.AppConfigEnvVariables, "app-config-env-variables", "", "Application config env variables")
-	flags.StringVar(&aplconf.AppConfigVolumes, "app-config-volumes", "", "Application config volumes")
-	flags.StringVar(&aplconf.AppDataGitCloneUrl, "app-data-git-clone-url", "", "Application data git clone url")
-	flags.StringVar(&aplconf.AppDataGitUser, "app-data-git-user", "", "Application data git user")
-	flags.StringVar(&aplconf.AppDataGitPassword, "app-data-git-password", "", "Application data git password")
-	flags.StringVar(&aplconf.AppDataGitBranch, "app-data-git-branch", "", "Application data git branch")
-	flags.StringVar(&aplconf.AppDataVolumes, "app-data-volumes", "", "Application data volumes")
-	flags.StringVar(&aplconf.AppLogVolumes, "app-log-volumes", "", "Application log volumes")
+func NewAppSectionConfig() *config.AppSectionConfig {
+	return &config.AppSectionConfig{}
 }
 
 func (app *App) Init() {
