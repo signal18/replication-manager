@@ -15,10 +15,11 @@ func (cluster *Cluster) DiscoverClusterApps() {
 
 	hosts := strings.Split(cluster.Conf.AppHosts, ",")
 
-	for _, host := range hosts {
-		newapp := app.NewAppInstance(cluster, len(cluster.Apps), host, "")
+	for k, host := range hosts {
+		newapp := app.NewAppInstance(cluster, k, host)
 		cluster.Logrus.Infof("Adding app %s to cluster %s", newapp.Name, cluster.Name)
 		cluster.Apps = append(cluster.Apps, newapp)
+		cluster.AppsIdList = append(cluster.AppsIdList, newapp.Id)
 	}
 
 	return

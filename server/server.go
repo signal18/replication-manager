@@ -50,6 +50,7 @@ import (
 	termbox "github.com/nsf/termbox-go"
 
 	"github.com/signal18/replication-manager/cluster"
+	"github.com/signal18/replication-manager/cluster/app"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
@@ -683,6 +684,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.BoolVar(&conf.Spider, "spider", false, "Turn on spider detection")
 	}
 
+	app := new(app.App)
+	app.AddFlags(flags, conf)
+
 	if WithMonitoring == "ON" {
 		flags.IntVar(&conf.GraphiteCarbonPort, "graphite-carbon-port", 2003, "Graphite Carbon Metrics TCP & UDP port")
 		flags.IntVar(&conf.GraphiteCarbonApiPort, "graphite-carbon-api-port", 10002, "Graphite Carbon API port")
@@ -836,13 +840,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvDBBinaryBasedir, "prov-db-binary-basedir", "/usr/local/mysql/bin", "Path to mysqld binary")
 	flags.StringVar(&conf.ProvDBBinaryLogName, "prov-db-binary-log-name", "binlog", "Prov DB Binary Log Name")
 
-	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "List of application agents")
-	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores ")
-	flags.StringVar(&conf.ProvAppMemory, "prov-app-memory", "1", "Memory usage in giga bytes")
-	flags.StringVar(&conf.ProvAppDiskType, "prov-app-disk-type", "volume", "Disk type: [loopback|physical|pool|directory|volume]")
-	flags.StringVar(&conf.ProvAppDiskSize, "prov-app-disk-size", "1", "Disk in g for micro service VM")
-	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name for data")
-
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
@@ -868,6 +865,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.SlapOSMaxscalePartitions, "slapos-maxscale-partitions", "", "List maxscale slapos partitions path")
 	flags.StringVar(&conf.SlapOSShardProxyPartitions, "slapos-shardproxy-partitions", "", "List spider slapos partitions path")
 	flags.StringVar(&conf.SlapOSSphinxPartitions, "slapos-sphinx-partitions", "", "List sphinx slapos partitions path")
+	flags.StringVar(&conf.SlapOSAppPartitions, "slapos-app-partitions", "", "List app slapos partitions path")
 	flags.StringVar(&conf.ProvDbBootstrapScript, "prov-db-bootstrap-script", "", "Database bootstrap script")
 	flags.StringVar(&conf.ProvProxyBootstrapScript, "prov-proxy-bootstrap-script", "", "Proxy bootstrap script")
 	flags.StringVar(&conf.ProvDbCleanupScript, "prov-db-cleanup-script", "", "Database cleanup script")

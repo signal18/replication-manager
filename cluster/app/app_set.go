@@ -34,20 +34,20 @@ func (app *App) SetServiceName(namespace string) {
 	app.ServiceName = namespace + "/svc/" + app.Name
 }
 
-func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string, Weights string) {
-	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
+func (app *App) SetPlacement(k int, ProvAgents string, SlapOSPartitions string, HostsIPV6 string) {
+	slapospartitions := strings.Split(SlapOSPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")
-	ipv6hosts := strings.Split(ProxysqlHostsIPV6, ",")
-	weights := strings.Split(Weights, ",")
+	ipv6hosts := strings.Split(HostsIPV6, ",")
+	// weights := strings.Split(Weights, ",")
 	if k < len(slapospartitions) {
 		app.SlapOSDatadir = slapospartitions[k]
 	}
 	if ProvAgents != "" {
 		app.Agent = agents[k%len(agents)]
 	}
-	if Weights != "" {
-		app.Weight = weights[k%len(weights)]
-	}
+	// if Weights != "" {
+	// 	app.Weight = weights[k%len(weights)]
+	// }
 
 	if k < len(ipv6hosts) {
 		app.HostIPV6 = ipv6hosts[k]

@@ -19,8 +19,8 @@ import (
 	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
+	"github.com/spf13/pflag"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -109,18 +109,16 @@ const (
 	stateProxyDesync  string = "ProxyDesync"
 )
 
-func NewAppInstance(cluster ClusterInterface, placement int, host, name string) *App {
+func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
+	conf := cluster.GetConf()
 	app := new(App)
+	app.SetPlacement(placement, conf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.DeployConfigMap = make(map[string]config.AppSectionConfig)
 	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
 	app.FailCount = 0
-
-	app.Host, app.Port = misc.SplitHostPort(host)
-	app.Name = name
-	if app.Name == "" {
-		app.Name = app.Host
-	}
+	app.Name = host
+	app.Host = host
 
 	if cluster.GetConf().ProvNetCNI {
 		app.Host = app.Host + "." + cluster.GetName() + ".svc." + cluster.GetConf().ProvOrchestratorCluster
@@ -131,6 +129,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host, name string) 
 
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	app.SetID()
+
 	// NOTE: does this make sense to set the state to the same?
 	app.SetPrevState(stateSuspect)
 	app.SetState(stateSuspect)
@@ -147,6 +146,17 @@ func NewAppInstance(cluster ClusterInterface, placement int, host, name string) 
 	app.LoadDeploymentsConfig()
 
 	return app
+}
+
+func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+	flags.StringVar(&conf.AppHosts, "app-servers", "127.0.0.1", "App hosts")
+	flags.StringVar(&conf.AppHostsIPV6, "app-servers-ipv6", "", "App IPv6 bind address ")
+	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "List of application agents")
+	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores ")
+	flags.StringVar(&conf.ProvAppMemory, "prov-app-memory", "1", "Memory usage in giga bytes")
+	flags.StringVar(&conf.ProvAppDiskType, "prov-app-disk-type", "volume", "Disk type: [loopback|physical|pool|directory|volume]")
+	flags.StringVar(&conf.ProvAppDiskSize, "prov-app-disk-size", "1", "Disk in g for micro service VM")
+	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name for data")
 }
 
 func NewAppConfig() *config.AppConfig {
