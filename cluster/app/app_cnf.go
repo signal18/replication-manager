@@ -2,8 +2,8 @@ package app
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/signal18/replication-manager/config"
 )
@@ -11,14 +11,11 @@ import (
 // LoadConfig loads the configuration from a file to the configuration struct.
 // If the file does not exist, it will return an error.
 // If the file exists but cannot be read, it will return the old configuration and the error.
-func LoadConfig(filename string, conf *config.AppConfig) error {
-	if conf == nil {
-		return fmt.Errorf("Configuration is nil")
-	}
-
+func (app *App) LoadConfig() error {
 	// Create a new configuration struct
 	var result config.AppConfig
-	result = *conf
+
+	filename := filepath.Join(app.Datadir, app.Name+".toml")
 
 	// Load the configuration file
 	_, err := os.Stat(filename)
@@ -42,7 +39,7 @@ func LoadConfig(filename string, conf *config.AppConfig) error {
 	}
 
 	// Set the new configuration
-	*conf = result
+	app.AppConfig = result
 
 	return nil
 }
@@ -50,9 +47,11 @@ func LoadConfig(filename string, conf *config.AppConfig) error {
 // LoadConfig loads the configuration from a file to the configuration struct.
 // If the file does not exist, it will return an error.
 // If the file exists but cannot be read, it will return the old configuration and the error.
-func (app *App) LoadSectionConfigs(filename string) error {
+func (app *App) LoadDeploymentsConfig() error {
 	// Create a new configuration struct
 	var result map[string]config.AppSectionConfig
+
+	filename := filepath.Join(app.Datadir, "deployments.json")
 
 	// Load the configuration file
 	_, err := os.Stat(filename)
@@ -75,7 +74,7 @@ func (app *App) LoadSectionConfigs(filename string) error {
 		return err
 	}
 
-	app.SectionConfigMap = result
+	app.DeployConfigMap = result
 
 	return nil
 }

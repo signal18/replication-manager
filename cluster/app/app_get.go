@@ -18,7 +18,7 @@ import (
 )
 
 func (app *App) GetSectionConfig(section string) (config.AppSectionConfig, bool) {
-	appsection, ok := app.SectionConfigMap[section]
+	appsection, ok := app.DeployConfigMap[section]
 	return appsection, ok
 }
 
@@ -57,7 +57,7 @@ func (app *App) GetAppDockerVolumeArgs(section string) string {
 func (app *App) GetAppVolumeDataDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.SectionConfigMap {
+	for _, sconf := range app.DeployConfigMap {
 		if sconf.AppDataVolumes != "" {
 			mpoints := strings.Split(sconf.AppDataVolumes, " ")
 			for _, mpoint := range mpoints {
@@ -79,7 +79,7 @@ func (app *App) GetAppVolumeDataDirectories() string {
 func (app *App) GetAppVolumeConfigDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.SectionConfigMap {
+	for _, sconf := range app.DeployConfigMap {
 		if sconf.AppConfigVolumes != "" {
 			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
 			for _, mpoint := range mpoints {
@@ -101,7 +101,7 @@ func (app *App) GetAppVolumeConfigDirectories() string {
 func (app *App) GetAppLogConfigDirectories() string {
 	var out string
 	dirs := make(map[string]struct{})
-	for _, sconf := range app.SectionConfigMap {
+	for _, sconf := range app.DeployConfigMap {
 		if sconf.AppConfigVolumes != "" {
 			mpoints := strings.Split(sconf.AppConfigVolumes, " ")
 			for _, mpoint := range mpoints {

@@ -38,7 +38,7 @@ type App struct {
 	HostIPV6              string                             `json:"hostIPV6"`
 	Port                  string                             `json:"port"`
 	AppConfig             config.AppConfig                   `json:"config"`
-	SectionConfigMap      map[string]config.AppSectionConfig `json:"deployConfigs"`
+	DeployConfigMap       map[string]config.AppSectionConfig `json:"deployConfigs"`
 	Cluster               ClusterInterface                   `json:"clustername"`
 	User                  string                             `json:"user"`
 	Pass                  string                             `json:"-"`
@@ -109,9 +109,9 @@ const (
 	stateProxyDesync  string = "ProxyDesync"
 )
 
-func NewAppInstance(cluster ClusterInterface, placement int, host, domain, name string) *App {
+func NewAppInstance(cluster ClusterInterface, placement int, host, name string) *App {
 	app := new(App)
-	app.SectionConfigMap = make(map[string]config.AppSectionConfig)
+	app.DeployConfigMap = make(map[string]config.AppSectionConfig)
 	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
 	app.FailCount = 0
@@ -122,10 +122,12 @@ func NewAppInstance(cluster ClusterInterface, placement int, host, domain, name 
 		app.Name = app.Host
 	}
 
+	if cluster.GetConf().ProvNetCNI {
+		app.Host = app.Host + "." + cluster.GetName() + ".svc." + cluster.GetConf().ProvOrchestratorCluster
+	}
+
 	// Source name will equal to cluster name
 	app.ServiceName = cluster.GetName() + "/svc/" + app.Name
-
-	app.Domain = domain
 
 	//will be overide in Refresh with show variables server_id, used for provisionning configurator for server_id
 	app.SetID()
@@ -133,13 +135,16 @@ func NewAppInstance(cluster ClusterInterface, placement int, host, domain, name 
 	app.SetPrevState(stateSuspect)
 	app.SetState(stateSuspect)
 
-	app.Datadir = cluster.GetConf().WorkingDir + "/" + cluster.GetName() + "/apps/" + app.Host + "_" + app.Port
+	app.Datadir = cluster.GetConf().WorkingDir + "/" + cluster.GetName() + "/" + app.Host + "_" + app.Port
 	if _, err := os.Stat(app.Datadir); os.IsNotExist(err) {
 		os.MkdirAll(app.Datadir, os.ModePerm)
 		os.MkdirAll(app.Datadir+"/log", os.ModePerm)
 		os.MkdirAll(app.Datadir+"/var", os.ModePerm)
 		os.MkdirAll(app.Datadir+"/init", os.ModePerm)
 	}
+
+	app.LoadConfig()
+	app.LoadDeploymentsConfig()
 
 	return app
 }
