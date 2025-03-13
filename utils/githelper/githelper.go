@@ -66,6 +66,12 @@ type RequestUserId struct {
 	UserId []string `json:"user_id"`
 }
 
+type GitMail struct {
+	ID    int    `json:"id"`
+	EMail string `json:"email"`
+	AT    string `json:"confirmed_at"`
+}
+
 func GetGitLabTokenOAuth(acces_token string, token_name string, log_git bool) (string, int) {
 
 	uid, err := GetGitLabUserId(acces_token, log_git)
@@ -344,6 +350,47 @@ func GetGitLabUserId(acces_token string, log_git bool) (int, error) {
 	}
 
 	return userId.ID, nil
+
+}
+
+func GetGitLabUserEmail(acces_token string, log_git bool) (string, error) {
+	var body = make([]byte, 0)
+
+	req, err := http.NewRequest("GET", "https://gitlab.signal18.io/api/v4/user/emails", nil)
+	if err != nil {
+		return "", fmt.Errorf("Gitlab User API Error: ", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+acces_token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("Gitlab User API Error: ", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ = io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		// Parse the error response into Main struct
+		var apiError ErrorResponse
+		if err := json.Unmarshal(body, &apiError); err != nil {
+			return "", fmt.Errorf("received non-OK HTTP status %d and failed to parse error response: %w", resp.StatusCode, err)
+		}
+		return "", fmt.Errorf("API error: %d - %s - %s", resp.StatusCode, apiError.Error, apiError.ErrorDescription)
+	}
+
+	if log_git {
+		Logrus.Debugf("Init Git Config - Get Email response: %s \n", string(body))
+	}
+
+	var emails []GitMail
+
+	err = json.Unmarshal(body, &emails)
+	if err != nil {
+		return "", fmt.Errorf("Gitlab User API Unmarshall Error: ", err)
+	}
+
+	return emails[0].EMail, nil
 
 }
 
