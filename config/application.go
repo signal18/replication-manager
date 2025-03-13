@@ -8,6 +8,8 @@ import (
 	"hash"
 	"strings"
 
+	apiv1 "k8s.io/api/core/v1"
+
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -99,14 +101,31 @@ func (ac *AppConfig) GetSecretChecksum() (hash.Hash, error) {
 	return new_h, err
 }
 
-// AppSectionConfig is a struct that holds the configuration for each section (container) of the application
-type AppSectionConfig struct {
-	DockerImg        string `mapstructure:"docker-img" toml:"docker-img" json:"provAppDockerImg"`
-	DockerRunArgs    string `mapstructure:"docker-run-args" toml:"docker-run-args" json:"provAppDockerRunArgs"`
-	DockerDiskArgs   string `mapstructure:"docker-disk-args" toml:"docker-disk-args" json:"provAppDockerDiskArgs"`
-	DockerVolumeArgs string `mapstructure:"docker-volume-args" toml:"docker-volume-args" json:"provAppDockerVolumeArgs"`
-	RunCommand       string `mapstructure:"docker-run-command" toml:"docker-run-command" json:"appRunCommand"`
+type VariableMapping struct {
+	Name   string
+	Type   string `options:"secret|env"`
+	Agents []string
 }
+
+type PathMapping struct {
+	From   string
+	To     string
+	Type   string   `options:"shm|direct"`
+	Agents []string `default:"all"`
+}
+
+type Deployment struct {
+	Name          string
+	Variables     []VariableMapping
+	Path          []PathMapping
+	Ports         []apiv1.ContainerPort
+	DockerImg     string
+	DockerRunArgs string
+	DockerRunCmd  string
+	GitClones     []string
+}
+
+type Deployments []Deployment
 
 func (conf *Config) ToAppConfig() AppConfig {
 	return AppConfig{

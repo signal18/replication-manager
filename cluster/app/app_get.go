@@ -11,13 +11,19 @@
 package app
 
 import (
+	"strings"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (app *App) GetSectionConfig(section string) (config.AppSectionConfig, bool) {
-	appsection, ok := app.DeployConfigMap[section]
-	return appsection, ok
+func (app *App) GetSectionConfig(section string) (config.Deployment, bool) {
+	for _, appsection := range app.Deployments {
+		if appsection.Name == section {
+			return appsection, true
+		}
+	}
+	return config.Deployment{}, false
 }
 
 func (app *App) GetAppDockerImg(section string) string {
@@ -36,20 +42,25 @@ func (app *App) GetAppDockerRunArgs(section string) string {
 	return appsection.DockerRunArgs
 }
 
-func (app *App) GetAppDockerDiskArgs(section string) string {
-	appsection, ok := app.GetSectionConfig(section)
-	if !ok {
-		return ""
-	}
-	return appsection.DockerDiskArgs
-}
+func (app *App) GetAppDockerDiskMapping(section string) string {
+	dirmap := make([]string, 0)
 
-func (app *App) GetAppDockerVolumeArgs(section string) string {
 	appsection, ok := app.GetSectionConfig(section)
 	if !ok {
 		return ""
 	}
-	return appsection.DockerVolumeArgs
+
+	for _, path := range appsection.Path {
+		if path.Type == "direct" {
+			dirmap = append(dirmap, appsection.Name+"/"+path.From+":"+path.To)
+		}
+	}
+
+	if app.GetAppDiskType() == "volume" {
+		return strings.Join(dirmap, " ")
+	} else {
+		return "-v " + strings.Join(dirmap, " -v ")
+	}
 }
 
 func (app *App) GetJanitorWeight() string {

@@ -30,43 +30,43 @@ var AppConfig config.AppConfig
 type AppList []*App
 
 type App struct {
-	Id                    string                             `json:"id"`
-	Name                  string                             `json:"name"`
-	Domain                string                             `json:"domain"`
-	Type                  string                             `json:"type"`
-	Host                  string                             `json:"host"`
-	HostCnf               string                             `json:"-"`
-	HostIPV6              string                             `json:"hostIPV6"`
-	Port                  string                             `json:"port"`
-	AppConfig             config.AppConfig                   `json:"config"`
-	DeployConfigMap       map[string]config.AppSectionConfig `json:"deployConfigs"`
-	Cluster               ClusterInterface                   `json:"clustername"`
-	User                  string                             `json:"user"`
-	Pass                  string                             `json:"-"`
-	Configurator          *configurator.Configurator         `json:"-"`
-	Datadir               string                             `json:"datadir"`
-	State                 string                             `json:"state"`
-	PrevState             string                             `json:"prevState"`
-	FailCount             int                                `json:"failCount"`
-	SlapOSDatadir         string                             `json:"slaposDatadir"`
-	Process               *os.Process                        `json:"process"`
-	IsCompute             bool                               `json:"isCompute"`
-	ConfigGitCloneUrl     string                             `json:"configGitCloneUrl"`
-	ConfigGitUser         string                             `json:"configGitUser"`
-	ConfigGitPassword     string                             `json:"configGitPassword"`
-	ConfigGitBranch       string                             `json:"configGitBranch"`
-	ConfigSecretVariables map[string]string                  `json:"-"`
-	ConfigEnvVariables    map[string]string                  `json:"-"`
-	ConfigVolumeMount     map[string]string                  `json:"configVolumeMount"`
-	DataGitCloneUrl       string                             `json:"dataGitCloneUrl"`
-	DataGitUser           string                             `json:"dataGitUser"`
-	DataGitPassword       string                             `json:"-"`
-	DataGitBranch         string                             `json:"dataGitBranch"`
-	DataVolumeMount       map[string]string                  `json:"dataVolumeMount"`
-	LogVolumeMount        map[string]string                  `json:"logVolumeMount"`
-	ServiceName           string                             `json:"serviceName"`
-	Agent                 string                             `json:"agent"`
-	Weight                string                             `json:"weight"`
+	Id                    string                     `json:"id"`
+	Name                  string                     `json:"name"`
+	Domain                string                     `json:"domain"`
+	Type                  string                     `json:"type"`
+	Host                  string                     `json:"host"`
+	HostCnf               string                     `json:"-"`
+	HostIPV6              string                     `json:"hostIPV6"`
+	Port                  string                     `json:"port"`
+	AppConfig             config.AppConfig           `json:"config"`
+	Deployments           config.Deployments         `json:"deployConfigs"`
+	Cluster               ClusterInterface           `json:"clustername"`
+	User                  string                     `json:"user"`
+	Pass                  string                     `json:"-"`
+	Configurator          *configurator.Configurator `json:"-"`
+	Datadir               string                     `json:"datadir"`
+	State                 string                     `json:"state"`
+	PrevState             string                     `json:"prevState"`
+	FailCount             int                        `json:"failCount"`
+	SlapOSDatadir         string                     `json:"slaposDatadir"`
+	Process               *os.Process                `json:"process"`
+	IsCompute             bool                       `json:"isCompute"`
+	ConfigGitCloneUrl     string                     `json:"configGitCloneUrl"`
+	ConfigGitUser         string                     `json:"configGitUser"`
+	ConfigGitPassword     string                     `json:"configGitPassword"`
+	ConfigGitBranch       string                     `json:"configGitBranch"`
+	ConfigSecretVariables map[string]string          `json:"-"`
+	ConfigEnvVariables    map[string]string          `json:"-"`
+	ConfigVolumeMount     map[string]string          `json:"configVolumeMount"`
+	DataGitCloneUrl       string                     `json:"dataGitCloneUrl"`
+	DataGitUser           string                     `json:"dataGitUser"`
+	DataGitPassword       string                     `json:"-"`
+	DataGitBranch         string                     `json:"dataGitBranch"`
+	DataVolumeMount       map[string]string          `json:"dataVolumeMount"`
+	LogVolumeMount        map[string]string          `json:"logVolumeMount"`
+	ServiceName           string                     `json:"serviceName"`
+	Agent                 string                     `json:"agent"`
+	Weight                string                     `json:"weight"`
 	Lock                  sync.Mutex
 	Logger                *config.LogrusWrapper `json:"-"`
 	RepMgrVersion         string                `json:"-"`
@@ -118,7 +118,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
 	app := new(App)
 	app.SetPlacement(placement, conf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.AppConfig = conf.ToAppConfig() // store app config from cluster config
-	app.DeployConfigMap = make(map[string]config.AppSectionConfig)
+	app.Deployments = make(config.Deployments, 0)
 	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
 	app.FailCount = 0
@@ -166,10 +166,6 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 
 func NewAppConfig() *config.AppConfig {
 	return &config.AppConfig{}
-}
-
-func NewAppSectionConfig() *config.AppSectionConfig {
-	return &config.AppSectionConfig{}
 }
 
 func (app *App) Init() {

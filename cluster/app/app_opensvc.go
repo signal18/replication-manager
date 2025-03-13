@@ -86,10 +86,10 @@ func (app *App) OpenSVCGetAppContainerSection(section string) map[string]string 
 		svccontainer["type"] = app.GetAppServiceType()
 		svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 "
 		if app.GetAppDiskType() != "volume" {
-			svccontainer["run_args"] = svccontainer["run_args"] + app.GetAppDockerDiskArgs(section) + ` ` + app.GetAppDockerRunArgs(section)
+			svccontainer["run_args"] = svccontainer["run_args"] + app.GetAppDockerDiskMapping(section) + ` ` + app.GetAppDockerRunArgs(section)
 		} else {
 			svccontainer["run_args"] = svccontainer["run_args"] + app.GetAppDockerRunArgs(section)
-			svccontainer["volume_mounts"] = app.GetAppDockerVolumeArgs(section)
+			svccontainer["volume_mounts"] = app.GetAppDockerDiskMapping(section)
 		}
 	}
 
@@ -97,8 +97,8 @@ func (app *App) OpenSVCGetAppContainerSection(section string) map[string]string 
 }
 
 func (app *App) OpenSVCGetAllContainerSections(oldmap map[string]map[string]string) map[string]map[string]string {
-	for section, _ := range app.DeployConfigMap {
-		oldmap[section] = app.OpenSVCGetAppContainerSection(section)
+	for _, dep := range app.Deployments {
+		oldmap[dep.Name] = app.OpenSVCGetAppContainerSection(dep.Name)
 	}
 
 	return oldmap

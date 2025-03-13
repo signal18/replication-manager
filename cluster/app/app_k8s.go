@@ -1,8 +1,6 @@
 package app
 
 import (
-	"strconv"
-
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,20 +35,13 @@ func (app *App) GetK8SDeployment() *appsv1.Deployment {
 }
 
 func (app *App) K8SGetContainers() []apiv1.Container {
-	port, _ := strconv.Atoi(app.GetPort())
 	containers := make([]apiv1.Container, 0)
 
-	for section, _ := range app.DeployConfigMap {
+	for _, dep := range app.Deployments {
 		containers = append(containers, apiv1.Container{
-			Name:  section,
-			Image: app.GetAppDockerImg(section),
-			Ports: []apiv1.ContainerPort{
-				{
-					Name:          section,
-					Protocol:      apiv1.ProtocolTCP,
-					ContainerPort: int32(port),
-				},
-			},
+			Name:  dep.Name,
+			Image: dep.DockerImg,
+			Ports: dep.Ports,
 		})
 	}
 

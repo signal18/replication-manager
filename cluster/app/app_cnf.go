@@ -61,7 +61,7 @@ func (app *App) LoadConfig() error {
 // If the file exists but cannot be read, it will return the old configuration and the error.
 func (app *App) LoadDeploymentsConfig() error {
 	// Create a new configuration struct
-	var result map[string]config.AppSectionConfig
+	var result []config.Deployment
 
 	filename := filepath.Join(app.Datadir, "deployments.json")
 
@@ -86,7 +86,7 @@ func (app *App) LoadDeploymentsConfig() error {
 		return err
 	}
 
-	app.DeployConfigMap = result
+	app.Deployments = result
 
 	return nil
 }
