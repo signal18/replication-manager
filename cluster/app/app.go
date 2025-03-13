@@ -113,6 +113,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
 	conf := cluster.GetConf()
 	app := new(App)
 	app.SetPlacement(placement, conf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
+	app.AppConfig = conf.ToAppConfig() // store app config from cluster config
 	app.DeployConfigMap = make(map[string]config.AppSectionConfig)
 	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
@@ -142,7 +143,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
 		os.MkdirAll(app.Datadir+"/init", os.ModePerm)
 	}
 
-	app.LoadConfig()
+	app.LoadConfig() // Update app config from file
 	app.LoadDeploymentsConfig()
 
 	return app
