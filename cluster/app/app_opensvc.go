@@ -97,7 +97,7 @@ func (app *App) OpenSVCGetAppContainerSection(section string) map[string]string 
 }
 
 func (app *App) OpenSVCGetAllContainerSections(oldmap map[string]map[string]string) map[string]map[string]string {
-	for section, _ := range app.AppConfig.Sections {
+	for section, _ := range app.DeployConfigMap {
 		oldmap[section] = app.OpenSVCGetAppContainerSection(section)
 	}
 

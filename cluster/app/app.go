@@ -11,6 +11,7 @@
 package app
 
 import (
+	"hash"
 	"hash/crc64"
 	"net/http"
 	"os"
@@ -80,6 +81,9 @@ type ClusterInterface interface {
 	GetDbUser() string
 	GetConfigurator() configurator.Configurator
 	GetAPIUserByUsername(username string) (clusterauth.APIUser, bool)
+	GetChecksumConfig(key string) (hash.Hash, bool)
+	SetChecksumConfig(key string, value hash.Hash)
+	SetIsNeedGitPush(value bool)
 	IsInFailover() bool
 	OnPremiseGetSSHKey() string
 	LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int

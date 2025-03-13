@@ -40,7 +40,7 @@ func (app *App) K8SGetContainers() []apiv1.Container {
 	port, _ := strconv.Atoi(app.GetPort())
 	containers := make([]apiv1.Container, 0)
 
-	for section, _ := range app.AppConfig.Sections {
+	for section, _ := range app.DeployConfigMap {
 		containers = append(containers, apiv1.Container{
 			Name:  section,
 			Image: app.GetAppDockerImg(section),

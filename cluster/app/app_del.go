@@ -23,7 +23,7 @@ func (app *App) DelLock() {
 func (app *App) delCookie(key string) error {
 	err := os.Remove(app.Datadir + "/@" + key)
 	if err != nil {
-		app.Logger.Debugf(app.Cluster.GetName(), config.ConstLogModApp, "Remove cookie (%s) %s", key, err)
+		app.Cluster.LogModulePrintf(app.Cluster.GetConf().Verbose, config.ConstLogModApp, config.LvlDbg, "Remove cookie (%s) %s", key, err)
 	}
 
 	return err

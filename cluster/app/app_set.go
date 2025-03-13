@@ -69,10 +69,10 @@ func (app *App) SetDataDir() {
 
 func (app *App) createCookie(key string) error {
 	newFile, err := os.Create(app.Datadir + "/@" + key)
-	defer newFile.Close()
 	if err != nil {
-		app.Logger.Debugf(app.Cluster.GetName(), config.ConstLogModProxy, config.LvlDbg, "Create cookie (%s) %s", key, err)
+		app.Cluster.LogModulePrintf(app.Cluster.GetConf().Verbose, config.ConstLogModApp, config.LvlDbg, "Create cookie (%s) %s", key, err)
 	}
+	defer newFile.Close()
 	return err
 }
 
