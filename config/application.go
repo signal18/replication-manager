@@ -122,7 +122,13 @@ type Deployment struct {
 	DockerImg     string
 	DockerRunArgs string
 	DockerRunCmd  string
-	GitClones     []string
+	GitClones     []GitClone
+}
+
+type GitClone struct {
+	GitRepo   string
+	GitBranch string
+	Dest      string `options:"config|data"`
 }
 
 type Deployments []Deployment
