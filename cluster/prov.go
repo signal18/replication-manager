@@ -205,42 +205,7 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 func (cluster *Cluster) Unprovision() error {
 
 	cluster.StateMachine.SetFailoverState()
-	for _, server := range cluster.Servers {
-		switch cluster.GetOrchestrator() {
-		case config.ConstOrchestratorOpenSVC:
-			go cluster.OpenSVCUnprovisionDatabaseService(server)
-		case config.ConstOrchestratorKubernetes:
-			go cluster.K8SUnprovisionDatabaseService(server)
-		case config.ConstOrchestratorSlapOS:
-			go cluster.SlapOSUnprovisionDatabaseService(server)
-		case config.ConstOrchestratorLocalhost:
-			go cluster.LocalhostUnprovisionDatabaseService(server)
-		case config.ConstOrchestratorOnPremise:
-			go cluster.OnPremiseUnprovisionDatabaseService(server)
-		default:
-		}
-		cluster.UnprovisionDatabaseScript(server)
-	}
-	for _, server := range cluster.Servers {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
-				server.DelProvisionCookie()
-				server.DelRestartCookie()
-				server.DelReprovisionCookie()
-			}
-		}
-	}
-	err := cluster.WaitClusterStop()
-	if err == nil {
-		cluster.ResetStates()
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to wait for all databases down : %s", err)
-	}
-
+	// Unprovision proxies first, since they are dependent on databases
 	for _, prx := range cluster.Proxies {
 		/*	prx, ok := pri.(*Proxy)
 			if !ok {
@@ -279,6 +244,42 @@ func (cluster *Cluster) Unprovision() error {
 				prx.DelReprovisionCookie()
 			}
 		}
+	}
+
+	for _, server := range cluster.Servers {
+		switch cluster.GetOrchestrator() {
+		case config.ConstOrchestratorOpenSVC:
+			go cluster.OpenSVCUnprovisionDatabaseService(server)
+		case config.ConstOrchestratorKubernetes:
+			go cluster.K8SUnprovisionDatabaseService(server)
+		case config.ConstOrchestratorSlapOS:
+			go cluster.SlapOSUnprovisionDatabaseService(server)
+		case config.ConstOrchestratorLocalhost:
+			go cluster.LocalhostUnprovisionDatabaseService(server)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionDatabaseService(server)
+		default:
+		}
+		cluster.UnprovisionDatabaseScript(server)
+	}
+	for _, server := range cluster.Servers {
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
+				server.DelProvisionCookie()
+				server.DelRestartCookie()
+				server.DelReprovisionCookie()
+			}
+		}
+	}
+	err := cluster.WaitClusterStop()
+	if err == nil {
+		cluster.ResetStates()
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to wait for all databases down : %s", err)
 	}
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
