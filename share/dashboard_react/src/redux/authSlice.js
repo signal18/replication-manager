@@ -5,8 +5,11 @@ import { clearLocalStorageByPrefix } from '../services/apiHelper'
 export const login = createAsyncThunk('auth/login', async ({ username, password }, thunkAPI) => {
   try {
     const response = await authService.login(username, password, '')
-    console.log('response::', response)
-    return response
+    if (response.status == 200){
+      return response
+    } else {
+      return thunkAPI.rejectWithValue({ errorMessage: response.data?.message || "Request failed", errorStatus: response.status || 500 })
+    }
   } catch (error) {
     const errorMessage = error.message || 'Request failed'
     const errorStatus = error.errorStatus || 500 // Default error status if not provided
