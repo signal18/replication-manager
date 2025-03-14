@@ -313,7 +313,8 @@ func (cluster *Cluster) WaitDatabaseCanConn() error {
 		case <-ticker.C:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster to start")
 			exitloop++
-			if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() {
+			// if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() { // HasAllDbUp is topology dependent
+			if cluster.AllDatabaseCanConn() {
 				exitloop = 9999999
 			}
 
