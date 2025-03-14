@@ -52,7 +52,7 @@ function PageContainer({ children }) {
   }, [currentBreakpoint, dispatch])
 
   useEffect(() => {
-    if (!isLogged && user === null && !isAuthorized()) {
+    if (!isLogged && user === null && !isAuthorized() && location.pathname !== '/login') {
       navigate('/login')
     }
   }, [isLogged, user])
