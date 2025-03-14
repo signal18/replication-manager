@@ -723,7 +723,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	})
 	cm.logger.Debugf("none", config.ConstLogModGit, "Commit took: %s", time.Since(commitStart))
 
-	if err != nil {
+	if err != nil && !errors.Is(err, git.ErrEmptyCommit) {
 		cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot commit: %s", err)
 		return err
 	}
@@ -734,7 +734,7 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 	cm.logger.Debugf("none", config.ConstLogModGit,
 		"Push took: %s", time.Since(pushStart))
 
-	if err != nil {
+	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		if errors.Is(err, transport.ErrAuthenticationRequired) {
 			acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 			if err != nil {
