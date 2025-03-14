@@ -296,7 +296,7 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 
 func (cluster *Cluster) AllDatabaseCanConn() bool {
 	for _, s := range cluster.Servers {
-		if s.IsDown() {
+		if s.Conn == nil {
 			return false
 		}
 	}
