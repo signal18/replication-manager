@@ -40,7 +40,7 @@ function Login(props) {
         setErrorMessage(error)
       }
     }
-  }, [loading, loadingGitLogin, isLogged])
+  }, [loading, loadingGitLogin, isLogged, error])
 
   const onButtonClick = (e) => {
     e.preventDefault()
@@ -90,7 +90,7 @@ function Login(props) {
                   className={`${styles.revealButton} ${styles.errorMessage} ${theme === 'dark' ? styles.darkLoginText : ""}`}
                 />
               </Stack>
-              {error && <Message message={errorMessage} />}
+              {errorMessage && <Message message={errorMessage} />}
 
               <Stack spacing='6'>
                 <RMButton

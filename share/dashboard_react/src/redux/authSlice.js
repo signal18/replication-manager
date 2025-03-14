@@ -8,7 +8,7 @@ export const login = createAsyncThunk('auth/login', async ({ username, password 
     if (response.status == 200){
       return response
     } else {
-      return thunkAPI.rejectWithValue({ errorMessage: response.data?.message || "Request failed", errorStatus: response.status || 500 })
+      return thunkAPI.rejectWithValue({ errorMessage: response.data || "Request failed", errorStatus: response.status || 500 })
     }
   } catch (error) {
     const errorMessage = error.message || 'Request failed'

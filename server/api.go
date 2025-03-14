@@ -555,9 +555,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		auth_try := v.(authTry)
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
-				fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
-				fmt.Println("3 authentication errors for the user " + user.Username + ", please try again in 3 minutes")
-				w.WriteHeader(http.StatusTooManyRequests)
+				response := "3 authentication errors for the user " + user.Username + ", please try again in 3 minutes"
+				http.Error(w, response, http.StatusTooManyRequests)
 				return
 			} else {
 				auth_try.Try = 1

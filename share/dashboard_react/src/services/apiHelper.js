@@ -97,9 +97,8 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
       if (window.location.pathname !== '/login') {
         window.location.reload();
       }
-    } else {
-      return handleResponse(response);
     }
+    return handleResponse(response);
   } catch (error) {
     console.error(`${method} Request Error:`, error);
     throw error;
