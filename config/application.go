@@ -125,6 +125,20 @@ type Deployment struct {
 	GitClones     []GitClone
 }
 
+// GetPorts returns the ports in the format "hostPort:containerPort"
+// if hostPort is 0, it will return only the containerPort
+func (d *Deployment) GetPorts() []string {
+	ports := make([]string, 0)
+	for _, port := range d.Ports {
+		if port.HostPort != 0 {
+			ports = append(ports, fmt.Sprintf("%d:%d", port.HostPort, port.ContainerPort))
+		} else {
+			ports = append(ports, fmt.Sprintf("%d", port.ContainerPort))
+		}
+	}
+	return ports
+}
+
 type GitClone struct {
 	GitRepo   string
 	GitBranch string

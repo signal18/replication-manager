@@ -377,14 +377,14 @@ orchestrate = start
 	//`
 	conf = conf + appi.GetInitContainer(collector)
 	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
-	conf = conf + cluster.GetPodDockerNginxTemplate(collector, pod)
+	conf = conf + cluster.GetPodDockerAppTemplate(collector, pod)
 	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
 	conf = conf + cluster.GetAppsEnv(collector, servers, agent, appi)
 	log.Println(conf)
 	return conf, nil
 }
 
-func (cluster *Cluster) GetPodDockerNginxTemplate(collector opensvc.Collector, pod string) string {
+func (cluster *Cluster) GetPodDockerAppTemplate(collector opensvc.Collector, pod string) string {
 	var vm string
 	if collector.ProvAppMicroSrv == "docker" {
 		vm = vm + `
@@ -397,7 +397,7 @@ rm = true
 [container#20` + pod + `]
 tags = pod` + pod + `
 type = docker
-run_image = {env.nginx_img}
+run_image = {env.docker_img}
 netns = container#00` + pod + `
 rm = true
 run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
