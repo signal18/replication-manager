@@ -94,10 +94,11 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
     if (response.status === 401 && baseUrl === '') {
       clearLocalStorageByPrefix('user_token')
       localStorage.removeItem('username')
-      window.location.reload()
-    } else {
-      return handleResponse(response);
+      if (window.location.pathname !== '/login') {
+        window.location.reload();
+      }
     }
+    return handleResponse(response);
   } catch (error) {
     console.error(`${method} Request Error:`, error);
     throw error;

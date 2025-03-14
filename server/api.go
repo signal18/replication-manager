@@ -555,9 +555,8 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		auth_try := v.(authTry)
 		if auth_try.Try == 3 {
 			if time.Now().Before(auth_try.Time.Add(3 * time.Minute)) {
-				fmt.Println("Time until last auth try : " + time.Until(auth_try.Time).String())
-				fmt.Println("3 authentication errors for the user " + user.Username + ", please try again in 3 minutes")
-				w.WriteHeader(http.StatusTooManyRequests)
+				response := "3 authentication errors for the user " + user.Username + ", please try again in 3 minutes"
+				http.Error(w, response, http.StatusTooManyRequests)
 				return
 			} else {
 				auth_try.Try = 1
@@ -565,7 +564,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				repman.UserAuthTry.Store(user.Username, auth_try)
 			}
 		} else {
-
 			auth_try.Try += 1
 			repman.UserAuthTry.Store(user.Username, auth_try)
 		}
@@ -583,34 +581,16 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	var userID string
 
 	if repman.Conf.Cloud18 {
-		meetUser := user.Username
-		meetPassword := user.Password
-
-		//to check user role before getting meet token and client
-		//if dbops or sysops, we use the cloud18-git-user of the config if exist to connect to the support
-		for _, cl := range repman.Clusters {
-			u := cl.APIUsers[user.Username]
-			if (u.Roles[config.RoleDBOps] || u.Roles[config.RoleExtDBOps] || u.Roles[config.RoleSysOps] || u.Roles[config.RoleExtSysOps]) && (repman.Conf.Cloud18GitUser != "" && repman.Conf.Cloud18GitPassword != "") {
-				meetUser = repman.Conf.Cloud18GitUser
-				meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
-			}
-		}
-
-		//to get meet token and create a client while login
-		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
-		if err != nil {
-			if repman.Conf.LogSupport {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
-			}
-		} else {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
-		}
-
-		if strings.Contains(user.Username, "@") {
-			tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
-			if tok == "" {
-				http.Error(w, "Error logging in to gitlab: Token is empty", http.StatusUnauthorized)
-				return
+		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
+		// if login successfull, get the email from gitlab
+		if tok != "" {
+			//	swapp the current user with email if needed
+			email, err := githelper.GetGitLabUserEmail(tok, true)
+			if email != "" {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch fromm gitlab user to email  : %s", email)
+				user.Username = email
+			} else {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %e", err)
 			}
 
 			userInfo = struct {
@@ -620,8 +600,15 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				Email    string `json:"email"`
 				Profile  string `json:"profile"`
 			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider}
+		} // End  got token
 
-		} else {
+		meetUser := user.Username
+		meetPassword := user.Password
+
+		// not a gitlab user, login via local password and set global gitlab user as the meet user
+		if tok == "" {
+			meetUser = repman.Conf.Cloud18GitUser
+			meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
 			loggedIn := false
 			for _, cl := range repman.Clusters {
 				//validate user credentials
@@ -642,7 +629,17 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			}
 		}
 
-	} else {
+		//to get meet token and create a client while login
+		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		if err != nil {
+			if repman.Conf.LogSupport {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
+			}
+		} else {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
+		}
+
+	} else { // if instance not registered to cloud18
 		loggedIn := false
 		for _, cl := range repman.Clusters {
 			//validate user credentials
@@ -663,12 +660,12 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		}
 	}
 
+	// Reset the auth try counter
 	var auth_try authTry = authTry{
 		User: user.Username,
-		Try:  1,
+		Try:  0,
 		Time: time.Now(),
 	}
-
 	repman.UserAuthTry.Store(user.Username, auth_try)
 
 	signer := jwt.New(jwt.SigningMethodRS256)
