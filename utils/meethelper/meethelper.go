@@ -103,7 +103,9 @@ type MeetAlertField struct {
 
 func CreateMeetUserClient(userName string, password string, isLogSupport bool) (string, error) {
 	if IsMeetUserExist(userName) {
-		return GetUserID(userName), nil
+		if IsMeetClientExist(GetUserID(userName)) {
+			return GetUserID(userName), nil
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
@@ -156,6 +158,15 @@ func CreateMeetUserClient(userName string, password string, isLogSupport bool) (
 func IsMeetUserExist(userName string) bool {
 	for _, user := range meetUsers {
 		if user.UserName == userName {
+			return true
+		}
+	}
+	return false
+}
+
+func IsMeetClientExist(userID string) bool {
+	for _, client := range meetClients {
+		if client.UserID == userID {
 			return true
 		}
 	}
@@ -371,6 +382,14 @@ func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
 
 func (c *MeetChatClient) GetTeamIDs() ([]string, error) {
 	teams, _, err := c.Client.GetTeamsForUser(c.UserID, "")
+	if len(teams) == 0 {
+		err := c.JoinSignal18Team()
+		if err != nil {
+			return nil, err
+		}
+		teams, _, err = c.Client.GetTeamsForUser(c.UserID, "")
+	}
+
 	teamIDs := make([]string, len(teams))
 	if err != nil {
 		return teamIDs, err
@@ -381,6 +400,11 @@ func (c *MeetChatClient) GetTeamIDs() ([]string, error) {
 	}
 
 	return teamIDs, nil
+}
+
+func (c *MeetChatClient) JoinSignal18Team() error {
+	_, _, err := c.Client.AddTeamMember("ugnppqx3jjribmik881k4pi1bh", c.UserID)
+	return err
 }
 
 func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string, map[string]string, map[string]int, error) {
