@@ -62,8 +62,7 @@ var apiPass string
 var apiUser string
 
 type AuthToken struct {
-	Token  string `json:"token"`
-	UserID string `json:"user_id"`
+	Token string `json:"token"`
 }
 
 func (repman *ReplicationManager) initKeys() {
@@ -477,9 +476,9 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	_, ok := mycutinfo["profile"]
 	if ok {
 		profile := mycutinfo["profile"].(string)
-		_, ok = mycutinfo["user_id"]
+		_, ok = mycutinfo["meet_user_id"]
 		if ok {
-			UserInfoMap["UserID"] = mycutinfo["user_id"].(string)
+			UserInfoMap["MeetUserID"] = mycutinfo["meet_user_id"].(string)
 		}
 		if strings.Contains(profile, repman.Conf.OAuthProvider) {
 			UserInfoMap["User"] = mycutinfo["email"].(string)
@@ -488,9 +487,9 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 		}
 		return nil, fmt.Errorf("invalid oauth provider")
 	}
-	_, ok = mycutinfo["user_id"]
+	_, ok = mycutinfo["meet_user_id"]
 	if ok {
-		UserInfoMap["UserID"] = mycutinfo["user_id"].(string)
+		UserInfoMap["MeetUserID"] = mycutinfo["meet_user_id"].(string)
 	}
 	UserInfoMap["User"] = mycutinfo["Name"].(string)
 	return UserInfoMap, nil
@@ -585,7 +584,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 
 	var tok string
 	var userInfo interface{}
-	var userID string
+	var meetUserID string
 
 	if repman.Conf.Cloud18 {
 		tok, _ = githelper.GetGitLabTokenBasicAuth(user.Username, user.Password, false)
@@ -604,7 +603,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 		meetPassword := user.Password
 
 		//to get meet token and create a client while login
-		userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+		meetUserID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 		if err != nil {
 			if repman.Conf.LogSupport {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
@@ -613,17 +612,17 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 		}
 
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", userID)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
 
 		if strings.Contains(user.Username, "@") || user.Username == "admin" {
 			userInfo = struct {
-				Name     string
-				Role     string
-				Password string
-				Email    string `json:"email"`
-				Profile  string `json:"profile"`
-				UserID   string `json:"user_id"`
-			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider, userID}
+				Name       string
+				Role       string
+				Password   string
+				Email      string `json:"email"`
+				Profile    string `json:"profile"`
+				MeetUserID string `json:"meet_user_id"`
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider, meetUserID}
 
 			// not a gitlab user, login via local password and set global gitlab user as the meet user
 			if tok == "" {
@@ -631,7 +630,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
 
 				//to get meet token and create a client while login
-				userID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
+				meetUserID, err = meethelper.CreateMeetUserClient(meetUser, meetPassword, repman.Conf.IsEligibleForPrinting(config.ConstLogModSupport, "ERROR"))
 				if err != nil {
 					if repman.Conf.LogSupport {
 						repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving meet token: %e", err)
@@ -640,7 +639,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 				}
 
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", userID)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
 
 				loggedIn := false
 				for _, cl := range repman.Clusters {
@@ -650,11 +649,11 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 					}
 					loggedIn = true
 					userInfo = struct {
-						Name     string
-						Role     string
-						Password string
-						UserID   string `json:"user_id"`
-					}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), userID}
+						Name       string
+						Role       string
+						Password   string
+						MeetUserID string `json:"meet_user_id"`
+					}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
 				}
 
 				if !loggedIn {

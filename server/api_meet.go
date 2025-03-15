@@ -100,7 +100,7 @@ func (repman *ReplicationManager) getUserIDFromHeader(r *http.Request) (string, 
 		fmt.Printf("Error parsing JWT: %v\n", err)
 		return "", err
 	}
-	return userInfo["UserID"], nil
+	return userInfo["MeetUserID"], nil
 }
 
 // @Summary Retrieve Meet user information.
