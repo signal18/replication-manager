@@ -154,7 +154,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
-	flags.StringVar(&conf.AppHosts, "app-servers", "127.0.0.1", "App hosts")
+	flags.StringVar(&conf.AppHosts, "app-servers", "", "App hosts")
 	flags.StringVar(&conf.AppHostsIPV6, "app-servers-ipv6", "", "App IPv6 bind address ")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "List of application agents")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores ")
