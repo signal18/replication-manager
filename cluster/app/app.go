@@ -40,7 +40,7 @@ type App struct {
 	Port                  string                     `json:"port"`
 	AppConfig             config.AppConfig           `json:"config"`
 	Deployments           config.Deployments         `json:"deployConfigs"`
-	Cluster               ClusterInterface           `json:"clustername"`
+	Cluster               ClusterInterface           `json:"-"`
 	User                  string                     `json:"user"`
 	Pass                  string                     `json:"-"`
 	Configurator          *configurator.Configurator `json:"-"`

@@ -4,6 +4,7 @@ import { HStack } from '@chakra-ui/react'
 import { HiPlay, HiStop, HiRefresh, HiOutlineInformationCircle } from 'react-icons/hi'
 import {
   getClusterAlerts,
+  getClusterApps,
   getClusterData,
   getClusterMaster,
   getClusterProxies,
@@ -55,6 +56,7 @@ function RefreshCounter({ clusterName }) {
       dispatch(getClusterMaster({ clusterName }))
       dispatch(getClusterServers({ clusterName }))
       dispatch(getClusterProxies({ clusterName }))
+      dispatch(getClusterApps({ clusterName }))
     }
   }
 

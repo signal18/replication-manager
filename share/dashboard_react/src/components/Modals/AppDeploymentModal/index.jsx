@@ -1,260 +1,218 @@
-import { Box, FormControl, FormErrorMessage, FormLabel, Input, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Select, Stack } from '@chakra-ui/react';
-import React, { useState } from 'react';
-import RMButton from '../../RMButton';
-import Dropdown from '../../Dropdown';
+import React, { useState } from "react";
+import {
+  Modal,
+  ModalOverlay,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  Button,
+  FormControl,
+  FormLabel,
+  Input,
+  Select,
+  VStack,
+  HStack,
+  Text,
+  IconButton,
+} from "@chakra-ui/react";
+import { AddIcon, DeleteIcon } from "@chakra-ui/icons";
 
-const DeploymentFormModal = ({ isOpen, onSubmit, closeModal }) => {
-    const [deployment, setDeployment] = useState({
-        Name: '',
-        Variables: [],
-        Path: [],
-        Ports: [],
-        DockerImg: '',
-        DockerRunArgs: '',
-        DockerRunCmd: '',
-        GitClones: [],
+const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
+  const [formData, setFormData] = useState({
+    name: "",
+    variables: [],
+    path: [],
+    ports: [],
+    dockerImg: "",
+    dockerRunArgs: "",
+    dockerRunCmd: "",
+    gitClones: [],
+  });
+
+  const [errors, setErrors] = useState({});
+
+  const validateForm = () => {
+    let newErrors = {};
+    if (!formData.name) newErrors.name = "Name is required";
+    if (!formData.dockerImg) newErrors.dockerImg = "Docker image is required";
+
+    formData.variables.forEach((v, index) => {
+      if (!v.name) newErrors[`variable-${index}`] = "Variable name is required";
     });
 
-    const [errors, setErrors] = useState({
-        nameError: undefined,
-        varNameError: [],
-        varTypeError: [],
-        varAgentsError: [],
-        fromError: [],
-        toError: [],
-        pathTypeError: [],
-        pathAgentsError: [],
-        repoError: [],
-        branchError: [],
-        destError: [],
-        dockerImgError: undefined,
-        dockerRunArgsError: undefined,
-        dockerRunCmdError: undefined,
+    formData.path.forEach((p, index) => {
+      if (!p.from) newErrors[`path-from-${index}`] = "From path is required";
+      if (!p.to) newErrors[`path-to-${index}`] = "To path is required";
     });
 
-    const { nameError, varNameError, varTypeError, varAgentsError, fromError, toError, pathTypeError, pathAgentsError, repoError, branchError, destError, dockerImgError, dockerRunArgsError, dockerRunCmdError } = errors;
+    formData.ports.forEach((p, index) => {
+      if (!p.containerPort || isNaN(p.containerPort))
+        newErrors[`port-${index}`] = "Valid port number is required";
+    });
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setDeployment({ ...deployment, [name]: value });
-    };
+    formData.gitClones.forEach((g, index) => {
+      if (!g.gitRepo) newErrors[`gitRepo-${index}`] = "Git repo is required";
+    });
 
-    const handleVariableChange = (index, e) => {
-        const { name, value } = e.target;
-        const newVariables = [...deployment.Variables];
-        newVariables[index][name] = value;
-        setDeployment({ ...deployment, Variables: newVariables });
-    };
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-    const handlePathChange = (index, e) => {
-        const { name, value } = e.target;
-        const newPaths = [...deployment.Path];
-        newPaths[index][name] = value;
-        setDeployment({ ...deployment, Path: newPaths });
-    };
+  const handleInputChange = (field, value) => {
+    setFormData({ ...formData, [field]: value });
+  };
 
-    const handleGitCloneChange = (index, e) => {
-        const { name, value } = e.target;
-        const newGitClones = [...deployment.GitClones];
-        newGitClones[index][name] = value;
-        setDeployment({ ...deployment, GitClones: newGitClones });
-    };
+  const handleArrayChange = (field, index, key, value) => {
+    setFormData({
+      ...formData,
+      [field]: formData[field].map((item, i) =>
+        i === index ? { ...item, [key]: value } : item
+      ),
+    });
+  };
 
-    const addVariable = () => {
-        setDeployment({
-            ...deployment,
-            Variables: [...deployment.Variables, { Name: '', Type: '', Agents: [] }],
-        });
-    };
+  const handleAddItem = (field, newItem) => {
+    setFormData({ ...formData, [field]: [...formData[field], newItem] });
+  };
 
-    const addPath = () => {
-        setDeployment({
-            ...deployment,
-            Path: [...deployment.Path, { From: '', To: '', Type: '', Agents: [] }],
-        });
-    };
+  const handleRemoveItem = (field, index) => {
+    setFormData({
+      ...formData,
+      [field]: formData[field].filter((_, i) => i !== index),
+    });
+  };
 
-    const addGitClone = () => {
-        setDeployment({
-            ...deployment,
-            GitClones: [...deployment.GitClones, { GitRepo: '', GitBranch: '', Dest: '' }],
-        });
-    };
+  const handleSubmit = () => {
+    if (validateForm()) {
+      onSubmit(formData);
+      onClose();
+    }
+  };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSubmit(deployment);
-        onClose(); // Close the modal after submission
-    };
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalOverlay />
+      <ModalContent>
+        <ModalHeader>Deployment Form</ModalHeader>
+        <ModalBody>
+          <VStack spacing={4} align="stretch">
+            <FormControl isInvalid={errors.name}>
+              <FormLabel>Name</FormLabel>
+              <Input
+                value={formData.name}
+                onChange={(e) => handleInputChange("name", e.target.value)}
+              />
+              {errors.name && <Text color="red.500">{errors.name}</Text>}
+            </FormControl>
 
-    return (
-        <Modal isOpen={isOpen} onClose={closeModal}>
-            <ModalOverlay />
-            <ModalContent
-                className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}
-                width={isDesktop ? '80%' : isTablet ? '97%' : '99%'}
-                maxWidth='none'
-                minHeight={'300px'}
-                maxH={'90%'}
-                textAlign='center'
-                overflow='hidden'>
-                <ModalHeader
-                    whiteSpace='pre-line'
-                    className={`${styles.header} ${type === 'error' ? styles.red : styles.orange}`}>
-                    {type === 'error' ? `Errors: ${data.length}` : `Warnings: ${data.length}`}
-                </ModalHeader>
-                <ModalCloseButton />
-                <ModalBody className={styles.body}>
-                    <Stack>
-                        <Box><h2>Create Deployment</h2></Box>
-                        <Stack spacing='5'>
-                            <FormControl isInvalid={nameError}>
-                                <FormLabel htmlFor='name'>Name</FormLabel>
-                                <Input id='name' type='text' name='Name' isRequired={false} value={deployment.Name} onChange={handleChange} />
-                                <FormErrorMessage>{nameError}</FormErrorMessage>
-                            </FormControl>
-                            <Stack spacing='5'>
-                                <Text>Variables</Text>
-                                <Stack>
-                                    {deployment.Variables.map((variable, index) => (
-                                        <Stack key={index}>
-                                            <FormControl isInvalid={varNameError}>
-                                                <FormLabel htmlFor={"varname" + index}>Variable Name</FormLabel>
-                                                <Input id={"varname" + index} type='text' name='Name' isRequired={false} value={variable.Name} onChange={(e) => handleVariableChange(index, { target: { name: "Name", value: e.target.value } })} />
-                                                <FormErrorMessage>{varNameError}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={varTypeError}>
-                                                <FormLabel htmlFor={"vartype" + index}>Variable type</FormLabel>
-                                                <Dropdown
-                                                    id={"vartype" + index}
-                                                    isMenuPortalTarget={false}
-                                                    selectedValue={variable.Type}
-                                                    onChange={(option) => {
-                                                        handleVariableChange(index, { target: { name: "Type", value: option } })
-                                                    }}
-                                                    options={[
-                                                        { name: 'Secret', value: 'secret' },
-                                                        { name: 'Env', value: 'env' },
-                                                    ]}
-                                                />
-                                                <FormErrorMessage>{varTypeError}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={varAgentsError}>
-                                                <FormLabel htmlFor={"varagents" + index}>Agents</FormLabel>
-                                                <Input id={"varagents" + index} type='text' name='Agents' isRequired={false} value={variable.Agents.join(',')} onChange={(e) => handleVariableChange(index, { target: { name: 'Agents', value: e.target.value.split(',') } })} />
-                                                <FormErrorMessage>{varAgentsError}</FormErrorMessage>
-                                            </FormControl>
-                                        </Stack>
-                                    ))}
-                                </Stack>
-                                <RMButton colorScheme='blue' size='medium' variant='outline' onClick={addVariable}>Add Variable</RMButton>
-                            </Stack>
-                            <Stack spacing='5'>
-                                <Text>Path Mappings:</Text>
-                                <Stack>
-                                    {deployment.Path.map((path, index) => (
-                                        <Stack key={index}>
-                                            <FormControl isInvalid={fromError[index]}>
-                                                <FormLabel htmlFor={"from" + index}>From</FormLabel>
-                                                <Input id={"from" + index} type='text' name='From' isRequired={false} value={path.From} onChange={(e) => handlePathChange(index, { target: { name: "From", value: e.target.value } })} />
-                                                <FormErrorMessage>{fromError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={toError[index]}>
-                                                <FormLabel htmlFor={"to" + index}>To</FormLabel>
-                                                <Input id={"to" + index} type='text' name='To' isRequired={true} value={path.To} onChange={(e) => handlePathChange(index, { target: { name: "To", value: e.target.value } })} />
-                                                <FormErrorMessage>{toError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={pathTypeError[index]}>
-                                                <FormLabel htmlFor='pathType'>Path type</FormLabel>
-                                                <Dropdown
-                                                    id={"pathtype" + index}
-                                                    isMenuPortalTarget={false}
-                                                    selectedValue={path.Type}
-                                                    onChange={(option) => {
-                                                        handlePathChange(index, { target: { name: "Type", value: option } })
-                                                    }}
-                                                    options={[
-                                                        { name: 'SHM', value: 'shm' },
-                                                        { name: 'Direct', value: 'direct' },
-                                                    ]}
-                                                />
-                                                <FormErrorMessage>{pathTypeError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={pathAgentsError[index]}>
-                                                <FormLabel htmlFor='name'>Agents</FormLabel>
-                                                <Input id={"pathagents" + index} type='text' name='Agents' isRequired={false} value={path.Agents.join(',')} onChange={(e) => handlePathChange(index, { target: { name: 'Agents', value: e.target.value.split(',') } })} />
-                                                <FormErrorMessage>{pathAgentsError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                        </Stack>
-                                    ))}
-                                </Stack>
-                                <RMButton colorScheme='blue' size='medium' variant='outline' onClick={addPath}>Add Path Mapping</RMButton>
-                            </Stack>
-                            <Stack spacing='5'>
-                                <Text>Git Clones:</Text>
-                                <Stack>
-                                    {deployment.GitClones.map((clone, index) => (
-                                        <Stack key={index}>
-                                            <FormControl isInvalid={repoError[index]}>
-                                                <FormLabel htmlFor={"repo" + index}>Git Repo</FormLabel>
-                                                <Input id={"repo" + index} type='text' name='GitRepo' isRequired={false} value={clone.GitRepo} onChange={(e) => handleGitCloneChange(index, { target: { name: "GitRepo", value: e.target.value } })} />
-                                                <FormErrorMessage>{repoError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={branchError[index]}>
-                                                <FormLabel htmlFor={"branch" + index}>Branch</FormLabel>
-                                                <Input id={"branch" + index} type='text' name='GitBranch' isRequired={true} value={clone.GitBranch} onChange={(e) => handleGitCloneChange(index, { target: { name: "GitBranch", value: e.target.value } })} />
-                                                <FormErrorMessage>{branchError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                            <FormControl isInvalid={destError[index]}>
-                                                <FormLabel htmlFor='dest'>Path type</FormLabel>
-                                                <Dropdown
-                                                    id={"dest" + index}
-                                                    isMenuPortalTarget={false}
-                                                    selectedValue={clone.Dest}
-                                                    onChange={(option) => {
-                                                        handleGitCloneChange(index, { target: { name: "Dest", value: option } })
-                                                    }}
-                                                    options={[
-                                                        { name: 'Config', value: 'config' },
-                                                        { name: 'Data', value: 'data' },
-                                                    ]}
-                                                />
-                                                <FormErrorMessage>{destError[index]}</FormErrorMessage>
-                                            </FormControl>
-                                        </Stack>
-                                    ))}
-                                </Stack>
-                                <RMButton colorScheme='blue' size='medium' variant='outline' onClick={addGitClone}>Add Git Clone</RMButton>
-                            </Stack>
-                            <FormControl isInvalid={dockerImgError}>
-                                <FormLabel htmlFor='dockerImg'>Docker Image</FormLabel>
-                                <Input id='dockerImg' type='text' name='DockerImg' isRequired={false} value={deployment.DockerImg} onChange={handleChange} />
-                                <FormErrorMessage>{dockerImgError}</FormErrorMessage>
-                            </FormControl>
-                            <FormControl isInvalid={dockerRunArgsError}>
-                                <FormLabel htmlFor='dockerRunArgs'>Docker Run Args</FormLabel>
-                                <Input id='dockerRunArgs' type='text' name='DockerRunArgs' isRequired={false} value={deployment.DockerRunArgs} onChange={handleChange} />
-                                <FormErrorMessage>{dockerRunArgsError}</FormErrorMessage>
-                            </FormControl>
-                            <FormControl isInvalid={dockerRunCmdError}>
-                                <FormLabel htmlFor='dockerRunCmd'>Docker Run Cmd</FormLabel>
-                                <Input id='dockerRunCmd' type='text' name='DockerRunCmd' isRequired={false} value={deployment.DockerRunCmd} onChange={handleChange} />
-                                <FormErrorMessage>{dockerRunCmdError}</FormErrorMessage>
-                            </FormControl>
-                        </Stack>
-                    </Stack>
-                </ModalBody>
-                <ModalFooter gap={3} margin='auto'>
-                    <RMButton colorScheme='blue' size='medium' variant='outline' onClick={closeModal}>
-                        Cancel
-                    </RMButton>
-                    <RMButton onClick={handleSubmit} size='medium'>
-                        Submit
-                    </RMButton>
-                </ModalFooter>
-            </ModalContent>
-        </Modal >
-    );
+            <FormControl isInvalid={errors.dockerImg}>
+              <FormLabel>Docker Image</FormLabel>
+              <Input
+                value={formData.dockerImg}
+                onChange={(e) => handleInputChange("dockerImg", e.target.value)}
+              />
+              {errors.dockerImg && <Text color="red.500">{errors.dockerImg}</Text>}
+            </FormControl>
+
+            <FormControl>
+              <FormLabel>Docker Run Args</FormLabel>
+              <Input
+                value={formData.dockerRunArgs}
+                onChange={(e) => handleInputChange("dockerRunArgs", e.target.value)}
+              />
+            </FormControl>
+
+            <FormControl>
+              <FormLabel>Docker Run Cmd</FormLabel>
+              <Input
+                value={formData.dockerRunCmd}
+                onChange={(e) => handleInputChange("dockerRunCmd", e.target.value)}
+              />
+            </FormControl>
+
+            {/* Variables */}
+            <FormLabel>Variables</FormLabel>
+            {formData.variables.map((v, index) => (
+              <HStack key={index}>
+                <Input
+                  placeholder="Name"
+                  value={v.name}
+                  onChange={(e) =>
+                    handleArrayChange("variables", index, "name", e.target.value)
+                  }
+                />
+                <Select
+                  value={v.type}
+                  onChange={(e) =>
+                    handleArrayChange("variables", index, "type", e.target.value)
+                  }
+                >
+                  <option value="secret">Secret</option>
+                  <option value="env">Env</option>
+                </Select>
+                <IconButton
+                  icon={<DeleteIcon />}
+                  aria-label="Delete Variable"
+                  onClick={() => handleRemoveItem("variables", index)}
+                />
+              </HStack>
+            ))}
+            <Button onClick={() => handleAddItem("variables", { name: "", type: "", agents: [] })}>
+              Add Variable
+            </Button>
+
+            {/* Paths */}
+            <FormLabel>Paths</FormLabel>
+            {formData.path.map((p, index) => (
+              <HStack key={index}>
+                <Input
+                  placeholder="From"
+                  value={p.from}
+                  onChange={(e) =>
+                    handleArrayChange("path", index, "from", e.target.value)
+                  }
+                />
+                <Input
+                  placeholder="To"
+                  value={p.to}
+                  onChange={(e) =>
+                    handleArrayChange("path", index, "to", e.target.value)
+                  }
+                />
+                <IconButton icon={<DeleteIcon />} aria-label="Delete Path" onClick={() => handleRemoveItem("path", index)} />
+              </HStack>
+            ))}
+            <Button onClick={() => handleAddItem("path", { from: "", to: "", type: "", agents: [] })}>
+              Add Path
+            </Button>
+
+            {/* Ports */}
+            <FormLabel>Ports</FormLabel>
+            {formData.ports.map((p, index) => (
+              <HStack key={index}>
+                <Input
+                  type="number"
+                  placeholder="Container Port"
+                  value={p.containerPort}
+                  onChange={(e) =>
+                    handleArrayChange("ports", index, "containerPort", Number(e.target.value))
+                  }
+                />
+                <IconButton icon={<DeleteIcon />} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
+              </HStack>
+            ))}
+            <Button onClick={() => handleAddItem("ports", { containerPort: 0 })}>Add Port</Button>
+          </VStack>
+        </ModalBody>
+        <ModalFooter>
+          <Button colorScheme="blue" onClick={handleSubmit}>
+            Submit
+          </Button>
+        </ModalFooter>
+      </ModalContent>
+    </Modal>
+  );
 };
 
-export default App;
+export default DeploymentFormModal;

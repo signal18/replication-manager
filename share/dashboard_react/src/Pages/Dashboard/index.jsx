@@ -8,7 +8,7 @@ import AccordionComponent from '../../components/AccordionComponent/index.jsx'
 import Logs from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
-import RunTests from './components/RunTests/index.jsx'
+import Apps from './components/Apps/index.jsx'
 
 function Dashboard({ selectedCluster, user }) {
   const {
@@ -43,6 +43,12 @@ function Dashboard({ selectedCluster, user }) {
         heading={'Proxies'}
         panelSX={{ overflowX: 'auto', p: 0 }}
         body={<Proxies selectedCluster={selectedCluster} user={user} />}
+      />
+
+      <AccordionComponent
+        heading={'Apps'}
+        panelSX={{ overflowX: 'auto', p: 0 }}
+        body={<Apps selectedCluster={selectedCluster} user={user} />}
       />
 
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />

@@ -1060,8 +1060,8 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetApps())
-		var prxs []*app.App
-		err := json.Unmarshal(data, &prxs)
+		var apps []*app.App
+		err := json.Unmarshal(data, &apps)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
@@ -1069,7 +1069,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err = e.Encode(prxs)
+		err = e.Encode(apps)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
