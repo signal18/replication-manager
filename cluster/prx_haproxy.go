@@ -332,7 +332,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 			// }
 			if srv != nil {
 				foundMasterInStat = true
-				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
+				bkw := Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
@@ -342,16 +342,20 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteIn:      line[8],
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
-				})
-				if !srv.IsMaster() {
-					master := cluster.GetMaster()
-					if master != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
-						msg, err := haRuntime.SetMaster(master.Host, master.Port)
-						if err != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
-						} else {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+				}
+
+				if bkw.PrxName != "" {
+					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
+					if !srv.IsMaster() {
+						master := cluster.GetMaster()
+						if master != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+							msg, err := haRuntime.SetMaster(master.Host, master.Port)
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+							} else {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+							}
 						}
 					}
 				}
@@ -375,8 +379,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
 			}
 			if srv != nil {
-
-				proxy.BackendsRead = append(proxy.BackendsRead, Backend{
+				bkr := Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
@@ -386,37 +389,21 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteIn:      line[8],
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61],
-				})
-				if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting broken replication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
-					msg, err := haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-					}
 				}
-				if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy valid replication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
-					msg, err := haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-					} else {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
-					}
-				}
-				if srv.IsMaster() {
-					if !cluster.Configurator.HasProxyReadLeader() && line[17] == "UP" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy master is not configured as reader but state is UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+
+				if bkr.PrxName != "" {
+					proxy.BackendsRead = append(proxy.BackendsRead, bkr)
+					if (srv.State == stateSlaveErr || srv.State == stateRelayErr || srv.State == stateSlaveLate || srv.State == stateRelayLate || srv.IsIgnored()) && line[17] == "UP" || srv.State == stateWsrepLate || srv.State == stateWsrepDonor {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting broken replication and UP state in haproxy %s drain  server %s", proxy.Host+":"+proxy.Port, srv.URL)
 						msg, err := haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 						if err != nil {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
 						} else {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
 						}
 					}
-					if cluster.Configurator.HasProxyReadLeader() && line[17] == "DRAIN" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy master is configured as reader but state is DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+					if (srv.State == stateSlave || srv.State == stateRelay || (srv.State == stateWsrep && !srv.IsLeader())) && line[17] == "DRAIN" && !srv.IsIgnored() {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy valid replication and DRAIN state in haproxy %s enable traffic on server %s", proxy.Host+":"+proxy.Port, srv.URL)
 						msg, err := haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
 						if err != nil {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
@@ -424,15 +411,35 @@ func (proxy *HaproxyProxy) Refresh() error {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
 						}
 					}
+					if srv.IsMaster() {
+						if !cluster.Configurator.HasProxyReadLeader() && line[17] == "UP" {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy master is not configured as reader but state is UP in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+							msg, err := haRuntime.SetDrain(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							} else {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							}
+						}
+						if cluster.Configurator.HasProxyReadLeader() && line[17] == "DRAIN" {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy master is configured as reader but state is DRAIN in haproxy %s for server %s", proxy.Host+":"+proxy.Port, srv.URL)
+							msg, err := haRuntime.SetReady(srv.Id, cluster.Conf.HaproxyAPIReadBackend)
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							} else {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlDbg, "%s: %s (server: %s)", proxy.Host+":"+proxy.Port, msg, srv.Host+":"+srv.Port)
+							}
+						}
 
-				}
-				if srv.IsMaintenance && line[17] == "UP" {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting server %s in maintenance but proxy %s reports UP  ", srv.URL, proxy.Host+":"+proxy.Port)
-					proxy.SetMaintenance(srv)
-				}
-				if !srv.IsMaintenance && line[17] == "MAINT" {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting server %s UP but proxy %s reports in maintenance ", srv.URL, proxy.Host+":"+proxy.Port)
-					proxy.SetMaintenance(srv)
+					}
+					if srv.IsMaintenance && line[17] == "UP" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting server %s in maintenance but proxy %s reports UP  ", srv.URL, proxy.Host+":"+proxy.Port)
+						proxy.SetMaintenance(srv)
+					}
+					if !srv.IsMaintenance && line[17] == "MAINT" {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy detecting server %s UP but proxy %s reports in maintenance ", srv.URL, proxy.Host+":"+proxy.Port)
+						proxy.SetMaintenance(srv)
+					}
 				}
 			}
 		}

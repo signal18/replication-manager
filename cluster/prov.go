@@ -234,6 +234,70 @@ func (cluster *Cluster) InitAppService(apl *app.App) error {
 func (cluster *Cluster) Unprovision() error {
 
 	cluster.StateMachine.SetFailoverState()
+	// Unprovision apps first, since they are dependent on proxies or databases
+	for _, apl := range cluster.Apps {
+		switch cluster.GetOrchestrator() {
+		case config.ConstOrchestratorOpenSVC:
+			go cluster.OpenSVCUnprovisionAppService(apl)
+		case config.ConstOrchestratorKubernetes:
+			go cluster.K8SUnprovisionAppService(apl)
+		case config.ConstOrchestratorSlapOS:
+			go cluster.SlapOSUnprovisionAppService(apl)
+		case config.ConstOrchestratorLocalhost:
+			go cluster.LocalhostUnprovisionAppService(apl)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionAppService(apl)
+		default:
+
+		}
+		cluster.UnprovisionAppScript(apl)
+	}
+	for _, apl := range cluster.Apps {
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+apl.GetName())
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+apl.GetName())
+				apl.DelProvisionCookie()
+				apl.DelRestartCookie()
+				apl.DelReprovisionCookie()
+			}
+		}
+	}
+
+	// Unprovision proxies first, since they are dependent on databases
+	for _, prx := range cluster.Proxies {
+		switch cluster.GetOrchestrator() {
+		case config.ConstOrchestratorOpenSVC:
+			go cluster.OpenSVCUnprovisionProxyService(prx)
+		case config.ConstOrchestratorKubernetes:
+			go cluster.K8SUnprovisionProxyService(prx)
+		case config.ConstOrchestratorSlapOS:
+			go cluster.SlapOSUnprovisionProxyService(prx)
+		case config.ConstOrchestratorLocalhost:
+			go cluster.LocalhostUnprovisionProxyService(prx)
+		case config.ConstOrchestratorOnPremise:
+			go cluster.OnPremiseUnprovisionProxyService(prx)
+		default:
+
+		}
+		cluster.UnprovisionProxyScript(prx)
+	}
+	for _, prx := range cluster.Proxies {
+		select {
+		case err := <-cluster.errorChan:
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
+				prx.DelProvisionCookie()
+				prx.DelRestartCookie()
+				prx.DelReprovisionCookie()
+			}
+		}
+	}
+
 	for _, server := range cluster.Servers {
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
@@ -269,87 +333,6 @@ func (cluster *Cluster) Unprovision() error {
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Failed to wait for all databases down : %s", err)
 	}
-
-	for _, prx := range cluster.Proxies {
-		/*	prx, ok := pri.(*Proxy)
-			if !ok {
-				continue
-			}*/
-		switch cluster.GetOrchestrator() {
-		case config.ConstOrchestratorOpenSVC:
-			go cluster.OpenSVCUnprovisionProxyService(prx)
-		case config.ConstOrchestratorKubernetes:
-			go cluster.K8SUnprovisionProxyService(prx)
-		case config.ConstOrchestratorSlapOS:
-			go cluster.SlapOSUnprovisionProxyService(prx)
-		case config.ConstOrchestratorLocalhost:
-			go cluster.LocalhostUnprovisionProxyService(prx)
-		case config.ConstOrchestratorOnPremise:
-			go cluster.OnPremiseUnprovisionProxyService(prx)
-		default:
-
-		}
-		cluster.UnprovisionProxyScript(prx)
-	}
-	for _, prx := range cluster.Proxies {
-		/*	prx, ok := pri.(*Proxy)
-			if !ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "Unprovision proxy continue ")
-				continue
-			}*/
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
-				prx.DelProvisionCookie()
-				prx.DelRestartCookie()
-				prx.DelReprovisionCookie()
-			}
-		}
-	}
-
-	for _, apl := range cluster.Apps {
-		/*	prx, ok := pri.(*Proxy)
-			if !ok {
-				continue
-			}*/
-		switch cluster.GetOrchestrator() {
-		case config.ConstOrchestratorOpenSVC:
-			go cluster.OpenSVCUnprovisionAppService(apl)
-		case config.ConstOrchestratorKubernetes:
-			go cluster.K8SUnprovisionAppService(apl)
-		case config.ConstOrchestratorSlapOS:
-			go cluster.SlapOSUnprovisionAppService(apl)
-		case config.ConstOrchestratorLocalhost:
-			go cluster.LocalhostUnprovisionAppService(apl)
-		case config.ConstOrchestratorOnPremise:
-			go cluster.OnPremiseUnprovisionAppService(apl)
-		default:
-
-		}
-		cluster.UnprovisionAppScript(apl)
-	}
-	for _, apl := range cluster.Apps {
-		/*	prx, ok := pri.(*Proxy)
-			if !ok {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "Unprovision proxy continue ")
-				continue
-			}*/
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+apl.GetName())
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+apl.GetName())
-				apl.DelProvisionCookie()
-				apl.DelRestartCookie()
-				apl.DelReprovisionCookie()
-			}
-		}
-	}
-
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.OpenSVCUnprovisionSecret()
