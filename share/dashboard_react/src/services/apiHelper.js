@@ -28,12 +28,12 @@ const buildHeaders = (authValue, contentType, baseUrl) => {
   const encodedBaseUrl = baseUrl.length > 0 ? toBase64(baseUrl) : "";
   const { getToken } = authConfig[authValue] || {};
   const token = getToken ? getToken(encodedBaseUrl) : null;
-  const userID = localStorage.getItem('userID');
+  //const userID = localStorage.getItem('userID');
 
   return {
     ...getContentType(contentType),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(userID ? { 'X-User-ID': userID } : {}),
+    //...(userID ? { 'X-User-ID': userID } : {}),
     Accept: '*/*',
   };
 };

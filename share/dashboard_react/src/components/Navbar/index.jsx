@@ -51,7 +51,6 @@ function Navbar({ username }) {
     }else{
       localStorage.removeItem('chatOpen');
       localStorage.removeItem('selectedChannel');
-      localStorage.removeItem('userID')
     }
   }, [isLogged, dispatch]);
 
