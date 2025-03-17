@@ -34,7 +34,7 @@ function ProcessList({ clusterName, dbId }) {
       if (includeSleep) {
         setData(searchData(processList))
       } else {
-        const dataWithoutSleep = processList.filter((x) => x.command !== 'Sleep')
+        const dataWithoutSleep = processList?.filter((x) => x.command !== 'Sleep') || []
         setDataWithoutSleep(dataWithoutSleep)
         setData(searchData(dataWithoutSleep))
       }
