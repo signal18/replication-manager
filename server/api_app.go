@@ -46,12 +46,12 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppNeedReprov)),
 	))
-	router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
-	))
-	router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}/{command}", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
-	))
+	// router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}", negroni.New(
+	// 	negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	// ))
+	// router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}/{command}", negroni.New(
+	// 	negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
+	// ))
 }
 
 // @Summary Shows the apps for that specific named cluster

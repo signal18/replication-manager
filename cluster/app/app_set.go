@@ -19,6 +19,10 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+func (app *App) SetCluster(c ClusterInterface) {
+	app.Cluster = c
+}
+
 func (app *App) SetID() {
 	app.Id = "app" + strconv.FormatUint(
 		crc64.Checksum([]byte(app.Cluster.GetName()+app.Name+":"+app.Port), app.Cluster.GetCrcTable()),

@@ -457,6 +457,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxies)),
 	))
+	router.Handle("/api/clusters/{clusterName}/topology/apps", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApps)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
@@ -1020,6 +1024,43 @@ func (repman *ReplicationManager) handlerMuxProxies(w http.ResponseWriter, r *ht
 	if mycluster != nil {
 		data, _ := json.Marshal(mycluster.GetProxies())
 		var prxs []*cluster.Proxy
+		err := json.Unmarshal(data, &prxs)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err = e.Encode(prxs)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Shows the apps for that specific named cluster
+// @Description Shows the apps for that specific named cluster
+// @Tags ClusterTopology
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} map[string]interface{} "A list of apps"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/topology/apps [get]
+func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//marshal unmarchal for ofuscation deep copy of struc
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		data, _ := json.Marshal(mycluster.GetApps())
+		var prxs []*app.App
 		err := json.Unmarshal(data, &prxs)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
@@ -4138,7 +4179,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		if vars["type"] == "" {
 			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {
-			if mycluster.MonitorType[vars["type"]] == "proxy" {
+			if mycluster.MonitorType[vars["type"]] == "app" {
+				err = mycluster.AddSeededApp(vars["host"], vars["port"], "", "")
+			} else if mycluster.MonitorType[vars["type"]] == "proxy" {
 				err = mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				switch vars["type"] {
@@ -4203,7 +4246,9 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 		if vars["type"] == "" {
 			mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 		} else {
-			if mycluster.MonitorType[vars["type"]] == "proxy" {
+			if mycluster.MonitorType[vars["type"]] == "app" {
+				mycluster.RemoveAppMonitor(vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "proxy" {
 				mycluster.RemoveProxyMonitor(vars["type"], vars["host"], vars["port"])
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				mycluster.RemoveServerMonitor(vars["host"], vars["port"])

@@ -1251,6 +1251,77 @@ export const endExternalRole = createAsyncThunk(
   }
 )
 
+export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getClusterApps(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.apps) {
+        return false;
+      }
+    }
+  });
+
+  export const provisionApp = createAsyncThunk('cluster/provisionApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.provisionApp(clusterName, appId, baseURL)
+      showSuccessBanner('Provision app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Provision app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+  
+  export const unprovisionApp = createAsyncThunk(
+    'cluster/unprovisionApp',
+    async ({ clusterName, appId }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.unprovisionApp(clusterName, appId, baseURL)
+        showSuccessBanner('Unprovision app successful!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Unprovision app failed!', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+  
+  export const startApp = createAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.startApp(clusterName, appId, baseURL)
+      showSuccessBanner('Starting app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Starting app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+  
+  export const stopApp = createAsyncThunk('cluster/stopApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.stopApp(clusterName, appId, baseURL)
+      showSuccessBanner('Stopping app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Stopping app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+  
+
 const initialState = {
   loading: false,
   isFetching: {
@@ -1259,6 +1330,7 @@ const initialState = {
     master: false,
     servers: false,
     proxies: false,
+    apps: false,
     certificates: false,
   },
   error: null,
@@ -1267,6 +1339,7 @@ const initialState = {
   clusterMaster: null,
   clusterServers: null,
   clusterProxies: null,
+  clusterApps: null,
   clusterCertificates: null,
   clusterStates: null,
   backups: {
@@ -1330,6 +1403,7 @@ export const clusterSlice = createSlice({
         getClusterMaster.fulfilled,
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
+        getClusterApps.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
         getTopProcess.fulfilled,
@@ -1356,6 +1430,9 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
           state.clusterProxies = action.payload.data
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
+          state.clusterApps = action.payload.data
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
@@ -1404,6 +1481,7 @@ export const clusterSlice = createSlice({
         getClusterMaster.pending,
         getClusterServers.pending,
         getClusterProxies.pending,
+        getClusterApps.pending,
         getClusterCertificates.pending,
       ),
       (state, action) => {
@@ -1417,6 +1495,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = true
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = true
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = true
         }
       }
     )
@@ -1428,6 +1508,7 @@ export const clusterSlice = createSlice({
         getClusterMaster.rejected,
         getClusterServers.rejected,
         getClusterProxies.rejected,
+        getClusterApps.rejected,
         getClusterCertificates.rejected,
       ), (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -1440,6 +1521,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = false
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
         }
       }
     )

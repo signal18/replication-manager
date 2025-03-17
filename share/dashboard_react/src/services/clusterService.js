@@ -14,6 +14,7 @@ export const clusterService = {
   getJobs,
   getShardSchema,
   getQueryRules,
+  getClusterApps,
 
   // Cluster management APIs
   checksumAllTables,
@@ -105,6 +106,12 @@ export const clusterService = {
   acceptExternalRole,
   refuseExternalRole,
   endExternalRole,
+
+  // App management APIs
+  provisionApp,
+  unprovisionApp,
+  startApp,
+  stopApp,
 }
 
 //#region Cluster data APIs
@@ -126,6 +133,10 @@ function getClusterServers(clusterName, baseURL) {
 
 function getClusterProxies(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/topology/proxies`)
+}
+
+function getClusterApps(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/apps`)
 }
 
 function getClusterCertificates(clusterName, baseURL) {
@@ -395,6 +406,24 @@ function stopProxy(clusterName, proxyId, baseURL) {
 }
 //#endregion Proxy management APIs
 
+//#region App management APIs
+function provisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/provision`)
+}
+
+function unprovisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/unprovision`)
+}
+
+function startApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
+}
+
+function stopApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+}
+//#endregion App management APIs
+
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
@@ -426,60 +455,60 @@ function runRegressionTests(clusterName, testName, baseURL) {
 
 //#region User management APIs
 function addUser(clusterName, username, grants, roles, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/users/add`, {username, grants, roles})
+  return getApi(baseURL).post(`clusters/${clusterName}/users/add`, { username, grants, roles })
 }
 
 function updateGrants(clusterName, username, grants, roles, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/users/update`, {username, grants, roles})
+  return getApi(baseURL).post(`clusters/${clusterName}/users/update`, { username, grants, roles })
 }
 
 function dropUser(clusterName, username, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/users/drop`, {username})
+  return getApi(baseURL).post(`clusters/${clusterName}/users/drop`, { username })
 }
 
 function sendCredentials(clusterName, username, type, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/users/send-credentials`,{username, type})
+  return getApi(baseURL).post(`clusters/${clusterName}/users/send-credentials`, { username, type })
 }
 
 //#Peer subscription APIs
 function clusterSubscribe(username, password, clusterName, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/subscribe`,{username, password})
+  return getApi(baseURL).post(`clusters/${clusterName}/subscribe`, { username, password })
 }
 
 function clusterUnsubscribe(username, clusterName, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/unsubscribe`,{username})
+  return getApi(baseURL).post(`clusters/${clusterName}/unsubscribe`, { username })
 }
 
 function acceptSubscription(clusterName, username, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/sales/accept-subscription`,{username})
+  return getApi(baseURL).post(`clusters/${clusterName}/sales/accept-subscription`, { username })
 }
 
 function rejectSubscription(clusterName, username, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/sales/refuse-subscription`,{username})
+  return getApi(baseURL).post(`clusters/${clusterName}/sales/refuse-subscription`, { username })
 }
 
 function endSubscription(clusterName, username, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/sales/end-subscription`,{username})
+  return getApi(baseURL).post(`clusters/${clusterName}/sales/end-subscription`, { username })
 }
 
 function subscribeExternalRole(clusterName, username, roles, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/subscribe`, {username, roles})
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/subscribe`, { username, roles })
 }
 
 function quoteExternalRole(clusterName, username, roles, cost, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/quote`, {username, roles, cost})
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/quote`, { username, roles, cost })
 }
 
 function acceptExternalRole(clusterName, username, roles, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/accept`, {username, roles})
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/accept`, { username, roles })
 }
 
 function refuseExternalRole(clusterName, username, roles, reason, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/refuse`, {username, roles, reason})
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/refuse`, { username, roles, reason })
 }
 
 function endExternalRole(clusterName, username, roles, reason, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, {username, roles, reason})
+  return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, { username, roles, reason })
 }
 
 //#endregion User management APIs

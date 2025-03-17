@@ -90,6 +90,25 @@ func (cluster *Cluster) AddProxyTag(tag string) {
 	cluster.SetProxiesRestartCookie()
 }
 
+func (cluster *Cluster) AddSeededApp(srv string, port string, user string, password string) error {
+	if strings.Contains(cluster.Conf.AppHosts, srv) {
+		return errors.New("application already exists")
+	}
+	if cluster.Conf.AppHosts != "" {
+		cluster.Conf.AppHosts = cluster.Conf.AppHosts + "," + srv
+	} else {
+		cluster.Conf.AppHosts = srv
+	}
+
+	cluster.SetClusterProxyCredentialsFromConfig()
+	cluster.StateMachine.SetFailoverState()
+	cluster.Lock()
+	cluster.newAppList()
+	cluster.Unlock()
+	cluster.StateMachine.RemoveFailoverState()
+	return nil
+}
+
 func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user string, password string) error {
 	switch prx {
 	case config.ConstProxyHaproxy:
@@ -147,7 +166,6 @@ func (cluster *Cluster) AddSeededProxy(prx string, srv string, port string, user
 			cluster.Conf.MdbsProxyHosts = srv + ":" + port
 		}
 	}
-	cluster.SetClusterProxyCredentialsFromConfig()
 	cluster.StateMachine.SetFailoverState()
 	cluster.Lock()
 	cluster.newProxyList()

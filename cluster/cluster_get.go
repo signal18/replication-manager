@@ -350,6 +350,10 @@ func (cluster *Cluster) GetProxies() proxyList {
 	return cluster.Proxies
 }
 
+func (cluster *Cluster) GetApps() app.AppList {
+	return cluster.Apps
+}
+
 func (cluster *Cluster) GetConf() *config.Config {
 	return cluster.Conf
 }
