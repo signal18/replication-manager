@@ -56,7 +56,7 @@ function ProcessList({ clusterName, dbId }) {
   }, [includeSleep, search])
 
   const searchData = (serverData) => {
-    const searchedData = serverData.filter((x) => {
+    const searchedData = serverData?.filter((x) => {
       const searchValue = search.toLowerCase()
       if (
         x.user.toLowerCase().includes(searchValue) ||
@@ -67,7 +67,7 @@ function ProcessList({ clusterName, dbId }) {
       ) {
         return x
       }
-    })
+    }) || []
     return searchedData
   }
 

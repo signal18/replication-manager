@@ -961,7 +961,11 @@ export const getDatabaseService = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.getDatabaseService(clusterName, serviceName, dbId, baseURL)
-      return { data, status }
+      if (status === 200) {
+        return { data, status }
+      }
+      
+      throw new Error(data)
     } catch (error) {
       handleError(error, thunkAPI)
     }
