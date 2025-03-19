@@ -98,8 +98,8 @@ type Cluster struct {
 	IsFailable                    bool                   `json:"isFailable"`
 	IsPostgres                    bool                   `json:"isPostgres"`
 	IsProvision                   bool                   `json:"isProvision"`
-	IsNeedProxiesRestart          bool                   `json:"isNeedProxyRestart"`
-	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesRestart"`
+	IsNeedProxiesRestart          bool                   `json:"isNeedProxiesRestart"`
+	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesReprov"`
 	IsNeedProxiesConfigChange     bool                   `json:"isNeedProxiesConfigChange"`
 	IsNeedDatabasesRestart        bool                   `json:"isNeedDatabasesRestart"`
 	IsNeedDatabasesRollingRestart bool                   `json:"isNeedDatabasesRollingRestart"`
