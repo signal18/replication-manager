@@ -76,21 +76,28 @@ const (
 	GrantClusterStaging            string = "cluster-staging"
 	GrantClusterAlert              string = "cluster-alert"
 
-	GrantProxyConfigCreate      string = "proxy-config-create"
-	GrantProxyConfigGet         string = "proxy-config-get"
-	GrantProxyConfigRessource   string = "proxy-config-ressource"
-	GrantProxyConfigFlag        string = "proxy-config-flag"
-	GrantProxyStart             string = "proxy-start"
-	GrantProxyStop              string = "proxy-stop"
-	GrantProxyTerminal          string = "proxy-terminal"
+	GrantProxyConfigCreate    string = "proxy-config-create"
+	GrantProxyConfigGet       string = "proxy-config-get"
+	GrantProxyConfigRessource string = "proxy-config-ressource"
+	GrantProxyConfigFlag      string = "proxy-config-flag"
+	GrantProxyStart           string = "proxy-start"
+	GrantProxyStop            string = "proxy-stop"
+	GrantProxyTerminal        string = "proxy-terminal"
+
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
 	GrantProvProxyProvision     string = "prov-proxy-provision"
 	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
 	GrantProvDBProvision        string = "prov-db-provision"
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
+	GrantProvAppProvision       string = "prov-app-provision"
+	GrantProvAppUnprovision     string = "prov-app-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
+
+	GrantAppStart    string = "app-start"
+	GrantAppStop     string = "app-stop"
+	GrantAppTerminal string = "app-terminal"
 
 	GrantGlobalSettings string = "global-settings" // Can update global settings
 	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
@@ -177,6 +184,12 @@ var grantProxy = []string{
 	GrantProxyTerminal,
 }
 
+var grantApp = []string{
+	GrantAppStart,
+	GrantAppStop,
+	GrantAppTerminal,
+}
+
 var grantProvision = []string{
 	GrantProvSettings,
 	GrantProvCluster,
@@ -186,6 +199,8 @@ var grantProvision = []string{
 	GrantProvDBProvision,
 	GrantProvProxyProvision,
 	GrantProvProxyUnprovision,
+	GrantProvAppProvision,
+	GrantProvAppUnprovision,
 }
 
 var grantGlobal = []string{
@@ -232,10 +247,10 @@ var allRoles []string = []string{
 // Init Function
 func init() {
 	// Preallocate `allGrants` slice for better performance
-	allGrants = make([]string, 0, len(grantDB)+len(grantCluster)+len(grantProxy)+len(grantProvision)+len(grantGlobal)+len(grantSales)+len(grantGrant)+2)
+	allGrants = make([]string, 0, len(grantDB)+len(grantCluster)+len(grantProxy)+len(grantProvision)+len(grantGlobal)+len(grantSales)+len(grantGrant)+len(grantApp)+2)
 
 	// Aggregate all grants
-	for _, grantList := range [][]string{grantDB, grantCluster, grantProxy, grantProvision, grantGlobal, grantSales, grantGrant} {
+	for _, grantList := range [][]string{grantDB, grantCluster, grantProxy, grantProvision, grantGlobal, grantSales, grantGrant, grantApp} {
 		allGrants = append(allGrants, grantList...)
 	}
 
