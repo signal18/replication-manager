@@ -103,6 +103,7 @@ func (ac *AppConfig) GetSecretChecksum() (hash.Hash, error) {
 
 type VariableMapping struct {
 	Name   string
+	Value  string
 	Type   string `options:"secret|env"`
 	Agents []string
 }
