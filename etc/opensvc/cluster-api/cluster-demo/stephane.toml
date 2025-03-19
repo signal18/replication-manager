@@ -57,7 +57,7 @@ mail-from = "stephane@signal18.io"
 mail-to = "stephane@signal18.io"
 mail-smtp-tls-skip-verify = true
 mail-smtp-user = "stephane@signal18.io"
-mail-smtp-password = "hash_dc356f2b47e03f5788bc76aa907d13e9b8fa499703f8eeab3d8088527a10199b"
+mail-smtp-password = "hash_970e9b56bd881aad224cc42b3668be1e068a8ecc8d3b0d4a9a90b556d1b31cd3e480bf3c"
 mail-smtp-addr = "[2a00:1450:400c:c00::6c]:587"
 
 #alert-pushover-app-token="hash_046d7d15e81ebbfe4e6e55ac1a3bb3312612c2a52a32cf3fde26b49260b32d043f113904e8e124f9e01ea12e8fd0"
