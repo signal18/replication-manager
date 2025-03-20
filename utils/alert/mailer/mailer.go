@@ -148,7 +148,7 @@ func (m *Mailer) UpdateTimeout(timeout int) {
 	}
 }
 
-func (m *Mailer) UpdateFrom(mailFrom string) {
+func (m *Mailer) SetFrom(mailFrom string) {
 	m.From = mailFrom
 }
 
