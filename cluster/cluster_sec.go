@@ -360,7 +360,7 @@ func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
 		}
 	}
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, "ERROR", "Could not send mail alert: %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, "ERROR", "Could not send mail for vault token alert: %s ", err)
 	}
 	return err
 

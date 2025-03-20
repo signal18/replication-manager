@@ -2879,12 +2879,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		new_secret.Value = mycluster.Conf.MailSMTPPassword
 		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("mail-smtp-password")
 		mycluster.Conf.Secrets["mail-smtp-password"] = new_secret
+		mycluster.Mailer.UpdateAuth(mycluster.Conf.MailSMTPUser, new_secret.Value)
 	case "mail-smtp-user":
 		mycluster.Conf.SetMailSmtpUser(value)
+		mycluster.Mailer.UpdateAuth(value, mycluster.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "mail-to":
 		mycluster.Conf.SetMailTo(value)
 	case "mail-from":
 		mycluster.Conf.SetMailFrom(value)
+		mycluster.Mailer.SetFrom(value)
 	case "scheduler-alert-disable-time":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetSchedulerAlertDisableTime(val)
@@ -3626,14 +3629,15 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		new_secret.Value = repman.Conf.MailSMTPPassword
 		new_secret.OldValue = repman.Conf.GetDecryptedValue("mail-smtp-password")
 		repman.Conf.Secrets["mail-smtp-password"] = new_secret
-		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, new_secret.Value)
 	case "mail-smtp-user":
 		repman.Conf.SetMailSmtpUser(value)
-		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.MailSMTPPassword)
+		repman.Mailer.UpdateAuth(repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"))
 	case "mail-to":
 		repman.Conf.SetMailTo(value)
 	case "mail-from":
 		repman.Conf.SetMailFrom(value)
+		repman.Mailer.SetFrom(value)
 	case "cloud18-shared":
 		if repman.Conf.Cloud18 {
 			repman.Conf.Cloud18Shared = isactive

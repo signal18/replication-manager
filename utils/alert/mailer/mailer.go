@@ -148,7 +148,7 @@ func (m *Mailer) UpdateTimeout(timeout int) {
 	}
 }
 
-func (m *Mailer) UpdateFrom(mailFrom string) {
+func (m *Mailer) SetFrom(mailFrom string) {
 	m.From = mailFrom
 }
 
@@ -220,6 +220,14 @@ func (m *Mailer) UpdateAddress(smtpAddr string) error {
 }
 
 func (m *Mailer) Send(e *email.Email) error {
+	if e.From == "" {
+		return fmt.Errorf("from address not set")
+	}
+
+	if len(e.To) == 0 {
+		return fmt.Errorf("to address not set")
+	}
+
 	if m.UsePool && m.Pool != nil {
 		err := m.Pool.Send(e, time.Duration(m.Timeout)*time.Second)
 		if err != nil {
@@ -254,6 +262,14 @@ func (m *Mailer) Send(e *email.Email) error {
 }
 
 func (m *Mailer) SendEmailMessage(edata Email) error {
+	if m.From == "" {
+		return fmt.Errorf("from address not set")
+	}
+
+	if edata.To == "" {
+		return fmt.Errorf("to address not set")
+	}
+
 	e := email.NewEmail()
 	e.From = m.From
 	e.To = strings.Split(edata.To, ",")

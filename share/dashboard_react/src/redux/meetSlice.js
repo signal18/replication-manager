@@ -276,7 +276,7 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.fulfilled, (state, action) => {
         state.isFetchingInfo = false;
         state.meetInfo = action.payload.data;
-        localStorage.setItem('userID', state.meetInfo?.user_id);
+        //localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
         state.meetError = false;
         state.channels = [

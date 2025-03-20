@@ -56,7 +56,7 @@ func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 		}
 	}
 
-	for email, _ := range list {
+	for email := range list {
 		to = append(to, email)
 	}
 

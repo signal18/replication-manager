@@ -207,7 +207,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                                         <FaPaperPlane />
                                     </Button>
                                     {selectedFile && (
-                                        <Text>Fichier sélectionné: {selectedFile.name}</Text>
+                                        <Text>Selected File: {selectedFile.name}</Text>
                                     )} 
                                 </Box>
                             </Box>

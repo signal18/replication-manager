@@ -65,7 +65,7 @@ mail-from = "stephane@signal18.io"
 mail-to = "stephane@signal18.io"
 mail-smtp-tls-skip-verify = true
 mail-smtp-user = "stephane@signal18.io"
-mail-smtp-password = "hash_dc356f2b47e03f5788bc76aa907d13e9b8fa499703f8eeab3d8088527a10199b"
+mail-smtp-password = "hash_abc43514eb4a806d5f55b5a258cd6262ae5af550b13b7a5d67ed421072edd29c"
 mail-smtp-addr = "[2a00:1450:400c:c00::6c]:587"
 
 alert-slack-channel="signal18_alert"

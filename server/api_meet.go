@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
@@ -71,6 +72,37 @@ func (repman *ReplicationManager) apiMeetProtectedHandler(router *mux.Router) {
 	// /////////////////////////
 }
 
+func extractToken(r *http.Request) (string, error) {
+	// Lire le header Authorization
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", fmt.Errorf("missing Authorization header")
+	}
+
+	// Vérifier que le header commence par "Bearer "
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return "", fmt.Errorf("invalid Authorization header format")
+	}
+
+	// Retourner uniquement le token
+	return parts[1], nil
+}
+
+func (repman *ReplicationManager) getUserIDFromHeader(r *http.Request) (string, error) {
+	tokString, err := extractToken(r)
+	if err != nil {
+		fmt.Printf("Error extracting token: %v\n", err)
+		return "", err
+	}
+	userInfo, err := repman.ParseWebSocketJWT(tokString)
+	if err != nil {
+		fmt.Printf("Error parsing JWT: %v\n", err)
+		return "", err
+	}
+	return userInfo["MeetUserID"], nil
+}
+
 // @Summary Retrieve Meet user information.
 // @Description Fetch user-related information, including available channels and unread messages.
 // @Tags Meet
@@ -85,12 +117,12 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header token : %s", err)
 		}
 		return
 	}
@@ -148,9 +180,9 @@ func (repman *ReplicationManager) ReadMeetMessageHandler(w http.ResponseWriter, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
@@ -217,9 +249,9 @@ func (repman *ReplicationManager) PostMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header")
@@ -292,9 +324,9 @@ func (repman *ReplicationManager) PostJitsiMeetingHandler(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "PostMeetMeeting: No user ID in request header")
@@ -366,9 +398,9 @@ func (repman *ReplicationManager) ViewMeetHandler(w http.ResponseWriter, r *http
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "ViewMeetMessage: No user ID in request header")
@@ -428,9 +460,9 @@ func (repman *ReplicationManager) CreateDirectChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreateDChannelMeet: No user ID in request header")
@@ -493,9 +525,9 @@ func (repman *ReplicationManager) CreatePrivateChannelMeetHandler(w http.Respons
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePrivateChannelMeet: No user ID in request header")
@@ -555,9 +587,9 @@ func (repman *ReplicationManager) CreatePublicChannelMeetHandler(w http.Response
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "CreatePublicChannelMeet: No user ID in request header")
@@ -619,9 +651,9 @@ func (repman *ReplicationManager) DeleteChannelMeetHandler(w http.ResponseWriter
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "DeleteChannelMeet: No user ID in request header")
@@ -682,9 +714,9 @@ func (repman *ReplicationManager) LeaveChannelMeetHandler(w http.ResponseWriter,
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "LeaveChannelMeet: No user ID in request header")
@@ -746,9 +778,9 @@ func (repman *ReplicationManager) AddUserChannelMeetHandler(w http.ResponseWrite
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "AddUserChannelMeet: No user ID in request header")
@@ -817,9 +849,9 @@ func (repman *ReplicationManager) JoinChannelMeetHandler(w http.ResponseWriter, 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "JoinChannelMeet: No user ID in request header")
@@ -879,9 +911,9 @@ func (repman *ReplicationManager) LogoutMeetHandler(w http.ResponseWriter, r *ht
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "LogoutMeet: No user ID in request header")
@@ -966,9 +998,9 @@ func (repman *ReplicationManager) UploadFileMeetHandler(w http.ResponseWriter, r
 		return
 	}
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "UploadFileMeet: No user ID in request header")
@@ -1032,9 +1064,9 @@ func (repman *ReplicationManager) DownloadFileMeetHandler(w http.ResponseWriter,
 		return
 	}
 
-	userID := r.Header.Get("X-User-ID")
+	userID, err := repman.getUserIDFromHeader(r)
 
-	if userID == "" {
+	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "DownloadFileMeet: No user ID in request header")
