@@ -102,28 +102,28 @@ func (ac *AppConfig) GetSecretChecksum() (hash.Hash, error) {
 }
 
 type VariableMapping struct {
-	Name   string
-	Value  string
-	Type   string `options:"secret|env"`
-	Agents []string
+	Name   string   `json:"name"`
+	Value  string   `json:"value"`
+	Type   string   `json:"type" options:"secret|env"`
+	Agents []string `json:"agents" default:"all"`
 }
 
 type PathMapping struct {
-	From   string
-	To     string
-	Type   string   `options:"shm|direct"`
-	Agents []string `default:"all"`
+	From   string   `json:"from"`
+	To     string   `json:"to"`
+	Type   string   `json:"type" options:"shm|direct"`
+	Agents []string `json:"agents" default:"all"`
 }
 
 type Deployment struct {
-	Name          string
-	Variables     []VariableMapping
-	Path          []PathMapping
-	Ports         []apiv1.ContainerPort
-	DockerImg     string
-	DockerRunArgs string
-	DockerRunCmd  string
-	GitClones     []GitClone
+	Name          string                `json:"name"`
+	Variables     []VariableMapping     `json:"variables"`
+	Path          []PathMapping         `json:"path"`
+	Ports         []apiv1.ContainerPort `json:"ports"`
+	DockerImg     string                `json:"dockerImg"`
+	DockerRunArgs string                `json:"dockerRunArgs"`
+	DockerRunCmd  string                `json:"dockerRunCmd"`
+	GitClones     []GitClone            `json:"gitClones"`
 }
 
 // GetPorts returns the ports in the format "hostPort:containerPort"
@@ -141,9 +141,9 @@ func (d *Deployment) GetPorts() []string {
 }
 
 type GitClone struct {
-	GitRepo   string
-	GitBranch string
-	Dest      string `options:"config|data"`
+	GitRepo   string `json:"repo"`
+	GitBranch string `json:"branch"`
+	Dest      string `json:"dest" options:"config|data"`
 }
 
 type Deployments []Deployment

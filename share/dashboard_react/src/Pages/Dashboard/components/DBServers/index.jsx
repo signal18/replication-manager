@@ -102,7 +102,7 @@ function DBServers({ selectedCluster, user }) {
       ),
       columnHelper.accessor(
         (row) => (
-          <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`}>
+          <Link to={`/clusters/${selectedCluster?.name}/db/${row?.id}`}>
             <ServerName name={`${row.host}:${row.port}`} />
           </Link>
         ),

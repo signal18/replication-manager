@@ -8,6 +8,7 @@ import Login from './Pages/Login'
 import Home from './Pages/Home'
 import ClusterDB from './Pages/ClusterDB'
 import TerminalComponent from './Pages/Terminal'
+import ClusterApp from './Pages/ClusterApp'
 
 function App() {
   return (
@@ -31,10 +32,18 @@ function App() {
           }
         />
         <Route
-          path={'/clusters/:cluster/:dbname'}
+          path={'/clusters/:cluster/db/:dbname'}
           element={
             <PrivateRoute>
               <ClusterDB />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path={'/clusters/:cluster/app/:appname'}
+          element={
+            <PrivateRoute>
+              <ClusterApp />
             </PrivateRoute>
           }
         />

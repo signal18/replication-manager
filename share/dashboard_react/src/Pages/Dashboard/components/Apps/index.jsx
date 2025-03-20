@@ -25,7 +25,7 @@ function Apps({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showGridView={showGridView}
-        isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
+        isMenuOptionsVisible={true}
         user={user}
       />
     ) : (
@@ -34,7 +34,7 @@ function Apps({ selectedCluster, user }) {
         isDesktop={isDesktop}
         clusterName={selectedCluster?.name}
         showTableView={showTableView}
-        isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
+        isMenuOptionsVisible={true}
         user={user}
       />
     )

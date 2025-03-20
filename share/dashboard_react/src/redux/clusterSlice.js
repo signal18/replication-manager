@@ -1324,6 +1324,53 @@ export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async (
       handleError(error, thunkAPI)
     }
   })
+
+  export const getAppService = createAsyncThunk(
+    'cluster/getAppService',
+    async ({ clusterName, serviceName, appId }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.getAppService(clusterName, serviceName, appId, baseURL)
+        if (status === 200) {
+          return { data, status }
+        }
+        
+        throw new Error(data)
+      } catch (error) {
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+
+  export const addDeployment = createAsyncThunk(
+    'cluster/addDeployment',
+    async ({ clusterName, appId, deployment }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.addDeployment(clusterName, appId, deployment, baseURL)
+        showSuccessBanner('New deployment added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+  
+  export const dropDeployment = createAsyncThunk(
+    'cluster/dropDeployment',
+    async ({ clusterName, appId, deployName }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.dropDeployment(clusterName, appId, deployName, baseURL)
+        showSuccessBanner('Deployment dropped!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while dropping a deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
   
 
 const initialState = {
@@ -1374,6 +1421,9 @@ const initialState = {
     serviceOpensvc: null,
     metadataLocks: null,
     responsetime: null
+  },
+  app: {
+    deployments: null,
   }
 }
 
@@ -1528,6 +1578,18 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getClusterApps')) {
           state.isFetching.apps = false
         }
+      }
+    )
+
+    builder.addMatcher(
+      isAnyOf(
+        getAppService.fulfilled,
+      ),
+      (state, action) => {
+        const { serviceName } = action.meta.arg
+        if (serviceName === 'deployments') {
+          state.app.deployments = action.payload.data
+        } 
       }
     )
 

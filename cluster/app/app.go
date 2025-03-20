@@ -39,7 +39,7 @@ type App struct {
 	HostIPV6              string                     `json:"hostIPV6"`
 	Port                  string                     `json:"port"`
 	AppConfig             config.AppConfig           `json:"config"`
-	Deployments           config.Deployments         `json:"deployConfigs"`
+	Deployments           config.Deployments         `json:"-"`
 	Cluster               ClusterInterface           `json:"-"`
 	User                  string                     `json:"user"`
 	Pass                  string                     `json:"-"`

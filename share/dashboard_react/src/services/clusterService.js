@@ -112,6 +112,9 @@ export const clusterService = {
   unprovisionApp,
   startApp,
   stopApp,
+  getAppService,
+  addDeployment,
+  dropDeployment,
 }
 
 //#region Cluster data APIs
@@ -421,6 +424,18 @@ function startApp(clusterName, appId, baseURL) {
 
 function stopApp(clusterName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+}
+
+function getAppService(clusterName, serviceName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/${serviceName}`)
+}
+
+function addDeployment(clusterName, appId, deployment, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/add`,deployment)
+}
+
+function dropDeployment(clusterName, appId , deployName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployName}/drop`)
 }
 //#endregion App management APIs
 

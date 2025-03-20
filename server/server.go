@@ -23,7 +23,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"slices"
-	"sort"
 	"sync"
 	"syscall"
 
@@ -51,6 +50,7 @@ import (
 
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/app"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
 	"github.com/signal18/replication-manager/etc"
@@ -102,8 +102,8 @@ type ReplicationManager struct {
 	Logs                                             s18log.HttpLog              `json:"logs"`
 	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
-	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
-	ServiceRoles                                     []config.Role               `json:"serviceRoles"`
+	ServiceAcl                                       []clusterauth.Grant         `json:"serviceAcl"`
+	ServiceRoles                                     []clusterauth.Role          `json:"serviceRoles"`
 	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
 	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
 	ServiceFS                                        map[string]bool             `json:"serviceFS"`
@@ -1939,8 +1939,8 @@ func (repman *ReplicationManager) Run() error {
 	repman.TermsDT = time.Now()
 	repman.InitServicePlans()
 	repman.ServiceOrchestrators = repman.Conf.GetOrchestratorsProv()
-	repman.InitGrants()
-	repman.InitRoles()
+	repman.ServiceAcl = clusterauth.GetServiceACLs()
+	repman.ServiceRoles = clusterauth.GetServiceRoles()
 	repman.ReloadTerms()
 	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
@@ -2498,42 +2498,6 @@ func (repman *ReplicationManager) InitServicePlans() error {
 	}
 	repman.ServicePlans = m.Rows
 
-	return nil
-}
-
-type GrantSorter []config.Grant
-
-func (a GrantSorter) Len() int           { return len(a) }
-func (a GrantSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a GrantSorter) Less(i, j int) bool { return a[i].Grant < a[j].Grant }
-
-type RoleSorter []config.Role
-
-func (a RoleSorter) Len() int           { return len(a) }
-func (a RoleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a RoleSorter) Less(i, j int) bool { return a[i].Role < a[j].Role }
-
-func (repman *ReplicationManager) InitGrants() error {
-	acls := []config.Grant{}
-	for _, value := range config.GetGrantType() {
-		var acl config.Grant
-		acl.Grant = value
-		acls = append(acls, acl)
-	}
-	repman.ServiceAcl = acls
-	sort.Sort(GrantSorter(repman.ServiceAcl))
-	return nil
-}
-
-func (repman *ReplicationManager) InitRoles() error {
-	roles := []config.Role{}
-	for _, value := range config.GetRoleType() {
-		var acl config.Role
-		acl.Role = value
-		roles = append(roles, acl)
-	}
-	repman.ServiceRoles = roles
-	sort.Sort(RoleSorter(repman.ServiceRoles))
 	return nil
 }
 

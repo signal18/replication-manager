@@ -16,7 +16,7 @@ import {
   Text,
   IconButton,
 } from "@chakra-ui/react";
-import { AddIcon, DeleteIcon } from "@chakra-ui/icons";
+import { HiTrash } from "react-icons/hi";
 
 const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
@@ -152,7 +152,7 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                   <option value="env">Env</option>
                 </Select>
                 <IconButton
-                  icon={<DeleteIcon />}
+                  icon={HiTrash}
                   aria-label="Delete Variable"
                   onClick={() => handleRemoveItem("variables", index)}
                 />
@@ -180,7 +180,7 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                     handleArrayChange("path", index, "to", e.target.value)
                   }
                 />
-                <IconButton icon={<DeleteIcon />} aria-label="Delete Path" onClick={() => handleRemoveItem("path", index)} />
+                <IconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleRemoveItem("path", index)} />
               </HStack>
             ))}
             <Button onClick={() => handleAddItem("path", { from: "", to: "", type: "", agents: [] })}>
@@ -199,7 +199,7 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                     handleArrayChange("ports", index, "containerPort", Number(e.target.value))
                   }
                 />
-                <IconButton icon={<DeleteIcon />} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
+                <IconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
               </HStack>
             ))}
             <Button onClick={() => handleAddItem("ports", { containerPort: 0 })}>Add Port</Button>

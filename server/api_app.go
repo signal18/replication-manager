@@ -22,6 +22,18 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApp)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDeployments)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddDeployment)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropDeployment)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUnprovision)),
@@ -337,6 +349,141 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Shows the deployments for that specific named app
+// @Description Shows the deployments for that specific named app
+// @Tags Apps
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {object} config.Deployments "Deployments retrieved successfully"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployments [get]
+func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//marshal unmarchal for ofuscation deep copy of struc
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		uname := repman.GetUserFromRequest(r)
+		if _, ok := mycluster.APIUsers[uname]; !ok {
+			http.Error(w, "No Valid ACL", 500)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			err := e.Encode(node.Deployments)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Add Deployment
+// @Description Add a deployment for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "Deployment added"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/add [post]
+func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			deployment := config.Deployment{}
+			err := json.NewDecoder(r.Body).Decode(&deployment)
+			if err != nil {
+				http.Error(w, "Error decoding JSON", 500)
+				return
+			}
+			node.Deployments = append(node.Deployments, deployment)
+			mycluster.SetIsNeedGitPush(true)
+			w.Write([]byte("Deployment added"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Drop Deployment
+// @Description Drop a deployment for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param deployName path string true "Deployment Name"
+// @Success 200 {string} string "Deployment dropped"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/drop [post]
+func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			deployment := config.Deployment{}
+			err := json.NewDecoder(r.Body).Decode(&deployment)
+			if err != nil {
+				http.Error(w, "Error decoding JSON", 500)
+				return
+			}
+			for i, d := range node.Deployments {
+				if d.Name == deployment.Name {
+					node.Deployments = append(node.Deployments[:i], node.Deployments[i+1:]...)
+					mycluster.SetIsNeedGitPush(true)
+					w.Write([]byte("Deployment dropped"))
+					return
+				}
+			}
+			http.Error(w, "Deployment not found", 500)
+			return
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)

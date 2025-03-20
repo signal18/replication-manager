@@ -1,5 +1,7 @@
 package clusterauth
 
+import "sort"
+
 const (
 	ExternalActive  string = "active"
 	ExternalPending string = "pending"
@@ -227,17 +229,18 @@ var allGrants []string
 
 var grantMap = make(map[string]struct{})
 
+// AllRoles contains all possible roles in alphabetical order
 var allRoles []string = []string{
-	RoleSysOps,
 	RoleDBOps,
-	RoleExtSysOps,
 	RoleExtDBOps,
-	RoleSponsor,
+	RoleExtSysOps,
 	RolePending,
 	RolePendingExtDBOps,
 	RolePendingExtSysOps,
 	RoleQuoteExtDBOps,
 	RoleQuoteExtSysOps,
+	RoleSponsor,
+	RoleSysOps,
 	RoleUnsubscribed,
 	RoleUnsubscribedExtDBOps,
 	RoleUnsubscribedExtSysOps,
@@ -256,6 +259,9 @@ func init() {
 
 	// Add individual grants
 	allGrants = append(allGrants, GrantShow, GrantExternalRole)
+
+	// Sort all grants in alphabetical order
+	sort.Strings(allGrants)
 
 	// Fill grantMap for fast lookup
 	for _, grant := range allGrants {

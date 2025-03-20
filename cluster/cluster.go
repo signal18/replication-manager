@@ -397,8 +397,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.FSType = config.GetFSType()
 	cluster.DiskType = config.GetDiskType()
 	cluster.VMType = config.GetVMType()
-	cluster.Grants = config.GetGrantType()
-	cluster.Roles = config.GetRoleType()
+	cluster.Grants = clusterauth.GetGrantType()
+	cluster.Roles = clusterauth.GetRoleType()
 
 	cluster.QueryRules = make(map[uint32]config.QueryRule)
 	cluster.Schedule = make(map[string]cron.Entry)

@@ -6,12 +6,21 @@ import (
 )
 
 // GetGrantType returns a map of all grants for quick lookup
-func GetGrantType() map[string]bool {
-	grantSet := make(map[string]bool, len(allGrants))
+func GetGrantType() map[string]string {
+	grantSet := make(map[string]string, len(allGrants))
 	for _, grant := range allGrants {
-		grantSet[grant] = true
+		grantSet[grant] = grant
 	}
 	return grantSet
+}
+
+// GetServiceACLs returns a list of all grants. allGrants already sorted in ascending order
+func GetServiceACLs() []Grant {
+	acls := []Grant{}
+	for _, grant := range allGrants {
+		acls = append(acls, Grant{Grant: grant})
+	}
+	return acls
 }
 
 // Generic function to check if all required grants exist in a given set
@@ -101,8 +110,20 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 }
 
 // GetRoleType returns all available roles
-func GetRoleType() []string {
-	return allRoles
+func GetRoleType() map[string]string {
+	roleSet := make(map[string]string, len(allRoles))
+	for _, role := range allRoles {
+		roleSet[role] = role
+	}
+	return roleSet
+}
+
+func GetServiceRoles() []Role {
+	roles := make([]Role, 0, len(allRoles))
+	for _, value := range allRoles {
+		roles = append(roles, Role{Role: value})
+	}
+	return roles
 }
 
 // GetCompactRoles extracts role names from a map where the value is true
