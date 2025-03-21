@@ -144,6 +144,8 @@ type GitClone struct {
 	GitRepo   string `json:"repo"`
 	GitBranch string `json:"branch"`
 	Dest      string `json:"dest" options:"config|data"`
+	GitUser   string `json:"user"`
+	GitPass   string `json:"pass"`
 }
 
 type Deployments []Deployment

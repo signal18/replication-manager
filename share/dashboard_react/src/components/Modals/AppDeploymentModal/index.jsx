@@ -17,6 +17,8 @@ import {
   IconButton,
 } from "@chakra-ui/react";
 import { HiTrash } from "react-icons/hi";
+import RMIconButton from "../../RMIconButton";
+import RMButton from "../../RMButton";
 
 const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
   const [formData, setFormData] = useState({
@@ -36,51 +38,52 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
     let newErrors = {};
     if (!formData.name) newErrors.name = "Name is required";
     if (!formData.dockerImg) newErrors.dockerImg = "Docker image is required";
-
+  
     formData.variables.forEach((v, index) => {
-      if (!v.name) newErrors[`variable-${index}`] = "Variable name is required";
+      if (!v.name) newErrors[`variables[${index}].name`] = "Variable name is required";
     });
-
+  
     formData.path.forEach((p, index) => {
-      if (!p.from) newErrors[`path-from-${index}`] = "From path is required";
-      if (!p.to) newErrors[`path-to-${index}`] = "To path is required";
+      if (!p.from) newErrors[`path[${index}].from`] = "From path is required";
+      if (!p.to) newErrors[`path[${index}].to`] = "To path is required";
     });
-
+  
     formData.ports.forEach((p, index) => {
-      if (!p.containerPort || isNaN(p.containerPort))
-        newErrors[`port-${index}`] = "Valid port number is required";
+      if (!p.containerPort || isNaN(p.containerPort) || p.containerPort < 1 || p.containerPort > 65535) {
+        newErrors[`ports[${index}].containerPort`] = "Valid port number (1-65535) is required";
+      }
     });
-
+  
     formData.gitClones.forEach((g, index) => {
-      if (!g.gitRepo) newErrors[`gitRepo-${index}`] = "Git repo is required";
+      if (!g.repo) newErrors[`gitClones[${index}].repo`] = "Git repo is required";
     });
-
+  
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  };  
 
   const handleInputChange = (field, value) => {
-    setFormData({ ...formData, [field]: value });
+    setFormData(prevState  => ({ ...prevState, [field]: value }));
   };
 
   const handleArrayChange = (field, index, key, value) => {
-    setFormData({
-      ...formData,
-      [field]: formData[field].map((item, i) =>
+    setFormData(prevState  => ({
+      ...prevState ,
+      [field]: prevState[field].map((item, i) =>
         i === index ? { ...item, [key]: value } : item
       ),
-    });
+    }));
   };
 
   const handleAddItem = (field, newItem) => {
-    setFormData({ ...formData, [field]: [...formData[field], newItem] });
+    setFormData(prevState  => ({ ...prevState, [field]: [...prevState[field], newItem] }));
   };
 
   const handleRemoveItem = (field, index) => {
-    setFormData({
-      ...formData,
-      [field]: formData[field].filter((_, i) => i !== index),
-    });
+    setFormData(prevState  => ({
+      ...prevState,
+      [field]: prevState[field].filter((_, i) => i !== index),
+    }));
   };
 
   const handleSubmit = () => {
@@ -91,7 +94,7 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
+    <Modal isOpen={isOpen} onClose={onClose} size={"3xl"}>
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>Deployment Form</ModalHeader>
@@ -151,21 +154,50 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                   <option value="secret">Secret</option>
                   <option value="env">Env</option>
                 </Select>
-                <IconButton
+                {v.type === "secret" ? (
+                  <Input
+                    type="password"
+                    placeholder="Secret"
+                    value={v.value}
+                    onChange={(e) =>
+                      handleArrayChange("variables", index, "value", e.target.value)
+                    }
+                  />
+                ) : (
+                  <Input
+                    placeholder="Env"
+                    value={v.value}
+                    onChange={(e) =>
+                      handleArrayChange("variables", index, "value", e.target.value)
+                    }
+                  />
+                )}
+                <RMIconButton
                   icon={HiTrash}
                   aria-label="Delete Variable"
                   onClick={() => handleRemoveItem("variables", index)}
                 />
               </HStack>
             ))}
-            <Button onClick={() => handleAddItem("variables", { name: "", type: "", agents: [] })}>
+            <RMButton onClick={() => handleAddItem("variables", { name: "", type: "secret", value: "", agents: [] })}>
               Add Variable
-            </Button>
+            </RMButton>
 
             {/* Paths */}
             <FormLabel>Paths</FormLabel>
             {formData.path.map((p, index) => (
               <HStack key={index}>
+                <Select
+                  value={p.volumedir}
+                  onChange={(e) => {
+                    handleArrayChange("path", index, "volumedir", e.target.value);
+                  }
+                  }
+                >
+                  <option value="etc">etc</option>
+                  <option value="log">log</option>
+                  <option value="var">var</option>
+                </Select>
                 <Input
                   placeholder="From"
                   value={p.from}
@@ -180,12 +212,12 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                     handleArrayChange("path", index, "to", e.target.value)
                   }
                 />
-                <IconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleRemoveItem("path", index)} />
+                <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleRemoveItem("path", index)} />
               </HStack>
             ))}
-            <Button onClick={() => handleAddItem("path", { from: "", to: "", type: "", agents: [] })}>
+            <RMButton onClick={() => handleAddItem("path", { volumedir:"var",from: "", to: "", type: "", agents: [] })}>
               Add Path
-            </Button>
+            </RMButton>
 
             {/* Ports */}
             <FormLabel>Ports</FormLabel>
@@ -199,16 +231,67 @@ const DeploymentFormModal = ({ isOpen, onClose, onSubmit }) => {
                     handleArrayChange("ports", index, "containerPort", Number(e.target.value))
                   }
                 />
-                <IconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
+                <RMIconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
               </HStack>
             ))}
-            <Button onClick={() => handleAddItem("ports", { containerPort: 0 })}>Add Port</Button>
+            <RMButton onClick={() => handleAddItem("ports", { containerPort: 0 })}>Add Port</RMButton>
+
+            {/* Git Clone */}
+            <FormLabel>Git Clones</FormLabel>
+            {formData.gitClones.map((gc, index) => (
+              <HStack key={index}>
+                <Input
+                  placeholder="Repo URL"
+                  value={gc.repo}
+                  onChange={(e) =>
+                    handleArrayChange("gitClones", index, "repo", e.target.value)
+                  }
+                />
+                <Input
+                  placeholder="Branch"
+                  value={gc.branch}
+                  onChange={(e) =>
+                    handleArrayChange("gitClones", index, "branch", e.target.value)
+                  }
+                />
+                <Input
+                  placeholder="Destination"
+                  value={gc.dest}
+                  onChange={(e) =>
+                    handleArrayChange("gitClones", index, "dest", e.target.value)
+                  }
+                />
+                <Input
+                  placeholder="Git User"
+                  value={gc.user}
+                  onChange={(e) =>
+                    handleArrayChange("gitClones", index, "user", e.target.value)
+                  }
+                />
+                <Input
+                  type="password"
+                  placeholder="Secret"
+                  value={gc.pass}
+                  onChange={(e) =>
+                    handleArrayChange("gitClones", index, "pass", e.target.value)
+                  }
+                />
+                <RMIconButton
+                  icon={HiTrash}
+                  aria-label="Delete Git Clones"
+                  onClick={() => handleRemoveItem("gitClones", index)}
+                />
+              </HStack>
+            ))}
+            <RMButton onClick={() => handleAddItem("gitClones", { repo: "", branch: "", dest: "", user: "", pass: "" })}>
+              Add Git Clone
+            </RMButton>
           </VStack>
         </ModalBody>
         <ModalFooter>
-          <Button colorScheme="blue" onClick={handleSubmit}>
+          <RMButton colorScheme="blue" onClick={handleSubmit}>
             Submit
-          </Button>
+          </RMButton>
         </ModalFooter>
       </ModalContent>
     </Modal>
