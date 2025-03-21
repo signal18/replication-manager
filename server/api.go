@@ -613,22 +613,32 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 			}
 
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
+			userInfo = struct {
+				Name       string
+				Role       string
+				Password   string
+				Email      string `json:"email"`
+				Profile    string `json:"profile"`
+				MeetUserID string `json:"meet_user_id"`
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider, meetUserID}
 
-			if strings.Contains(user.Username, "@") || user.Username == "admin" {
-				userInfo = struct {
-					Name       string
-					Role       string
-					Password   string
-					Email      string `json:"email"`
-					Profile    string `json:"profile"`
-					MeetUserID string `json:"meet_user_id"`
-				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider, meetUserID}
+		} else {
+
+			// not a gitlab user, login via local password and set global gitlab user as the meet user
+			loggedIn := false
+			for _, cl := range repman.Clusters {
+				//validate user credentials
+				if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
+					continue
+				}
+				loggedIn = true
 			}
-		}
 
-		// not a gitlab user, login via local password and set global gitlab user as the meet user
-		if tok == "" {
+			if !loggedIn {
+				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
+				return
+			}
+
 			meetUser = repman.Conf.Cloud18GitUser
 			meetPassword = repman.Conf.GetDecryptedPassword("cloud18-gitlab-password", repman.Conf.Cloud18GitPassword)
 
@@ -642,30 +652,18 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Meet token is retrieved")
 			}
 
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
+			userInfo = struct {
+				Name       string
+				Role       string
+				Password   string
+				MeetUserID string `json:"meet_user_id"`
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
 
-			loggedIn := false
-			for _, cl := range repman.Clusters {
-				//validate user credentials
-				if !cl.IsValidACL(user.Username, user.Password, r.URL.Path, "password") {
-					continue
-				}
-				loggedIn = true
-				userInfo = struct {
-					Name       string
-					Role       string
-					Password   string
-					MeetUserID string `json:"meet_user_id"`
-				}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), meetUserID}
-			}
-
-			if !loggedIn {
-				http.Error(w, "Error logging in: Invalid credentials", http.StatusUnauthorized)
-				return
-			}
 		}
 
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: meet userID %s", meetUserID)
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "LoginHandler: userInfo after meet userID %v", userInfo)
+
 	} else { // CLoud18 unregister instance
 		loggedIn := false
 		for _, cl := range repman.Clusters {
