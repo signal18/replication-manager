@@ -25,6 +25,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/cluster/app"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -5431,7 +5432,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 	switch credForm.CredentialType {
 	case "db":
-		if !duser.Roles[config.RoleDBOps] && !(duser.Roles[config.RoleExtDBOps] && duser.User == u.User) {
+		if !duser.Roles[clusterauth.RoleDBOps] && !(duser.Roles[clusterauth.RoleExtDBOps] && duser.User == u.User) {
 			http.Error(w, "Delegator has no ACL to send DBA Credentials", http.StatusForbidden)
 			return
 		}
@@ -5444,7 +5445,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "DBA Credentials sent to %s. Delegator: %s", to, delegator)
 	case "sys":
-		if !duser.Roles[config.RoleSysOps] && !(duser.Roles[config.RoleExtSysOps] && duser.User == u.User) {
+		if !duser.Roles[clusterauth.RoleSysOps] && !(duser.Roles[clusterauth.RoleExtSysOps] && duser.User == u.User) {
 			http.Error(w, "Delegator has no ACL to send DBA Credentials", http.StatusForbidden)
 			return
 		}
@@ -5456,7 +5457,7 @@ func (repman *ReplicationManager) handlerMuxSendCredentials(w http.ResponseWrite
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "SysAdm Credentials sent to %s. Delegator: %s", to, delegator)
 	case "sponsor":
-		if !duser.Roles[config.RoleSysOps] && !(duser.Roles[config.RoleSponsor] && duser.User == u.User) {
+		if !duser.Roles[clusterauth.RoleSysOps] && !(duser.Roles[clusterauth.RoleSponsor] && duser.User == u.User) {
 			http.Error(w, "Delegator has no ACL to send DBA Credentials", http.StatusForbidden)
 			return
 		}

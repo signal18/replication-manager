@@ -24,6 +24,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/cluster/app"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/cluster/configurator"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/peer"
@@ -99,13 +100,13 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
 	args := []string{"--host=" + server.Host, "--port=" + server.Port, server.GetSSLClientParam("client")}
 	var passwd string
-	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
+	if slices.Contains([]string{clusterauth.RoleSysOps, clusterauth.RoleExtSysOps, "system"}, roleType) {
 		args = append(args, "--user="+cluster.GetDbUser())
 		passwd = "--password=" + cluster.GetDbPass()
-	} else if roleType == config.RoleSponsor {
+	} else if roleType == clusterauth.RoleSponsor {
 		args = append(args, "--user="+cluster.GetSponsorUser())
 		passwd = "--password=" + cluster.GetSponsorPass()
-	} else if slices.Contains([]string{config.RoleDBOps, config.RoleExtDBOps, "grant"}, roleType) {
+	} else if slices.Contains([]string{clusterauth.RoleDBOps, clusterauth.RoleExtDBOps, "grant"}, roleType) {
 		args = append(args, "--user="+cluster.GetDbaUser())
 		passwd = "--password=" + cluster.GetDbaPass()
 	}
@@ -512,7 +513,7 @@ func (cluster *Cluster) GetDbaPass() string {
 
 func (cluster *Cluster) GetSponsorEmail() string {
 	for user, u := range cluster.APIUsers {
-		if u.Roles[config.RoleSponsor] {
+		if u.Roles[clusterauth.RoleSponsor] {
 			return user
 		}
 	}
@@ -1487,9 +1488,9 @@ func (cluster *Cluster) GetExecEnv() []string {
 }
 
 func (cluster *Cluster) GetExternalCost(role string) float64 {
-	if role == config.RoleExtDBOps {
+	if role == clusterauth.RoleExtDBOps {
 		return cluster.Conf.Cloud18MonthlyExternalDbopsCost
-	} else if role == config.RoleExtSysOps {
+	} else if role == clusterauth.RoleExtSysOps {
 		return cluster.Conf.Cloud18MonthlyExternalSysopsCost
 	}
 	return 0

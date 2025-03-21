@@ -361,7 +361,7 @@ func (s *ReplicationManager) GetCluster(ctx context.Context, in *v3.Cluster) (*s
 		return nil, err
 	}
 
-	if err = user.Granted(config.GrantClusterGrant); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterGrant); err != nil {
 		return nil, err
 	}
 
@@ -418,7 +418,7 @@ func (s *ReplicationManager) GetSettingsForCluster(ctx context.Context, in *v3.C
 	if err != nil {
 		return nil, err
 	}
-	if err = user.Granted(config.GrantClusterSettings); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 		return nil, err
 	}
 
@@ -465,32 +465,32 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrEnumNotSet, "action", "").Err()
 
 	case v3.ClusterSetting_DISCOVER:
-		if err = user.Granted(config.GrantClusterSettings); err != nil {
+		if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 			return nil, err
 		}
 		mycluster.ConfigDiscovery()
 
 	case v3.ClusterSetting_RELOAD:
-		if err = user.Granted(config.GrantClusterSettings); err != nil {
+		if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 			return nil, err
 		}
 		s.InitConfig(*s.Conf, true)
 		mycluster.ReloadConfig(s.Confs[in.Cluster.Name])
 
 	case v3.ClusterSetting_ADD_PROXY_TAG:
-		if err = user.Granted(config.GrantProxyConfigFlag); err != nil {
+		if err = user.Granted(clusterauth.GrantProxyConfigFlag); err != nil {
 			return nil, err
 		}
 		mycluster.AddProxyTag(in.TagValue)
 
 	case v3.ClusterSetting_DROP_PROXY_TAG:
-		if err = user.Granted(config.GrantProxyConfigFlag); err != nil {
+		if err = user.Granted(clusterauth.GrantProxyConfigFlag); err != nil {
 			return nil, err
 		}
 		mycluster.DropProxyTag(in.TagValue)
 
 	case v3.ClusterSetting_SET:
-		if err = user.Granted(config.GrantClusterSettings); err != nil {
+		if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 			return nil, err
 		}
 		if in.Setting.Name == v3.ClusterSetting_Setting_UNSPECIFIED {
@@ -504,7 +504,7 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		s.setClusterSetting(mycluster, in.Setting.Name.Legacy(), in.Setting.Value)
 
 	case v3.ClusterSetting_SWITCH:
-		if err = user.Granted(config.GrantClusterSettings); err != nil {
+		if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 			return nil, err
 		}
 
@@ -515,19 +515,19 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		s.switchClusterSettings(mycluster, in.Switch.Name.Legacy())
 
 	case v3.ClusterSetting_APPLY_DYNAMIC_CONFIG:
-		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+		if err = user.Granted(clusterauth.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
 		go mycluster.SetDBDynamicConfig()
 
 	case v3.ClusterSetting_ADD_DB_TAG:
-		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+		if err = user.Granted(clusterauth.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
 		mycluster.AddDBTag(in.TagValue)
 
 	case v3.ClusterSetting_DROP_DB_TAG:
-		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
+		if err = user.Granted(clusterauth.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
 		mycluster.DropDBTag(in.TagValue)
@@ -556,7 +556,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 
 	switch in.Action {
 	case v3.ClusterAction_ADD:
-		if err = user.Granted(config.GrantProvCluster); err != nil {
+		if err = user.Granted(clusterauth.GrantProvCluster); err != nil {
 			return nil, err
 		}
 		err = s.AddCluster(in.Cluster.ClusterShardingName, in.Cluster.Name)
@@ -656,7 +656,7 @@ func (s *ReplicationManager) RetrieveFromTopology(in *v3.TopologyRetrieval, stre
 	}
 
 	// TODO: introduce new Grants for this type of endpoint
-	if err = user.Granted(config.GrantClusterSettings); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterSettings); err != nil {
 		return err
 	}
 
@@ -830,7 +830,7 @@ func (s *ReplicationManager) GetClientCertificates(ctx context.Context, in *v3.C
 		return nil, err
 	}
 
-	if err = user.Granted(config.GrantClusterShowCertificates); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterShowCertificates); err != nil {
 		return nil, err
 	}
 
@@ -854,7 +854,7 @@ func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService
 		return err
 	}
 
-	if err = user.Granted(config.GrantClusterShowBackups); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterShowBackups); err != nil {
 		return err
 	}
 
@@ -873,7 +873,7 @@ func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_Ge
 		return err
 	}
 
-	if err = user.Granted(config.GrantClusterShowBackups); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterShowBackups); err != nil {
 		return err
 	}
 
@@ -893,7 +893,7 @@ func (s *ReplicationManager) GetQueryRules(in *v3.Cluster, stream v3.ClusterServ
 	}
 
 	// TODO: introduce new Grants for this type of endpoint
-	if err = user.Granted(config.GrantClusterGrant); err != nil {
+	if err = user.Granted(clusterauth.GrantClusterGrant); err != nil {
 		return err
 	}
 
@@ -912,7 +912,7 @@ func (s *ReplicationManager) GetSchema(in *v3.Cluster, stream v3.ClusterService_
 		return err
 	}
 
-	if err = user.Granted(config.GrantDBShowSchema); err != nil {
+	if err = user.Granted(clusterauth.GrantDBShowSchema); err != nil {
 		return err
 	}
 

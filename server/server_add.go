@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/signal18/replication-manager/cluster"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 )
 
@@ -48,39 +49,39 @@ func (repman *ReplicationManager) CreateAdminUserForm(username string) cluster.U
 	return cluster.UserForm{
 		Username: username,
 		Roles:    "sysops dbops",
-		Grants:   "cluster db proxy prov global grant show sale extrole",
+		Grants:   "cluster db proxy prov global grant show app sale extrole",
 	}
 }
 
 func (repman *ReplicationManager) CreateExtSysopsForm(username string) cluster.UserForm {
 	return cluster.UserForm{
 		Username: username,
-		Roles:    config.RoleExtSysOps,
-		Grants:   config.GetDefaultGrants(config.RoleExtSysOps),
+		Roles:    clusterauth.RoleExtSysOps,
+		Grants:   clusterauth.GetDefaultGrants(clusterauth.RoleExtSysOps),
 	}
 }
 
 func (repman *ReplicationManager) CreateExtDBOpsForm(username string) cluster.UserForm {
 	return cluster.UserForm{
 		Username: username,
-		Roles:    config.RoleExtDBOps,
-		Grants:   config.GetDefaultGrants(config.RoleExtDBOps),
+		Roles:    clusterauth.RoleExtDBOps,
+		Grants:   clusterauth.GetDefaultGrants(clusterauth.RoleExtDBOps),
 	}
 }
 
 func (repman *ReplicationManager) CreateDBOpsForm(username string) cluster.UserForm {
 	return cluster.UserForm{
 		Username: username,
-		Roles:    config.RoleDBOps,
-		Grants:   config.GetDefaultGrants(config.RoleDBOps),
+		Roles:    clusterauth.RoleDBOps,
+		Grants:   clusterauth.GetDefaultGrants(clusterauth.RoleDBOps),
 	}
 }
 
 func (repman *ReplicationManager) CreateSponsorForm(username string) cluster.UserForm {
 	return cluster.UserForm{
 		Username: username,
-		Roles:    config.RoleSponsor,
-		Grants:   config.GetDefaultGrants(config.RoleSponsor),
+		Roles:    clusterauth.RoleSponsor,
+		Grants:   clusterauth.GetDefaultGrants(clusterauth.RoleSponsor),
 	}
 }
 

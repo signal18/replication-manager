@@ -222,7 +222,7 @@ func (cluster *Cluster) AddUser(userform UserForm, delegator string, reloadACL b
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
 
-		r := duser.Roles[config.RoleSysOps]
+		r := duser.Roles[clusterauth.RoleSysOps]
 		if !r {
 			grants = cluster.FilterGrants(grants, &duser)
 		}
@@ -278,7 +278,7 @@ func (cluster *Cluster) UpdateUser(userform UserForm, delegator string, reloadAC
 			return fmt.Errorf("Delegator %s is not exist in cluster", delegator)
 		}
 
-		r := duser.Roles[config.RoleSysOps]
+		r := duser.Roles[clusterauth.RoleSysOps]
 		if !r {
 			grants = cluster.FilterGrants(grants, &duser)
 		}

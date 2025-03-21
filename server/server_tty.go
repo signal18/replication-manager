@@ -7,6 +7,7 @@ import (
 
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/signal18/replication-manager/cluster"
+	clusterauth "github.com/signal18/replication-manager/cluster/auth"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/tty"
 )
@@ -72,17 +73,17 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 		session.AppendKey(mycluster.OnPremiseGetSSHKey())
 	case tty.TerminalMySQL, tty.TerminalMyTop:
 		session.Port = node.Port
-		if apiUser.Roles[config.RoleSysOps] {
+		if apiUser.Roles[clusterauth.RoleSysOps] {
 			// SysOps can connect to the database using the root user
 			session.Username = mycluster.GetDbUser()
 			session.Password = mycluster.GetDbPass()
-			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSysOps, true)
-		} else if apiUser.Roles[config.RoleSponsor] {
+			session.Arguments = mycluster.GetMySQLClientParams(node, clusterauth.RoleSysOps, true)
+		} else if apiUser.Roles[clusterauth.RoleSponsor] {
 			// Sponsor can connect to the database using the sponsor user
 			session.Username = mycluster.GetSponsorUser()
 			session.Password = mycluster.GetSponsorPass()
-			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSponsor, true)
-		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantDBTerminal] {
+			session.Arguments = mycluster.GetMySQLClientParams(node, clusterauth.RoleSponsor, true)
+		} else if apiUser.Roles[clusterauth.RoleDBOps] || apiUser.Roles[clusterauth.RoleExtSysOps] || apiUser.Roles[clusterauth.RoleExtDBOps] || apiUser.Grants[clusterauth.GrantDBTerminal] {
 			// External SysOps, DBOps and the user has the grant can connect to the database using the dba user
 			session.Username = mycluster.GetDbaUser()
 			session.Password = mycluster.GetDbaPass()
@@ -113,7 +114,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 
 			}
 
-			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleDBOps, true)
+			session.Arguments = mycluster.GetMySQLClientParams(node, clusterauth.RoleDBOps, true)
 		} else {
 			return fmt.Errorf("user %s does not have the required roles or grant to connect to the database", session.Owner)
 		}
