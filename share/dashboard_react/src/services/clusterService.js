@@ -435,7 +435,7 @@ function addDeployment(clusterName, appId, deployment, baseURL) {
 }
 
 function dropDeployment(clusterName, appId , deployName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployName}/drop`)
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/drop/${deployName}`)
 }
 //#endregion App management APIs
 

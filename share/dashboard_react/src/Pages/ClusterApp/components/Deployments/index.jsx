@@ -6,13 +6,13 @@ import DeploymentFormModal from "../../../../components/Modals/AppDeploymentModa
 import styles from "./styles.module.scss";
 import { addDeployment } from "../../../../redux/clusterSlice";
 
-const Deployments = ({selectedApp}) => {
+const Deployments = ({clusterName, selectedApp}) => {
     const dispatch = useDispatch()
     const [deployments, setDeployments] = useState([]);
     const [isFormOpen, setIsFormOpen] = useState(false);
 
     const {
-        cluster: { selectedCluster, app },
+        cluster: { app },
     } = useSelector((state) => state)
 
     const openModal = () => {
@@ -24,7 +24,7 @@ const Deployments = ({selectedApp}) => {
     }
 
     const handleSubmit = (deployment) => {
-        dispatch(addDeployment({ clusterName: selectedCluster?.name, appId: selectedApp.id , deployment}))
+        dispatch(addDeployment({ clusterName: clusterName, appId: selectedApp.id , deployment}))
     }
 
     // Clear the state when the component is unmounted

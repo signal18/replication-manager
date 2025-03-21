@@ -9,7 +9,9 @@ package server
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 
+	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster/app"
@@ -30,7 +32,7 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddDeployment)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/drop", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropDeployment)),
 	))
@@ -379,14 +381,21 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			e := json.NewEncoder(w)
-			e.SetIndent("", "\t")
-			err := e.Encode(node.Deployments)
+			depls, err := json.MarshalIndent(node.Deployments, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
+
+			for idx, d := range node.Deployments {
+				for gidx := range d.GitClones {
+					jsonparser.Set(depls, []byte("*****"), strconv.Itoa(idx), "gitClones", strconv.Itoa(gidx), "pass")
+				}
+			}
+
+			w.Write(depls)
+			return
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -453,7 +462,7 @@ func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter,
 // @Success 200 {string} string "Deployment dropped"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/drop [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName} [post]
 func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

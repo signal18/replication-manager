@@ -31,7 +31,7 @@ function ClusterAppTabContent({ tab, clusterName, user, selectedApp }) {
         </HStack>
       </Flex>
       {currentTab === "overview" ? (
-        <Deployments selectedApp={selectedApp}/>
+        <Deployments clusterName={clusterName} selectedApp={selectedApp}/>
       ) : null}
     </VStack>
   )
