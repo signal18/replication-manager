@@ -140,7 +140,7 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Run post detach staging script %s", script)
 
-		cmd := exec.Command(script, cluster.Name, host, port, newstate, oldstate)
+		cmd := exec.Command(script, cluster.Name, host, port, newstate, oldstate, cluster.GetDbUser(), cluster.GetDbPass())
 		cmd.Env = cluster.GetExecEnv()
 		stdoutIn, _ := cmd.StdoutPipe()
 		stderrIn, _ := cmd.StderrPipe()
