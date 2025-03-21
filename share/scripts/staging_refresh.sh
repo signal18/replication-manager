@@ -82,7 +82,40 @@ if [ "$NB_SLAVES" -eq 1 ]; then
     exit 1
   fi
 
-  echo "found standalone server $ID \n"
+  # Get the last available slave
+  echo "last slave found for staging $ID_SLAVE \n"
+  echo "Stopping replication on last slave \n"
+  
+  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/stop-slave
+  
+  loop=true	
+  while $loop; do
+    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/state | sed 's/"//g')
+    if [ "$SV_STATE" != "Slave" ]; then
+      loop=false
+
+      echo "Server $ID_SLAVE slave threads stopped \n"
+    fi
+  done
+
+  echo "Saving replication info in replication.save \n"
+  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers/$ID_SLAVE/attr/replications > replications.save
+
+  echo "Reset all replication information \n"
+  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/reset-slave-all
+
+  loop=true	
+  while $loop; do
+    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/state | sed 's/"//g')
+    if [ "$SV_STATE" == "StandAlone" ]; then
+      loop=false
+    fi
+  done
+
+  echo "$ID:$PORT is now standalone \n"
+
+# Restore old standalone server to slave
+  echo "Restore old standalone server $ID to slave \n"
   echo "reseting master position on standalone \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-master
   echo "setup replication manager for reseeding \n"
@@ -119,36 +152,4 @@ if [ "$NB_SLAVES" -eq 1 ]; then
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings/actions/switch/autorejoin-force-restore/off
 
 ###### Now set last slave as standalone
-
-# Get the last available slave
-  echo "last slave found for staging $ID_SLAVE \n"
-  echo "Stopping replication on last slave \n"
-  
-  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/stop-slave
-  
-  loop=true	
-  while $loop; do
-    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/state | sed 's/"//g')
-    if [ "$SV_STATE" != "Slave" ]; then
-      loop=false
-
-      echo "Server $ID_SLAVE slave threads stopped \n"
-    fi
-  done
-
-  echo "Saving replication info in replication.save \n"
-  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/servers/$ID_SLAVE/attr/replications > replications.save
-
-  echo "Reset all replication information \n"
-  get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/reset-slave-all
-
-  loop=true	
-  while $loop; do
-    SV_STATE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/attr/state | sed 's/"//g')
-    if [ "$SV_STATE" == "StandAlone" ]; then
-      loop=false
-    fi
-  done
-
-  echo "$ID:$PORT is now standalone \n"
 fi
