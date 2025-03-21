@@ -114,7 +114,7 @@ if [ "$NB_SLAVES" -eq 1 ]; then
 
   echo "$ID:$PORT is now standalone \n"
 
-# Restore old standalone server to slave
+  # Restore old standalone server to slave
   echo "Restore old standalone server $ID to slave \n"
   echo "reseting master position on standalone \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/reset-master
@@ -150,6 +150,6 @@ if [ "$NB_SLAVES" -eq 1 ]; then
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings/actions/switch/autoseed/off
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings/actions/switch/autorejoin-logical-backup/off
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/settings/actions/switch/autorejoin-force-restore/off
-
-###### Now set last slave as standalone
 fi
+
+echo "Staging refresh done \n"
