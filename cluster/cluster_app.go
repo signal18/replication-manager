@@ -32,6 +32,10 @@ func (cluster *Cluster) DiscoverClusterApps() {
 		return
 	}
 
+	if cluster.Conf.AppHosts == "" {
+		return
+	}
+
 	hosts := strings.Split(cluster.Conf.AppHosts, ",")
 
 	for k, host := range hosts {
