@@ -39,7 +39,7 @@ type App struct {
 	HostIPV6              string                     `json:"hostIPV6"`
 	Port                  string                     `json:"port"`
 	AppConfig             config.AppConfig           `json:"config"`
-	Deployments           config.Deployments         `json:"-"`
+	Deployments           Deployments                `json:"-"`
 	Cluster               ClusterInterface           `json:"-"`
 	User                  string                     `json:"user"`
 	Pass                  string                     `json:"-"`
@@ -118,7 +118,7 @@ func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
 	app := new(App)
 	app.SetPlacement(placement, conf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.AppConfig = conf.ToAppConfig() // store app config from cluster config
-	app.Deployments = make(config.Deployments, 0)
+	app.Deployments = make(Deployments, 0)
 	app.HostCnf = host // store host from config file
 	app.Cluster = cluster
 	app.FailCount = 0

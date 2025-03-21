@@ -13,17 +13,16 @@ package app
 import (
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (app *App) GetSectionConfig(section string) (config.Deployment, bool) {
+func (app *App) GetSectionConfig(section string) (Deployment, bool) {
 	for _, appsection := range app.Deployments {
 		if appsection.Name == section {
 			return appsection, true
 		}
 	}
-	return config.Deployment{}, false
+	return Deployment{}, false
 }
 
 func (app *App) GetAppDockerImg(section string) string {
@@ -52,7 +51,7 @@ func (app *App) GetAppDockerDiskMapping(section string) string {
 
 	for _, path := range appsection.Path {
 		if path.Type == "direct" {
-			dirmap = append(dirmap, appsection.Name+"/"+path.From+":"+path.To)
+			dirmap = append(dirmap, appsection.Name+"/"+path.VolumeDir+"/"+path.From+":"+path.To)
 		}
 	}
 

@@ -362,7 +362,7 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Success 200 {object} config.Deployments "Deployments retrieved successfully"
+// @Success 200 {object} app.Deployments "Deployments retrieved successfully"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/apps/{appName}/deployments [get]
 func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter, r *http.Request) {
@@ -421,12 +421,13 @@ func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter,
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			deployment := config.Deployment{}
+			deployment := app.Deployment{}
 			err := json.NewDecoder(r.Body).Decode(&deployment)
 			if err != nil {
 				http.Error(w, "Error decoding JSON", 500)
 				return
 			}
+
 			node.Deployments = append(node.Deployments, deployment)
 			mycluster.SetIsNeedGitPush(true)
 			w.Write([]byte("Deployment added"))
@@ -465,7 +466,7 @@ func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			deployment := config.Deployment{}
+			deployment := app.Deployment{}
 			err := json.NewDecoder(r.Body).Decode(&deployment)
 			if err != nil {
 				http.Error(w, "Error decoding JSON", 500)
