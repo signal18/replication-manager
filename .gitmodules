@@ -1,0 +1,3 @@
+[submodule "gotty-client"]
+	path = gotty-client
+	url = https://github.com/moul/gotty-client
