@@ -171,7 +171,7 @@ func (pm *PeerManager) BatchUpdateClusters(clusterUpdates []*PeerCluster, remove
 
 	// Update the health status of all clusters.
 	if len(pm.PeerURL) > 0 {
-		pm.GetAllHealthStatus()
+		go pm.GetAllHealthStatus()
 	}
 }
 
