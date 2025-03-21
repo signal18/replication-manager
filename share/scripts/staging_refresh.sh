@@ -35,12 +35,12 @@ echo $NB_SLAVES
 
 # Scenario 1 : 2 slaves, then we will stop the replication on one that will be the "staging"  
 if [ "$NB_SLAVES" -eq 2 ]; then
-  echo "picking first slave \n"
-  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/id | sed 's/"//g' )
-  PORT=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/1/attr/port)
+  echo "Picking a slave for staging \n"
+  ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/0/attr/id | sed 's/"//g' )
+  PORT=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/slaves/index/0/attr/port)
   echo "$ID:$PORT"
   
-  echo "Stopping first server slave replication \n"
+  echo "Stopping slave $ID replication \n"
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID/actions/stop-slave
 
   loop=true	
@@ -73,7 +73,7 @@ fi
 
 # Scenario 2 : 1 slave, then we will stop the replication on one that will be the "staging"
 if [ "$NB_SLAVES" -eq 1 ]; then
-  echo "picking last slave and standalone id \n"
+  echo "picking a slave and standalone \n"
   ID=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/standalone/index/0/attr/id | sed 's/"//g')
   ID_SLAVE=$(get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/topology/state/slave/index/0/attr/id | sed 's/"//g')
 
@@ -83,8 +83,8 @@ if [ "$NB_SLAVES" -eq 1 ]; then
   fi
 
   # Get the last available slave
-  echo "last slave found for staging $ID_SLAVE \n"
-  echo "Stopping replication on last slave \n"
+  echo "Switching staging from STANDALONE $ID to SLAVE $ID_SLAVE \n"
+  echo "Stopping replication on slave $ID_SLAVE \n"
   
   get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$ID_SLAVE/actions/stop-slave
   
