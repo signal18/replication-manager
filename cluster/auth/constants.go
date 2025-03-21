@@ -247,6 +247,14 @@ var allRoles []string = []string{
 	RoleVisitor,
 }
 
+var defaultACL map[string]AllowDiscardACL = map[string]AllowDiscardACL{
+	RoleSysOps:    {"*", ""},
+	RoleExtSysOps: {"*", "sales global extrole"},
+	RoleDBOps:     {"*", "cluster prov sales global"},
+	RoleSponsor:   {"db show proxy grant extrole sales-unsubscribe app", ""},
+	RoleExtDBOps:  {"db show proxy grant", "extrole"},
+}
+
 // Init Function
 func init() {
 	// Preallocate `allGrants` slice for better performance

@@ -139,18 +139,8 @@ func GetCompactRoles(roles map[string]bool) []string {
 
 // GetDefaultAllowDiscardACL returns allowed and discarded grants for a role
 func GetDefaultAllowDiscardACL(role string) (allow, discard string) {
-	roleACL := map[string]struct {
-		allow, discard string
-	}{
-		RoleSysOps:    {"*", ""},
-		RoleExtSysOps: {"*", "sales global extrole"},
-		RoleDBOps:     {"*", "cluster prov sales global"},
-		RoleSponsor:   {"db show proxy grant extrole sales-unsubscribe", ""},
-		RoleExtDBOps:  {"db show proxy grant", "extrole"},
-	}
-
-	if acl, exists := roleACL[role]; exists {
-		return acl.allow, acl.discard
+	if acl, exists := defaultACL[role]; exists {
+		return acl.Allow, acl.Discard
 	}
 	return "show", ""
 }

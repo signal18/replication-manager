@@ -15,3 +15,8 @@ type ListUserACL struct {
 	ACLs  string
 	Roles string
 }
+
+type AllowDiscardACL struct {
+	Allow   string
+	Discard string
+}
