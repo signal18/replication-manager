@@ -17,7 +17,6 @@ BIN-EMBED = $(BIN)
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 WITH_REACT = ON
-WITH_GOTTY = ON
 
 all: bin tar cli arb
 
@@ -27,7 +26,7 @@ non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-pro osc emb pro-basedir : react
+pro osc emb pro-basedir : react gotty
 
 react:
 	$(Building react frontend $(REACT))
