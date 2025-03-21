@@ -342,6 +342,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
+	cluster.Apps = make([]*app.App, 0)
+	cluster.AppsIdList = make([]string, 0)
 
 	*cluster.Conf = confs.ConfInit
 
