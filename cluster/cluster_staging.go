@@ -53,6 +53,20 @@ func (cluster *Cluster) RefreshStaging() error {
 		return nil
 	}
 
+	if cluster.StagingServer == nil {
+		for _, srv := range cluster.Servers {
+			if srv.State == stateUnconn {
+				cluster.StagingServer = srv
+				break
+			}
+		}
+	}
+
+	cluster.IsRefreshStaging = true
+	defer func() {
+		cluster.IsRefreshStaging = false
+	}()
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging initiated")
 
 	script = cluster.Conf.TopologyStagingRefreshScript
@@ -110,22 +124,23 @@ func (cluster *Cluster) RefreshStaging() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging completed")
 
-	err = cluster.PostDetachStaging()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Post detach error: %s\n", err)
-		return err
+	for _, srv := range cluster.Servers {
+		if srv.State == stateUnconn {
+			cluster.StagingServer = srv
+			break
+		}
 	}
 
 	return nil
 }
 
-func (cluster *Cluster) PostDetachStaging() error {
+func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string) error {
 	if cluster.Conf.TopologyStaging && cluster.Conf.TopologyStagingPostDetachScript != "" {
 		script := cluster.Conf.TopologyStagingPostDetachScript
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Run post detach staging script %s", script)
 
-		cmd := exec.Command(script)
+		cmd := exec.Command(script, cluster.Name, host, port, newstate, oldstate)
 		cmd.Env = cluster.GetExecEnv()
 		stdoutIn, _ := cmd.StdoutPipe()
 		stderrIn, _ := cmd.StderrPipe()

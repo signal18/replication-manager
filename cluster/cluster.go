@@ -116,6 +116,7 @@ type Cluster struct {
 	IsNeedGitPush                 bool                   `json:"-"`
 	IsExportPush                  bool                   `json:"isExportPush"`
 	IsAlertDisable                bool                   `json:"isAlertDisable"`
+	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
 	Conf                          *config.Config         `json:"config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
@@ -151,6 +152,7 @@ type Cluster struct {
 	master                        *ServerMonitor         `json:"master"`
 	oldMaster                     *ServerMonitor         `json:"oldmaster"`
 	vmaster                       *ServerMonitor         `json:"vmaster"`
+	StagingServer                 *ServerMonitor         `json:"-"`
 	mxs                           *maxscale.MaxScale     `json:"-"`
 	CheckSumConfig                map[string]hash.Hash   `json:"-"`
 	//dbUser                        string                      `json:"-"`

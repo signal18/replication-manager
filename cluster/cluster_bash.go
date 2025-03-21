@@ -61,6 +61,10 @@ func (cluster *Cluster) BashScriptCloseSate(state state.State) error {
 }
 
 func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newState string, oldState string) error {
+	if cluster.IsRefreshStaging && cluster.Conf.TopologyStagingPostDetachScript != "" && newState == stateUnconn && srv != cluster.StagingServer {
+		cluster.PostDetachStaging(srv.Host, srv.Port, newState, oldState)
+	}
+
 	if cluster.Conf.DbServersChangeStateScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling database change state script")
 		var out []byte
