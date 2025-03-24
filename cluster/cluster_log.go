@@ -581,7 +581,7 @@ func (cluster *Cluster) CopyLogs(r io.Reader, module int, level string, name str
 		if !s.Scan() {
 			break
 		} else if s.Text() != "" {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", name, s.Text())
+			cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", name, strings.Replace(s.Text(), cluster.GetDbPass(), "XXXX", 1))
 		}
 	}
 }
