@@ -153,12 +153,12 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
-			cluster.CopyLogs(stdoutIn, config.ConstLogModTask, config.LvlDbg, "staging")
+			cluster.CopyLogs(stdoutIn, config.ConstLogModTask, config.LvlInfo, "staging")
 			wg.Done()
 		}()
 
 		go func() {
-			cluster.CopyLogs(stderrIn, config.ConstLogModTask, config.LvlDbg, "staging")
+			cluster.CopyLogs(stderrIn, config.ConstLogModTask, config.LvlInfo, "staging")
 			wg.Done()
 		}()
 
