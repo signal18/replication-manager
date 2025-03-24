@@ -13,9 +13,11 @@ BIN-PRO = $(BIN)-pro
 BIN-CLI = $(BIN)-cli
 BIN-ARB = $(BIN)-arb
 BIN-EMBED = $(BIN)
+
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 WITH_REACT = ON
+WITH_GOTTY = ON
 
 all: bin tar cli arb
 
@@ -67,6 +69,8 @@ arb:
 
 emb:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH)  go build -v --tags "server" --ldflags "-w -s $(EMBED) -X 'github.com/signal18/replication-manager/server.Version=$(VERSION)' -X 'github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION)' -X 'github.com/signal18/replication-manager/server.Build=$(BUILD)' -X github.com/signal18/replication-manager/server.WithOpenSVC=ON  "  $(LDFLAGS) -o $(BINDIR)/$(BIN)
+
+got:
 
 package: all
 	nobuild=0 ./package_$(OS).sh

@@ -53,6 +53,33 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 }
 
+func (collector *Collector) GetGottyServer(srv string, rid string  ) (string, error) {
+	client := collector.GetHttpClient()
+	jsondata := `{"path": "` + srv + `", "rid": ` + srv + `, "timeour": "10s"}`
+
+	b := bytes.NewBuffer([]byte(jsondata))
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_enter"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return "",err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", "ANY")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "",err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	return string(body) , nil 
+}
+
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
 
 	client := collector.GetHttpClient()
