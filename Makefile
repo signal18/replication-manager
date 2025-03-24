@@ -13,29 +13,25 @@ BIN-PRO = $(BIN)-pro
 BIN-CLI = $(BIN)-cli
 BIN-ARB = $(BIN)-arb
 BIN-EMBED = $(BIN)
-BIN-GOTTY = $(BIN)-cli-gotty
 
 PROTO_DIR = signal18/replication-manager/v3
 EMBED = -X github.com/signal18/replication-manager/server.WithEmbed=ON
 WITH_REACT = ON
-WITH_GOTTY = ON 
+WITH_GOTTY = ON
 
-all: bin tar cli arb 
+all: bin tar cli arb
 
-bin: osc tst pro osc-cgo emb 
+bin: osc tst pro osc-cgo emb
 
-non-cgo: osc tst pro arb cli emb 
+non-cgo: osc tst pro arb cli emb
 
 tar: osc-basedir tst-basedir pro-basedir osc-cgo-basedir
 
-pro osc emb pro-basedir : react gotty 
+pro osc emb pro-basedir : react
 
 react:
 	$(Building react frontend $(REACT))
 	@if [ $(WITH_REACT) = "ON" ]; then npm --prefix=./share/dashboard_react install; npm --prefix=./share/dashboard_react run build; cp -rp ./share/dashboard_react/dist/* ./share/dashboard/; fi
-
-gotty: 
-	@if [ $(WITH_GOTTY) = "ON" ]; then env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -C gotty-client $(LDFLAGS) -o $(BINDIR)/$(BIN-GOTTY) ; fi
 
 osc:
 	env CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) go build -v --tags "server" --ldflags "-extldflags '-static' -w -s -X github.com/signal18/replication-manager/server.Version=$(VERSION) -X github.com/signal18/replication-manager/server.FullVersion=$(FULLVERSION) -X github.com/signal18/replication-manager/server.Build=$(BUILD) -X github.com/signal18/replication-manager/server.WithProvisioning=OFF "  $(LDFLAGS) -o $(BINDIR)/$(BIN-OSC)
