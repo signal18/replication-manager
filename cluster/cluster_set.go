@@ -2089,6 +2089,14 @@ func (cluster *Cluster) SetLogTaskLevel(value int) {
 		cluster.Conf.LogTask = false
 	}
 }
+func (cluster *Cluster) SetLogExternalScriptLevel(value int) {
+	cluster.Conf.LogExternalScriptLevel = value
+	if value > 0 {
+		cluster.Conf.LogExternalScript = true
+	} else {
+		cluster.Conf.LogExternalScript = false
+	}
+}
 
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
 

@@ -318,6 +318,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               }
             />
           )
+        },
+        {
+          key: 'Log External Script Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logExternalScriptLevel}
+              confirmTitle={`Confirm change 'log-external-script-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-external-script-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
         }
       ]
     },

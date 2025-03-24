@@ -17,7 +17,7 @@ func (cluster *Cluster) ReloadStagingScript() error {
 	filename := "staging_refresh.sh"
 	template := "scripts/" + filename
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reload staging script")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Reload staging script")
 
 	script = cluster.Conf.WorkingDir + "/" + cluster.Name + "/" + filename
 
@@ -28,7 +28,7 @@ func (cluster *Cluster) ReloadStagingScript() error {
 	}
 
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading default staging script. %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Error reading default staging script. %s", err)
 		return err
 	}
 
@@ -36,7 +36,7 @@ func (cluster *Cluster) ReloadStagingScript() error {
 
 	err = os.WriteFile(script, content, 0755)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing default staging script. %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Error writing default staging script. %s", err)
 		return err
 	}
 
@@ -49,7 +49,7 @@ func (cluster *Cluster) RefreshStaging() error {
 	filename := "staging_refresh.sh"
 
 	if !cluster.Conf.TopologyStaging {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging not enabled")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh staging not enabled")
 		return nil
 	}
 
@@ -67,38 +67,38 @@ func (cluster *Cluster) RefreshStaging() error {
 		cluster.IsRefreshStaging = false
 	}()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging initiated")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh staging initiated")
 
 	script = cluster.Conf.TopologyStagingRefreshScript
 	if cluster.Conf.TopologyStagingRefreshScript == "" {
 		script = cluster.Conf.WorkingDir + "/" + cluster.Name + "/" + filename
 
 		if _, err := os.Stat(script); os.IsNotExist(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Staging script not found, reloading")
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Staging script not found, reloading")
 			err := cluster.ReloadStagingScript()
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reloading staging script. %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Error reloading staging script. %s", err)
 				return err
 			}
 		}
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Run refresh staging script %s", script)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Run refresh staging script %s", script)
 	cmd := exec.Command(script)
 	cmd.Env = cluster.GetExecEnv()
 	stdoutIn, err := cmd.StdoutPipe()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
 		return err
 	}
 	stderrIn, err := cmd.StderrPipe()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
 		return err
 	}
 
 	if err := cmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
 		return err
 	}
 
@@ -118,11 +118,11 @@ func (cluster *Cluster) RefreshStaging() error {
 
 	err = cmd.Wait()
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s\n", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "%s\n", err)
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Refresh staging completed")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh staging completed")
 
 	for _, srv := range cluster.Servers {
 		if srv.State == stateUnconn {
@@ -138,7 +138,7 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 	if cluster.Conf.TopologyStaging && cluster.Conf.TopologyStagingPostDetachScript != "" {
 		script := cluster.Conf.TopologyStagingPostDetachScript
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Run post detach staging script %s", script)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Run post detach staging script %s", script)
 
 		cmd := exec.Command(script, cluster.Name, host, port, newstate, oldstate, cluster.GetDbUser(), cluster.GetDbPass())
 		cmd.Env = cluster.GetExecEnv()
@@ -146,19 +146,19 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 		stderrIn, _ := cmd.StderrPipe()
 
 		if err := cmd.Start(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed refresh staging command : %s %s", cmd.Path, err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "Failed post detach command : %s %s", cmd.Path, err)
 			return err
 		}
 
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
-			cluster.CopyLogs(stdoutIn, config.ConstLogModGeneral, config.LvlDbg, "staging")
+			cluster.CopyLogs(stdoutIn, config.ConstLogModTask, config.LvlDbg, "staging")
 			wg.Done()
 		}()
 
 		go func() {
-			cluster.CopyLogs(stderrIn, config.ConstLogModGeneral, config.LvlDbg, "staging")
+			cluster.CopyLogs(stderrIn, config.ConstLogModTask, config.LvlDbg, "staging")
 			wg.Done()
 		}()
 
@@ -166,7 +166,7 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 
 		err := cmd.Wait()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s\n", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlErr, "%s\n", err)
 			return err
 		}
 	}

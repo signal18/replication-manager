@@ -146,6 +146,8 @@ type Config struct {
 	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
 	LogSupport                                bool                   `scope:"server" mapstructure:"log-support" toml:"log-support" json:"logSupport"`
 	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
+	LogExternalScript                         bool                   `mapstructure:"log-external-script" toml:"log-external-script" json:"ExternalScript"`
+	LogExternalScriptLevel                    int                    `mapstructure:"log-external-script-level" toml:"log-external-script-level" json:"logExternalScriptLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1156,6 +1158,7 @@ const (
 	ConstLogModArchive        = 18
 	ConstLogModMailer         = 19
 	ConstLogModSupport        = 20
+	ConstLogModExternalScript = 21
 )
 
 /*
@@ -1182,6 +1185,7 @@ const (
 	ConstLogNameTask           string = "log-task"
 	ConstLogNameArchive        string = "log-archive"
 	ConstLogNameMailer         string = "log-mailer"
+	ConstLogNameExternalScript string = "log-external-script"
 )
 
 /*
@@ -2962,6 +2966,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogTask {
 				return conf.LogTaskLevel >= lvl
 			}
+		case module == ConstLogModExternalScript:
+			if conf.LogExternalScript {
+				return conf.LogExternalScriptLevel >= lvl
+			}
 		case module == ConstLogModArchive:
 			return conf.LogArchiveLevel >= lvl
 		case module == ConstLogModMailer:
@@ -3131,6 +3139,8 @@ func GetTagsForLog(module int) string {
 		return "purge"
 	case ConstLogModTask:
 		return "job"
+	case ConstLogModExternalScript:
+		return "externalscript"
 	}
 	return ""
 }
@@ -3184,6 +3194,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModPurge
 	case ConstLogNameTask:
 		return ConstLogModTask
+	case ConstLogNameExternalScript:
+		return ConstLogModExternalScript
 	}
 	return -1
 }
