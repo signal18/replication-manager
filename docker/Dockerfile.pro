@@ -7,6 +7,7 @@ COPY . .
 
 RUN apt-get update && apt-get -y install nodejs npm
 RUN make pro cli
+RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 FROM debian:bookworm-slim
 
@@ -26,6 +27,7 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/ma
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+COPY --from=builder /go/bin/gotty-client /usr/local/bin/gotty-client
 
 RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-server=1:11* mariadb-client mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb && rm -f proxysql_2.5.2-debian11_amd64.deb \
