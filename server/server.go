@@ -391,6 +391,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogTask, "log-task", true, "To log DB job process")
 	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
 
+	// Log external script
+	flags.BoolVar(&conf.LogExternalScript, "log-external-script", true, "To log external scripts output")
+	flags.IntVar(&conf.LogExternalScriptLevel, "log-external-script-level", 3, "Log external scripts Level")
+
 	flags.IntVar(&conf.LogArchiveLevel, "log-archive-level", 2, "Log Level for backup archive (restic)")
 	flags.IntVar(&conf.LogMailerLevel, "log-mailer-level", 3, "Log Level for mailer")
 
