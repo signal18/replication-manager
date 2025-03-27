@@ -1210,7 +1210,7 @@ func (server *ServerMonitor) JobsCheckRunning() error {
 	}
 
 	if server.Conn == nil {
-		return fmt.Errorf("No connection pool on %s: %s", server.URL)
+		return fmt.Errorf("No connection pool on %s", server.URL)
 	}
 
 	Conn, err := server.GetConnNoBinlog(server.Conn)

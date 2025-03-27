@@ -365,13 +365,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 		if cluster.Conf.SwitchDecreaseMaxConn {
-
 			logs, err := dbhelper.SetMaxConnections(cluster.oldMaster.Conn, cluster.oldMaster.maxConn, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not set max connection, %s", err)
-
+		}
+		if cluster.Conf.SwitchLockUserOnFreeze {
+			err = cluster.oldMaster.UnLockUsers()
+			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not unlock users, %s", err)
 		}
 		// Add the old master to the slaves list
-
 		cluster.oldMaster.SetState(stateSlave)
 		if cluster.Conf.MultiMaster == false {
 			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
