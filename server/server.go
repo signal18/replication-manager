@@ -420,6 +420,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SwitchSync, "switchover-at-sync", false, "Switchover Only  when state semisync is sync for last status")
 	flags.BoolVar(&conf.SwitchGtidCheck, "switchover-at-equal-gtid", false, "Switchover only when slaves are fully in sync")
 	flags.BoolVar(&conf.SwitchSlaveWaitCatch, "switchover-slave-wait-catch", true, "Switchover wait for slave to catch with replication, not needed in GTID mode but enable to detect possible issues like witing on old master")
+	flags.BoolVar(&conf.SwitchLockUserOnFreeze, "switchover-lock-user-on-freeze", false, "Switchover lock all non replication-manager users on freeze")
+	//	flags.BoolVar(&conf.SwitchRedirectOnFreeze, "switchover-redirect-on-freeze", false, "Switchover redirect traffic to dummy")
+
 	flags.BoolVar(&conf.SwitchDecreaseMaxConn, "switchover-decrease-max-conn", true, "Switchover decrease max connection on old master")
 	flags.BoolVar(&conf.SwitchoverCopyOldLeaderGtid, "switchover-copy-old-leader-gtid", false, "Switchover copy old leader GTID")
 	flags.Int64Var(&conf.SwitchDecreaseMaxConnValue, "switchover-decrease-max-conn-value", 10, "Switchover decrease max connection to this value different according to flavor")
@@ -788,7 +791,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")
 	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", "--overwrite-tables --verbose=3", "Extra options")
 	flags.StringVar(&conf.BackupMyDumperOptions, "backup-mydumper-options", "--chunk-filesize=1000 --compress --less-locking --verbose=3 --triggers --routines --events --trx-consistency-only --kill-long-queries", "Extra options")
-	flags.StringVar(&conf.BackupMyDumperRegex, "backup-mydumper-regex", `^(?!(sys\.|performance_schema\.|information_schema\.|replication_manager_schema\.jobs$))`, "Mydumper regex for backup")
+	flags.StringVar(&conf.BackupMyDumperRegex, "backup-mydumper-regex", `^(?!(sys\.|performance_schema\.|information_schema\.|replication_manager_schema\.jobs|mysql\.gtid_slave_pos$))`, "Mydumper regex for backup")
 	flags.StringVar(&conf.BackupMysqldumpPath, "backup-mysqldump-path", "", "Path to mysqldump binary")
 	flags.StringVar(&conf.BackupMysqldumpOptions, "backup-mysqldump-options", "--hex-blob --single-transaction --verbose --all-databases --routines=true --triggers=true --system=all", "Extra options")
 	flags.StringVar(&conf.BackupMysqlbinlogPath, "backup-mysqlbinlog-path", "", "Path to mysqlbinlog binary")

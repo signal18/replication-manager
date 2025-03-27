@@ -1109,10 +1109,15 @@ func (server *ServerMonitor) freeze() bool {
 	logs, err := server.StopAllSlaves()
 	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not stop replicas source on %s ", server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes set read only on %s", server.URL)
-	logs, err = dbhelper.SetReadOnly(server.Conn, true)
+	logs, err = server.SetReadOnly()
 	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
 	if err != nil {
 		return false
+	}
+	if cluster.Conf.SwitchLockUserOnFreeze {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes locking users %s", server.URL)
+		err = server.LockUsers()
+		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not lock all users %s : %s", server.URL, err)
 	}
 	for i := cluster.Conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, 0)
@@ -1462,6 +1467,36 @@ func (server *ServerMonitor) UnInstallPlugin(name string) error {
 			server.Plugins.Set(name, val)
 		} else {
 			return errors.New("Already not installed Plugin")
+		}
+	}
+	return nil
+}
+
+func (server *ServerMonitor) LockUsers() error {
+	query := ""
+	cluster := server.ClusterGroup
+	for _, u := range server.Users.ToNewMap() {
+		if u.User != cluster.GetDbUser() && u.User != cluster.GetRplUser() && u.User != "root" {
+			query = "ALTER USER '" + u.User + "'@'" + u.Host + "' ACCOUNT LOCK"
+			err := server.ExecQueryNoBinLog(query, 5*time.Second)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (server *ServerMonitor) UnLockUsers() error {
+	query := ""
+	cluster := server.ClusterGroup
+	for _, u := range server.Users.ToNewMap() {
+		if u.User != cluster.GetDbUser() && u.User != cluster.GetRplUser() && u.User != "root" {
+			query = "ALTER USER '" + u.User + "'@'" + u.Host + "' ACCOUNT UNLOCK"
+			err := server.ExecQueryNoBinLog(query, 5*time.Second)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -13,6 +13,10 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
+func (cluster *Cluster) SwitchSwitchoverLockUserOnFreeze() {
+	cluster.Conf.SwitchLockUserOnFreeze = !cluster.Conf.SwitchLockUserOnFreeze
+}
+
 func (cluster *Cluster) SwitchForceSlaveNoGtid() {
 	cluster.Conf.ForceSlaveNoGtid = !cluster.Conf.ForceSlaveNoGtid
 }

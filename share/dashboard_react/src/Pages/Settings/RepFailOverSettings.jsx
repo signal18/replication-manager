@@ -228,6 +228,24 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
       )
     },
     {
+      key: 'Switchover lock users on freeze workload ',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for sswitchover-lock-user-on-freeze?'}
+          onChange={() =>
+            dispatch(
+              switchSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'switchover-lock-user-on-freeze'
+              })
+            )
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.switchLockUserOnFreeze}
+        />
+      )
+    },
+    {
       key: 'Switchover replication maximum delay',
       value: (
         <RMSlider
