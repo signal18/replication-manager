@@ -1910,8 +1910,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			session.SafeWriteMessage(websocket.TextMessage, []byte("No valid node\n"))
 			return
 		}
-
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session started for user %s on cluster %s", plainuser, mycluster.Name)
+
 	}
 
 	finalID := username + "-" + sessionID
@@ -1954,8 +1954,12 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			session.SafeWriteMessage(websocket.TextMessage, []byte("Failed to set session values from node\n"))
 			return
 		}
-
+		if session.Orchestrator == config.ConstOrchestratorOpenSVC {
+			session.ServiceGottyUrl = mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceGottyUrl, mycluster.Name)
+		}
 		if session.CmdType == tty.TerminalBash {
+
 			session, err = repman.SessionManager.RunSSHSession(session)
 		} else if session.CmdType == tty.TerminalMySQL {
 			session.Arguments = append(session.Arguments, "-p")
