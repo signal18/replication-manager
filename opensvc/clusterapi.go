@@ -55,7 +55,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 func (collector *Collector) GetGottyServer(srv string, rid string  ) (string, error) {
 	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "rid": ` + srv + `, "timeour": "10s"}`
+	jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeour": "10s"}`
 
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_enter"
