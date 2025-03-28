@@ -34,7 +34,7 @@ RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_V
 
 # Install Node.js 18 from NodeSource
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-        apt-get install -y nodejs && \
+        apt-get install -y nodejs npm && \
         rm -rf /var/lib/apt/lists/*
 
 # Copy Go tools from builder stage
