@@ -274,14 +274,18 @@ func (server *ServerMonitor) OpenSVCGetDBContainerSection() map[string]string {
 		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = server.ClusterGroup.Conf.ProvType
 		svccontainer["secrets_environment"] = "env/MYSQL_ROOT_PASSWORD"
+
 		if server.ClusterGroup.Conf.ProvDBDockerTmpfsSize != "0" {
 			svccontainer["run_args"] = fmt.Sprintf("--tmpfs=/tmp:size=%sm %s", server.ClusterGroup.Conf.ProvDBDockerTmpfsSize, server.ClusterGroup.Conf.ProvDBDockerRunArgs)
 		} else {
 			svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBDockerRunArgs
 		}
+		if strings.Contains(strings.ToLower(server.ClusterGroup.Conf.ProvDbImg), "mysql") {
+			svccontainer["run_args"] = svccontainer["run_args"] + " --user mysql"
+		}
 		if server.ClusterGroup.Conf.ProvDBDockerRunArgsLimit {
-		  svccontainer["run_args"] = svccontainer["run_args"] + " --memory="  + server.ClusterGroup.Conf.ProvMem +"m --memory-swap="+ server.ClusterGroup.Conf.ProvMem +"m --cpus=" +  server.ClusterGroup.Conf.ProvCores +".0"
-			// this need to find the device with df in container 
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + server.ClusterGroup.Conf.ProvMem + "m --memory-swap=" + server.ClusterGroup.Conf.ProvMem + "m --cpus=" + server.ClusterGroup.Conf.ProvCores + ".0"
+			// this need to find the device with df in container
 			//  --device-read-iops=" + server.ClusterGroup.Conf.ProvIops +".0" --device-write-iops=device" + server.ClusterGroup.Conf.ProvIops
 		}
 		svccontainer["#run_args"] = "--user mysql --cap-add SYS_PTRACE --ulimit nofile=262144:262144"

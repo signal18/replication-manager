@@ -1057,11 +1057,12 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	//Ignore if child cluster
 	if sl.SourceClusterName != cluster.Name {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Slave is not from this cluster chanel channel  %s: %s  ", sl.SourceClusterName, sl.URL)
 		return false
 	}
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 	//if master is alived and IO Thread stops then not a good candidate and not forced
