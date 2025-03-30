@@ -7,6 +7,7 @@ COPY . .
 
 RUN apt-get update && apt-get -y install nodejs npm
 RUN make pro cli
+RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 FROM debian:bookworm-slim
 
@@ -26,19 +27,12 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/ma
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-pro /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+COPY --from=builder /go/bin/gotty-client /usr/local/bin/gotty-client
 
-ENV PROXYSQL_VERSION=2.7.3
-ENV MARIADB_VERSION=11.4
-ENV MYDUMPER_VERSION=0.17.1-1
-
-RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
-
-# Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3 adduser libfontconfig1
-RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb
-RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb
-RUN curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb
-RUN rm -rf /var/lib/mysql/*
+RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-server=1:11* mariadb-client mariadb-plugin-spider haproxy libmariadb-dev fuse sysbench curl wget openssh-client
+RUN curl -LO https://github.com/sysown/proxysql/releases/download/v2.5.2/proxysql_2.5.2-debian11_amd64.deb && dpkg -i proxysql_2.5.2-debian11_amd64.deb && rm -f proxysql_2.5.2-debian11_amd64.deb \
+  && apt-get install -y adduser libfontconfig1 && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \
+  && rm -rf /var/lib/mysql/*
 
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
