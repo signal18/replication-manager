@@ -33,6 +33,7 @@ func (cluster *Cluster) CheckFailed() {
 	}
 	if cluster.master == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master not discovered, skipping failover check")
+		return
 	}
 	cluster.SetFalsePositiveCheck("FoundCandidateMaster", cluster.isFoundCandidateMaster())
 	cluster.SetFalsePositiveCheck("BetweenFailoverTimeValid", cluster.isBetweenFailoverTimeValid())
