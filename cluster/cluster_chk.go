@@ -67,7 +67,7 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.failoverCond.Send <- true
 	}
 	if cluster.FalsePositiveChecks["MasterFailed"] && cluster.FalsePositiveChecks["AutomaticFailover"] {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Auto failover locked with false positive conditions %s ", cluster.FalsePositiveChecks)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Auto failover locked with false positive conditions %s ", cluster.FalsePositiveChecks)
 	}
 
 }
