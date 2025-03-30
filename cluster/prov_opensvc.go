@@ -82,7 +82,7 @@ func (cluster *Cluster) GetGottyServer(srv string, rid string) string {
 	svc := cluster.OpenSVCConnect()
 	body, err := svc.GetGottyServer(srv, rid)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not  GetGottyServer: %s ", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Payload: %s", err , body)
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Response from GetGottyServer: %s ", body)
 
