@@ -132,6 +132,7 @@ type Cluster struct {
 	LogTask                       s18log.HttpLog         `json:"logTask"`
 	LogSlack                      *slackman.SlackManager `json:"-"`
 	JobResults                    *config.TasksMap       `json:"jobResults"`
+	FalsePositiveChecks           map[string]bool        `json:"falsePositiveChecks"`
 	Grants                        map[string]string      `json:"-"`
 	Roles                         map[string]string      `json:"-"`
 	tlog                          *s18log.TermLog        `json:"-"`
@@ -403,6 +404,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.JobResults = config.NewTasksMap()
 	cluster.SstAvailablePorts = make(map[string]string)
 	cluster.CheckSumConfig = make(map[string]hash.Hash)
+	cluster.FalsePositiveChecks = make(map[string]bool)
 	lstPort := strings.Split(cluster.Conf.SchedulerSenderPorts, ",")
 	for _, p := range lstPort {
 		cluster.SstAvailablePorts[p] = p

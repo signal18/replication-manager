@@ -823,6 +823,10 @@ func (cluster *Cluster) SetSwitchSync(check bool) {
 	cluster.Conf.SwitchSync = check
 }
 
+func (cluster *Cluster) SetFalsePositiveCheck(key string, check bool) {
+	cluster.FalsePositiveChecks[key] = check
+}
+
 func (cluster *Cluster) SetSwitchoverLockUserOnFreeze(check bool) {
 	cluster.Conf.SwitchLockUserOnFreeze = check
 }

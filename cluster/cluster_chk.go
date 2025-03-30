@@ -34,29 +34,42 @@ func (cluster *Cluster) CheckFailed() {
 	if cluster.master == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master not discovered, skipping failover check")
 	}
+	cluster.SetFalsePositiveCheck("FoundCandidateMaster", cluster.isFoundCandidateMaster())
+	cluster.SetFalsePositiveCheck("BetweenFailoverTimeValid", cluster.isBetweenFailoverTimeValid())
+	cluster.SetFalsePositiveCheck("NotHavingMySQLErrantTransaction", cluster.IsNotHavingMySQLErrantTransaction())
+	cluster.SetFalsePositiveCheck("SameWsrepUUID", cluster.IsSameWsrepUUID())
+	cluster.SetFalsePositiveCheck("MaxMasterFailedCountReached", cluster.isMaxMasterFailedCountReached())
+	cluster.SetFalsePositiveCheck("ActiveArbitration", cluster.isActiveArbitration())
+	cluster.SetFalsePositiveCheck("MaxClusterFailoverCountNotReached", cluster.isMaxClusterFailoverCountNotReached())
+	cluster.SetFalsePositiveCheck("AutomaticFailover", cluster.isAutomaticFailover())
+	cluster.SetFalsePositiveCheck("MasterFailed", cluster.isMasterFailed())
+	cluster.SetFalsePositiveCheck("NotFirstSlave", cluster.isNotFirstSlave())
+	cluster.SetFalsePositiveCheck("ArbitratorAlive", cluster.isArbitratorAlive())
+	cluster.SetFalsePositiveCheck("NotExternalOk", !cluster.isExternalOk())
+	cluster.SetFalsePositiveCheck("NotOneSlaveHeartbeatIncreasing", !cluster.isOneSlaveHeartbeatIncreasing())
+	cluster.SetFalsePositiveCheck("NotMaxscaleSupectRunning", !cluster.isMaxscaleSupectRunning())
 
-	if cluster.isFoundCandidateMaster() &&
-		cluster.isBetweenFailoverTimeValid() &&
-		cluster.IsNotHavingMySQLErrantTransaction() &&
-		cluster.IsSameWsrepUUID() &&
-		cluster.isMaxMasterFailedCountReached() &&
-		cluster.isActiveArbitration() &&
-		cluster.isMaxClusterFailoverCountNotReached() &&
-		cluster.isAutomaticFailover() &&
-		cluster.isMasterFailed() &&
-		cluster.isNotFirstSlave() &&
-		cluster.isArbitratorAlive() {
-
-		// False Positive
-		if cluster.isExternalOk() == false {
-			if cluster.isOneSlaveHeartbeatIncreasing() == false {
-				if cluster.isMaxscaleSupectRunning() == false {
-					cluster.MasterFailover(true)
-					cluster.failoverCond.Send <- true
-				}
-			}
-		}
+	if cluster.FalsePositiveChecks["FoundCandidateMaster"] &&
+		cluster.FalsePositiveChecks["BetweenFailoverTimeValid"] &&
+		cluster.FalsePositiveChecks["NotHavingMySQLErrantTransaction"] &&
+		cluster.FalsePositiveChecks["SameWsrepUUID"] &&
+		cluster.FalsePositiveChecks["MaxMasterFailedCountReached"] &&
+		cluster.FalsePositiveChecks["ActiveArbitration"] &&
+		cluster.FalsePositiveChecks["MaxClusterFailoverCountNotReached"] &&
+		cluster.FalsePositiveChecks["AutomaticFailover"] &&
+		cluster.FalsePositiveChecks["MasterFailed"] &&
+		cluster.FalsePositiveChecks["NotFirstSlave"] &&
+		cluster.FalsePositiveChecks["ArbitratorAlive"] &&
+		cluster.FalsePositiveChecks["NotExternalOk"] &&
+		cluster.FalsePositiveChecks["NotOneSlaveHeartbeatIncreasing"] &&
+		cluster.FalsePositiveChecks["NotMaxscaleSupectRunning"] {
+		cluster.MasterFailover(true)
+		cluster.failoverCond.Send <- true
 	}
+	if cluster.FalsePositiveChecks["MasterFailed"] && cluster.FalsePositiveChecks["AutomaticFailover"] {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Auto failover locked with false positive conditions %s ", cluster.FalsePositiveChecks)
+	}
+
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
