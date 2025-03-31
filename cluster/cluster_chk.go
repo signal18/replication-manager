@@ -68,7 +68,7 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.failoverCond.Send <- true
 	}
 	if cluster.FalsePositiveChecks["MasterFailed"] && cluster.FalsePositiveChecks["AutomaticFailover"] {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Auto failover locked with false positive conditions %s ", cluster.FalsePositiveChecks)
+		cluster.SetState("ERR000978", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00097"], cluster.FalsePositiveChecks), ErrFrom: "CHECK"})
 	}
 
 }
@@ -778,7 +778,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
-
+		s.HasErrantTransactions
 		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
 		if hasErrantTrx {
 			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})

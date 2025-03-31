@@ -106,6 +106,7 @@ var ClusterError = map[string]string{
 	"ERR00094":  "Proxysql %s can not set %s as OFFLINE_SOFT: %s",
 	"ERR00095":  "ProxySQL %s could not load servers to runtime: %s",
 	"ERR00096":  "Proxysql %s can not save changes to disk: %s",
+	"ERR00097":  "Auto failover locked with false positive conditions: %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",
