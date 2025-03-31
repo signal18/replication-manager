@@ -206,6 +206,8 @@ type Config struct {
 	SwitchSlaveWaitRouteChange                int                    `mapstructure:"switchover-wait-route-change" toml:"switchover-wait-route-change" json:"switchoverWaitRouteChange"`
 	SwitchDecreaseMaxConn                     bool                   `mapstructure:"switchover-decrease-max-conn" toml:"switchover-decrease-max-conn" json:"switchoverDecreaseMaxConn"`
 	SwitchDecreaseMaxConnValue                int64                  `mapstructure:"switchover-decrease-max-conn-value" toml:"switchover-decrease-max-conn-value" json:"switchoverDecreaseMaxConnValue"`
+	SwitchLockUserOnFreeze                    bool                   `mapstructure:"switchover-lock-user-on-freeze" toml:"switchover-lock-user-on-freeze" json:"switchoverLockUserOnFreeze"`
+	SwitchRedirectOnFreeze                    bool                   `mapstructure:"switchover-redirect-on-freeze" toml:"switchover-redirect-on-freeze" json:"switchoverRedirectOnFreeze"`
 	FailLimit                                 int                    `mapstructure:"failover-limit" toml:"failover-limit" json:"failoverLimit"`
 	PreScript                                 string                 `mapstructure:"failover-pre-script" toml:"failover-pre-script" json:"failoverPreScript"`
 	PostScript                                string                 `mapstructure:"failover-post-script" toml:"failover-post-script" json:"failoverPostScript"`

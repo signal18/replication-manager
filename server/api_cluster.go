@@ -2072,6 +2072,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchRejoinForceRestore()
 	case "switchover-at-sync":
 		mycluster.SwitchSwitchoverSync()
+	case "switchover-lock-user-on-freeze":
+		mycluster.SwitchSwitchoverLockUserOnFreeze()
 	case "check-replication-filters":
 		mycluster.SwitchCheckReplicationFilters()
 	case "check-replication-state":
@@ -3015,6 +3017,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.AutorejoinForceRestore = isactive
 	case "switchover-at-sync":
 		mycluster.Conf.SwitchSync = isactive
+	case "switchover-lock-user-on-freeze":
+		mycluster.Conf.SwitchLockUserOnFreeze = isactive
 	case "check-replication-filters":
 		mycluster.Conf.CheckReplFilter = isactive
 	case "check-replication-state":

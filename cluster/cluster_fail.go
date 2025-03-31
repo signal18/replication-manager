@@ -365,13 +365,14 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		}
 
 		if cluster.Conf.SwitchDecreaseMaxConn {
-
 			logs, err := dbhelper.SetMaxConnections(cluster.oldMaster.Conn, cluster.oldMaster.maxConn, cluster.oldMaster.DBVersion)
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not set max connection, %s", err)
-
+		}
+		if cluster.Conf.SwitchLockUserOnFreeze {
+			err = cluster.oldMaster.UnLockUsers()
+			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not unlock users, %s", err)
 		}
 		// Add the old master to the slaves list
-
 		cluster.oldMaster.SetState(stateSlave)
 		if cluster.Conf.MultiMaster == false {
 			cluster.slaves = append(cluster.slaves, cluster.oldMaster)
@@ -1056,11 +1057,12 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 func (cluster *Cluster) isSlaveElectable(sl *ServerMonitor, forcingLog bool) bool {
 	//Ignore if child cluster
 	if sl.SourceClusterName != cluster.Name {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Slave is not from this cluster chanel channel  %s: %s  ", sl.SourceClusterName, sl.URL)
 		return false
 	}
 	ss, err := sl.GetSlaveStatus(sl.ReplicationSourceName)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
+		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Error in getting slave status in testing slave electable %s: %s  ", sl.URL, err)
 		return false
 	}
 	//if master is alived and IO Thread stops then not a good candidate and not forced

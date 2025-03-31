@@ -33,30 +33,44 @@ func (cluster *Cluster) CheckFailed() {
 	}
 	if cluster.master == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Master not discovered, skipping failover check")
+		return
+	}
+	cluster.SetFalsePositiveCheck("FoundCandidateMaster", cluster.isFoundCandidateMaster())
+	cluster.SetFalsePositiveCheck("BetweenFailoverTimeValid", cluster.isBetweenFailoverTimeValid())
+	cluster.SetFalsePositiveCheck("NotHavingMySQLErrantTransaction", cluster.IsNotHavingMySQLErrantTransaction())
+	cluster.SetFalsePositiveCheck("SameWsrepUUID", cluster.IsSameWsrepUUID())
+	cluster.SetFalsePositiveCheck("MaxMasterFailedCountReached", cluster.isMaxMasterFailedCountReached())
+	cluster.SetFalsePositiveCheck("ActiveArbitration", cluster.isActiveArbitration())
+	cluster.SetFalsePositiveCheck("MaxClusterFailoverCountNotReached", cluster.isMaxClusterFailoverCountNotReached())
+	cluster.SetFalsePositiveCheck("AutomaticFailover", cluster.isAutomaticFailover())
+	cluster.SetFalsePositiveCheck("MasterFailed", cluster.isMasterFailed())
+	cluster.SetFalsePositiveCheck("NotFirstSlave", cluster.isNotFirstSlave())
+	cluster.SetFalsePositiveCheck("ArbitratorAlive", cluster.isArbitratorAlive())
+	cluster.SetFalsePositiveCheck("NotExternalOk", !cluster.isExternalOk())
+	cluster.SetFalsePositiveCheck("NotOneSlaveHeartbeatIncreasing", !cluster.isOneSlaveHeartbeatIncreasing())
+	cluster.SetFalsePositiveCheck("NotMaxscaleSupectRunning", !cluster.isMaxscaleSupectRunning())
+
+	if cluster.FalsePositiveChecks["FoundCandidateMaster"] &&
+		cluster.FalsePositiveChecks["BetweenFailoverTimeValid"] &&
+		cluster.FalsePositiveChecks["NotHavingMySQLErrantTransaction"] &&
+		cluster.FalsePositiveChecks["SameWsrepUUID"] &&
+		cluster.FalsePositiveChecks["MaxMasterFailedCountReached"] &&
+		cluster.FalsePositiveChecks["ActiveArbitration"] &&
+		cluster.FalsePositiveChecks["MaxClusterFailoverCountNotReached"] &&
+		cluster.FalsePositiveChecks["AutomaticFailover"] &&
+		cluster.FalsePositiveChecks["MasterFailed"] &&
+		cluster.FalsePositiveChecks["NotFirstSlave"] &&
+		cluster.FalsePositiveChecks["ArbitratorAlive"] &&
+		cluster.FalsePositiveChecks["NotExternalOk"] &&
+		cluster.FalsePositiveChecks["NotOneSlaveHeartbeatIncreasing"] &&
+		cluster.FalsePositiveChecks["NotMaxscaleSupectRunning"] {
+		cluster.MasterFailover(true)
+		cluster.failoverCond.Send <- true
+	}
+	if cluster.FalsePositiveChecks["MasterFailed"] && cluster.FalsePositiveChecks["AutomaticFailover"] {
+		cluster.SetState("ERR000978", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00097"], cluster.FalsePositiveChecks), ErrFrom: "CHECK"})
 	}
 
-	if cluster.isFoundCandidateMaster() &&
-		cluster.isBetweenFailoverTimeValid() &&
-		cluster.IsNotHavingMySQLErrantTransaction() &&
-		cluster.IsSameWsrepUUID() &&
-		cluster.isMaxMasterFailedCountReached() &&
-		cluster.isActiveArbitration() &&
-		cluster.isMaxClusterFailoverCountNotReached() &&
-		cluster.isAutomaticFailover() &&
-		cluster.isMasterFailed() &&
-		cluster.isNotFirstSlave() &&
-		cluster.isArbitratorAlive() {
-
-		// False Positive
-		if cluster.isExternalOk() == false {
-			if cluster.isOneSlaveHeartbeatIncreasing() == false {
-				if cluster.isMaxscaleSupectRunning() == false {
-					cluster.MasterFailover(true)
-					cluster.failoverCond.Send <- true
-				}
-			}
-		}
-	}
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
@@ -750,7 +764,7 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
-	if cluster.GetMaster() == nil {
+	if cluster.GetMaster() == nil /*|| cluster.GetMaster().State == stateFailed */ {
 		// disable check if master is crashed as the slave can get more GTID events and so slave GTID is not ubset of masetr GTID
 		return true
 	}
@@ -760,14 +774,32 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 	if !cluster.Conf.RplCheckErrantTrx {
 		return true
 	}
+	master_uuid := cluster.master.Variables.Get("SERVER_UUID")
+	mastergtidvectors := strings.Split(cluster.master.Variables.Get("GTID_EXECUTED"), ",")
+	mastergtidvectorstrim := make([]string, 0)
+	for _, vector := range mastergtidvectors {
+		if !strings.Contains(vector, master_uuid) {
+			mastergtidvectorstrim = append(mastergtidvectorstrim, vector)
+		}
+	}
+	mastergtid := strings.Join(mastergtidvectorstrim, ",")
 	for _, s := range cluster.slaves {
 		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
+		slavegtidvectors := strings.Split(s.Variables.Get("GTID_EXECUTED"), ",")
+		slavegtidvectorstrim := make([]string, 0)
+		for _, vector := range slavegtidvectors {
+			if !strings.Contains(vector, master_uuid) {
+				slavegtidvectorstrim = append(slavegtidvectorstrim, vector)
+			}
+		}
+		slavegtid := strings.Join(slavegtidvectorstrim, ",")
 
-		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
+		//	hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
+		hasErrantTrx, query, _ := dbhelper.HaveErrantTransactions(s.Conn, mastergtid, slavegtid)
 		if hasErrantTrx {
-			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL) + " " + query, ErrFrom: "MON", ServerUrl: s.URL})
 			return false
 		}
 	}
