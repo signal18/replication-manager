@@ -787,20 +787,19 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
-		slave_uuid := s.Variables.Get("SERVER_UUID")
 		slavegtidvectors := strings.Split(s.Variables.Get("GTID_EXECUTED"), ",")
 		slavegtidvectorstrim := make([]string, 0)
 		for _, vector := range slavegtidvectors {
-			if !strings.Contains(vector, slave_uuid) {
+			if !strings.Contains(vector, master_uuid) {
 				slavegtidvectorstrim = append(slavegtidvectorstrim, vector)
 			}
 		}
 		slavegtid := strings.Join(slavegtidvectorstrim, ",")
 
 		//	hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
-		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, mastergtid, slavegtid)
+		hasErrantTrx, query, _ := dbhelper.HaveErrantTransactions(s.Conn, mastergtid, slavegtid)
 		if hasErrantTrx {
-			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
+			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL) + " " + query, ErrFrom: "MON", ServerUrl: s.URL})
 			return false
 		}
 	}
