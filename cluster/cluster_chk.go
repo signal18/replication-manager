@@ -788,7 +788,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 			continue
 		}
 		slave_uuid := s.Variables.Get("SERVER_UUID")
-		slavegtidvectors := strings.Split(cluster.master.Variables.Get("GTID_EXECUTED"), ",")
+		slavegtidvectors := strings.Split(s.Variables.Get("GTID_EXECUTED"), ",")
 		slavegtidvectorstrim := make([]string, 0)
 		for _, vector := range slavegtidvectors {
 			if !strings.Contains(vector, slave_uuid) {
