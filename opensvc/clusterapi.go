@@ -15,6 +15,7 @@ import (
 	"hash/crc64"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -58,7 +59,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, erro
 	//jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeout": "10s"}`
 
 	//b := bytes.NewBuffer([]byte(jsondata))
-	urlget := "https://" + collector.Host + ":" + collector.Port + "/object_enter?path=" + srv + "&rid=" + rid + "&timout=5s"
+	urlget := "https://" + collector.Host + ":" + collector.Port + "/object_enter?path=" + url.QueryEscape(srv) + "&rid=" + url.QueryEscape(rid) + "&timout=5s"
 	req, err := http.NewRequest("GET", urlget, nil)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
@@ -82,7 +83,29 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, erro
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
-	return string(body), nil
+
+	//{"nodes": {"s18-fr-4": {"data": {"url": "https://user:ce860a2b-a757-4de5-8429-b3e7c9bd8124@s18-fr-42025/03/31 19:39:27 URL: https://127.0.0.1:0/i7qd0lop/"}}}, "status": 0}
+
+	type Property struct {
+		Url    string `json:"url"`
+		Status int    `json:"status"`
+	}
+	type Node struct {
+		Data Property `json:"data"`
+	}
+	type Message struct {
+		Nodes Node `json:"nodes"`
+	}
+	var r Message
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return "", err
+	}
+	return r.Nodes.Data.Url, nil
 }
 
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
