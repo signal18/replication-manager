@@ -137,7 +137,9 @@ function DBServers({ selectedCluster, user }) {
             return hasMariadbGtid ? 'Current GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'File' : ''
           },
           id: 'currentGtid',
-          minWidth: 250
+          minWidth: () => {
+            return hasMysqlGtid ? 0 : 250
+          }
         }
       ),
       columnHelper.accessor(
@@ -148,7 +150,9 @@ function DBServers({ selectedCluster, user }) {
             return hasMariadbGtid ? 'Slave GTID' : !hasMariadbGtid && !hasMysqlGtid ? 'Pos' : ''
           },
           id: 'slaveGtid',
-          minWidth: 250
+          minWidth: () => {
+            return hasMysqlGtid ? 0 : 250
+          }
         }
       ),
       columnHelper.accessor((row) => getDelay(row), {
