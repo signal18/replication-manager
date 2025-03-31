@@ -764,7 +764,7 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
-	if cluster.GetMaster() == nil {
+	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
 		// disable check if master is crashed as the slave can get more GTID events and so slave GTID is not ubset of masetr GTID
 		return true
 	}
