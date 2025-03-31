@@ -764,7 +764,7 @@ func (cluster *Cluster) IsSameWsrepUUID() bool {
 }
 
 func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
-	if cluster.GetMaster() == nil || cluster.GetMaster().State == stateFailed {
+	if cluster.GetMaster() == nil {
 		// disable check if master is crashed as the slave can get more GTID events and so slave GTID is not ubset of masetr GTID
 		return true
 	}
@@ -778,7 +778,7 @@ func (cluster *Cluster) IsNotHavingMySQLErrantTransaction() bool {
 		if s.IsFailed() || s.IsIgnored() {
 			continue
 		}
-		s.HasErrantTransactions
+
 		hasErrantTrx, _, _ := dbhelper.HaveErrantTransactions(s.Conn, cluster.master.Variables.Get("GTID_EXECUTED"), s.Variables.Get("GTID_EXECUTED"))
 		if hasErrantTrx {
 			cluster.SetState("WARN0091", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0091"], s.URL), ErrFrom: "MON", ServerUrl: s.URL})
