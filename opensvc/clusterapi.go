@@ -53,31 +53,36 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 }
 
-func (collector *Collector) GetGottyServer(srv string, rid string  ) (string, error) {
+func (collector *Collector) GetGottyServer(srv string, rid string) (string, error) {
 	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeout": "10s"}`
+	//jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeout": "10s"}`
 
-	b := bytes.NewBuffer([]byte(jsondata))
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_enter?path="+srv+"&rid=" +rid +"&timout=5s"
-	req, err := http.NewRequest("GET", urlpost, b)
+	//b := bytes.NewBuffer([]byte(jsondata))
+	urlget := "https://" + collector.Host + ":" + collector.Port + "/object_enter?path=" + srv + "&rid=" + rid + "&timout=5s"
+	req, err := http.NewRequest("GET", urlget, nil)
 	if err != nil {
-		return jsondata,err
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
+		}
+		return "", err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", "ANY")
 	resp, err := client.Do(req)
 	if err != nil {
-		return "",err
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
+
+		}
+		return "", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
-
-	return string(body) , nil 
+	return string(body), nil
 }
 
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
