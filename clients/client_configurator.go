@@ -61,14 +61,15 @@ var configuratorCmd = &cobra.Command{
 	Short: "Config generator",
 	Long:  `Config generator produce tar.gz for databases and proxies based on ressource and tags description`,
 	Run: func(cmd *cobra.Command, args []string) {
-		conf.WithEmbed = WithEmbed
-		RepMan = new(server.ReplicationManager)
+		conf.WithEmbed = "ON"
+
 		RepMan.SetDefaultFlags(viper.GetViper())
 		conf.HttpServ = false
 		conf.ApiServ = false
+		conf.GraphiteEmbedded = false
 		RepMan.InitConfig(conf, false)
 		go RepMan.Run()
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 		cluster := RepMan.Clusters[RepMan.ClusterList[0]]
 
 		if cluster == nil {

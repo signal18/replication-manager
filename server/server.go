@@ -271,7 +271,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flag.StringVar(&configPath, "config", "", "help message")
 	flag.Parse()
 
-	if usr == "" {
+	if usr == "" && repman != nil {
 		usr = repman.OsUser.Name
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
@@ -1081,6 +1081,8 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
 	//test y'a  un repertoire ./.replication-manager/data sinon on le créer
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
+	//repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Embeded run config dir : %s", conf.ConfDir)
+
 	if conf.ConfDirBackup == "" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
 	}
@@ -1097,6 +1099,7 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 			os.MkdirAll(conf.BaseDir+"/data", os.ModePerm)
 			os.MkdirAll(conf.BaseDir+"/share", os.ModePerm)
 		}
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Embeded run config dir : %s", conf.ConfDir)
 
 		if _, err := os.Stat(conf.ConfDir + "/config.toml"); os.IsNotExist(err) {
 
