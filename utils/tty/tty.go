@@ -34,6 +34,8 @@ func GetTerminalCommandType(str string) (TerminalCommandType, error) {
 		return TerminalMySQL, nil
 	case "mytop":
 		return TerminalMyTop, nil
+	case "gotty":
+		return TerminalGottyClient, nil
 	}
 	return TerminalBash, errors.New("Invalid terminal command type")
 }
@@ -42,6 +44,7 @@ const (
 	TerminalBash TerminalCommandType = iota
 	TerminalMySQL
 	TerminalMyTop
+	TerminalGottyClient
 )
 
 // TerminalManager interface defines the methods for terminal management.
@@ -76,32 +79,36 @@ func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) []byte {
 
 // Session represents a single terminal session (SSH or local shell).
 type Session struct {
-	ID          string              `json:"id"`
-	Owner       string              `json:"owner"`
-	WorkingDir  string              `json:"working_dir"`
-	AllowResume bool                `json:"-"`
-	TerminalMgr TerminalManager     `json:"-"`
-	Conn        *websocket.Conn     `json:"-"`
-	SSHClient   *ssh.Client         `json:"-"`
-	SSHSession  *ssh.Session        `json:"-"`
-	Cmd         *exec.Cmd           `json:"-"`
-	Arguments   []string            `json:"-"`
-	CmdType     TerminalCommandType `json:"-"`
-	PTY         *os.File            `json:"-"`
-	Stdin       io.WriteCloser      `json:"-"`
-	Stdout      io.Reader           `json:"-"`
-	Stderr      io.Reader           `json:"-"`
-	Host        string              `json:"host"`
-	Port        string              `json:"port"`
-	Username    string              `json:"-"`
-	Password    string              `json:"-"`
-	Keys        []ssh.Signer        `json:"-"`
-	WG          sync.WaitGroup      `json:"-"`
-	Logger      *logrus.Logger      `json:"-"`
-	Manager     *SessionManager     `json:"-"`
-	writeMu     sync.Mutex          `json:"-"`
-	Line        string              `json:"-"`
-	closeOnce   sync.Once           `json:"-"`
+	ID                   string              `json:"id"`
+	Owner                string              `json:"owner"`
+	WorkingDir           string              `json:"working_dir"`
+	AllowResume          bool                `json:"-"`
+	TerminalMgr          TerminalManager     `json:"-"`
+	Conn                 *websocket.Conn     `json:"-"`
+	SSHClient            *ssh.Client         `json:"-"`
+	SSHSession           *ssh.Session        `json:"-"`
+	Cmd                  *exec.Cmd           `json:"-"`
+	Arguments            []string            `json:"-"`
+	CmdType              TerminalCommandType `json:"-"`
+	PTY                  *os.File            `json:"-"`
+	Stdin                io.WriteCloser      `json:"-"`
+	Stdout               io.Reader           `json:"-"`
+	Stderr               io.Reader           `json:"-"`
+	Host                 string              `json:"host"`
+	Port                 string              `json:"port"`
+	Username             string              `json:"-"`
+	Password             string              `json:"-"`
+	Orchestrator         string              `json:"orchestrator"`
+	ServiceContainerName string              `json:"serviceContainerName"`
+	ServiceName          string              `json:"serviceName"`
+	ServiceGottyUrl      string              `json:"-"`
+	Keys                 []ssh.Signer        `json:"-"`
+	WG                   sync.WaitGroup      `json:"-"`
+	Logger               *logrus.Logger      `json:"-"`
+	Manager              *SessionManager     `json:"-"`
+	writeMu              sync.Mutex          `json:"-"`
+	Line                 string              `json:"-"`
+	closeOnce            sync.Once           `json:"-"`
 }
 
 type SignerList []ssh.Signer
@@ -255,6 +262,8 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 		cmd = exec.Command("mysql", session.Arguments...)
 	} else if session.CmdType == TerminalMyTop {
 		cmd = exec.Command("mytop", session.Arguments...)
+	} else if session.CmdType == TerminalGottyClient {
+		cmd = exec.Command("gotty-client", session.Arguments...)
 	} else {
 		if session.AllowResume && session.TerminalMgr != nil {
 			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)

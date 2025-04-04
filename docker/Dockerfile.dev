@@ -70,4 +70,3 @@ RUN bash scripts/post_install.sh
 
 CMD ["while true; do sleep 86400; done"]
 EXPOSE 10001
-

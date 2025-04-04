@@ -35,7 +35,7 @@ cloud18-gitlab-password="hash_0472ff4acf82eb1afc0edd44c9087c9a95f4874adc38e3b2aa
 cloud18-domain = "signal18"
 cloud18-sub-domain = "ovh-dev"
 cloud18-sub-domain-zone = "fr-1"
-
+cloud18-alert-slack-url="https://meet.signal18.io/hooks/jnapjss64bd3xyaqmyx3zqx4uh"
 
 #proxyjanitor-servers = "51.68.2.60"
 #proxyjanitor-password = "hash_c3fbd75e68b9f08db04620b592d48b9ac154bd97901e9064ea8dd2938f4a6a8e"

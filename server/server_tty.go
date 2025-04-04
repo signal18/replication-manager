@@ -58,7 +58,9 @@ func (repman *ReplicationManager) ParseWebSocketJWT(tokenString string) (map[str
 func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session, node *cluster.ServerMonitor) error {
 	session.Host = node.Host
 	mycluster := node.ClusterGroup
-
+	session.Orchestrator = mycluster.GetOrchestrator()
+	session.ServiceName = mycluster.Name + "/svc/" + node.Name
+	session.ServiceContainerName = "container#db"
 	apiUser, ok := mycluster.APIUsers[session.Owner]
 	if !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
@@ -126,6 +128,10 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 
 func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session, proxy cluster.DatabaseProxy) error {
 	session.Host = proxy.GetHost()
+	mycluster := proxy.GetCluster()
+	session.Orchestrator = mycluster.GetOrchestrator()
+	session.ServiceName = mycluster.Name + "/svc/" + proxy.GetName()
+	session.ServiceContainerName = "container#prx"
 	switch session.CmdType {
 	case tty.TerminalBash:
 		session.Port = strconv.Itoa(proxy.GetCluster().Conf.OnPremiseSSHPort)
