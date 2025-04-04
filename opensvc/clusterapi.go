@@ -18,7 +18,7 @@ import (
 	"net/url"
 	"strconv"
 	"time"
-
+	"errors"
 	"github.com/signal18/replication-manager/config"
 
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
@@ -54,7 +54,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 }
 
-func (collector *Collector) GetGottyServer(srv string, rid string) (string, error) {
+func (collector *Collector) GetGottyServer(srv string, rid string) (string,string, error) {
 	client := collector.GetHttpClient()
 	//jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeout": "10s"}`
 
@@ -65,7 +65,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, erro
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
 		}
-		return "", err
+		return "","", err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
@@ -76,7 +76,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, erro
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
 
 		}
-		return "", err
+		return "","", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -85,27 +85,33 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, erro
 	}
 
 	//{"nodes": {"s18-fr-4": {"data": {"url": "https://user:ce860a2b-a757-4de5-8429-b3e7c9bd8124@s18-fr-42025/03/31 19:39:27 URL: https://127.0.0.1:0/i7qd0lop/"}}}, "status": 0}
+	type NodeData struct {
+		URL string `json:"url"`
+	}
 
-	type Property struct {
-		Url    string `json:"url"`
-		Status int    `json:"status"`
-	}
 	type Node struct {
-		Data Property `json:"data"`
+		Data NodeData `json:"data"`
 	}
-	type Message struct {
-		Nodes Node `json:"nodes"`
+
+	type NodesMap map[string]Node
+
+	type Response struct {
+		Nodes  NodesMap `json:"nodes"`
+		Status int      `json:"status"`
 	}
-	var r Message
+	var r Response 
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
 		}
-		return "", err
+		return "","", err
 	}
-	return r.Nodes.Data.Url, nil
+	for nodeName, node := range r.Nodes {
+		return node.Data.URL,nodeName,  nil
+	}
+	return "","", errors.New("Not found")
 }
 
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {

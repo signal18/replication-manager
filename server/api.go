@@ -1955,12 +1955,22 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 			return
 		}
 		if session.Orchestrator == config.ConstOrchestratorOpenSVC {
-			session.ServiceGottyUrl = mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName)
+			url, node := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName)
+			session.ServiceGottyUrl = strings.Replace(url ,node, node+".signal18.io",1)  
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceGottyUrl, mycluster.Name)
+
+			session.Arguments = append(session.Arguments, "--v2")
+			session.Arguments = append(session.Arguments, "--skip-tls-verify")
+			session.Arguments = append(session.Arguments,session.ServiceGottyUrl )
+			
 		}
 		if session.CmdType == tty.TerminalBash {
 
-			session, err = repman.SessionManager.RunSSHSession(session)
+			if session.Orchestrator == config.ConstOrchestratorOpenSVC {
+				session, err = repman.SessionManager.RunGottySession(session)
+			} else {
+				session, err = repman.SessionManager.RunSSHSession(session)
+			}
 		} else if session.CmdType == tty.TerminalMySQL {
 			session.Arguments = append(session.Arguments, "-p")
 			session, err = repman.SessionManager.RunSession(session)

@@ -78,15 +78,16 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	return svc
 }
 
-func (cluster *Cluster) GetGottyServer(srv string, rid string) string {
+func (cluster *Cluster) GetGottyServer(srv string, rid string) (string, string) {
 	svc := cluster.OpenSVCConnect()
-	body, err := svc.GetGottyServer(srv, rid)
+	url, node, err := svc.GetGottyServer(srv, rid)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Payload: %s", err , body)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err , srv,rid)
+		return "" ,""
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Response from GetGottyServer: %s ", body)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Response from GetGottyServer: %s %s",url, node )
 
-	return ""
+	return url ,node
 }
 
 func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
