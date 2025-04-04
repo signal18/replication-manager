@@ -92,25 +92,8 @@ type ClusterInterface interface {
 
 const (
 	stateFailed       string = "Failed"
-	stateMaster       string = "Master"
-	stateSlave        string = "Slave"
-	stateSlaveErr     string = "SlaveErr"
-	stateSlaveLate    string = "SlaveLate"
 	stateMaintenance  string = "Maintenance"
-	stateUnconn       string = "StandAlone"
-	stateErrorAuth    string = "ErrorAuth"
 	stateSuspect      string = "Suspect"
-	stateShard        string = "Shard"
-	stateProv         string = "Provision"
-	stateMasterAlone  string = "MasterAlone"
-	stateRelay        string = "Relay"
-	stateRelayErr     string = "RelayErr"
-	stateRelayLate    string = "RelayLate"
-	stateWsrep        string = "Wsrep"
-	stateWsrepDonor   string = "WsrepDonor"
-	stateWsrepLate    string = "WsrepUnsync"
-	stateProxyRunning string = "ProxyRunning"
-	stateProxyDesync  string = "ProxyDesync"
 )
 
 func NewAppInstance(cluster ClusterInterface, placement int, host string) *App {
