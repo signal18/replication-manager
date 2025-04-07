@@ -543,12 +543,15 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		server.SetDSN()
 		conn, err := sqlx.Connect("mysql", server.DSN)
 		if err == nil {
+			server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 		} else {
 			server.TLSConfigUsed = ConstTLSNoConfig
 			server.SetDSN()
 			conn, err := sqlx.Connect("mysql", server.DSN)
 			if err == nil {
+				server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
+
 				// if not –require_secure_transport can still connect with no certificate MDEV-13362
 				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
@@ -561,6 +564,10 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		conn.SetConnMaxLifetime(3595 * time.Second)
 		server.SetDSN()
 		return conn, err
+	}
+
+	if err == nil {
+		server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 	}
 
 	return conn, err
@@ -804,21 +811,56 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 }
 
 func (server *ServerMonitor) GetSSLClientParam(tool string) string {
+	var noSSLParams, skipVerify bool
+	var cacertfile, clicertfile, clikeyfile, path string
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
+	params := ""
+	path = cluster.WorkingDir
 
-	if server.HasSSL() && cluster.Configurator.HaveDBTag("ssl") {
-		cacertfile := cluster.Conf.HostsTLSCA
-		clicertfile := cluster.Conf.HostsTlsCliCert
-		clikeyfile := cluster.Conf.HostsTlsCliKey
-
-		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
-			cacertfile = cluster.WorkingDir + "/ca-cert.pem"
-			clicertfile = cluster.WorkingDir + "/client-cert.pem"
-			clikeyfile = cluster.WorkingDir + "/client-key.pem"
+	// If we have working SSL in Go-MySQL
+	if server.LastTLSConfig != ConstTLSNoConfig {
+		if server.TLSConfigUsed == ConstTLSOldConfig {
+			path = path + "/old_certs"
 		}
 
-		return "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+		// If any of the SSL files are empty, we need to use the generated certs (or use Zero Config SSL MariaDB 11.3+)
+		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
+			if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
+				// Use Zero Config SSL certificate
+				if ver.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
+					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
+				} else {
+					// Use generated certificate, add skipVerify
+					skipVerify = true
+
+					cacertfile = path + "/ca-cert.pem"
+					clicertfile = path + "/client-cert.pem"
+					clikeyfile = path + "/client-key.pem"
+				}
+			} else {
+				noSSLParams = true
+			}
+		} else {
+			if cluster.Conf.DBServersTLSUseGeneratedCertificate { // Use generated certificate, add skipVerify since it's self signed
+				skipVerify = true
+			}
+
+			cacertfile = cluster.Conf.HostsTLSCA
+			clicertfile = cluster.Conf.HostsTlsCliCert
+			clikeyfile = cluster.Conf.HostsTlsCliKey
+		}
+
+		// Add SSL params
+		if !noSSLParams {
+			params = "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+
+			if skipVerify {
+				params = params + " --ssl-verify-server-cert=false"
+			}
+
+			return params
+		}
 	}
 
 	// Only add for client dist 11.3 onwards, and DB pre 11.3

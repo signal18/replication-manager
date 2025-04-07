@@ -182,6 +182,7 @@ type ServerMonitor struct {
 	SlapOSDatadir               string                     `json:"slaposDatadir"`
 	PostgressDB                 string                     `json:"postgressDB"`
 	TLSConfigUsed               string                     `json:"tlsConfigUsed"` //used to track TLS config during key rotation
+	LastTLSConfig               string                     `json:"lastTLSConfig"` //used to track last working TLS config
 	SSTPort                     string                     `json:"sstPort"`       //used to send data to dbjobs
 	Agent                       string                     `json:"agent"`         //used to provision service in orchestrator
 	BinaryLogFiles              *dbhelper.BinaryLogMetaMap `json:"binaryLogFiles"`
