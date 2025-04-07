@@ -837,7 +837,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 				skipVerify = true
 
 				// Use Zero Config SSL certificate
-				if ver.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
+				if server.DBVersion.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
 					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
 				} else {
 					cacertfile = path + "/ca-cert.pem"
