@@ -580,6 +580,12 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	if server.IsDown() {
 		return nil
 	}
+
+	// Skip if server is in reseeding (restore from backup) state
+	if server.HasAnyReseedingState() {
+		return nil
+	}
+
 	if !cluster.GetConf().MonitorQueries {
 		return nil
 	}
