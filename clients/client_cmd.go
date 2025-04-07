@@ -150,6 +150,9 @@ func cliGetpasswd() string {
 
 func cliInit(needcluster bool) {
 	var err error
+	if cliSettings.Conf == nil {
+		cliSettings.Conf = new(config.Config)
+	}
 
 	cliToken, err = cliLogin()
 	if err != nil {
@@ -260,7 +263,7 @@ func initStatusFlags(cmd *cobra.Command) {
 }
 
 func initConfiguratorFlags(cmd *cobra.Command) {
-//	initServerApiFlags(configuratorCmd)
+	//	initServerApiFlags(configuratorCmd)
 	RepMan = new(server.ReplicationManager)
 	RepMan.InitUser()
 	RepMan.AddFlags(configuratorCmd.Flags(), &conf)
