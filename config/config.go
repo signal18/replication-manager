@@ -159,6 +159,7 @@ type Config struct {
 	HostsTlsCliCert                           string                 `mapstructure:"db-servers-tls-client-cert" toml:"db-servers-tls-client-cert" json:"dbServersTlsClientCert"`
 	HostsTlsSrvKey                            string                 `mapstructure:"db-servers-tls-server-key" toml:"db-servers-tls-server-key" json:"dbServersTlsServerKey"`
 	HostsTlsSrvCert                           string                 `mapstructure:"db-servers-tls-server-cert" toml:"db-servers-tls-server-cert" json:"dbServersTlsServerCert"`
+	HostsTlsSslMode                           string                 `mapstructure:"db-servers-tls-ssl-mode" toml:"db-servers-tls-ssl-mode" json:"dbServersTlsSslMode"`
 	PrefMaster                                string                 `mapstructure:"db-servers-prefered-master" toml:"db-servers-prefered-master" json:"dbServersPreferedMaster"`
 	BackupServers                             string                 `mapstructure:"db-servers-backup-hosts" toml:"db-servers-backup-hosts" json:"dbServersBackupHosts"`
 	IgnoreSrv                                 string                 `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`

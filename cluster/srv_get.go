@@ -841,8 +841,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
 				} else {
 					cacertfile = path + "/ca-cert.pem"
-					clicertfile = path + "/client-cert.pem"
-					clikeyfile = path + "/client-key.pem"
+
 				}
 			} else {
 				noSSLParams = true
@@ -859,10 +858,19 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 		// Add SSL params
 		if !noSSLParams {
-			params = "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+			if cacertfile != "" {
+				params = `--ssl-ca="` + cacertfile + `"`
+			}
 
 			if skipVerify {
-				params = params + " --ssl-verify-server-cert=false"
+				params = params + `--ssl-verify-server-cert=false`
+			} else {
+				if clicertfile != "" {
+					params = params + ` --ssl-cert="` + clicertfile + `"`
+				}
+				if clikeyfile != "" {
+					params = params + ` --ssl-key=` + clikeyfile + `"`
+				}
 			}
 
 			return params
