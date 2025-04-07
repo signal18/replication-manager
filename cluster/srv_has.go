@@ -265,6 +265,9 @@ func (server *ServerMonitor) HasSlaveParallelOptimistic() bool {
 }
 
 func (server *ServerMonitor) HasSSL() bool {
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		return server.Variables.Get("SSL_CA") != "" && server.Variables.Get("SSL_CERT") != "" && server.Variables.Get("SSL_KEY") != ""
+	}
 	return server.Variables.Get("HAVE_SSL") == "YES"
 }
 

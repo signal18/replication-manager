@@ -832,14 +832,14 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 		// If any of the SSL files are empty, we need to use the generated certs (or use Zero Config SSL MariaDB 11.3+)
 		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
-			if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") {
+			if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") || server.HasSSL() {
+				// Use generated certificate, add skipVerify
+				skipVerify = true
+
 				// Use Zero Config SSL certificate
 				if ver.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
 					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
 				} else {
-					// Use generated certificate, add skipVerify
-					skipVerify = true
-
 					cacertfile = path + "/ca-cert.pem"
 					clicertfile = path + "/client-cert.pem"
 					clikeyfile = path + "/client-key.pem"
