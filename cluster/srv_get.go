@@ -839,18 +839,18 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 				// Use Zero Config SSL certificate
 				if server.DBVersion.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
 					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
-				} else {
-					cacertfile = path + "/ca-cert.pem"
-
 				}
+
+				if cluster.Configurator.HaveDBTag("ssl") {
+					cacertfile = path + "/ca-cert.pem"
+					clicertfile = path + "/client-cert.pem"
+					clikeyfile = path + "/client-key.pem"
+				}
+
 			} else {
 				noSSLParams = true
 			}
 		} else {
-			if cluster.Conf.DBServersTLSUseGeneratedCertificate { // Use generated certificate, add skipVerify since it's self signed
-				skipVerify = true
-			}
-
 			cacertfile = cluster.Conf.HostsTLSCA
 			clicertfile = cluster.Conf.HostsTlsCliCert
 			clikeyfile = cluster.Conf.HostsTlsCliKey
@@ -858,19 +858,12 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 		// Add SSL params
 		if !noSSLParams {
-			if cacertfile != "" {
-				params = `--ssl-ca="` + cacertfile + `"`
+			if skipVerify {
+				params = `--ssl=true --ssl-verify-server-cert=false`
 			}
 
-			if skipVerify {
-				params = params + `--ssl-verify-server-cert=false`
-			} else {
-				if clicertfile != "" {
-					params = params + ` --ssl-cert="` + clicertfile + `"`
-				}
-				if clikeyfile != "" {
-					params = params + ` --ssl-key=` + clikeyfile + `"`
-				}
+			if cacertfile != "" && clicertfile != "" && clikeyfile != "" {
+				return params + ` --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
 			}
 
 			return params
