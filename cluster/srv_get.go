@@ -873,27 +873,27 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
 					switch sslMode {
 					case "PREFERRED", "REQUIRED":
-						return `--ssl-mode=` + sslMode // No verify server cert
+						return "--ssl-mode=" + sslMode // No verify server cert
 					case "VERIFY_CA":
-						return `--ssl-mode=` + sslMode + ` --ssl-ca=` + cacertfile
+						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile
 					case "VERIFY_IDENTITY":
-						return `--ssl-mode=` + sslMode + ` --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
+						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
 					}
 				} else { // Use old --ssl equivalent
 					switch sslMode {
 					case "PREFERRED", "REQUIRED":
-						return `--ssl=true --ssl-verify-server-cert=false`
+						return "--ssl --ssl-verify-server-cert=false"
 					case "VERIFY_CA":
-						return `--ssl=true --ssl-verify-server-cert=true --ssl-ca=` + cacertfile
+						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile
 					case "VERIFY_IDENTITY":
-						return `--ssl=true --ssl-verify-server-cert=true --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
+						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
 					}
 				}
 			} else {
 				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
-					return `--ssl-mode=` + sslMode // No verify server cert
+					return "--ssl-mode=" + sslMode // No verify server cert
 				} else { // Use old --ssl equivalent
-					return `--ssl=true --ssl-verify-server-cert=false`
+					return "--ssl --ssl-verify-server-cert=false"
 				}
 			}
 		}
