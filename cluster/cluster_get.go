@@ -95,7 +95,8 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 //   - roleType: the type of authentication to use
 //   - interactive: if true, the password will be prompted and not included in the command line
 func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
-	args := []string{"--host=" + server.Host, "--port=" + server.Port, server.GetSSLClientParam("client")}
+	args := []string{"--host=" + server.Host, "--port=" + server.Port}
+	args = append(args, strings.Split(server.GetSSLClientParam("client"), " ")...)
 	var passwd string
 	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
 		args = append(args, "--user="+cluster.GetDbUser())
