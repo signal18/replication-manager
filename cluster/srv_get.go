@@ -825,7 +825,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 	// If we have working SSL in Go-MySQL
 	if server.LastTLSConfig != ConstTLSNoConfig {
-		if server.TLSConfigUsed == ConstTLSOldConfig {
+		if server.LastTLSConfig == ConstTLSOldConfig {
 			path = path + "/old_certs"
 		}
 
