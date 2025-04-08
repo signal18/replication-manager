@@ -61,6 +61,7 @@ func (cluster *Cluster) GetShareDir() string {
 
 // This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file string) []string {
+	dumpver := cluster.VersionsMap.Get("client-dump")
 	events := ""
 	dumpslave := ""
 
@@ -82,7 +83,7 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 		dumpargs = append(dumpargs, "--skip-log-queries")
 	}
 
-	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") {
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
 		dumpargs = append(dumpargs, "--mysqld-long-query-time=10") // Prevent mysqldump from logging to slow_log
 	}
 
