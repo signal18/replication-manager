@@ -538,6 +538,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
+	var err error
 	cluster := server.ClusterGroup
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
@@ -621,12 +622,14 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		server.SetState(stateUnconn)
 	}
 
-	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
-	if err != nil {
-		if server.HasReseedingState(task) {
-			server.SetInReseedBackup("")
+	if cluster.Conf.MonitorScheduler {
+		_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		if err != nil {
+			if server.HasReseedingState(task) {
+				server.SetInReseedBackup("")
+			}
+			return err
 		}
-		return err
 	}
 
 	// Set replication master to current master if not PITR
@@ -636,7 +639,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		changeOpt := dbhelper.ChangeMasterOpt{
 			Host:      cluster.master.Host,
 			Port:      cluster.master.Port,
 			User:      cluster.GetRplUser(),
@@ -646,7 +649,17 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			Mode:      "SLAVE_POS",
 			SSL:       cluster.Conf.ReplicationSSL,
 			Channel:   cluster.Conf.MasterConn,
-		}, server.DBVersion)
+		}
+
+		if server.DBVersion.IsMySQLOrPercona() {
+			if server.HasMySQLGTID() {
+				changeOpt.Mode = "MASTER_AUTO_POSITION"
+			} else {
+				changeOpt.Mode = "POSITIONAL"
+			}
+		}
+
+		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
