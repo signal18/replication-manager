@@ -3121,6 +3121,11 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
 
+	if !cluster.Conf.MonitorScheduler {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
+		return nil
+	}
+
 	if server.Conn == nil {
 		return errors.New("No connection pool")
 	}
