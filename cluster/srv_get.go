@@ -818,7 +818,7 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 
 func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	var noSSLParams, skipVerify bool
-	var cacertfile, clicertfile, clikeyfile, path string
+	var cacertfile, clicertfile, clikeyfile, path, sslMode string
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
 	params := ""
@@ -858,12 +858,38 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 		// Add SSL params
 		if !noSSLParams {
+			sslMode = cluster.Conf.HostsTlsSslMode
+
 			if skipVerify {
-				params = `--ssl=true --ssl-verify-server-cert=false`
+				if cluster.Conf.HostsTlsSslMode == "" {
+					sslMode = "REQUIRED" // No verify server cert
+				}
 			}
 
 			if cacertfile != "" && clicertfile != "" && clikeyfile != "" {
-				return params + ` --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
+				if cluster.Conf.HostsTlsSslMode == "" && !skipVerify {
+					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
+				}
+
+				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
+					switch sslMode {
+					case "PREFERRED", "REQUIRED":
+						return `--ssl-mode=` + sslMode // No verify server cert
+					case "VERIFY_CA":
+						return `--ssl-mode=` + sslMode + ` --ssl-ca=` + cacertfile
+					case "VERIFY_IDENTITY":
+						return `--ssl-mode=` + sslMode + ` --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
+					}
+				} else { // Use old --ssl equivalent
+					switch sslMode {
+					case "PREFERRED", "REQUIRED":
+						return `--ssl=true --ssl-verify-server-cert=false`
+					case "VERIFY_CA":
+						return `--ssl=true --ssl-verify-server-cert=true --ssl-ca=` + cacertfile
+					case "VERIFY_IDENTITY":
+						return `--ssl=true --ssl-verify-server-cert=true --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
+					}
+				}
 			}
 
 			return params
