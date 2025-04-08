@@ -821,7 +821,6 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	var cacertfile, clicertfile, clikeyfile, path, sslMode string
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
-	params := ""
 	path = cluster.WorkingDir
 
 	// If we have working SSL in Go-MySQL
@@ -890,9 +889,13 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 						return `--ssl=true --ssl-verify-server-cert=true --ssl-ca=` + cacertfile + ` --ssl-cert=` + clicertfile + ` --ssl-key=` + clikeyfile
 					}
 				}
+			} else {
+				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
+					return `--ssl-mode=` + sslMode // No verify server cert
+				} else { // Use old --ssl equivalent
+					return `--ssl=true --ssl-verify-server-cert=false`
+				}
 			}
-
-			return params
 		}
 	}
 
