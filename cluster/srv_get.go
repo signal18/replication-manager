@@ -872,6 +872,8 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 
 				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
 					switch sslMode {
+					case "DISABLED":
+						return "--ssl-mode=DISABLED"
 					case "PREFERRED", "REQUIRED":
 						return "--ssl-mode=" + sslMode // No verify server cert
 					case "VERIFY_CA":
@@ -881,6 +883,8 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 					}
 				} else { // Use old --ssl equivalent
 					switch sslMode {
+					case "DISABLED":
+						return "--skip-ssl"
 					case "PREFERRED", "REQUIRED":
 						return "--ssl --ssl-verify-server-cert=false"
 					case "VERIFY_CA":
@@ -893,6 +897,11 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 				if server.DBVersion.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
 					return "--ssl-mode=" + sslMode // No verify server cert
 				} else { // Use old --ssl equivalent
+					if sslMode == "DISABLED" {
+						return "--skip-ssl"
+					}
+
+					// No verify server cert
 					return "--ssl --ssl-verify-server-cert=false"
 				}
 			}
@@ -900,7 +909,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	}
 
 	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
+	if !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
 		switch tool {
 		case "client":
 			return "--disable-ssl"

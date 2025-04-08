@@ -109,6 +109,7 @@ type ReplicationManager struct {
 	ServiceVM                                        map[string]bool             `json:"serviceVM"`
 	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
 	ServicePool                                      map[string]bool             `json:"servicePool"`
+	ServiceSSLMode                                   map[string]bool             `json:"serviceSslMode"`
 	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
@@ -1965,6 +1966,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServiceFS = config.GetFSType()
 	repman.ServiceDisk = config.GetDiskType()
 	repman.ServicePool = config.GetPoolType()
+	repman.ServiceSSLMode = config.GetSSLMode()
 	repman.BackupLogicalList = config.GetBackupLogicalType()
 	repman.BackupPhysicalList = config.GetBackupPhysicalType()
 	repman.BackupBinlogList = config.GetBackupBinlogType()

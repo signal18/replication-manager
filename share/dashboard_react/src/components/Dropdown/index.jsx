@@ -78,7 +78,7 @@ function Dropdown({
           closeModal={() => {
             closeConfirmModal('cancel')
           }}
-          title={`${confirmTitle} ${selectedOption.name}`}
+          title={`${confirmTitle} ${selectedOption.name || selectedOption.label}`}
           onConfirmClick={() => {
             onChange(selectedOption.value || selectedOption.name)
             closeConfirmModal('')

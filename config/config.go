@@ -2037,6 +2037,16 @@ func GetPoolType() map[string]bool {
 	}
 }
 
+func GetSSLMode() map[string]bool {
+	return map[string]bool{
+		"DISABLED":        true,
+		"PREFERRED":       true,
+		"REQUIRED":        true,
+		"VERIFY_CA":       true,
+		"VERIFY_IDENTITY": true,
+	}
+}
+
 func GetTopologyType() map[string]string {
 	return map[string]string{
 		TopoMasterSlave:         TopoMasterSlave,
