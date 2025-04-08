@@ -2603,7 +2603,8 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`)
+	cliParams = append(cliParams, strings.Split(dest.GetSSLClientParam("client"), " ")...)
 
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	stderrOut, _ := clientCmd.StderrPipe()
