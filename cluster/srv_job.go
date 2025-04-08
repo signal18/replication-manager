@@ -538,6 +538,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 }
 
 func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
+	var err error
 	cluster := server.ClusterGroup
 	if backtype == "default" {
 		backtype = cluster.Conf.BackupLogicalType
@@ -621,12 +622,14 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		server.SetState(stateUnconn)
 	}
 
-	_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
-	if err != nil {
-		if server.HasReseedingState(task) {
-			server.SetInReseedBackup("")
+	if cluster.Conf.MonitorScheduler {
+		_, err := server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
+		if err != nil {
+			if server.HasReseedingState(task) {
+				server.SetInReseedBackup("")
+			}
+			return err
 		}
-		return err
 	}
 
 	// Set replication master to current master if not PITR
@@ -636,7 +639,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
+		changeOpt := dbhelper.ChangeMasterOpt{
 			Host:      cluster.master.Host,
 			Port:      cluster.master.Port,
 			User:      cluster.GetRplUser(),
@@ -646,7 +649,17 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			Mode:      "SLAVE_POS",
 			SSL:       cluster.Conf.ReplicationSSL,
 			Channel:   cluster.Conf.MasterConn,
-		}, server.DBVersion)
+		}
+
+		if server.DBVersion.IsMySQLOrPercona() {
+			if server.HasMySQLGTID() {
+				changeOpt.Mode = "MASTER_AUTO_POSITION"
+			} else {
+				changeOpt.Mode = "POSITIONAL"
+			}
+		}
+
+		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -1131,7 +1144,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	}
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`, server.GetSSLClientParam("client"))
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`)
+	cliParams = append(cliParams, strings.Split(server.GetSSLClientParam("client"), " ")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
 	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
@@ -2427,7 +2441,9 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	defer server.SetBackingUpBinaryLog(false)
 
 	var params []string = make([]string, 0)
-	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory(), server.GetSSLClientParam("client-binlog"), binlogfile)
+	params = append(params, "--read-from-remote-server", "--raw", "--server-id=10000", "--user="+cluster.GetRplUser(), "--password="+cluster.GetRplPass(), "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--result-file="+server.GetMyBackupDirectory())
+	params = append(params, strings.Split(server.GetSSLClientParam("client-binlog"), " ")...)
+	params = append(params, binlogfile)
 	cmdrun := exec.Command(cluster.GetMysqlBinlogPath(), misc.RemoveEmptyString(params)...)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "%s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(cmdrun.Args, " "), cluster.GetRplPass(), "XXXX"))
 
@@ -2600,7 +2616,8 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	stderrIn, _ := dumpCmd.StderrPipe()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, dest.GetSSLClientParam("client"))
+	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(dest.Host), `--port=`+dest.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`)
+	cliParams = append(cliParams, strings.Split(dest.GetSSLClientParam("client"), " ")...)
 
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	stderrOut, _ := clientCmd.StderrPipe()
@@ -3117,6 +3134,11 @@ func (server *ServerMonitor) JobsUpdateState(task, result string, state, done in
 		t.Result = result
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Job state updated in runtime. Continue to update state in jobs table.")
+
+	if !cluster.Conf.MonitorScheduler {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Monitoring scheduler is inactive, task only updated in runtime")
+		return nil
+	}
 
 	if server.Conn == nil {
 		return errors.New("No connection pool")

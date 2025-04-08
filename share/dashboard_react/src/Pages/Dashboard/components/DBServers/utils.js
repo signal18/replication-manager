@@ -43,7 +43,7 @@ export const getSlaveGtid = (rowData, hasMariadbGtid, hasMysqlGtid) => {
 }
 
 export const getUsingGtidHeader = (hasMariadbGtid, hasMysqlGtid) => {
-  return `${hasMariadbGtid && 'Using GTID'} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
+  return `${hasMariadbGtid ? 'Using GTID' : ''} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
 }
 
 export const getCurrentGtidHeader = (hasMariadbGtid, hasMysqlGtid) => {

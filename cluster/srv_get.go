@@ -543,12 +543,15 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		server.SetDSN()
 		conn, err := sqlx.Connect("mysql", server.DSN)
 		if err == nil {
+			server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 			server.ClusterGroup.SetState("ERR00080", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00080"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 		} else {
 			server.TLSConfigUsed = ConstTLSNoConfig
 			server.SetDSN()
 			conn, err := sqlx.Connect("mysql", server.DSN)
 			if err == nil {
+				server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
+
 				// if not –require_secure_transport can still connect with no certificate MDEV-13362
 				//server.ClusterGroup.SetState("ERR00081", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00081"], server.URL), ServerUrl: server.URL, ErrFrom: "MON"})
 			}
@@ -561,6 +564,10 @@ func (server *ServerMonitor) GetNewDBConn() (*sqlx.DB, error) {
 		conn.SetConnMaxLifetime(3595 * time.Second)
 		server.SetDSN()
 		return conn, err
+	}
+
+	if err == nil {
+		server.LastTLSConfig = server.TLSConfigUsed // Track last working TLS config
 	}
 
 	return conn, err
@@ -810,30 +817,108 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 }
 
 func (server *ServerMonitor) GetSSLClientParam(tool string) string {
+	var noSSLParams, skipVerify bool
+	var cacertfile, clicertfile, clikeyfile, path, sslMode string
 	cluster := server.ClusterGroup
 	ver := cluster.VersionsMap.Get(tool)
+	path = cluster.WorkingDir
 
-	if server.HasSSL() && cluster.Configurator.HaveDBTag("ssl") {
-		cacertfile := cluster.Conf.HostsTLSCA
-		clicertfile := cluster.Conf.HostsTlsCliCert
-		clikeyfile := cluster.Conf.HostsTlsCliKey
-
-		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
-			cacertfile = cluster.WorkingDir + "/ca-cert.pem"
-			clicertfile = cluster.WorkingDir + "/client-cert.pem"
-			clikeyfile = cluster.WorkingDir + "/client-key.pem"
+	// If we have working SSL in Go-MySQL
+	if server.LastTLSConfig != ConstTLSNoConfig {
+		if server.LastTLSConfig == ConstTLSOldConfig {
+			path = path + "/old_certs"
 		}
 
-		return "--ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+		// If any of the SSL files are empty, we need to use the generated certs (or use Zero Config SSL MariaDB 11.3+)
+		if cluster.Conf.HostsTLSCA == "" || cluster.Conf.HostsTlsCliCert == "" || cluster.Conf.HostsTlsCliKey == "" {
+			if cluster.Conf.DBServersTLSUseGeneratedCertificate || cluster.Configurator.HaveDBTag("ssl") || server.HasSSL() {
+				// Use generated certificate, add skipVerify
+				skipVerify = true
+
+				// Use Zero Config SSL certificate
+				if server.DBVersion.IsMariaDBGreater113() && !cluster.Configurator.HaveDBTag("ssl") {
+					noSSLParams = true // Auto SSL Zero Config SSL MariaDB 11.3+
+				}
+
+				if cluster.Configurator.HaveDBTag("ssl") {
+					cacertfile = path + "/ca-cert.pem"
+					clicertfile = path + "/client-cert.pem"
+					clikeyfile = path + "/client-key.pem"
+				}
+
+			} else {
+				noSSLParams = true
+			}
+		} else {
+			cacertfile = cluster.Conf.HostsTLSCA
+			clicertfile = cluster.Conf.HostsTlsCliCert
+			clikeyfile = cluster.Conf.HostsTlsCliKey
+		}
+
+		// Add SSL params
+		if !noSSLParams {
+			sslMode = cluster.Conf.HostsTlsSslMode
+
+			if skipVerify {
+				if cluster.Conf.HostsTlsSslMode == "" {
+					sslMode = "REQUIRED" // No verify server cert
+				}
+			}
+
+			if cacertfile != "" && clicertfile != "" && clikeyfile != "" {
+				if cluster.Conf.HostsTlsSslMode == "" && !skipVerify {
+					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
+				}
+
+				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
+					switch sslMode {
+					case "DISABLED":
+						return "--ssl-mode=DISABLED"
+					case "PREFERRED", "REQUIRED":
+						return "--ssl-mode=" + sslMode // No verify server cert
+					case "VERIFY_CA":
+						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile
+					case "VERIFY_IDENTITY":
+						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+					}
+				} else { // Use old --ssl equivalent
+					switch sslMode {
+					case "DISABLED":
+						return "--skip-ssl"
+					case "PREFERRED", "REQUIRED":
+						return "--ssl --ssl-verify-server-cert=false"
+					case "VERIFY_CA":
+						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile
+					case "VERIFY_IDENTITY":
+						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+					}
+				}
+			} else {
+				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
+					return "--ssl-mode=" + sslMode // No verify server cert
+				} else { // Use old --ssl equivalent
+					if sslMode == "DISABLED" {
+						return "--skip-ssl"
+					}
+
+					// No verify server cert
+					return "--ssl --ssl-verify-server-cert=false"
+				}
+			}
+		}
 	}
 
 	// Only add for client dist 11.3 onwards, and DB pre 11.3
-	if !cluster.HaveDBTLSCert && !server.HasSSL() && server.IsMariaDB() && server.DBVersion.Lower("11.3") && ver.IsMariaDB() && ver.DistVersion.GreaterEqual("11.3") {
-		switch tool {
-		case "client":
-			return "--disable-ssl"
-		case "client-dump", "client-binlog":
-			return "--ssl=FALSE"
+	if !server.DBVersion.IsMariaDBGreater113() && ver.IsMariaDBGreater113() {
+		if server.HasSSL() {
+			return "--ssl --ssl-verify-server-cert=false"
+		} else {
+			switch tool {
+			case "client":
+				return "--skip-ssl"
+			case "client-dump", "client-binlog":
+				return "--ssl=FALSE"
+			}
 		}
 	}
 

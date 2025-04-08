@@ -122,7 +122,7 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor((row) => getUsingGtid(row, hasMariadbGtid, hasMysqlGtid), {
         cell: (info) => info.getValue(),
         header: () => {
-          return `${hasMariadbGtid && 'Using GTID'} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
+          return `${hasMariadbGtid ? 'Using GTID' : ''} ${hasMariadbGtid && hasMysqlGtid ? '/' : ''} ${hasMysqlGtid ? 'Executed GTID Set' : ''}`
         },
         id: 'usingGtid'
       }),

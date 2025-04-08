@@ -61,6 +61,7 @@ func (cluster *Cluster) GetShareDir() string {
 
 // This will use installed mysqldump first
 func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file string) []string {
+	dumpver := cluster.VersionsMap.Get("client-dump")
 	events := ""
 	dumpslave := ""
 
@@ -82,11 +83,12 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 		dumpargs = append(dumpargs, "--skip-log-queries")
 	}
 
-	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") {
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("8.0.30") && dumpver.IsMySQLOrPercona() && dumpver.GreaterEqual("8.0.30") {
 		dumpargs = append(dumpargs, "--mysqld-long-query-time=10") // Prevent mysqldump from logging to slow_log
 	}
 
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs", server.GetSSLClientParam("client-dump"))
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
+	dumpargs = append(dumpargs, strings.Split(server.GetSSLClientParam("client-dump"), " ")...)
 	return misc.RemoveEmptyString(dumpargs)
 }
 
@@ -95,7 +97,8 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 //   - roleType: the type of authentication to use
 //   - interactive: if true, the password will be prompted and not included in the command line
 func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
-	args := []string{"--host=" + server.Host, "--port=" + server.Port, server.GetSSLClientParam("client")}
+	args := []string{"--host=" + server.Host, "--port=" + server.Port}
+	args = append(args, strings.Split(server.GetSSLClientParam("client"), " ")...)
 	var passwd string
 	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
 		args = append(args, "--user="+cluster.GetDbUser())

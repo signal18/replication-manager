@@ -109,6 +109,7 @@ type ReplicationManager struct {
 	ServiceVM                                        map[string]bool             `json:"serviceVM"`
 	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
 	ServicePool                                      map[string]bool             `json:"servicePool"`
+	ServiceSSLMode                                   map[string]bool             `json:"serviceSslMode"`
 	BackupLogicalList                                map[string]bool             `json:"backupLogicalList"`
 	BackupPhysicalList                               map[string]bool             `json:"backupPhysicalList"`
 	BackupBinlogList                                 map[string]bool             `json:"backupBinlogList"`
@@ -407,6 +408,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.HostsTlsCliCert, "db-servers-tls-client-cert", "", "Database TLS client certificate")
 	flags.StringVar(&conf.HostsTlsSrvKey, "db-servers-tls-server-key", "", "Database TLS server key to push in config")
 	flags.StringVar(&conf.HostsTlsSrvCert, "db-servers-tls-server-cert", "", "Database TLS server certificate to push in config")
+	flags.StringVar(&conf.HostsTlsSslMode, "db-servers-tls-ssl-mode", "", "Database TLS ssl mode, PREFERRED|DISABLED|REQUIRED|VERIFY_CA|VERIFY_IDENTITY. Default is empty")
 	flags.IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
 	flags.IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
@@ -1964,6 +1966,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServiceFS = config.GetFSType()
 	repman.ServiceDisk = config.GetDiskType()
 	repman.ServicePool = config.GetPoolType()
+	repman.ServiceSSLMode = config.GetSSLMode()
 	repman.BackupLogicalList = config.GetBackupLogicalType()
 	repman.BackupPhysicalList = config.GetBackupPhysicalType()
 	repman.BackupBinlogList = config.GetBackupBinlogType()
