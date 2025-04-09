@@ -8,7 +8,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
 import RMButton from '../../../components/RMButton'
 
-function OrchestratorImages({ selectedCluster, user }) {
+function OrchestratorImages({ selectedCluster }) {
   const dispatch = useDispatch()
   const {
     globalClusters: { monitor }
@@ -21,36 +21,45 @@ function OrchestratorImages({ selectedCluster, user }) {
   const [previousDBType, setPreviousDBType] = useState(null)
   const [previousDBVersion, setPreviousDBVersion] = useState(null)
   const [valueChanged, setValueChanged] = useState(false)
-  const [dbTypes, setDbTypes] = useState([
+  const dbTypes = [
     { name: 'MariaDB', value: 'mariadb' },
     { name: 'MySQL', value: 'mysql' },
     { name: 'Percona', value: 'percona' },
     { name: 'Postgress', value: 'postgres' }
-  ])
+  ]
 
   useEffect(() => {
     if (monitor?.serviceRepos?.length > 0) {
-      setServiceRepos(monitor.serviceRepos)
-      if (selectedCluster?.config?.provDbDockerImg) {
-        const [dbType, dbVersion] = selectedCluster.config.provDbDockerImg.split(':')
-        const selectedType = dbTypes.find((x) => x.value == dbType)
-        setSelectedDBType(selectedType)
-        setPreviousDBType(selectedType)
-        const versions = monitor.serviceRepos.find((repo) => repo.name === selectedType?.value)?.tags?.results
-        const versionsWithValues = versions?.map((x) => ({ name: x.name, value: x.name }))
-        setVersionOptions(versionsWithValues)
-        setSelectedDBVersion({ name: dbVersion, value: dbVersion })
-        setPreviousDBVersion({ name: dbVersion, value: dbVersion })
-      }
-    }
-  }, [monitor?.serviceRepos, selectedCluster?.config?.provDbDockerImg])
+      const repos = monitor?.serviceRepos.map(entry => ({
+        name: entry.name,
+        image: entry.image,
+        options: entry.tags?.results?.map(tag => ({
+          name: tag.name,
+          value: `${entry.image}:${tag.name}`
+        }))
+      }))
 
-  const fillVersionDrodpown = (selectedType) => {
+      setServiceRepos(repos)
+    }
+  }, [monitor?.serviceRepos])
+
+  useEffect(() => {
+    if (selectedCluster?.config?.provDbDockerImg) {
+      const dbType = selectedCluster.config.provDbDockerImg.split(':')[0]
+      const repo = serviceRepos.find((r) => r.image === dbType)
+      setSelectedDBType(repo?.name)
+      setPreviousDBType(repo?.name)
+      setVersionOptions(repo?.options || [])
+      setSelectedDBVersion(selectedCluster.config.provDbDockerImg)
+      setPreviousDBVersion(selectedCluster.config.provDbDockerImg)
+    }
+  }, [serviceRepos, selectedCluster?.config?.provDbDockerImg])
+
+  const fillVersionDropdown = (selectedType) => {
     setValueChanged(true)
     setSelectedDBType(selectedType)
-    const versions = serviceRepos.find((repo) => repo.name === selectedType.value)?.tags?.results
-    const versionsWithValues = versions?.map((x) => ({ name: x.name, value: x.name }))
-    setVersionOptions(versionsWithValues)
+    const repo = serviceRepos.find((r) => r.name === selectedType)
+    setVersionOptions(repo?.options || [])
   }
 
   const handleSave = () => {
@@ -59,7 +68,7 @@ function OrchestratorImages({ selectedCluster, user }) {
       setSetting({
         clusterName: selectedCluster?.name,
         setting: 'prov-db-image',
-        value: `${selectedDBType.value}:${selectedDBVersion.value}`
+        value: `${selectedDBVersion}`
       })
     )
   }
@@ -77,20 +86,19 @@ function OrchestratorImages({ selectedCluster, user }) {
         <Flex className={parentStyles.dbTypeVersion}>
           <Dropdown
             label='Type'
-            selectedValue={selectedDBType?.value}
+            selectedValue={selectedDBType}
             className={parentStyles.dropdown}
-            onChange={(value) => fillVersionDrodpown(value)}
+            onChange={(opt) => fillVersionDropdown(opt.value)}
             options={dbTypes}
           />
           <Dropdown
             label='Version'
             className={parentStyles.dropdown}
             options={versionOptions}
-            selectedValue={selectedDBVersion?.value}
-            // confirmTitle={`Confirm change database OCI image to ${selectedDBType.value}:`}
-            onChange={(value) => {
+            selectedValue={selectedDBVersion}
+            onChange={(opt) => {
               setValueChanged(true)
-              setSelectedDBVersion(value)
+              setSelectedDBVersion(opt.value)
             }}
           />
 
@@ -110,17 +118,15 @@ function OrchestratorImages({ selectedCluster, user }) {
       value: (
         <Dropdown
           className={parentStyles.dropdown}
-          options={serviceRepos
-            .find((repo) => repo.name === 'proxysql')
-            ?.tags?.results.map((x) => ({ name: x.name, value: x.name }))}
-          selectedValue={selectedCluster?.config?.provProxyDockerProxysqlImg?.split(':')[1]}
+          options={serviceRepos.find((repo) => repo.name === 'proxysql')?.options || []}
+          selectedValue={selectedCluster?.config?.provProxyDockerProxysqlImg}
           confirmTitle={`Confirm change database OCI image to proxysql:`}
           onChange={(value) => {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'prov-proxy-docker-proxysql-img',
-                value: `proxysql:${value}`
+                value: `${value}`
               })
             )
           }}
@@ -132,17 +138,15 @@ function OrchestratorImages({ selectedCluster, user }) {
       value: (
         <Dropdown
           className={parentStyles.dropdown}
-          options={serviceRepos
-            .find((repo) => repo.name === 'maxscale')
-            ?.tags?.results.map((x) => ({ name: x.name, value: x.name }))}
-          selectedValue={selectedCluster?.config?.provProxyDockerMaxscaleImg?.split(':')[1]}
+          options={serviceRepos.find((repo) => repo.name === 'maxscale')?.options || []}
+          selectedValue={selectedCluster?.config?.provProxyDockerMaxscaleImg}
           confirmTitle={`Confirm change database OCI image to maxscale:`}
           onChange={(value) => {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'prov-proxy-docker-maxscale-img',
-                value: `maxscale:${value}`
+                value: `${value}`
               })
             )
           }}
@@ -154,17 +158,15 @@ function OrchestratorImages({ selectedCluster, user }) {
       value: (
         <Dropdown
           className={parentStyles.dropdown}
-          options={serviceRepos
-            .find((repo) => repo.name === 'haproxy')
-            ?.tags?.results.map((x) => ({ name: x.name, value: x.name }))}
-          selectedValue={selectedCluster?.config?.provProxyDockerHaproxyImg?.split(':')[1]}
+          options={serviceRepos.find((repo) => repo.name === 'haproxy')?.options || []}
+          selectedValue={selectedCluster?.config?.provProxyDockerHaproxyImg}
           confirmTitle={`Confirm change database OCI image to haproxy:`}
           onChange={(value) => {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'prov-db-image',
-                value: `haproxy:${value}`
+                setting: 'prov-proxy-docker-haproxy-img',
+                value: `${value}`
               })
             )
           }}
@@ -176,17 +178,15 @@ function OrchestratorImages({ selectedCluster, user }) {
       value: (
         <Dropdown
           className={parentStyles.dropdown}
-          options={serviceRepos
-            .find((repo) => repo.name === 'sphinx')
-            ?.tags?.results.map((x) => ({ name: x.name, value: x.name }))}
-          selectedValue={selectedCluster?.config?.provSphinxDockerImg?.split(':')[1]}
+          options={serviceRepos.find((repo) => repo.name === 'sphinx')?.options || []}
+          selectedValue={selectedCluster?.config?.provSphinxDockerImg}
           confirmTitle={`Confirm change database OCI image to sphinx:`}
           onChange={(value) => {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'prov-sphinx-img',
-                value: `sphinx:${value}`
+                value: `${value}`
               })
             )
           }}
@@ -198,17 +198,15 @@ function OrchestratorImages({ selectedCluster, user }) {
       value: (
         <Dropdown
           className={parentStyles.dropdown}
-          options={serviceRepos
-            .find((repo) => repo.name === 'mariadb')
-            ?.tags?.results.map((x) => ({ name: x.name, value: x.name }))}
-          selectedValue={selectedCluster?.config?.provProxyDockerShardproxyImg?.split(':')[1]}
+          options={serviceRepos.find((repo) => repo.name === 'mariadb')?.tags?.options || []}
+          selectedValue={selectedCluster?.config?.provProxyDockerShardproxyImg}
           confirmTitle={`Confirm change database OCI image to mariadb:`}
           onChange={(value) => {
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'prov-proxy-docker-shardproxy-img',
-                value: `mariadb:${value}`
+                value: `${value}`
               })
             )
           }}
