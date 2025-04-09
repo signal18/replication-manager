@@ -18,6 +18,30 @@ func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Clust
 	return c
 }
 
+func (repman *ReplicationManager) GetDockerRepoPath(reponame string) string {
+	for _, c := range repman.ServiceRepos {
+		if c.Name == reponame {
+			return c.Image
+		}
+	}
+
+	return ""
+}
+
+func (repman *ReplicationManager) GetDockerRepoImage(reponame string, version string) string {
+	for _, c := range repman.ServiceRepos {
+		if c.Name == reponame {
+			for _, v := range c.Tags.Results {
+				if v.Name == version {
+					return c.Image + ":" + v.Name
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
 // func (repman *ReplicationManager) GenerateKey(conf *config.Config) error {
 // 	var err error
 // 	_, err = os.Stat(conf.MonitoringKeyPath)

@@ -309,6 +309,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
@@ -4072,14 +4077,18 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 // @Param host path string true "Host"
 // @Param port path string true "Port"
 // @Param type path string false "Type"
+// @Param tag path string false "Tag"
 // @Success 200 {string} string "Monitor added"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 409 {string} string "Error adding new monitor"
 // @Failure 500 {string} string "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag} [post]
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type} [post]
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port} [post]
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
 	var err error
+	var updateImg bool
+	var repopath, repoimg string
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
@@ -4094,16 +4103,74 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		if vars["type"] == "" {
 			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else {
-			if mycluster.MonitorType[vars["type"]] == "proxy" {
+			repopath = repman.GetDockerRepoPath(vars["type"])
+
+			if repman.MonitorType[vars["type"]] == "proxy" {
+				// update image if tag is not empty
+				if vars["tag"] != "" {
+					updateImg = true
+
+					// check if repository list is exists
+					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+
+					if repoimg == "" && repopath == "" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for proxy %s. Skipping proxy image update", vars["type"])
+						updateImg = false
+					} else if repopath != "" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for proxy %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						repoimg = repopath + ":latest"
+					}
+
+					// update image
+					if updateImg {
+						switch vars["type"] {
+						case config.ConstProxyHaproxy:
+							mycluster.Conf.ProvProxHaproxyImg = repoimg
+						case config.ConstProxySqlproxy:
+							mycluster.Conf.ProvProxProxysqlImg = repoimg
+						case config.ConstProxyMaxscale:
+							mycluster.Conf.ProvProxMaxscaleImg = repoimg
+						case config.ConstProxySphinx:
+							mycluster.Conf.ProvSphinxImg = repoimg
+						}
+					}
+				}
 				err = mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
-			} else if mycluster.MonitorType[vars["type"]] == "database" {
-				switch vars["type"] {
-				case "mariadb":
-					mycluster.Conf.ProvDbImg = "mariadb:latest"
-				case "percona":
-					mycluster.Conf.ProvDbImg = "percona:latest"
-				case "mysql":
-					mycluster.Conf.ProvDbImg = "mysql:latest"
+			} else if repman.MonitorType[vars["type"]] == "database" {
+				// Check if new database repo is different with current repo
+				oldrepopath := strings.Split(mycluster.Conf.ProvDbImg, ":")[0]
+				if oldrepopath != repopath {
+					updateImg = true
+
+					// if no tag, use the latest version
+					if vars["tag"] == "" {
+						vars["tag"] = "latest"
+					}
+				}
+
+				if vars["tag"] != "" {
+					updateImg = true
+					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+
+					if repoimg == "" && repopath == "" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for database %s. Skipping database image update", vars["type"])
+						updateImg = false
+					} else if repopath != "" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						repoimg = repopath + ":latest"
+					}
+				}
+
+				// update image
+				if updateImg {
+					switch vars["type"] {
+					case "mariadb":
+						mycluster.Conf.ProvDbImg = repoimg
+					case "percona":
+						mycluster.Conf.ProvDbImg = repoimg
+					case "mysql":
+						mycluster.Conf.ProvDbImg = repoimg
+					}
 				}
 				err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 			}
