@@ -236,7 +236,7 @@ type SlaveStatus struct {
 }
 
 func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
-	s.ConnectionName = rs.SourceHost
+	s.ConnectionName = sql.NullString{String: rs.ChannelName.String, Valid: rs.ChannelName.Valid}
 	s.ChannelName = sql.NullString{String: rs.ChannelName.String, Valid: rs.ChannelName.Valid}
 	s.MasterHost = rs.SourceHost
 	s.MasterUser = rs.SourceUser
