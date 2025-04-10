@@ -201,7 +201,7 @@ func (cluster *Cluster) ResticResetQueue() error {
 	return nil
 }
 
-func (cluster *Cluster) CheckBackupFreeSpace(backtype string) error {
+func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error {
 	bcksrv := cluster.GetBackupServer()
 	if bcksrv == nil {
 		bcksrv = cluster.master
@@ -242,7 +242,9 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string) error {
 		return fmt.Errorf("Not enough free space on %s for backup. Free: %s", diskstat.Path, humanize.Bytes(diskstat.Free))
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Free space is enough on %s: %s. Required: %s", diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required))
+	if backup {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Free space is enough on %s: %s. Required: %s", diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required))
+	}
 
 	return nil
 }
@@ -255,11 +257,11 @@ func (cluster *Cluster) CheckAllBackupFreeSpace() {
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 	go func() {
-		cluster.CheckBackupFreeSpace("logical")
+		cluster.CheckBackupFreeSpace("logical", false)
 		wg.Done()
 	}()
 	go func() {
-		cluster.CheckBackupFreeSpace("physical")
+		cluster.CheckBackupFreeSpace("physical", false)
 		wg.Done()
 	}()
 
