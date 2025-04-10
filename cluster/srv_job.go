@@ -33,7 +33,6 @@ import (
 	"github.com/jmoiron/sqlx"
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
-	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -2043,31 +2042,9 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	// Check for previous backup size
 	if cluster.Conf.BackupCheckFreeSpace {
-		parentDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name
-		diskstat, err := disk.Usage(parentDir)
+		err = cluster.CheckBackupFreeSpace(cluster.Conf.BackupLogicalType)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
 			return err
-		}
-
-		cluster.DiskStatManager.UpdateStat(parentDir, diskstat)
-
-		if prev != nil && prev.Completed {
-			if diskstat.Free < uint64(prev.Size*(int64(100+cluster.Conf.BackupGrowthPercentage))/100) {
-				cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, server.URL, diskstat.Path, diskstat.Free, prev.Size), ErrFrom: "JOB", ServerUrl: server.URL})
-				return fmt.Errorf("Not enough free space on %s for backup. Free: %d", diskstat.Path, diskstat.Free)
-			}
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s", server.URL)
-			estimatedSize, err := dbhelper.GetBackupSizeEstimation(server.Conn, server.DBVersion, 40)
-			if err != nil {
-				return fmt.Errorf("Error estimating backup size: %s", err)
-			}
-
-			if diskstat.Free < estimatedSize*uint64(100+cluster.Conf.BackupGrowthPercentage)/100 {
-				cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, server.URL, diskstat.Path, diskstat.Free, estimatedSize), ErrFrom: "JOB", ServerUrl: server.URL})
-				return fmt.Errorf("Not enough free space on %s for backup. Free: %d", diskstat.Path, diskstat.Free)
-			}
 		}
 	}
 

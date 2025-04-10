@@ -9,9 +9,13 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"sync"
 
+	"github.com/dustin/go-humanize"
+	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/archiver"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
@@ -195,4 +199,69 @@ func (cluster *Cluster) ResticResetQueue() error {
 	cluster.ResticRepo.EmptyQueue()
 
 	return nil
+}
+
+func (cluster *Cluster) CheckBackupFreeSpace(backtype string) error {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.master
+	}
+
+	parentDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name
+	diskstat, err := disk.Usage(parentDir)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
+		return err
+	}
+
+	cluster.DiskStatManager.UpdateStat(parentDir, diskstat)
+	free := diskstat.Free
+	required := uint64(0)
+
+	_, prev := bcksrv.GetLatestMeta(backtype)
+	if prev != nil && prev.Completed {
+		required = uint64(prev.Size * (int64(100 + cluster.Conf.BackupGrowthPercentage)) / 100)
+
+		// If not keep until valid, we need to add the size of the previous backup to the free space
+		if !cluster.Conf.BackupKeepUntilValid {
+			free = free + uint64(prev.Size)
+		}
+
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s", bcksrv.URL)
+		estimatedSize, err := dbhelper.GetBackupSizeEstimation(bcksrv.Conn, bcksrv.DBVersion)
+		if err != nil {
+			return fmt.Errorf("Error estimating backup size: %s", err)
+		}
+
+		required = estimatedSize * uint64(100+cluster.Conf.BackupGrowthPercentage) / 100
+	}
+
+	if free < required {
+		cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		return fmt.Errorf("Not enough free space on %s for backup. Free: %s", diskstat.Path, humanize.Bytes(diskstat.Free))
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Free space is enough on %s: %s. Required: %s", diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required))
+
+	return nil
+}
+
+func (cluster *Cluster) CheckAllBackupFreeSpace() {
+	if !cluster.Conf.BackupCheckFreeSpace {
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		cluster.CheckBackupFreeSpace("logical")
+		wg.Done()
+	}()
+	go func() {
+		cluster.CheckBackupFreeSpace("physical")
+		wg.Done()
+	}()
+
+	wg.Wait()
 }

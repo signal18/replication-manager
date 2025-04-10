@@ -696,8 +696,9 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
+							cluster.CheckAllBackupFreeSpace()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134", "WARN0139") // 0139: preserve disk full
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})

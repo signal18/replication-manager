@@ -201,7 +201,7 @@ var ClusterError = map[string]string{
 	"WARN0136":  "Enforce GTID replication is not yet available in MySQL. Skipping server %s",
 	"WARN0137":  "Unable to open certificate file %s. Err: %s",
 	"WARN0138":  "Unable to send mail alert. Please check your mailer configuration!",
-	"WARN0139":  "Not enough free space estimated for %s backup on %s. Mount: %s Prev Size: %s Free: %d",
+	"WARN0139":  "Not enough free space estimated for %s backup on %s. Mount: %s Free: %s Required: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
