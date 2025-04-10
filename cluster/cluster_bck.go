@@ -228,7 +228,7 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 		}
 
 	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s", bcksrv.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s. Estimating backup size.", bcksrv.URL)
 		estimatedSize, err := dbhelper.GetBackupSizeEstimation(bcksrv.Conn, bcksrv.DBVersion)
 		if err != nil {
 			return fmt.Errorf("Error estimating backup size: %s", err)
