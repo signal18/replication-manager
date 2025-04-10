@@ -790,6 +790,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
+	flags.BoolVar(&conf.BackupCheckSize, "backup-check-size", true, "To check size before processing backup")
 
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")

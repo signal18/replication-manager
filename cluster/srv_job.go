@@ -2040,6 +2040,33 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		prevId = prev.Id
 	}
 
+	// Check for previous backup size
+	if cluster.Conf.BackupCheckSize {
+		diskstat := cluster.DiskStatManager.GetStatByClosestMount(prev.Dest)
+		if diskstat == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Diskstat not found for %s", prev.Dest)
+			return fmt.Errorf("Diskstat not found for %s", prev.Dest)
+		}
+
+		if prev != nil && prev.Completed {
+			if diskstat.Free < uint64(prev.Size) {
+				cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, server.URL, diskstat.Path, diskstat.Free, prev.Size), ErrFrom: "JOB", ServerUrl: server.URL})
+				return fmt.Errorf("Not enough free space on %s for backup. Free: %d", diskstat.Path, diskstat.Free)
+			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s", server.URL)
+			estimatedSize, err := dbhelper.GetBackupSizeEstimation(server.Conn, server.DBVersion, 40)
+			if err != nil {
+				return fmt.Errorf("Error estimating backup size: %s", err)
+			}
+
+			if diskstat.Free < uint64(estimatedSize) {
+				cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, server.URL, diskstat.Path, diskstat.Free, estimatedSize), ErrFrom: "JOB", ServerUrl: server.URL})
+				return fmt.Errorf("Not enough free space on %s for backup. Free: %d", diskstat.Path, diskstat.Free)
+			}
+		}
+	}
+
 	// Remove from backup list, since the file will be replaced
 	if !cluster.Conf.BackupKeepUntilValid {
 		cluster.BackupMetaMap.Delete(prevId)

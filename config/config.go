@@ -643,6 +643,7 @@ type Config struct {
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
+	BackupCheckSize                           bool                   `mapstructure:"backup-check-size" toml:"ignore-backup-estimation" json:"ignoreBackupEstimation"`
 	SchedulerDatabaseLogsTableRotate          bool                   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string                 `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int                    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`

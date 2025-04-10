@@ -408,6 +408,28 @@ func (m *DiskStatManager) GetStat(name string) (*DiskUsageStat, bool) {
 	return stat, ok
 }
 
+func (m *DiskStatManager) GetStatByClosestMount(path string) *DiskUsageStat {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cleanPath := filepath.Clean(path)
+
+	for {
+		if stat, ok := m.Stats[cleanPath]; ok {
+			return stat
+		}
+
+		parent := filepath.Dir(cleanPath)
+		if parent == cleanPath {
+			break // reached root
+		}
+
+		cleanPath = parent
+	}
+
+	return nil
+}
+
 type DiskUsageStatMap map[string]*DiskUsageStat
 
 type DiskUsageStat struct {

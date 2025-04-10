@@ -3596,3 +3596,22 @@ func MoveLogsToDailyTable(conn *sqlx.Conn, version *version.Version, table strin
 	cancel()
 	return nil
 }
+
+func GetBackupSizeEstimation(db *sqlx.DB, version *version.Version, compressPercent int) (uint64, error) {
+	var size, sqlSize, compressedSize uint64
+	query := "SELECT SUM(data_length + index_length) AS total_size FROM information_schema.tables"
+	if version.IsPostgreSQL() {
+		return size, fmt.Errorf("ERROR: Backup estimation not available on PostgeSQL")
+	}
+
+	err := db.Get(&size, query)
+	if err != nil {
+		return size, errors.New("Could not get size: " + err.Error())
+	}
+
+	// Parameters
+	sqlSize = size * 150 / 100
+	compressedSize = sqlSize * uint64(compressPercent) / 100
+
+	return compressedSize, nil
+}
