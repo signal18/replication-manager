@@ -381,8 +381,8 @@ func ChownFile(f *os.File, u *user.User) error {
 }
 
 type DiskStatManager struct {
-	mu    sync.Mutex
-	Stats DiskUsageStatMap
+	mu    sync.Mutex       `json:"-"`
+	Stats DiskUsageStatMap `json:"stats"`
 }
 
 func NewDiskStatManager() *DiskStatManager {
@@ -412,7 +412,7 @@ type DiskUsageStatMap map[string]*DiskUsageStat
 
 type DiskUsageStat struct {
 	disk.UsageStat
-	LastUpdate time.Time
+	LastUpdate time.Time `json:"last_update"`
 }
 
 func (d *DiskUsageStat) Update(u *disk.UsageStat) {

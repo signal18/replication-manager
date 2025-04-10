@@ -2173,6 +2173,8 @@ func (repman *ReplicationManager) Run() error {
 
 	}()
 
+	repman.RefreshDiskStats()
+
 	var counter int64 = 0
 	for repman.exit == false {
 		if repman.Conf.Arbitration {
