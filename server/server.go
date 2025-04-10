@@ -156,6 +156,7 @@ type ReplicationManager struct {
 	SessionManager                                   *tty.SessionManager            `json:"-"`
 	ConfigManager                                    *manager.ConfigManager         `json:"-"`
 	MeetUserID                                       string                         `json:"-"`
+	DiskStatManager                                  *misc.DiskStatManager          `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -569,6 +570,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.LogSupport, "log-support", true, "To log errors or warns about cloud18 connect")
 	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 2, "Log Support Level")
+
+	flags.IntVar(&conf.LogStatsLevel, "log-stats-level", 1, "Log Stats Level")
 
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -1870,6 +1873,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
+	repman.DiskStatManager = misc.NewDiskStatManager()
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
@@ -2195,6 +2199,10 @@ func (repman *ReplicationManager) Run() error {
 				repman.PeerManager.GetAllHealthStatus()
 				repman.UpdateLocalPeer()
 			}
+		}
+
+		if counter%300 == 0 {
+			repman.RefreshDiskStats()
 		}
 
 		counter++

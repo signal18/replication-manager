@@ -2461,3 +2461,7 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 	return nil
 
 }
+
+func (cluster *Cluster) SetLogStatsLevel(value int) {
+	cluster.Conf.LogStatsLevel = value
+}

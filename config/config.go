@@ -148,6 +148,7 @@ type Config struct {
 	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
 	LogExternalScript                         bool                   `mapstructure:"log-external-script" toml:"log-external-script" json:"ExternalScript"`
 	LogExternalScriptLevel                    int                    `mapstructure:"log-external-script-level" toml:"log-external-script-level" json:"logExternalScriptLevel"`
+	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-stats-level" toml:"log-stats-level" json:"logStatsLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1162,6 +1163,7 @@ const (
 	ConstLogModMailer         = 19
 	ConstLogModSupport        = 20
 	ConstLogModExternalScript = 21
+	ConstLogModStats          = 22
 )
 
 /*
@@ -2989,6 +2991,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogMailerLevel >= lvl
 		case module == ConstLogModSupport:
 			return conf.LogSupportLevel >= lvl
+		case module == ConstLogModStats:
+			return conf.LogStatsLevel >= lvl
 		}
 	}
 
@@ -3154,6 +3158,8 @@ func GetTagsForLog(module int) string {
 		return "job"
 	case ConstLogModExternalScript:
 		return "externalscript"
+	case ConstLogModStats:
+		return "stats"
 	}
 	return ""
 }
