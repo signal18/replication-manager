@@ -408,7 +408,7 @@ func (s *ReplicationManager) MasterPhysicalBackup(ctx context.Context, in *v3.Cl
 	if m == nil {
 		return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Name).Err()
 	}
-	_, err = m.JobBackupPhysical()
+	err = m.JobBackupPhysical()
 	return &emptypb.Empty{}, err
 }
 
@@ -608,7 +608,7 @@ func (s *ReplicationManager) PerformClusterAction(ctx context.Context, in *v3.Cl
 		if m == nil {
 			return nil, v3.NewErrorResource(codes.InvalidArgument, v3.ErrClusterMasterNotSet, "cluster", in.Cluster.Name).Err()
 		}
-		_, err = m.JobBackupPhysical()
+		err = m.JobBackupPhysical()
 	case v3.ClusterAction_OPTIMIZE:
 		mycluster.RollingOptimize()
 	case v3.ClusterAction_RESET_FAILOVER_CONTROL:
