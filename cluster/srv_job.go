@@ -33,6 +33,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
+	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -2042,11 +2043,14 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	// Check for previous backup size
 	if cluster.Conf.BackupCheckFreeSpace {
-		diskstat := cluster.DiskStatManager.GetStatByClosestMount(prev.Dest)
-		if diskstat == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Diskstat not found for %s", prev.Dest)
-			return fmt.Errorf("Diskstat not found for %s", prev.Dest)
+		parentDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name
+		diskstat, err := disk.Usage(parentDir)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
+			return err
 		}
+
+		cluster.DiskStatManager.UpdateStat(parentDir, diskstat)
 
 		if prev != nil && prev.Completed {
 			if diskstat.Free < uint64(prev.Size*(int64(100+cluster.Conf.BackupGrowthPercentage))/100) {
