@@ -2289,12 +2289,21 @@ func SetSlaveGTIDMode(db *sqlx.DB, mode string, Channel string, myver *version.V
 	if err != nil {
 		return logs, err
 	}
+
 	stmt := "CHANGE MASTER TO MASTER_USE_GTID=" + mode
+	if myver.IsMySQLOrPercona() {
+		stmt = "CHANGE MASTER TO MASTER_AUTO_POSITION=1"
+		if myver.GreaterEqual("8.0.23") {
+			stmt = "CHANGE REPLICATION SOURCE TO SOURCE_AUTO_POSITION=1"
+		}
+	}
+
 	logs += "\n" + stmt
 	_, err = db.Exec(stmt)
 	if err != nil {
 		return logs, err
 	}
+
 	log, err = StartSlave(db, Channel, myver)
 	logs += "\n" + stmt
 	if err != nil {
