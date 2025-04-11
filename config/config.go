@@ -644,6 +644,10 @@ type Config struct {
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
 	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
+	BackupDiskTresholdWarn                    int                    `mapstructure:"backup-disk-treshold-warn" toml:"backup-disk-treshold-warn" json:"backupDiskTresholdWarn"`
+	BackupDiskTresholdCrit                    int                    `mapstructure:"backup-disk-treshold-crit" toml:"backup-disk-treshold-crit" json:"backupDiskTresholdCrit"`
+	BackupEstimateSize                        bool                   `mapstructure:"backup-estimate-size" toml:"backup-estimate-size" json:"backupEstimateSize"`
+	BackupEstimateSizePercentage              int                    `mapstructure:"backup-estimate-size-percentage" toml:"backup-estimate-size-percentage" json:"backupEstimateSizePercentage"`
 	BackupGrowthPercentage                    int                    `mapstructure:"backup-growth-percentage" toml:"backup-growth-percentage" json:"backupGrowthPercentage"`
 	SchedulerDatabaseLogsTableRotate          bool                   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string                 `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
