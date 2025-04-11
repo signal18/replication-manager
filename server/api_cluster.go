@@ -2729,6 +2729,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-external-script-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogExternalScriptLevel(val)
+	case "log-stats-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.LogStatsLevel = val
 	case "monitoring-ignore-errors":
 		mycluster.SetMonitorIgnoreErrors(value)
 	case "monitoring-capture-trigger":
@@ -3547,6 +3550,9 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "log-support-level":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetLogSupportLevel(val)
+	case "log-stats-level":
+		val, _ := strconv.Atoi(value)
+		repman.Conf.LogStatsLevel = val
 	case "mail-smtp-addr":
 		repman.Conf.SetMailSmtpAddr(value)
 		repman.Mailer.UpdateAddress(value)
