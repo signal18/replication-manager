@@ -218,27 +218,42 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 	free := diskstat.Free
 	required := uint64(0)
 
-	_, prev := bcksrv.GetLatestMeta(backtype)
-	if prev != nil && prev.Completed {
-		required = uint64(prev.Size * (int64(100 + cluster.Conf.BackupGrowthPercentage)) / 100)
+	switch backtype {
+	case "logical", "physical":
+		_, prev := bcksrv.GetLatestMeta(backtype)
+		if prev != nil && prev.Completed {
+			required = uint64(prev.Size * (int64(100 + cluster.Conf.BackupGrowthPercentage)) / 100)
 
-		// If not keep until valid, we need to add the size of the previous backup to the free space
-		if !cluster.Conf.BackupKeepUntilValid {
-			free = free + uint64(prev.Size)
+			// If not keep until valid, we need to add the size of the previous backup to the free space
+			if !cluster.Conf.BackupKeepUntilValid {
+				free = free + uint64(prev.Size)
+			}
+
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s. Estimating backup size.", bcksrv.URL)
+			estimatedSize, err := dbhelper.GetBackupSizeEstimation(bcksrv.Conn, bcksrv.DBVersion)
+			if err != nil {
+				return fmt.Errorf("Error estimating backup size: %s", err)
+			}
+
+			required = estimatedSize * uint64(100+cluster.Conf.BackupGrowthPercentage) / 100
 		}
-
-	} else {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous backup found for %s. Estimating backup size.", bcksrv.URL)
-		estimatedSize, err := dbhelper.GetBackupSizeEstimation(bcksrv.Conn, bcksrv.DBVersion)
-		if err != nil {
-			return fmt.Errorf("Error estimating backup size: %s", err)
-		}
-
-		required = estimatedSize * uint64(100+cluster.Conf.BackupGrowthPercentage) / 100
+	case "binlog":
+		// Max binlog size per file is 1GB, additional 1GB for unexpected growth
+		required = 2 * 1024 * 1024 * 1024
+	case "restic":
+		// Restic backup size is not known until the backup is done
 	}
 
 	if free < required {
-		cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], "Logical", cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		if backtype == "logical" {
+			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		} else if backtype == "physical" {
+			cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], cluster.Conf.BackupPhysicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		} else if backtype == "binlog" {
+			cluster.SetState("WARN0141", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0141"], bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		}
+
 		return fmt.Errorf("Not enough free space on %s for backup. Free: %s", diskstat.Path, humanize.Bytes(diskstat.Free))
 	}
 

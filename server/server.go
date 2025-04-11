@@ -791,7 +791,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
-	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 10, "Percentage of growth to check free space. If free space is less than this percentage, backup will be skipped")
+	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 150, "Percentage of growth to check free space. If free space is less than this percentage, backup will be skipped.")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")

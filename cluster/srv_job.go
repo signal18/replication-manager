@@ -2453,6 +2453,13 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		defer cluster.SetInBinlogBackupState(false)
 	}
 
+	if cluster.Conf.BackupCheckFreeSpace {
+		err = cluster.CheckBackupFreeSpace("binlog", true)
+		if err != nil {
+			return err
+		}
+	}
+
 	server.SetBackingUpBinaryLog(true)
 	defer server.SetBackingUpBinaryLog(false)
 
