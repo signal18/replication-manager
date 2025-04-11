@@ -336,7 +336,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
               }
             />
           )
-        }
+        },
       ]
     },
 

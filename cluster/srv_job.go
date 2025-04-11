@@ -245,14 +245,14 @@ func (server *ServerMonitor) JobInsertTask(task string, port string, repmanhost 
 	return res.LastInsertId()
 }
 
-func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
+func (server *ServerMonitor) JobBackupPhysical() error {
 	//server can be nil as no dicovered master
 	if server == nil {
-		return 0, nil
+		return nil
 	}
 
 	if server.IsDown() {
-		return 0, nil
+		return nil
 	}
 
 	cluster := server.ClusterGroup
@@ -297,7 +297,7 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	if err != nil {
 		cluster.SetInPhysicalBackupState(false)
-		return 0, nil
+		return nil
 	}
 
 	now := time.Now()
@@ -306,6 +306,14 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupPhysicalType, server.URL)
 	if prev != nil {
 		prevId = prev.Id
+	}
+
+	// Check for previous backup size
+	if cluster.Conf.BackupCheckFreeSpace {
+		err = cluster.CheckBackupFreeSpace("physical", true)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Remove from backup list, since the file will be replaced
@@ -327,12 +335,12 @@ func (server *ServerMonitor) JobBackupPhysical() (int64, error) {
 
 	cluster.BackupMetaMap.Set(server.LastBackupMeta.Physical.Id, server.LastBackupMeta.Physical)
 
-	jobid, err := server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
+	_, err = server.JobInsertTask(cluster.Conf.BackupPhysicalType, port, cluster.Conf.MonitorAddress)
 	if err != nil {
 		cluster.SetInPhysicalBackupState(false)
 	}
 
-	return jobid, err
+	return err
 }
 
 func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
@@ -2040,6 +2048,14 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		prevId = prev.Id
 	}
 
+	// Check for previous backup size
+	if cluster.Conf.BackupCheckFreeSpace {
+		err = cluster.CheckBackupFreeSpace("logical", true)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Remove from backup list, since the file will be replaced
 	if !cluster.Conf.BackupKeepUntilValid {
 		cluster.BackupMetaMap.Delete(prevId)
@@ -2435,6 +2451,13 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Initiating backup binlog for %s", binlogfile)
 		cluster.SetInBinlogBackupState(true)
 		defer cluster.SetInBinlogBackupState(false)
+	}
+
+	if cluster.Conf.BackupCheckFreeSpace {
+		err = cluster.CheckBackupFreeSpace("binlog", true)
+		if err != nil {
+			return err
+		}
 	}
 
 	server.SetBackingUpBinaryLog(true)

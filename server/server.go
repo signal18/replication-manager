@@ -157,6 +157,7 @@ type ReplicationManager struct {
 	SessionManager                                   *tty.SessionManager            `json:"-"`
 	ConfigManager                                    *manager.ConfigManager         `json:"-"`
 	MeetUserID                                       string                         `json:"-"`
+	DiskStatManager                                  *misc.DiskStatManager          `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -356,7 +357,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorCapture, "monitoring-capture", true, "Enable capture on error for 5 monitor loops")
 	flags.StringVar(&conf.MonitorCaptureTrigger, "monitoring-capture-trigger", "ERR00076,ERR00041", "List of errno triggering capture mode")
 	flags.IntVar(&conf.MonitorCaptureFileKeep, "monitoring-capture-file-keep", 5, "Purge capture file keep that number of them")
-	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023", "List of errno triggering an alert to be send")
+	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023,WARN0100,WARN0115,WARN0116,WARN0139,WARN0140,WARN0141", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
 
@@ -570,6 +571,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.LogSupport, "log-support", true, "To log errors or warns about cloud18 connect")
 	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 2, "Log Support Level")
+
+	flags.IntVar(&conf.LogStatsLevel, "log-stats-level", 1, "Log Stats Level")
 
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -788,7 +791,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
-
+	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
+	flags.IntVar(&conf.BackupDiskTresholdWarn, "backup-disk-treshold-warn", 85, "Warning threshold for used disk in percentage")
+	flags.IntVar(&conf.BackupDiskTresholdCrit, "backup-disk-treshold-crit", 95, "Critical threshold for used space in percentage. If disk usage is above this value, backup will be skipped")
+	flags.BoolVar(&conf.BackupEstimateSize, "backup-estimate-size", false, "To estimate size of backup before processing backup")
+	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 50, "Percentage of growth according to last backup to check required space. 0 means no growth from last backup. Default 50 percent growth")
+	flags.IntVar(&conf.BackupEstimateSizePercentage, "backup-estimate-size-percentage", 150, "Size ratio estimation for backup using information schema data and index size. Default 150 (50 percent bigger than size from query)")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
 	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
 	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")
@@ -1871,6 +1879,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.CheckSumConfig = make(map[string]hash.Hash)
 	repman.ApiLogAdapter = NewApiLogAdapter(repman.Conf.APIErrorSuppress, repman.Conf.APIErrorLimit, repman.Conf.APIErrorLimitDuration, repman.Conf.APIErrorDisregardPort)
 	repman.InitWebTTY()
+	repman.DiskStatManager = misc.NewDiskStatManager()
 
 	repman.LoadPeerJson()
 	repman.LoadPartnersJson()
@@ -2171,6 +2180,8 @@ func (repman *ReplicationManager) Run() error {
 
 	}()
 
+	repman.RefreshDiskStats()
+
 	var counter int64 = 0
 	for repman.exit == false {
 		if repman.Conf.Arbitration {
@@ -2197,6 +2208,10 @@ func (repman *ReplicationManager) Run() error {
 				repman.PeerManager.GetAllHealthStatus()
 				repman.UpdateLocalPeer()
 			}
+		}
+
+		if counter%300 == 0 {
+			repman.RefreshDiskStats()
 		}
 
 		counter++
@@ -2252,6 +2267,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 
 	repman.currentCluster.OsUser = repman.OsUser
 	repman.currentCluster.SessionManager = repman.SessionManager
+	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster

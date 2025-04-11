@@ -148,6 +148,7 @@ type Config struct {
 	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
 	LogExternalScript                         bool                   `mapstructure:"log-external-script" toml:"log-external-script" json:"ExternalScript"`
 	LogExternalScriptLevel                    int                    `mapstructure:"log-external-script-level" toml:"log-external-script-level" json:"logExternalScriptLevel"`
+	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-stats-level" toml:"log-stats-level" json:"logStatsLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -642,6 +643,12 @@ type Config struct {
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
+	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
+	BackupDiskTresholdWarn                    int                    `mapstructure:"backup-disk-treshold-warn" toml:"backup-disk-treshold-warn" json:"backupDiskTresholdWarn"`
+	BackupDiskTresholdCrit                    int                    `mapstructure:"backup-disk-treshold-crit" toml:"backup-disk-treshold-crit" json:"backupDiskTresholdCrit"`
+	BackupEstimateSize                        bool                   `mapstructure:"backup-estimate-size" toml:"backup-estimate-size" json:"backupEstimateSize"`
+	BackupEstimateSizePercentage              int                    `mapstructure:"backup-estimate-size-percentage" toml:"backup-estimate-size-percentage" json:"backupEstimateSizePercentage"`
+	BackupGrowthPercentage                    int                    `mapstructure:"backup-growth-percentage" toml:"backup-growth-percentage" json:"backupGrowthPercentage"`
 	SchedulerDatabaseLogsTableRotate          bool                   `mapstructure:"scheduler-db-servers-logs-table-rotate" toml:"scheduler-db-servers-logs-table-rotate" json:"schedulerDbServersLogsTableRotate"`
 	SchedulerDatabaseLogsTableRotateCron      string                 `mapstructure:"scheduler-db-servers-logs-table-rotate-cron" toml:"scheduler-db-servers-logs-table-rotate-cron" json:"schedulerDbServersLogsTableRotateCron"`
 	SchedulerMaintenanceDatabaseLogsTableKeep int                    `mapstructure:"scheduler-db-servers-logs-table-keep" toml:"scheduler-db-servers-logs-table-keep" json:"schedulerDatabaseLogsTableKeep"`
@@ -1162,6 +1169,7 @@ const (
 	ConstLogModMailer         = 19
 	ConstLogModSupport        = 20
 	ConstLogModExternalScript = 21
+	ConstLogModStats          = 22
 )
 
 /*
@@ -2989,6 +2997,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogMailerLevel >= lvl
 		case module == ConstLogModSupport:
 			return conf.LogSupportLevel >= lvl
+		case module == ConstLogModStats:
+			return conf.LogStatsLevel >= lvl
 		}
 	}
 
@@ -3154,6 +3164,8 @@ func GetTagsForLog(module int) string {
 		return "job"
 	case ConstLogModExternalScript:
 		return "externalscript"
+	case ConstLogModStats:
+		return "stats"
 	}
 	return ""
 }

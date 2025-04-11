@@ -10,8 +10,10 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/share"
 )
 
@@ -376,4 +378,78 @@ func CloseAndChown(f *os.File, u *user.User) (err error) {
 func ChownFile(f *os.File, u *user.User) error {
 	cmd := exec.Command("chown", fmt.Sprintf("%s:%s", u.Uid, u.Gid), f.Name())
 	return cmd.Run()
+}
+
+type DiskStatManager struct {
+	mu    sync.Mutex       `json:"-"`
+	Stats DiskUsageStatMap `json:"stats"`
+}
+
+func NewDiskStatManager() *DiskStatManager {
+	return &DiskStatManager{
+		Stats: make(DiskUsageStatMap),
+	}
+}
+
+func (m *DiskStatManager) UpdateStat(name string, u *disk.UsageStat) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if stat, ok := m.Stats[name]; ok {
+		stat.Update(u)
+	} else {
+		m.Stats[name] = NewDiskUsageStat(u)
+	}
+}
+
+func (m *DiskStatManager) GetStat(name string) (*DiskUsageStat, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	stat, ok := m.Stats[name]
+	return stat, ok
+}
+
+func (m *DiskStatManager) GetStatByClosestMount(path string) *DiskUsageStat {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	cleanPath := filepath.Clean(path)
+
+	for {
+		if stat, ok := m.Stats[cleanPath]; ok {
+			return stat
+		}
+
+		parent := filepath.Dir(cleanPath)
+		if parent == cleanPath {
+			break // reached root
+		}
+
+		cleanPath = parent
+	}
+
+	return nil
+}
+
+type DiskUsageStatMap map[string]*DiskUsageStat
+
+type DiskUsageStat struct {
+	disk.UsageStat
+	LastUpdate time.Time `json:"last_update"`
+}
+
+func (d *DiskUsageStat) Update(u *disk.UsageStat) {
+	d.UsageStat = *u
+	d.LastUpdate = time.Now()
+}
+
+func (d *DiskUsageStat) IsStale(duration time.Duration) bool {
+	return time.Since(d.LastUpdate) > duration
+}
+
+func NewDiskUsageStat(u *disk.UsageStat) *DiskUsageStat {
+	d := &DiskUsageStat{}
+	d.UsageStat = *u
+	d.LastUpdate = time.Now()
+
+	return d
 }

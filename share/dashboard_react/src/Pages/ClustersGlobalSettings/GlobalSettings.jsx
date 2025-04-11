@@ -202,6 +202,23 @@ function GlobalSettings({ config }) {
       )
     },
     {
+      key: 'Log Stats Level',
+      value: (
+        <LogSlider
+          value={config?.logStatsLevel}
+          confirmTitle={`Confirm change 'log-stats-level' to: `}
+          onChange={(val) =>
+            dispatch(
+              setGlobalSetting({
+                setting: 'log-stats-level',
+                value: val
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Enable API Swagger',
       value: (
         <HStack>

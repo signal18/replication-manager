@@ -242,6 +242,7 @@ type Cluster struct {
 	ConfigManager             *manager.ConfigManager      `json:"-"`
 	failSendCount             int                         `json:"-"`
 	MeetUserID                string                      `json:"-"` //To store meet user id
+	DiskStatManager           *misc.DiskStatManager       `json:"diskStat"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -695,8 +696,9 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
+							cluster.CheckAllBackupFreeSpace()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134", "WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
