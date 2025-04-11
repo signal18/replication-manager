@@ -207,7 +207,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
 		hasErr := false
 		if master != nil && master.DBVersion.IsMySQLOrPercona() && master.DBVersion.GreaterEqual("5.7.6") && !master.HaveMySQLGTID {
-			err := master.SetMyGTIDTransitional()
+			err := master.SetMyGTIDTransitional(false)
 			if err != nil {
 				hasErr = true
 				cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
@@ -215,7 +215,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		}
 
 		if sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && !cluster.StateMachine.IsInState("ERR00098") && !hasErr {
-			err := sl.SetMyGTIDTransitional()
+			err := sl.SetMyGTIDTransitional(false)
 			if err != nil {
 				hasErr = true
 				cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], sl.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})

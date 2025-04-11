@@ -586,7 +586,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				// Set master GTID mode to be compatible with the cluster
 				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 					// MySQL 5.7.6 and later
-					err := server.SetMyGTIDTransitional()
+					err := server.SetMyGTIDTransitional(true)
 					if err != nil {
 						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
 					}
@@ -602,7 +602,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				// Set master GTID mode to be compatible with the cluster
 				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 					// MySQL 5.7.6 and later
-					err := server.SetMyGTIDTransitional()
+					err := server.SetMyGTIDTransitional(true)
 					if err != nil {
 						cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
 					}
@@ -635,7 +635,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				// Set master GTID mode to be compatible with the cluster
 				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 					// MySQL 5.7.6 and later
-					err := server.SetMyGTIDTransitional()
+					err := server.SetMyGTIDTransitional(true)
 					if err != nil {
 						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
 					}
@@ -648,7 +648,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				// Set master GTID mode to be compatible with the cluster
 				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 					// MySQL 5.7.6 and later
-					err := server.SetMyGTIDTransitional()
+					err := server.SetMyGTIDTransitional(true)
 					if err != nil {
 						cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
 					}
@@ -685,7 +685,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			// Set master GTID mode to be compatible with the cluster
 			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 				// MySQL 5.7.6 and later
-				err := server.SetMyGTIDTransitional()
+				err := server.SetMyGTIDTransitional(true)
 				if err != nil {
 					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
 				}
@@ -727,7 +727,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			// Set master GTID mode to be compatible with the cluster
 			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 				// MySQL 5.7.6 and later
-				err := server.SetMyGTIDTransitional()
+				err := server.SetMyGTIDTransitional(true)
 				if err != nil {
 					cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
 				}
@@ -742,7 +742,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			// Set master GTID mode to be compatible with the cluster
 			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
 				// MySQL 5.7.6 and later
-				err := server.SetMyGTIDTransitional()
+				err := server.SetMyGTIDTransitional(true)
 				if err != nil {
 					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
 				}
