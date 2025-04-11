@@ -3637,7 +3637,7 @@ func SetMySQLGtidMode(db *sqlx.DB, mode string) (string, error) {
 
 func SetEnforceGTIDConsistency(db *sqlx.DB, mode string) (string, error) {
 	var err error
-	query := "SET GLOBAL enforce-gtid-consistency = '" + mode + "'"
+	query := "SET GLOBAL ENFORCE_GTID_CONSISTENCY = '" + mode + "'"
 	if mode == "ON" || mode == "OFF" {
 		_, err = db.Exec(query)
 	} else {
