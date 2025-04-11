@@ -2148,6 +2148,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-check-free-space":
+		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
+	case "backup-estimate-size":
+		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
 	case "monitoring-pause":
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
@@ -2518,6 +2522,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-disk-treshold-warn":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupDiskTresholdWarn = val
+	case "backup-disk-treshold-crit":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupDiskTresholdCrit = val
+	case "backup-estimate-size-percentage":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupEstimateSizePercentage = val
+	case "backup-growth-percentage":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupGrowthPercentage = val
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
@@ -3130,6 +3146,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "compress-backups":
 		mycluster.Conf.CompressBackups = isactive
+	case "backup-check-free-space":
+		mycluster.Conf.BackupCheckFreeSpace = isactive
+	case "backup-estimate-size":
+		mycluster.Conf.BackupEstimateSize = isactive
 	case "monitoring-pause":
 		mycluster.Conf.MonitorPause = isactive
 	case "monitoring-save-config":

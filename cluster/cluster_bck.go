@@ -233,7 +233,7 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 		case "logical", "physical":
 			_, prev := bcksrv.GetLatestMeta(backtype)
 			if prev != nil && prev.Completed {
-				required = uint64(prev.Size * int64(cluster.Conf.BackupGrowthPercentage) / 100)
+				required = uint64(prev.Size * int64(100+cluster.Conf.BackupGrowthPercentage) / 100)
 
 				// If not keep until valid, we need to add the size of the previous backup to the free space
 				if !cluster.Conf.BackupKeepUntilValid {
