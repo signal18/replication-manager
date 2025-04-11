@@ -205,56 +205,25 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		cluster.SetState("WARN0050", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0050"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
 	if cluster.Conf.ForceSlaveGtid && sl.GetReplicationUsingGtid() == "No" {
-		if master != nil && master.DBVersion.IsMySQLOrPerconaGreater57() && !master.HaveMySQLGTID {
-			if master.DBVersion.GreaterEqual("5.7.6") {
-				if master.Variables.Get("ENFORCE_GTID_CONSISTENCY") == "OFF" {
-					_, err := dbhelper.SetEnforceGTIDConsistency(master.Conn, "ON")
-					if err != nil {
-						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
-					}
-				}
-
-				if master.Variables.Get("GTID_MODE") == "OFF" {
-					_, err := dbhelper.SetMySQLGtidMode(master.Conn, "OFF_PERMISSIVE")
-					if err != nil {
-						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
-					}
-				}
-
-				if master.Variables.Get("GTID_MODE") == "OFF_PERMISSIVE" {
-					_, err := dbhelper.SetMySQLGtidMode(master.Conn, "ON_PERMISSIVE")
-					if err != nil {
-						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
-					}
-				}
+		hasErr := false
+		if master != nil && master.DBVersion.IsMySQLOrPercona() && master.DBVersion.GreaterEqual("5.7.6") && !master.HaveMySQLGTID {
+			err := master.SetMyGTIDTransitional()
+			if err != nil {
+				hasErr = true
+				cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
 			}
 		}
 
-		if sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && !cluster.StateMachine.IsInState("ERR00098") {
-			if sl.Variables.Get("ENFORCE_GTID_CONSISTENCY") == "OFF" {
-				_, err := dbhelper.SetEnforceGTIDConsistency(sl.Conn, "ON")
-				if err != nil {
-					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], sl.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
-				}
-			}
-
-			if sl.Variables.Get("GTID_MODE") == "OFF" {
-				_, err := dbhelper.SetMySQLGtidMode(sl.Conn, "OFF_PERMISSIVE")
-				if err != nil {
-					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
-				}
-			}
-
-			if sl.Variables.Get("GTID_MODE") == "OFF_PERMISSIVE" {
-				_, err := dbhelper.SetMySQLGtidMode(sl.Conn, "ON_PERMISSIVE")
-				if err != nil {
-					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
-				}
+		if sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && !cluster.StateMachine.IsInState("ERR00098") && !hasErr {
+			err := sl.SetMyGTIDTransitional()
+			if err != nil {
+				hasErr = true
+				cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], sl.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: sl.URL})
 			}
 		}
 
 		// If master is in GTID mode ON or ON_PERMISSIVE, and slave has GTID mode ON_PERMISSIVE
-		if !cluster.StateMachine.IsInStateList("ERR00099@"+sl.URL, "ERR00098") {
+		if !cluster.StateMachine.IsInStateList("ERR00099@"+sl.URL, "ERR00098") && !hasErr {
 			if !(sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && sl.SlaveStatus.AutoPosition == 1) {
 				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
