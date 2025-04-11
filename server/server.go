@@ -99,6 +99,7 @@ type ReplicationManager struct {
 	CommandLineFlag                                  []string                    `json:"-"`
 	ConfigPathList                                   []string                    `json:"-"`
 	Logs                                             s18log.HttpLog              `json:"logs"`
+	MonitorType                                      map[string]string           `json:"monitorType"`
 	ServicePlans                                     []config.ServicePlan        `json:"servicePlans"`
 	ServiceOrchestrators                             []config.ConfigVariableType `json:"serviceOrchestrators"`
 	ServiceAcl                                       []config.Grant              `json:"serviceAcl"`
@@ -1953,6 +1954,7 @@ func (repman *ReplicationManager) Run() error {
 	repman.InitGrants()
 	repman.InitRoles()
 	repman.ReloadTerms()
+	repman.MonitorType = config.GetMonitorType()
 	repman.ServiceRepos, err = repman.Conf.GetDockerRepos(repman.Conf.ShareDir+"/repo/repos.json", repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization docker repo failed: %s %s", repman.Conf.ShareDir+"/repo/repos.json", err)

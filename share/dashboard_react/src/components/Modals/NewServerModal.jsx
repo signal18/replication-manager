@@ -12,8 +12,8 @@ import {
   ModalOverlay,
   Stack
 } from '@chakra-ui/react'
-import React, { useState } from 'react'
-import { useDispatch } from 'react-redux'
+import React, { useEffect, useState } from 'react'
+import { useDispatch, useSelector } from 'react-redux'
 import { addServer } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
 import RMButton from '../RMButton'
@@ -23,12 +23,42 @@ import parentStyles from './styles.module.scss'
 function NewServerModal({ clusterName, isOpen, closeModal }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
+  const { globalClusters: { monitor } } = useSelector((state) => state)
   const [host, setHost] = useState('')
   const [port, setPort] = useState(0)
   const [monitorType, setMonitorType] = useState('')
+  const [tag, setTag] = useState('')
+  const [serviceRepos, setServiceRepos] = useState([])
+  const [tagOptions, setTagOptions] = useState([])
   const [hostError, setHostError] = useState('')
   const [portError, setPortError] = useState('')
-  const [monitorTypeError, setMonitorTypeError] = useState('')
+
+  useEffect(() => {
+    if (monitor?.serviceRepos?.length > 0) {
+      const repos = monitor?.serviceRepos.map(entry => ({
+        name: entry.name,
+        image: entry.image,
+        options: entry.tags?.results?.map(tag => ({
+          name: tag.name,
+          value: `${entry.image}:${tag.name}`
+        }))
+      }))
+
+      setServiceRepos(repos)
+    }
+  }, [monitor?.serviceRepos])
+
+  const fillVersionDropdown = (selectedType) => {
+    setMonitorType(selectedType)
+    setTag('')
+    
+    let repolist = selectedType
+    if (repolist === 'shardproxy') {
+      repolist = 'mariadb'
+    }
+    const repo = serviceRepos.find((r) => r.name === repolist)
+    setTagOptions(repo?.options || [])
+  }
 
   const handleCreateNewServer = () => {
     setHostError('')
@@ -44,12 +74,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       return
     }
 
-    if (!monitorType) {
-      setMonitorTypeError('Monitor type is required')
-      return
-    }
-
-    dispatch(addServer({ clusterName, host, port, monitorType }))
+    dispatch(addServer({ clusterName, host, port, monitorType, tag }))
     closeModal()
   }
 
@@ -71,13 +96,13 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               <Input id='port' type='number' isRequired={true} value={port} onChange={(e) => setPort(e.target.value)} />
               <FormErrorMessage>{portError}</FormErrorMessage>
             </FormControl>
-            <FormControl isInvalid={monitorTypeError}>
+            <FormControl>
               <FormLabel htmlFor='monitorType'>Monitor type</FormLabel>
               <Dropdown
                 id='monitorType'
                 isMenuPortalTarget={false}
                 onChange={(option) => {
-                  setMonitorType(option.value)
+                  fillVersionDropdown(option.value)
                 }}
                 options={[
                   { name: 'MariaDB', value: 'mariadb' },
@@ -91,7 +116,17 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   { name: 'VIP', value: 'extvip' }
                 ]}
               />
-              <FormErrorMessage>{monitorTypeError}</FormErrorMessage>
+            </FormControl>
+            <FormControl >
+              <FormLabel htmlFor='tag'>Docker Version</FormLabel>
+              <Dropdown
+                id='tag'
+                isMenuPortalTarget={false}
+                onChange={(option) => {
+                  setTag(option.value)
+                }}
+                options={tagOptions}
+              />
             </FormControl>
           </Stack>
         </ModalBody>
