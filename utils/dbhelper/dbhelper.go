@@ -233,6 +233,7 @@ type SlaveStatus struct {
 	ReplicateWildIgnoreTable sql.NullString `db:"Replicate_Wild_Ignore_Table" json:"replicateWildIgnoreTable"`
 	SQLDelay                 sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
 	SQLRemainingDelay        sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
+	AutoPosition             int            `db:"Auto_Position" json:"autoPosition"`
 }
 
 func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
@@ -271,6 +272,7 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 	s.ReplicateWildIgnoreTable = rs.ReplicateWildIgnoreTable
 	s.SQLDelay = rs.SQLDelay
 	s.SQLRemainingDelay = rs.SQLRemainingDelay
+	s.AutoPosition = rs.AutoPosition
 }
 
 type ReplicaStatus struct {
@@ -327,7 +329,7 @@ type ReplicaStatus struct {
 	SourceSSLCrlpath               sql.NullString `db:"Source_SSL_Crlpath" json:"sourceSslCrlpath"`
 	RetrievedGtidSet               sql.NullString `db:"Retrieved_Gtid_Set" json:"retrievedGtidSet"`
 	ExecutedGtidSet                sql.NullString `db:"Executed_Gtid_Set" json:"executedGtidSet"`
-	AutoPosition                   sql.NullString `db:"Auto_Position" json:"autoPosition"`
+	AutoPosition                   int            `db:"Auto_Position" json:"autoPosition"`
 	ReplicateRewriteDB             sql.NullString `db:"Replicate_Rewrite_DB" json:"replicateRewriteDb"`
 	ChannelName                    sql.NullString `db:"Channel_Name" json:"channelName"`
 	SourceTLSVersion               sql.NullString `db:"Source_TLS_Version" json:"sourceTlsVersion"`
@@ -3619,4 +3621,27 @@ func GetBackupSizeEstimation(db *sqlx.DB, version *version.Version) (uint64, err
 	}
 
 	return size, nil
+}
+
+func SetMySQLGtidMode(db *sqlx.DB, mode string) (string, error) {
+	var err error
+	query := "SET GLOBAL gtid_mode = '" + mode + "'"
+
+	if mode == "OFF" || mode == "ON" || mode == "ON_PERMISSIVE" || mode == "OFF_PERMISSIVE" {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid GTID mode")
+	}
+	return query, err
+}
+
+func SetEnforceGTIDConsistency(db *sqlx.DB, mode string) (string, error) {
+	var err error
+	query := "SET GLOBAL enforce-gtid-consistency = '" + mode + "'"
+	if mode == "ON" || mode == "OFF" {
+		_, err = db.Exec(query)
+	} else {
+		return query, errors.New("Invalid GTID mode")
+	}
+	return query, err
 }
