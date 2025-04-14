@@ -13,6 +13,7 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -242,8 +243,11 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.AddProxy(prx)
 	}
 
+	stagingList := strings.Split(cluster.Conf.StagingProxyHosts, ",")
 	for _, pr := range cluster.Proxies {
-		pr.SetStaging(cluster.IsProxyInStagingList(pr.GetName()))
+		if pr != nil && slices.Contains(stagingList, pr.GetName()) {
+			pr.SetStaging(true)
+		}
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
