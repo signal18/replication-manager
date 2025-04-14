@@ -36,7 +36,7 @@ func (proxy *Proxy) SetServiceName(namespace string) {
 	proxy.ServiceName = namespace + "/svc/" + proxy.Name
 }
 
-func (proxy *Proxy) SetInStaging(staging bool) {
+func (proxy *Proxy) SetStaging(staging bool) {
 	proxy.IsStaging = staging
 }
 

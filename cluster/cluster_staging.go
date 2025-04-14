@@ -176,6 +176,10 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 }
 
 func (cluster *Cluster) AddProxyToStagingHosts(prx DatabaseProxy) {
+	if prx == nil {
+		return
+	}
+
 	prx.SetStaging(true)
 
 	if cluster.Conf.StagingProxyHosts == "" {
@@ -197,18 +201,4 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 		return []string{}
 	}
 	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
-}
-
-func (cluster *Cluster) IsProxyInStagingList(proxyHost string) bool {
-	if cluster.Conf.StagingProxyHosts == "" {
-		return false
-	}
-
-	for _, host := range strings.Split(cluster.Conf.StagingProxyHosts, ",") {
-		if proxyHost == host {
-			return true
-		}
-	}
-
-	return false
 }
