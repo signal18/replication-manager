@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) RemoveServerFromIndex(index int) {
@@ -114,31 +115,31 @@ func (cluster *Cluster) DropProxyTag(dtag string) {
 func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string) error {
 	newProxies := make([]DatabaseProxy, 0)
 	index := -1
+	var prxhost string
 	for i, pr := range cluster.Proxies {
 		if pr.GetHost() == host && pr.GetPort() == port {
 			index = i
+			prxhost = pr.GetName() // use name since host might be altered by provNetCNI
+			break                  // found the proxy
 		}
 	}
 	if index >= 0 {
 		cluster.StateMachine.SetFailoverState()
 		cluster.Lock()
-		if len(cluster.Proxies) == 1 {
-			cluster.Proxies = newProxies
-		} else {
-			newProxies = append(newProxies, cluster.Proxies[:index]...)
-			newProxies = append(newProxies, cluster.Proxies[index+1:]...)
-			cluster.Proxies = newProxies
+		if len(cluster.Proxies) > 1 {
+			newProxies = append(cluster.Proxies[:index], cluster.Proxies[index+1:]...)
 		}
+		cluster.Proxies = newProxies
 
 		switch prx {
 		case config.ConstProxyHaproxy:
-			cluster.Conf.HaproxyHosts = strings.ReplaceAll(strings.Replace(cluster.Conf.HaproxyHosts, host, "", 1), ",,", ",")
+			cluster.Conf.HaproxyHosts = misc.RemoveFromList(cluster.Conf.HaproxyHosts, prxhost)
 		case config.ConstProxyMaxscale:
-			cluster.Conf.MxsHost = strings.ReplaceAll(strings.Replace(cluster.Conf.MxsHost, host, "", 1), ",,", ",")
+			cluster.Conf.MxsHost = misc.RemoveFromList(cluster.Conf.MxsHost, prxhost)
 		case config.ConstProxySqlproxy:
-			cluster.Conf.ProxysqlHosts = strings.ReplaceAll(strings.Replace(cluster.Conf.ProxysqlHosts, host, "", 1), ",,", ",")
+			cluster.Conf.ProxysqlHosts = misc.RemoveFromList(cluster.Conf.ProxysqlHosts, prxhost)
 		case config.ConstProxySpider:
-			cluster.Conf.MdbsProxyHosts = strings.ReplaceAll(strings.Replace(cluster.Conf.MdbsProxyHosts, host, "", 1), ",,", ",")
+			cluster.Conf.MdbsProxyHosts = misc.RemoveFromList(cluster.Conf.MdbsProxyHosts, prxhost)
 		}
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()

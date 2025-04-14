@@ -288,3 +288,21 @@ func IsValidPublicURL(input string) bool {
 	host := parsedURL.Hostname()
 	return IsValidPublicDomainOrIP(host)
 }
+
+func RemoveFromList(list string, element string) string {
+	// Split the list into a slice
+	items := strings.Split(list, ",")
+
+	// Create a new slice to hold the filtered items
+	var filteredItems []string
+
+	// Iterate over the items and add them to the filtered slice if they are not equal to the element
+	for _, item := range items {
+		if item != element {
+			filteredItems = append(filteredItems, item)
+		}
+	}
+
+	// Join the filtered items back into a comma-separated string
+	return strings.Join(filteredItems, ",")
+}
