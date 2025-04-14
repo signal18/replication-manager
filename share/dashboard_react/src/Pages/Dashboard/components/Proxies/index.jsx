@@ -27,6 +27,7 @@ function Proxies({ selectedCluster, user }) {
         showGridView={showGridView}
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
+        topoStaging={selectedCluster?.config?.topologyStaging}
         user={user}
       />
     ) : (
@@ -37,6 +38,7 @@ function Proxies({ selectedCluster, user }) {
         showTableView={showTableView}
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
+        topoStaging={selectedCluster?.config?.topologyStaging}
         user={user}
       />
     )

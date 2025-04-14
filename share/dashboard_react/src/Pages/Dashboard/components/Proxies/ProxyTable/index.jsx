@@ -12,7 +12,7 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible, showTerminal}) {
+function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible, showTerminal, topoStaging}) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (proxies?.length > 0) {
@@ -64,7 +64,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
   const columns = useMemo(
     () => [
       columnHelper.accessor(
-        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} isMenuOptionsVisible={isMenuOptionsVisible} showTerminal={showTerminal}/>,
+        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} isMenuOptionsVisible={isMenuOptionsVisible} showTerminal={showTerminal} topoStaging={topoStaging}/>,
         {
           cell: (info) => info.getValue(),
           id: 'options',
