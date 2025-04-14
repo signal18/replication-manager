@@ -358,66 +358,69 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			IsBackendReader = false
 		}
 
-		if cluster.Conf.TopologyStaging && cluster.IsDiscovered() && proxy.IsStaging {
-			if s == stagingsrv {
-				if !isBackendWriter {
-					err = psql.DeleteAllWriters()
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not delete old writer (%s)", err)
+		if cluster.Conf.TopologyStaging && proxy.IsStaging {
+			if cluster.IsDiscovered() {
+				if s == stagingsrv {
+					if !isBackendWriter {
+						err = psql.DeleteAllWriters()
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not delete old writer (%s)", err)
+						}
+
+						err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
+						}
+
+						psql.SetMonitorIsAlsoWriter(true)
+						updated = true
 					}
 
-					err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
-					}
-					updated = true
-				}
-
-				if !IsBackendReader {
-					// Add  leader in reader group if not found and setup
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
-					err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", "0", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
-					}
-					updated = true
-				}
-
-				// Set staging server as writer
-				if ((isBackendWriter && bke.PrxStatus == "OFFLINE_SOFT") || (IsBackendReader && bkeread.PrxStatus == "OFFLINE_SOFT")) && !s.IsMaintenance {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting staging server %s as writer", s.URL)
-					err = psql.SetOnlineSoft(misc.Unbracket(s.Host), s.Port)
-					if err != nil {
-						cluster.SetState("ERR00068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00068"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
-					}
-					updated = true
-				}
-
-			} else {
-				if isBackendWriter { // if not staging server
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in writer group from %s", s.URL)
-					err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop non staging in writer in %s (%s)", s.URL, err)
-					}
-					updated = true
-				}
-
-				if IsBackendReader {
-					// Drop slave from writer HG if exists
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in reader group from %s", s.URL)
-					err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
-					if err != nil {
-						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					if !IsBackendReader {
+						// Add  leader in reader group if not found and setup
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
+						err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", "0", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+						}
+						updated = true
 					}
 
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
-					err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
-					if err != nil {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
+					// Set staging server as writer
+					if ((isBackendWriter && bke.PrxStatus == "OFFLINE_SOFT") || (IsBackendReader && bkeread.PrxStatus == "OFFLINE_SOFT")) && !s.IsMaintenance {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting staging server %s as writer", s.URL)
+						err = psql.SetOnlineSoft(misc.Unbracket(s.Host), s.Port)
+						if err != nil {
+							cluster.SetState("ERR00068", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00068"], s.URL, err), ErrFrom: "PRX", ServerUrl: proxy.Name})
+						}
+						updated = true
+					}
+				} else {
+					if isBackendWriter { // if not staging server
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in writer group from %s", s.URL)
+						err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop non staging in writer in %s (%s)", s.URL, err)
+						}
+						updated = true
 					}
 
-					updated = true
+					if IsBackendReader {
+						// Drop slave from writer HG if exists
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in reader group from %s", s.URL)
+						err = psql.DropReader(misc.Unbracket(s.Host), s.Port)
+						if err != nil {
+							cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+						}
+
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
+						err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
+						}
+
+						updated = true
+					}
 				}
 			}
 		} else if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() { // nothing should be done if no bootstrap
