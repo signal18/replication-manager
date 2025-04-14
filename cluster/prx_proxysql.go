@@ -163,7 +163,7 @@ func (proxy *ProxySQLProxy) Init() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
 				}
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL add backend %s as offline (%s)", s.URL, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlInfo, "ProxySQL add backend %s as offline", s.URL)
 				err = psql.AddOfflineServer(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add backend %s as offline (%s)", s.URL, err)
