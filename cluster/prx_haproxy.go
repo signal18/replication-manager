@@ -135,8 +135,19 @@ func (proxy *HaproxyProxy) Init() {
 		// log.Printf("Found exiting leader removing")
 	}
 
-	if cluster.GetMaster() != nil {
+	stagingsrv := cluster.StagingServer
+	if stagingsrv == nil {
+		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+		cluster.StagingServer = stagingsrv
+	}
 
+	if cluster.Conf.TopologyStaging && proxy.IsStaging && stagingsrv != nil {
+		p, _ := strconv.Atoi(stagingsrv.Port)
+		s := haproxy.ServerDetail{Name: "leader", Host: stagingsrv.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
+			//	log.Printf("Failed to add server to service_write ")
+		}
+	} else if cluster.GetMaster() != nil {
 		p, _ := strconv.Atoi(cluster.GetMaster().Port)
 		s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
 		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
@@ -148,6 +159,7 @@ func (proxy *HaproxyProxy) Init() {
 			//	log.Printf("Failed to add server to service_write ")
 		}
 	}
+
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy failed to add frontend read")
@@ -199,7 +211,11 @@ func (proxy *HaproxyProxy) Init() {
 
 func (proxy *HaproxyProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
-	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
+	stagingsrv := cluster.StagingServer
+	if stagingsrv == nil {
+		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+		cluster.StagingServer = stagingsrv
+	}
 	// if proxy.ClusterGroup.Conf.HaproxyStatHttp {
 
 	/*
@@ -350,7 +366,11 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
 						if !srv.IsStandAlone() {
-							stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+							if stagingsrv == nil {
+								stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+								cluster.StagingServer = stagingsrv
+							}
+
 							if stagingsrv != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
 								msg, err := haRuntime.SetMaster(stagingsrv.Host, stagingsrv.Port)
@@ -489,7 +509,11 @@ func (proxy *HaproxyProxy) Refresh() error {
 	}
 	if !foundMasterInStat {
 		if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-			stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+			if stagingsrv == nil {
+				stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+				cluster.StagingServer = stagingsrv
+			}
+
 			if stagingsrv != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] HAProxy has standalone in cluster but not in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
 				msg, err := haRuntime.SetMaster(stagingsrv.Host, stagingsrv.Port)

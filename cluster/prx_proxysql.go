@@ -313,7 +313,10 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	bkWriters := make([]Backend, 0)
 	bkReaders := make([]Backend, 0)
 
-	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
+	stagingsrv := cluster.StagingServer
+	if stagingsrv == nil {
+		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+	}
 
 	for _, s := range cluster.Servers {
 		isBackendWriter := true
