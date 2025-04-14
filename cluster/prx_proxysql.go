@@ -335,7 +335,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		s.ProxysqlHostgroup = proxysqlHostgroup
 		s.MxsServerStatus = proxysqlServerStatus
 
-		if err == nil {
+		if err == nil && proxysqlHostgroup != "" {
 			bkWriters = append(bkWriters, bke)
 		} else {
 			isBackendWriter = false
@@ -356,7 +356,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			PrxLatency:     strconv.Itoa(rproxysqlLatency),
 			PrxHostgroup:   rproxysqlHostgroup,
 		}
-		if err == nil {
+		if err == nil && rproxysqlHostgroup != "" {
 			bkReaders = append(bkReaders, bkeread)
 		} else {
 			IsBackendReader = false
