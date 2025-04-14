@@ -62,6 +62,11 @@ func (cluster *Cluster) BashScriptCloseSate(state state.State) error {
 
 func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newState string, oldState string) error {
 	if cluster.IsRefreshStaging && cluster.Conf.TopologyStagingPostDetachScript != "" && newState == stateUnconn && srv != cluster.StagingServer {
+		cluster.StagingServer.SetReadOnly() // Set the old staging server to read only
+
+		cluster.StagingServer = srv          // Set the new staging server as the new staging server
+		cluster.StagingServer.SetReadWrite() // Set the new staging server to read write for proxysql read-only checks
+
 		cluster.PostDetachStaging(srv.Host, srv.Port, newState, oldState)
 	}
 
