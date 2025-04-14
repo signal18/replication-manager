@@ -65,6 +65,7 @@ type Proxy struct {
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
 	Weight          string               `json:"weight"`
+	IsStaging       bool                 `json:"isStaging"`
 	Lock            sync.Mutex
 }
 
@@ -134,6 +135,7 @@ type DatabaseProxy interface {
 	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
+	SetStaging(staging bool)
 
 	SetProvisionCookie() error
 	SetUnprovisionCookie() error
@@ -238,6 +240,10 @@ func (cluster *Cluster) newProxyList() error {
 	if cluster.Conf.RegistryConsul {
 		prx := NewConsulProxy(0, cluster, "")
 		cluster.AddProxy(prx)
+	}
+
+	for _, pr := range cluster.Proxies {
+		pr.SetStaging(cluster.IsProxyInStagingList(pr.GetName()))
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Loaded %d proxies", len(cluster.Proxies))

@@ -47,6 +47,10 @@ func (repman *ReplicationManager) apiProxyProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxyNeedReprov)),
 	))
+	router.Handle("/api/clusters/{clusterName}/proxies/{proxyName}/actions/staging/{isStaging}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxySetStaging)),
+	))
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/proxies/{serverName}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
 	))
@@ -351,6 +355,49 @@ func (repman *ReplicationManager) handlerMuxProxyNeedReprov(w http.ResponseWrite
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Set Staging
+// @Description Set the proxy service for a given cluster and proxy to staging
+// @Tags Proxies
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param proxyName path string true "Proxy Name"
+// @Param isStaging path string true "Is Staging"
+// @Success 200 {string} string "Proxy Service Set to Staging"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
+// @Failure 503 {string} string "Not a Valid Server!"
+// @Router /api/clusters/{clusterName}/proxies/{proxyName}/actions/staging/{isStaging} [post]
+func (repman *ReplicationManager) handlerMuxProxySetStaging(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetProxyFromName(vars["proxyName"])
+		if node != nil {
+			if vars["isStaging"] == "true" {
+				mycluster.AddProxyToStagingHosts(node)
+			} else if vars["isStaging"] == "false" {
+				mycluster.DelProxyFromStagingHosts(node)
+			} else {
+				http.Error(w, "Invalid staging value", 500)
+				return
+			}
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
 }

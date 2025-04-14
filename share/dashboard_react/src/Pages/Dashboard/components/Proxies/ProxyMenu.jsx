@@ -2,10 +2,10 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
-import { dropServerByName, provisionProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
+import { dropServerByName, provisionProxy, stagingProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
 import { useNavigate } from 'react-router-dom'
 
-function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, isMenuOptionsVisible = false, showTerminal }) {
+function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, isMenuOptionsVisible = false, showTerminal, topoStaging }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -35,6 +35,25 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
         placement={from === 'tableView' ? 'right-end' : 'left-end'}
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
+          ...(user?.grants['cluster-staging'] && topoStaging ? row.isStaging ? [
+            {
+              name: 'Set As Normal Proxy',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
+                setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: false })))
+              }
+            }
+          ] : [
+            {
+              name: 'Set As Staging Proxy',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle(`Confirm provision proxy ${proxyName}?`)
+                setConfirmHandler(() => () => dispatch(stagingProxy({ clusterName, proxyId: row.proxyId, staging: true })))
+              }
+            }
+          ] : []),
           ...(user?.grants['prov-proxy-provision'] && isMenuOptionsVisible
             ? [
                 {

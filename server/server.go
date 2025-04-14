@@ -462,6 +462,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TopologyStaging, "topology-staging", false, "Use topology staging")
 	flags.StringVar(&conf.TopologyStagingRefreshScript, "topology-staging-refresh-script", "", "Topology staging refresh script path. Empty will use copy of embedded template in working directory")
 	flags.StringVar(&conf.TopologyStagingPostDetachScript, "topology-staging-post-detach-script", "", "Topology staging post detach script path. Empty will not execute anything")
+	flags.StringVar(&conf.StagingProxyHosts, "staging-proxy-hosts", "", "Staging proxy hosts list to monitor separated by commas")
 
 	flags.StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")

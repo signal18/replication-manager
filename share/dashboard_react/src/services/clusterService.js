@@ -79,6 +79,7 @@ export const clusterService = {
   unprovisionProxy,
   startProxy,
   stopProxy,
+  stagingProxy,
 
   // Database service APIs
   getDatabaseService,
@@ -403,6 +404,10 @@ function startProxy(clusterName, proxyId, baseURL) {
 
 function stopProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
+}
+
+function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/staging/${isStaging}`)
 }
 //#endregion Proxy management APIs
 

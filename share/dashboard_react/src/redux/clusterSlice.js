@@ -943,6 +943,18 @@ export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterN
   }
 })
 
+export const stagingProxy = createAsyncThunk('cluster/stagingProxy', async ({ clusterName, proxyId, staging }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.stagingProxy(clusterName, proxyId, staging, baseURL)
+    showSuccessBanner('Staging proxy successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Staging proxy failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const runSysBench = createAsyncThunk('cluster/runSysBench', async ({ clusterName, thread }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

@@ -3,10 +3,12 @@ package cluster
 import (
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) ReloadStagingScript() error {
@@ -171,4 +173,42 @@ func (cluster *Cluster) PostDetachStaging(host, port, newstate, oldstate string)
 		}
 	}
 	return nil
+}
+
+func (cluster *Cluster) AddProxyToStagingHosts(prx DatabaseProxy) {
+	prx.SetStaging(true)
+
+	if cluster.Conf.StagingProxyHosts == "" {
+		cluster.Conf.StagingProxyHosts = prx.GetName()
+	} else {
+		cluster.Conf.StagingProxyHosts = cluster.Conf.StagingProxyHosts + "," + prx.GetName()
+	}
+}
+
+func (cluster *Cluster) DelProxyFromStagingHosts(prx DatabaseProxy) {
+	prx.SetStaging(false)
+
+	// Remove from staging hosts
+	cluster.Conf.StagingProxyHosts = misc.RemoveFromList(cluster.Conf.StagingProxyHosts, prx.GetName())
+}
+
+func (cluster *Cluster) GetStagingProxyHosts() []string {
+	if cluster.Conf.StagingProxyHosts == "" {
+		return []string{}
+	}
+	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
+}
+
+func (cluster *Cluster) IsProxyInStagingList(proxyHost string) bool {
+	if cluster.Conf.StagingProxyHosts == "" {
+		return false
+	}
+
+	for _, host := range strings.Split(cluster.Conf.StagingProxyHosts, ",") {
+		if proxyHost == host {
+			return true
+		}
+	}
+
+	return false
 }

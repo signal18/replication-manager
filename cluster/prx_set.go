@@ -36,6 +36,10 @@ func (proxy *Proxy) SetServiceName(namespace string) {
 	proxy.ServiceName = namespace + "/svc/" + proxy.Name
 }
 
+func (proxy *Proxy) SetInStaging(staging bool) {
+	proxy.IsStaging = staging
+}
+
 func (proxy *Proxy) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, ProxysqlHostsIPV6 string, Weights string) {
 	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")
