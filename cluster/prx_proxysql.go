@@ -274,6 +274,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	bkWriters := make([]Backend, 0)
 	bkReaders := make([]Backend, 0)
 
+	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
+
 	for _, s := range cluster.Servers {
 		isBackendWriter := true
 		proxysqlHostgroup, proxysqlServerStatus, proxysqlServerConnections, proxysqlByteOut, proxysqlByteIn, proxysqlLatency, err := psql.GetStatsForHostWrite(misc.Unbracket(s.Host), s.Port)
@@ -321,8 +323,52 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			IsBackendReader = false
 		}
 
-		// nothing should be done if no bootstrap
-		if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() {
+		if cluster.Conf.TopologyStaging && cluster.IsDiscovered() && proxy.IsStaging {
+			if isBackendWriter && s != stagingsrv { // if not staging server
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in writer group from %s", s.URL)
+				err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not drop non staging in writer in %s (%s)", s.URL, err)
+				}
+				updated = true
+			} else {
+				if s == stagingsrv {
+					// Set staging server as writer
+					if bke.PrxStatus != "ONLINE" && bke.PrxStatus != "OFFLINE_SOFT" && !s.IsMaintenance {
+						if psql.ExistAsWriterOrOffline(misc.Unbracket(s.Host), s.Port) {
+							err = psql.SetOnline(misc.Unbracket(s.Host), s.Port)
+							if err != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "Monitor ProxySQL setting online failed server %s: %s", s.URL, err.Error())
+							}
+						} else {
+							//scenario restart with failed leader
+							err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
+							if err != nil {
+								cluster.SetState("ERR00071", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00071"], proxy.Name, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+							}
+						}
+					}
+
+					if !IsBackendReader {
+						// Add  leader in reader group if not found and setup
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL add leader in reader group in %s", s.URL)
+						err = psql.AddServerAsReader(misc.Unbracket(s.Host), s.Port, "1", "0", strconv.Itoa(s.ClusterGroup.Conf.PRXServersBackendMaxConnections), strconv.Itoa(misc.Bool2Int(s.ClusterGroup.Conf.PRXServersBackendCompression)), proxy.UseSSL())
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add reader %s (%s)", s.URL, err)
+						}
+						updated = true
+					}
+				} else if bkeread.PrxStatus != "OFFLINE_SOFT" || bke.PrxStatus != "OFFLINE_HARD" {
+					// Drop slave from writer HG if exists
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL drop non staging in writer group from %s", s.URL)
+					err = psql.SetOfflineSoft(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+					updated = true
+				}
+			}
+		} else if cluster.Conf.ProxysqlBootstrap && cluster.IsDiscovered() { // nothing should be done if no bootstrap
 			// if ProxySQL and replication-manager states differ, resolve the conflict
 			if bke.PrxStatus == "OFFLINE_HARD" && s.State == stateSlave && !s.IsIgnored() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting online as reader rejoining server %s", s.URL)
@@ -447,8 +493,13 @@ func (proxy *ProxySQLProxy) Refresh() error {
 			cluster.SetState("ERR00093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00093"], proxy.Name), ErrFrom: "PRX", ServerUrl: proxy.Name})
 		}
 
+		leader := s.IsMaster()
+		if cluster.Conf.TopologyStaging && proxy.IsStaging {
+			leader = stagingsrv == s
+		}
+
 		// load the grants
-		if s.IsMaster() && cluster.Conf.ProxysqlCopyGrants {
+		if leader && cluster.Conf.ProxysqlCopyGrants {
 			myprxusermap, _, err := dbhelper.GetProxySQLUsers(psql.Connection)
 			if err != nil {
 				cluster.SetState("ERR00053", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00053"], err), ErrFrom: "MON", ServerUrl: proxy.Name})

@@ -249,7 +249,7 @@ func (psql *ProxySQL) CopyReaderToWriter(host string, port string) error {
 }
 
 func (psql *ProxySQL) ReplaceWriter(host string, port string, oldhost string, oldport string, masterasreader bool) error {
-    var err error
+	var err error
 	if masterasreader {
 		if err = psql.DeleteAllWriters(); err != nil {
 			return err
