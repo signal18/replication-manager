@@ -1391,6 +1391,15 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
 	}
 
+	if !cluster.Conf.MonitorScheduler {
+		for _, task := range tasks {
+			server.JobsUpdateState(task, "cancelled by user", 5, 1)
+			if server.HasReseedingState(task) {
+				server.SetInReseedBackup("")
+			}
+		}
+	}
+
 	if server.IsDown() {
 		if canCancel || force {
 			server.SetInReseedBackup("")
