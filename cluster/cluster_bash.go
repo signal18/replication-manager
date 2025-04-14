@@ -66,6 +66,7 @@ func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newSt
 
 		cluster.StagingServer = srv          // Set the new staging server as the new staging server
 		cluster.StagingServer.SetReadWrite() // Set the new staging server to read write for proxysql read-only checks
+		cluster.IsRefreshStaging = false
 
 		cluster.PostDetachStaging(srv.Host, srv.Port, newState, oldState)
 	}
