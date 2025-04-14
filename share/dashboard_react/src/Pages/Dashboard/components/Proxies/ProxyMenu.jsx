@@ -2,10 +2,10 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
-import { provisionProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
+import { dropServerByName, provisionProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
 import { useNavigate } from 'react-router-dom'
 
-function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user }) {
+function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, isMenuOptionsVisible = false, showTerminal }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -35,7 +35,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
         placement={from === 'tableView' ? 'right-end' : 'left-end'}
         subMenuPlacement={isDesktop ? (from === 'tableView' ? 'right-end' : 'left-end') : 'bottom'}
         options={[
-          ...(user?.grants['prov-proxy-provision']
+          ...(user?.grants['prov-proxy-provision'] && isMenuOptionsVisible
             ? [
                 {
                   name: 'Provision Proxy',
@@ -45,9 +45,9 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                     setConfirmHandler(() => () => dispatch(provisionProxy({ clusterName, proxyId: row.proxyId })))
                   }
                 }
-              ]
+            ]
             : []),
-          ...(user?.grants['prov-proxy-unprovision']
+          ...(user?.grants['prov-proxy-unprovision'] && isMenuOptionsVisible
             ? [
                 {
                   name: 'Unprovision Proxy',
@@ -59,7 +59,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-          ...(user?.grants['proxy-start']
+          ...(user?.grants['proxy-start'] && isMenuOptionsVisible
             ? [
                 {
                   name: 'Start Proxy',
@@ -71,7 +71,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-          ...(user?.grants['proxy-stop']
+          ...(user?.grants['proxy-stop'] && isMenuOptionsVisible
             ? [
                 {
                   name: 'Stop Proxy',
@@ -83,26 +83,37 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-            ...(user?.grants['proxy-terminal'] ? [
-              { 
-                name: 'Web Terminal', 
-                subMenu: [
-                    { 
-                      name: 'MySQL Terminal', 
-                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mysql`) 
+          ...(user?.grants['proxy-terminal'] && showTerminal 
+            ? [
+                {
+                  name: 'Web Terminal',
+                  subMenu: [
+                    {
+                      name: 'MySQL Terminal',
+                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mysql`)
                     },
                     {
                       name: 'MyTop Terminal',
                       onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mytop`)
                     },
                     ...(user?.grants['global-terminal'] ? [
-                      { 
-                        name: 'Shell Terminal', 
-                        onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}`) 
+                      {
+                        name: 'Shell Terminal',
+                        onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}`)
                       }
-                      ] : []),
-                ]}
-              ] : []),
+                    ] : []),
+                  ]
+                }
+              ] 
+            : []),
+          {
+            name: 'Remove Monitor',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm removing monitor for ${row.proxyId} (${row.server})?`)
+              setConfirmHandler(() => () => dispatch(dropServerByName({ clusterName, serverName: row.proxyId })))
+            }
+          },
         ]}
       />
       {isConfirmModalOpen && (

@@ -253,6 +253,21 @@ export const dropServer = createAsyncThunk(
   }
 )
 
+export const dropServerByName = createAsyncThunk(
+  'cluster/dropServerByName',
+  async ({ clusterName, serverName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropServerByName(clusterName, serverName, baseURL)
+      showSuccessBanner('New server dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a new server', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const provisionCluster = createAsyncThunk('cluster/provisionCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

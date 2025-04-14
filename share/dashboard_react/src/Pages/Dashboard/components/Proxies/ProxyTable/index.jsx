@@ -12,7 +12,7 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible }) {
+function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, isMenuOptionsVisible, showTerminal}) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (proxies?.length > 0) {
@@ -31,7 +31,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
           data.push({
             logo: <ProxyLogo proxyName={proxy.type} />,
             proxyId: proxy.id,
-            showMenu: isMenuOptionsVisible,
+            showMenu: true, // to show the menu icon
             server: `${proxy.host}:${proxy.port}`,
             status: <ProxyStatus status={proxy.state} />
           })
@@ -45,7 +45,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
     return {
       logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
       proxyId: proxy.id,
-      showMenu: isNewProxy && isMenuOptionsVisible,
+      showMenu: isNewProxy,
       server: `${proxy.host}:${data.port}`,
       status: <ProxyStatus status={proxy.state} />,
       group: <TagPill text={readWriteType} colorScheme={readWriteType === 'WRITE' ? 'blue' : 'gray'} />,
@@ -64,7 +64,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
   const columns = useMemo(
     () => [
       columnHelper.accessor(
-        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} />,
+        (row) => row.showMenu && <ProxyMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} isMenuOptionsVisible={isMenuOptionsVisible} showTerminal={showTerminal}/>,
         {
           cell: (info) => info.getValue(),
           id: 'options',

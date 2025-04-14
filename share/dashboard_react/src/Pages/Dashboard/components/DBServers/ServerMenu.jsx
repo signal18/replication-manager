@@ -44,7 +44,8 @@ function ServerMenu({
   openCompareModal,
   colorScheme,
   className,
-  showCompareWithOption = true
+  showCompareWithOption = true,
+  showTerminal = false
 }) {
   const dispatch = useDispatch()
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
@@ -92,7 +93,7 @@ function ServerMenu({
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
-          ...(user?.grants['db-terminal'] ? [
+          ...(user?.grants['db-terminal'] && showTerminal ? [
             { 
               name: 'Web Terminal', 
               subMenu: [

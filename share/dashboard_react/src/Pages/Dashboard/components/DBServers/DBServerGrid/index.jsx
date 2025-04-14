@@ -39,6 +39,7 @@ function DBServerGrid({
   backupLogicalType,
   user,
   showTableView,
+  showTerminal,
   openCompareModal,
   hasMariadbGtid,
   hasMysqlGtid
@@ -167,6 +168,7 @@ function DBServerGrid({
                   isDesktop={isDesktop}
                   user={user}
                   openCompareModal={openCompareModal}
+                  showTerminal={showTerminal}
                   {...(gridColor.length > 0 ? { colorScheme: gridColor } : {})}
                 />
               </Flex>

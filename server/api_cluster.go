@@ -314,6 +314,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{serverName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDropByName)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/dropserver/{host}/{port}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
@@ -4257,6 +4262,54 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 			}
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+
+}
+
+// handlerMuxServerDropByName handles the HTTP request to drop a server monitor from a cluster by its name.
+// @Summary Drop a server monitor from a cluster by name
+// @Description This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.
+// @Tags ClusterMonitor
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Monitor Server ID"
+// @Success 200 {string} string "Monitor dropped successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found"
+// @Router /cluster/{clusterName}/actions/dropserver/{serverName} [post]
+func (repman *ReplicationManager) handlerMuxServerDropByName(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if vars["serverName"] == "" {
+			http.Error(w, "No server name provided", 400)
+			return
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		prx := mycluster.GetProxyFromName(vars["serverName"])
+		if node == nil && prx == nil {
+			http.Error(w, "No server found with name "+vars["serverName"], 400)
+			return
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop %s monitor command for %s", vars["type"], vars["host"]+":"+vars["port"])
+		if node != nil {
+			mycluster.RemoveServerMonitor(node.Host, node.Port)
+		} else if prx != nil {
+			mycluster.RemoveProxyMonitor(prx.GetType(), prx.GetHost(), prx.GetPort())
 		}
 	} else {
 		http.Error(w, "Cluster Not Found", 500)

@@ -76,6 +76,7 @@ function DBServers({ selectedCluster, user }) {
               row={row}
               user={user}
               isDesktop={isDesktop}
+              showTerminal={selectedCluster?.config?.terminalSessionEnabled}
               openCompareModal={openCompareModal}
             />
           ) : null,
@@ -262,6 +263,7 @@ function DBServers({ selectedCluster, user }) {
           openCompareModal={openCompareModal}
           hasMariadbGtid={hasMariadbGtid}
           hasMysqlGtid={hasMysqlGtid}
+          showTerminal={selectedCluster?.config?.terminalSessionEnabled}
         />
       )}
 

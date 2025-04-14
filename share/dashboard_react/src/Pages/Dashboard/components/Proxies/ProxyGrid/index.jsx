@@ -12,7 +12,7 @@ import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
 import ServerName from '../../../../../components/ServerName'
 
-function ProxyGrid({ proxies = [], clusterName, showTableView, user, isDesktop, isMenuOptionsVisible }) {
+function ProxyGrid({ proxies = [], clusterName, showTableView, user, isDesktop, isMenuOptionsVisible, showTerminal }) {
   return (
     <SimpleGrid columns={{ base: 1, sm: 1, md: 2, lg: 3 }} spacing={2} spacingY={6} spacingX={6} marginTop='4px'>
       {proxies?.length > 0 &&
@@ -47,15 +47,15 @@ function ProxyGrid({ proxies = [], clusterName, showTableView, user, isDesktop, 
                 <Spacer />
 
                 <RMIconButton icon={HiTable} onClick={showTableView} marginRight={2} tooltip='Show table view' />
-                {isMenuOptionsVisible && (
-                  <ProxyMenu
-                    from='gridView'
-                    row={rowData}
-                    clusterName={clusterName}
-                    isDesktop={isDesktop}
-                    user={user}
-                  />
-                )}
+                <ProxyMenu
+                  from='gridView'
+                  row={rowData}
+                  clusterName={clusterName}
+                  isDesktop={isDesktop}
+                  user={user}
+                  isMenuOptionsVisible={isMenuOptionsVisible}
+                  showTerminal
+                />
               </Flex>
 
               <Flex direction='column' width='100%' mb={2} gap='0'>
