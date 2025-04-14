@@ -152,6 +152,8 @@ func (proxy *ProxySQLProxy) Init() {
 	for _, s := range cluster.Servers {
 		if cluster.Conf.TopologyStaging && proxy.IsStaging {
 			if s.State == stateUnconn {
+				psql.SetMonitorIsAlsoWriter(true)
+
 				err = psql.AddServerAsWriter(misc.Unbracket(s.Host), s.Port, proxy.UseSSL())
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
@@ -242,6 +244,8 @@ func (proxy *ProxySQLProxy) Failover() {
 	for _, s := range cluster.Servers {
 		if cluster.Conf.TopologyStaging && proxy.IsStaging {
 			if s.State == stateUnconn {
+				psql.SetMonitorIsAlsoWriter(true)
+
 				err = psql.DeleteAllWriters()
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not delete old writer (%s)", err)
@@ -361,6 +365,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 		if cluster.Conf.TopologyStaging && proxy.IsStaging {
 			if cluster.IsDiscovered() {
 				if s == stagingsrv {
+					psql.SetMonitorIsAlsoWriter(true)
+
 					if !isBackendWriter {
 						err = psql.DeleteAllWriters()
 						if err != nil {
@@ -371,8 +377,6 @@ func (proxy *ProxySQLProxy) Refresh() error {
 						if err != nil {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlErr, "ProxySQL could not add writer %s (%s) ", s.URL, err)
 						}
-
-						psql.SetMonitorIsAlsoWriter(true)
 						updated = true
 					}
 
