@@ -332,7 +332,6 @@ func (proxy *HaproxyProxy) Refresh() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy stat lookup writer: host %s translated to %s", line[73], host)
 			// }
 			if srv != nil {
-				foundMasterInStat = true
 				bkw := Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
@@ -346,6 +345,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 				}
 
 				if bkw.PrxName != "" {
+					foundMasterInStat = true
 					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
 
 					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
