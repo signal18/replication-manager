@@ -440,6 +440,7 @@ type Config struct {
 	TopologyStaging                           bool                   `mapstructure:"topology-staging" toml:"topology-staging" json:"topologyStaging"`
 	TopologyStagingRefreshScript              string                 `mapstructure:"topology-staging-refresh-script" toml:"topology-staging-refresh-script" json:"topologyStagingRefreshScript"`
 	TopologyStagingPostDetachScript           string                 `mapstructure:"topology-staging-post-detach-script" toml:"topology-staging-post-detach-script" json:"topologyStagingPostDetachScript"`
+	StagingProxyHosts                         string                 `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
 	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
@@ -471,6 +472,7 @@ type Config struct {
 	SwitchoverCopyOldLeaderGtid               bool                   `toml:"-" json:"-"` //suspicious code
 	Test                                      bool                   `mapstructure:"test" toml:"test" json:"test"`
 	TestInjectTraffic                         bool                   `mapstructure:"test-inject-traffic" toml:"test-inject-traffic" json:"testInjectTraffic"`
+	TestInjectTrafficStaging                  bool                   `mapstructure:"test-inject-traffic-staging" toml:"test-inject-traffic-staging" json:"testInjectTrafficStaging"`
 	Enterprise                                bool                   `toml:"enterprise" json:"enterprise"` //used to talk to opensvc collector
 	KubeConfig                                string                 `mapstructure:"kube-config" toml:"kube-config" json:"kubeConfig"`
 	SlapOSConfig                              string                 `mapstructure:"slapos-config" toml:"slapos-config" json:"slaposConfig"`

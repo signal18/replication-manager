@@ -611,6 +611,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	}
 
 	server.SetInReseedBackup(task)
+	defer func() {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+	}()
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
@@ -667,13 +672,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			}
 		}
 
-		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
-		if err != nil {
-			if server.HasReseedingState(task) {
-				server.SetInReseedBackup("")
-			}
-			return err
-		}
+		dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion) // Ignore error
 	}
 
 	server.JobsUpdateState(task, "processing", 1, 0)
@@ -1389,6 +1388,15 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 
 	if !(canCancel || force) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
+	}
+
+	if !cluster.Conf.MonitorScheduler {
+		for _, task := range tasks {
+			server.JobsUpdateState(task, "cancelled by user", 5, 1)
+			if server.HasReseedingState(task) {
+				server.SetInReseedBackup("")
+			}
+		}
 	}
 
 	if server.IsDown() {

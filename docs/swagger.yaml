@@ -182,6 +182,8 @@ definitions:
         items:
           $ref: '#/definitions/cluster.VariableDiff'
         type: array
+      diskStat:
+        $ref: '#/definitions/misc.DiskStatManager'
       diskType:
         additionalProperties:
           type: string
@@ -195,6 +197,10 @@ definitions:
         type: array
       failoverLastTime:
         type: integer
+      falsePositiveChecks:
+        additionalProperties:
+          type: boolean
+        type: object
       fsType:
         additionalProperties:
           type: boolean
@@ -251,15 +257,19 @@ definitions:
         type: boolean
       isNeedProxiesConfigChange:
         type: boolean
+      isNeedProxiesReprov:
+        type: boolean
       isNeedProxiesRestart:
         type: boolean
-      isNeedProxyRestart:
+      isNeedStagingChange:
         type: boolean
       isNotMonitoring:
         type: boolean
       isPostgres:
         type: boolean
       isProvision:
+        type: boolean
+      isRefreshStaging:
         type: boolean
       isSplitBrain:
         type: boolean
@@ -449,6 +459,8 @@ definitions:
         type: string
       internalProxy:
         $ref: '#/definitions/myproxy.Server'
+      isStaging:
+        type: boolean
       lock:
         $ref: '#/definitions/sync.Mutex'
       name:
@@ -732,6 +744,9 @@ definitions:
         items:
           $ref: '#/definitions/dbhelper.SlaveStatus'
         type: array
+      lastTLSConfig:
+        description: used to track last working TLS config
+        type: string
       logOutput:
         type: string
       longQueryTime:
@@ -1264,6 +1279,8 @@ definitions:
     type: object
   github_com_signal18_replication-manager_config.Config:
     properties:
+      ExternalScript:
+        type: boolean
       alertPushoverAppToken:
         type: string
       alertPushoverUserToken:
@@ -1375,6 +1392,18 @@ definitions:
       backupBinlogs:
         type: boolean
       backupBinlogsKeep:
+        type: integer
+      backupCheckFreeSpace:
+        type: boolean
+      backupDiskTresholdCrit:
+        type: integer
+      backupDiskTresholdWarn:
+        type: integer
+      backupEstimateSize:
+        type: boolean
+      backupEstimateSizePercentage:
+        type: integer
+      backupGrowthPercentage:
         type: integer
       backupKeepDaily:
         type: integer
@@ -1610,6 +1639,8 @@ definitions:
         type: string
       dbServersTlsServerKey:
         type: string
+      dbServersTlsSslMode:
+        type: string
       dbServersUseGeneratedCert:
         type: boolean
       delayStatCapture:
@@ -1733,10 +1764,6 @@ definitions:
         type: boolean
       fullVersion:
         type: string
-      gitMaxWorker:
-        type: integer
-      gitMinWorker:
-        type: integer
       gitMonitoringTicker:
         type: integer
       gitUrl:
@@ -1855,6 +1882,8 @@ definitions:
         type: boolean
       logConfigLoadLevel:
         type: integer
+      logExternalScriptLevel:
+        type: integer
       logFile:
         type: string
       logFileLevel:
@@ -1896,6 +1925,8 @@ definitions:
         type: boolean
       logSstLevel:
         description: internal replication-manager sst
+        type: integer
+      logStatsLevel:
         type: integer
       logSupport:
         type: boolean
@@ -2603,6 +2634,8 @@ definitions:
         type: string
       sstSendBuffer:
         type: integer
+      stagingProxyHosts:
+        type: string
       switchoverAtEqualGtid:
         type: boolean
       switchoverAtSync:
@@ -2611,10 +2644,14 @@ definitions:
         type: boolean
       switchoverDecreaseMaxConnValue:
         type: integer
+      switchoverLockUserOnFreeze:
+        type: boolean
       switchoverLowerRelease:
         type: boolean
       switchoverMaxSlaveDelay:
         type: integer
+      switchoverRedirectOnFreeze:
+        type: boolean
       switchoverSlaveWaitCatch:
         type: boolean
       switchoverWaitKill:
@@ -2648,6 +2685,8 @@ definitions:
       test:
         type: boolean
       testInjectTraffic:
+        type: boolean
+      testInjectTrafficStaging:
         type: boolean
       topologyStaging:
         type: boolean
@@ -2816,6 +2855,40 @@ definitions:
         type: string
       text:
         type: string
+    type: object
+  misc.DiskStatManager:
+    properties:
+      stats:
+        $ref: '#/definitions/misc.DiskUsageStatMap'
+    type: object
+  misc.DiskUsageStat:
+    properties:
+      free:
+        type: integer
+      fstype:
+        type: string
+      inodesFree:
+        type: integer
+      inodesTotal:
+        type: integer
+      inodesUsed:
+        type: integer
+      inodesUsedPercent:
+        type: number
+      last_update:
+        type: string
+      path:
+        type: string
+      total:
+        type: integer
+      used:
+        type: integer
+      usedPercent:
+        type: number
+    type: object
+  misc.DiskUsageStatMap:
+    additionalProperties:
+      $ref: '#/definitions/misc.DiskUsageStat'
     type: object
   myproxy.Server:
     type: object
@@ -3197,6 +3270,10 @@ definitions:
         $ref: '#/definitions/s18log.HttpLog'
       memprofile:
         type: string
+      monitorType:
+        additionalProperties:
+          type: string
+        type: object
       os:
         type: string
       osUser:
@@ -3239,6 +3316,10 @@ definitions:
         items:
           $ref: '#/definitions/config.Role'
         type: array
+      serviceSslMode:
+        additionalProperties:
+          type: boolean
+        type: object
       serviceTarballs:
         items:
           $ref: '#/definitions/config.Tarball'
@@ -3563,6 +3644,63 @@ paths:
       - description: Type
         in: path
         name: type
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Monitor added
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "409":
+          description: Error adding new monitor
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Add a server to a specific cluster
+      tags:
+      - ClusterMonitor
+  /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint adds a server to the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Host
+        in: path
+        name: host
+        required: true
+        type: string
+      - description: Port
+        in: path
+        name: port
+        required: true
+        type: string
+      - description: Type
+        in: path
+        name: type
+        type: string
+      - description: Tag
+        in: path
+        name: tag
         type: string
       produces:
       - application/json
@@ -4230,7 +4368,77 @@ paths:
       summary: Start traffic for a specific cluster
       tags:
       - ClusterTraffics
+  /api/clusters/{clusterName}/actions/start-traffic-staging:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint starts traffic for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully started traffic
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Start traffic for a specific cluster
+      tags:
+      - ClusterTraffics
   /api/clusters/{clusterName}/actions/stop-traffic:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint stops traffic for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully stopped traffic
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Stop traffic for a specific cluster
+      tags:
+      - ClusterTraffics
+  /api/clusters/{clusterName}/actions/stop-traffic-staging:
     post:
       consumes:
       - application/json
@@ -5300,6 +5508,55 @@ paths:
           schema:
             type: string
       summary: Provision Proxy Service
+      tags:
+      - Proxies
+  /api/clusters/{clusterName}/proxies/{proxyName}/actions/staging/{isStaging}:
+    post:
+      consumes:
+      - application/json
+      description: Set the proxy service for a given cluster and proxy to staging
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Proxy Name
+        in: path
+        name: proxyName
+        required: true
+        type: string
+      - description: Is Staging
+        in: path
+        name: isStaging
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Proxy Service Set to Staging
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+        "503":
+          description: Not a Valid Server!
+          schema:
+            type: string
+      summary: Set Staging
       tags:
       - Proxies
   /api/clusters/{clusterName}/proxies/{proxyName}/actions/start:
@@ -11831,6 +12088,47 @@ paths:
           schema:
             type: string
       summary: Drop a server monitor from a cluster
+      tags:
+      - ClusterMonitor
+  /cluster/{clusterName}/actions/dropserver/{serverName}:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint allows dropping a server monitor or proxy monitor
+        from a specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Monitor Server ID
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Monitor dropped successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found
+          schema:
+            type: string
+      summary: Drop a server monitor from a cluster by name
       tags:
       - ClusterMonitor
   /meet/add/{channelId}/{userId}:

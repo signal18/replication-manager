@@ -117,6 +117,7 @@ type Cluster struct {
 	IsExportPush                  bool                   `json:"isExportPush"`
 	IsAlertDisable                bool                   `json:"isAlertDisable"`
 	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
+	IsNeedStagingChange           bool                   `json:"isNeedStagingChange"`
 	Conf                          *config.Config         `json:"config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
@@ -683,7 +684,7 @@ func (cluster *Cluster) Run() {
 						if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
 							go cluster.MonitorSchema()
 						}
-						if cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
+						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 							cluster.InjectProxiesTraffic()
 						}
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {

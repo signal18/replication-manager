@@ -556,6 +556,10 @@ func (cluster *Cluster) SetTraffic(traffic bool) {
 	cluster.Conf.TestInjectTraffic = traffic
 }
 
+func (cluster *Cluster) SetTrafficStaging(traffic bool) {
+	cluster.Conf.TestInjectTrafficStaging = traffic
+}
+
 func (cluster *Cluster) SetBenchMethod(m string) {
 	cluster.benchmarkType = m
 }

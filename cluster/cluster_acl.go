@@ -573,6 +573,12 @@ func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterStaging] {
+		if strings.Contains(URL, "/actions/staging") {
+			return true
+		}
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
 
 	return false

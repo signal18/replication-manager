@@ -13,6 +13,7 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,6 +66,7 @@ type Proxy struct {
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
 	Weight          string               `json:"weight"`
+	IsStaging       bool                 `json:"isStaging"`
 	Lock            sync.Mutex
 }
 
@@ -134,6 +136,8 @@ type DatabaseProxy interface {
 	SetID()
 	SetDataDir()
 	SetServiceName(namespace string)
+	SetStaging(staging bool)
+	IsInStaging() bool
 
 	SetProvisionCookie() error
 	SetUnprovisionCookie() error
@@ -240,6 +244,13 @@ func (cluster *Cluster) newProxyList() error {
 		cluster.AddProxy(prx)
 	}
 
+	stagingList := strings.Split(cluster.Conf.StagingProxyHosts, ",")
+	for _, pr := range cluster.Proxies {
+		if pr != nil && slices.Contains(stagingList, pr.GetName()) {
+			pr.SetStaging(true)
+		}
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Loaded %d proxies", len(cluster.Proxies))
 
 	return nil
@@ -248,9 +259,36 @@ func (cluster *Cluster) newProxyList() error {
 func (cluster *Cluster) InjectProxiesTraffic() {
 	var definer string
 	// Found server from ServerId
-	if cluster.GetMaster() != nil {
+	if cluster.Conf.TopologyStaging && cluster.Conf.TestInjectTrafficStaging {
 		for _, pr := range cluster.Proxies {
-			if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy {
+			if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy || !pr.IsInStaging() { // Traffic for staging only
+				// Does not yet understand CREATE OR REPLACE VIEW
+				continue
+			}
+			db, err := pr.GetClusterConnection()
+			if err != nil {
+				cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+			} else {
+				if pr.GetType() == config.ConstProxyMyProxy {
+					definer = "DEFINER = root@localhost"
+				} else {
+					definer = ""
+				}
+				_, err := db.Exec("CREATE OR REPLACE " + definer + " VIEW replication_manager_schema.pseudo_gtid_v as select '" + misc.GetUUID() + "' from dual")
+
+				if err != nil {
+					cluster.SetState("ERR00050", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00050"], err), ErrFrom: "TOPO"})
+					db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+
+				}
+				db.Close()
+			}
+		}
+	}
+
+	if cluster.GetMaster() != nil && (cluster.Conf.TestInjectTraffic || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat) {
+		for _, pr := range cluster.Proxies {
+			if pr.GetType() == config.ConstProxySphinx || pr.GetType() == config.ConstProxyMyProxy || (cluster.Conf.TopologyStaging && pr.IsInStaging()) { // skip staging proxy
 				// Does not yet understand CREATE OR REPLACE VIEW
 				continue
 			}

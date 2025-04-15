@@ -462,6 +462,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.TopologyStaging, "topology-staging", false, "Use topology staging")
 	flags.StringVar(&conf.TopologyStagingRefreshScript, "topology-staging-refresh-script", "", "Topology staging refresh script path. Empty will use copy of embedded template in working directory")
 	flags.StringVar(&conf.TopologyStagingPostDetachScript, "topology-staging-post-detach-script", "", "Topology staging post detach script path. Empty will not execute anything")
+	flags.StringVar(&conf.StagingProxyHosts, "staging-proxy-hosts", "", "Staging proxy hosts list to monitor separated by commas")
 
 	flags.StringVar(&conf.PreScript, "failover-pre-script", "", "Path of pre-failover script")
 	flags.StringVar(&conf.PostScript, "failover-post-script", "", "Path of post-failover script")
@@ -856,6 +857,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.Test, "test", false, "Enable non regression tests")
 	flags.BoolVar(&conf.TestInjectTraffic, "test-inject-traffic", false, "Inject some database traffic via proxy")
+	flags.BoolVar(&conf.TestInjectTrafficStaging, "test-inject-traffic-staging", false, "Inject some database traffic via proxy to staging")
 	flags.IntVar(&conf.SysbenchTime, "sysbench-time", 100, "Time to run benchmark")
 	flags.IntVar(&conf.SysbenchThreads, "sysbench-threads", 4, "Number of threads to run benchmark")
 	flags.StringVar(&conf.SysbenchTest, "sysbench-test", "oltp_read_write", "oltp_read_write|tpcc|oltp_read_only|oltp_update_index|oltp_update_non_index")

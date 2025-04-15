@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSelector } from 'react-redux'
 import ProxyTable from './ProxyTable'
 import ProxyGrid from './ProxyGrid'
@@ -6,7 +6,7 @@ import ProxyGrid from './ProxyGrid'
 function Proxies({ selectedCluster, user }) {
   const {
     common: { isDesktop },
-    cluster: { clusterProxies }
+    cluster: { clusterProxies, clusterProxiesStaging }
   } = useSelector((state) => state)
 
   const [viewType, setViewType] = useState('table')
@@ -18,6 +18,9 @@ function Proxies({ selectedCluster, user }) {
     setViewType('table')
   }
 
+  useEffect(() => {
+  }, [clusterProxiesStaging])
+
   return clusterProxies ? (
     viewType === 'table' ? (
       <ProxyTable
@@ -27,6 +30,7 @@ function Proxies({ selectedCluster, user }) {
         showGridView={showGridView}
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
+        topoStaging={selectedCluster?.config?.topologyStaging}
         user={user}
       />
     ) : (
@@ -37,6 +41,7 @@ function Proxies({ selectedCluster, user }) {
         showTableView={showTableView}
         isMenuOptionsVisible={selectedCluster?.config?.provOrchestrator !== 'onpremise'}
         showTerminal={selectedCluster?.config?.terminalSessionEnabled}
+        topoStaging={selectedCluster?.config?.topologyStaging}
         user={user}
       />
     )

@@ -27,6 +27,7 @@ import {
   rotateDBCredential,
   switchOverCluster,
   toggleTraffic,
+  toggleTrafficStaging,
   unProvisionCluster
 } from '../../../redux/clusterSlice'
 import NewServerModal from '../../../components/Modals/NewServerModal'
@@ -95,6 +96,14 @@ function ClusterDetail({ selectedCluster }) {
             setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
           }
         },
+        ...( selectedCluster.config.topologyStaging ? [{
+          name: 'Toggle Traffic Staging',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Toggle traffic?')
+            setConfirmHandler(() => () => dispatch(toggleTrafficStaging({ clusterName: selectedCluster?.name })))
+          }
+        }] : []),
         ...(clusterMaster?.state === 'Failed'
           ? [
               {
@@ -377,6 +386,7 @@ function ClusterDetail({ selectedCluster }) {
           {
             <>
               {selectedCluster?.config?.testInjectTraffic && <TagPill type='success' text='PrxTraffic' />}
+              {selectedCluster?.config?.testInjectTrafficStaging && <TagPill type='success' text='PrxTrafficStaging' />}
               {selectedCluster?.config?.monitoringPause && (
                 <TagPill colorScheme='red' isBlinking={true} text='NotMonitored' />
               )}

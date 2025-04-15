@@ -223,6 +223,18 @@ export const toggleTraffic = createAsyncThunk('cluster/toggleTraffic', async ({ 
   }
 })
 
+export const toggleTrafficStaging = createAsyncThunk('cluster/toggleTrafficStaging', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.toggleTrafficStaging(clusterName, baseURL)
+    showSuccessBanner('Traffic staging toggle done!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Traffic staging toggle failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const addServer = createAsyncThunk(
   'cluster/addServer',
   async ({ clusterName, host, port, monitorType, tag }, thunkAPI) => {
@@ -943,6 +955,18 @@ export const stopProxy = createAsyncThunk('cluster/stopProxy', async ({ clusterN
   }
 })
 
+export const stagingProxy = createAsyncThunk('cluster/stagingProxy', async ({ clusterName, proxyId, staging }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.stagingProxy(clusterName, proxyId, staging, baseURL)
+    showSuccessBanner('Staging proxy successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Staging proxy failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const runSysBench = createAsyncThunk('cluster/runSysBench', async ({ clusterName, thread }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1286,6 +1310,7 @@ const initialState = {
   clusterMaster: null,
   clusterServers: null,
   clusterProxies: null,
+  clusterProxiesStaging: null,
   clusterCertificates: null,
   clusterStates: null,
   backups: {
@@ -1374,7 +1399,8 @@ export const clusterSlice = createSlice({
           state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
-          state.clusterProxies = action.payload.data
+          state.clusterProxies = action.payload?.data
+          state.clusterProxiesStaging = action.payload?.data?.filter((proxy) => proxy.isStaging).map((proxy) => proxy.name).join(',') || ''
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
@@ -1472,6 +1498,7 @@ export const clusterSlice = createSlice({
         addServer.pending,
         dropServer.pending,
         toggleTraffic.pending,
+        toggleTrafficStaging.pending,
         provisionCluster.pending,
         unProvisionCluster.pending,
         sendCredentials.pending,
@@ -1539,7 +1566,7 @@ export const clusterSlice = createSlice({
         resetSLA.fulfilled,
         addServer.fulfilled,
         dropServer.fulfilled,
-        toggleTraffic.fulfilled,
+        toggleTrafficStaging.fulfilled,
         provisionCluster.fulfilled,
         unProvisionCluster.fulfilled,
         sendCredentials.fulfilled,
@@ -1608,6 +1635,7 @@ export const clusterSlice = createSlice({
         addServer.rejected,
         dropServer.rejected,
         toggleTraffic.rejected,
+        toggleTrafficStaging.rejected,
         provisionCluster.rejected,
         unProvisionCluster.rejected,
         sendCredentials.rejected,

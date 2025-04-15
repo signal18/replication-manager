@@ -74,3 +74,7 @@ func (proxy *Proxy) HasDNS() bool {
 	}
 	return false
 }
+
+func (proxy *Proxy) IsInStaging() bool {
+	return proxy.IsStaging
+}

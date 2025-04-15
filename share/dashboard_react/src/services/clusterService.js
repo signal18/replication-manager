@@ -22,6 +22,7 @@ export const clusterService = {
   resetFailOverCounter,
   resetSLA,
   toggleTraffic,
+  toggleTrafficStaging,
   addServer,
   dropServer,
   dropServerByName,
@@ -79,6 +80,7 @@ export const clusterService = {
   unprovisionProxy,
   startProxy,
   stopProxy,
+  stagingProxy,
 
   // Database service APIs
   getDatabaseService,
@@ -181,6 +183,10 @@ function resetSLA(clusterName, baseURL) {
 
 function toggleTraffic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat`)
+}
+
+function toggleTrafficStaging(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
 function addServer(clusterName, host, port, monitorType, tag, baseURL) {
@@ -403,6 +409,10 @@ function startProxy(clusterName, proxyId, baseURL) {
 
 function stopProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/stop`)
+}
+
+function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/staging/${isStaging}`)
 }
 //#endregion Proxy management APIs
 
