@@ -1334,7 +1334,10 @@ func (server *ServerMonitor) ResetGTIDBinlogState(gtid_pos string) (string, erro
 	for _, gtid := range strings.Split(binlogstate, ",") {
 		if strings.HasPrefix(gtid, prefix) {
 			found = true
-			newstate = append(newstate, gtid_pos)
+			if gtid > gtid_pos {
+				server.ResetMaster()
+				newstate = append(newstate, gtid_pos)
+			}
 		} else {
 			newstate = append(newstate, gtid)
 		}
