@@ -246,6 +246,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		for STG.State != stateSlave {
 			if waitstart.Add(60 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for standalone %s to be reseeded", STG.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
 				return err
 			}
 
