@@ -69,6 +69,17 @@ func (cluster *Cluster) RefreshStaging() error {
 		}
 	}
 
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Current master has no backup. Create logical backup for refresh staging on %s", bcksrv.URL)
+
+		err = bcksrv.JobBackupLogical()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Create logical backup for refresh staging on %s failed: %s", bcksrv.URL, err)
+			return err
+		}
+	}
+
 	cluster.IsNeedStagingChange = true
 	cluster.IsRefreshStaging = true
 	defer func() {
