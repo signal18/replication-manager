@@ -64,14 +64,17 @@ func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newSt
 	if cluster.IsRefreshStaging && cluster.IsNeedStagingChange && newState == stateUnconn && srv != cluster.StagingServer {
 
 		if cluster.Conf.TopologyStagingPostDetachScript != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling staging post detach script")
 			cluster.PostDetachStaging(srv.Host, srv.Port, newState, oldState)
 		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No staging post detach script. Using default")
 			cluster.StagingServer.SetReadOnly() // Set the old staging server to read only
 
 			cluster.StagingServer = srv          // Set the new staging server as the new staging server
 			cluster.StagingServer.SetReadWrite() // Set the new staging server to read write for proxysql read-only checks
-			cluster.IsNeedStagingChange = false
 		}
+
+		cluster.IsNeedStagingChange = false // Reset the flag to avoid multiple calls
 	}
 
 	if cluster.Conf.DbServersChangeStateScript != "" {
