@@ -117,6 +117,7 @@ type Cluster struct {
 	IsExportPush                  bool                   `json:"isExportPush"`
 	IsAlertDisable                bool                   `json:"isAlertDisable"`
 	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
+	IsNeedStagingChange           bool                   `json:"isNeedStagingChange"`
 	Conf                          *config.Config         `json:"config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing

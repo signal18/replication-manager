@@ -55,6 +55,10 @@ func (cluster *Cluster) RefreshStaging() error {
 		return nil
 	}
 
+	if cluster.IsRefreshStaging {
+		return nil
+	}
+
 	if cluster.StagingServer == nil {
 		for _, srv := range cluster.Servers {
 			if srv.State == stateUnconn {
@@ -64,6 +68,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		}
 	}
 
+	cluster.IsNeedStagingChange = true
 	cluster.IsRefreshStaging = true
 	defer func() {
 		cluster.IsRefreshStaging = false
@@ -125,13 +130,6 @@ func (cluster *Cluster) RefreshStaging() error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh staging completed")
-
-	for _, srv := range cluster.Servers {
-		if srv.State == stateUnconn {
-			cluster.StagingServer = srv
-			break
-		}
-	}
 
 	return nil
 }
