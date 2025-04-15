@@ -284,6 +284,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStartTraffic)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/actions/stop-traffic-staging", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStopTrafficStaging)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/start-traffic-staging", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxStartTrafficStaging)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/actions/optimize", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOptimize)),
@@ -1283,6 +1293,66 @@ func (repman *ReplicationManager) handlerMuxStopTraffic(w http.ResponseWriter, r
 	return
 }
 
+// handlerMuxStartTraffic handles the start traffic process for a given cluster.
+// @Summary Start traffic for a specific cluster
+// @Description This endpoint starts traffic for the specified cluster.
+// @Tags ClusterTraffics
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully started traffic"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/start-traffic-staging [post]
+func (repman *ReplicationManager) handlerMuxStartTrafficStaging(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.SetTrafficStaging(true)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
+// handlerMuxStopTraffic handles the stop traffic process for a given cluster.
+// @Summary Stop traffic for a specific cluster
+// @Description This endpoint stops traffic for the specified cluster.
+// @Tags ClusterTraffics
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully stopped traffic"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/stop-traffic-staging [post]
+func (repman *ReplicationManager) handlerMuxStopTrafficStaging(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		mycluster.SetTrafficStaging(false)
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+}
+
 // handlerMuxBootstrapReplicationCleanup handles the cleanup process for replication bootstrap.
 // @Summary Cleanup replication bootstrap for a specific cluster
 // @Description This endpoint triggers the cleanup process for replication bootstrap for the specified cluster.
@@ -2142,6 +2212,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchProxyServersBackendCompression()
 	case "database-heartbeat":
 		mycluster.SwitchTraffic()
+	case "database-heartbeat-staging":
+		mycluster.SwitchTrafficStaging()
 	case "test":
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
@@ -3133,6 +3205,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.PRXServersBackendCompression = isactive
 	case "database-heartbeat":
 		mycluster.Conf.TestInjectTraffic = isactive
+	case "database-heartbeat-staging":
+		mycluster.Conf.TestInjectTrafficStaging = isactive
 	case "test":
 		mycluster.Conf.Test = isactive
 	case "prov-net-cni":

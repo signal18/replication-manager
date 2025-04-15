@@ -271,6 +271,10 @@ func (cluster *Cluster) GetTraffic() bool {
 	return cluster.Conf.TestInjectTraffic
 }
 
+func (cluster *Cluster) GetTrafficStaging() bool {
+	return cluster.Conf.TestInjectTrafficStaging
+}
+
 func (cluster *Cluster) GetClusterName() string {
 	return cluster.Name
 }

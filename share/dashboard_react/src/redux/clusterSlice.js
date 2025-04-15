@@ -223,6 +223,18 @@ export const toggleTraffic = createAsyncThunk('cluster/toggleTraffic', async ({ 
   }
 })
 
+export const toggleTrafficStaging = createAsyncThunk('cluster/toggleTrafficStaging', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.toggleTrafficStaging(clusterName, baseURL)
+    showSuccessBanner('Traffic staging toggle done!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Traffic staging toggle failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const addServer = createAsyncThunk(
   'cluster/addServer',
   async ({ clusterName, host, port, monitorType, tag }, thunkAPI) => {
@@ -1484,6 +1496,7 @@ export const clusterSlice = createSlice({
         addServer.pending,
         dropServer.pending,
         toggleTraffic.pending,
+        toggleTrafficStaging.pending,
         provisionCluster.pending,
         unProvisionCluster.pending,
         sendCredentials.pending,
@@ -1551,7 +1564,7 @@ export const clusterSlice = createSlice({
         resetSLA.fulfilled,
         addServer.fulfilled,
         dropServer.fulfilled,
-        toggleTraffic.fulfilled,
+        toggleTrafficStaging.fulfilled,
         provisionCluster.fulfilled,
         unProvisionCluster.fulfilled,
         sendCredentials.fulfilled,
@@ -1620,6 +1633,7 @@ export const clusterSlice = createSlice({
         addServer.rejected,
         dropServer.rejected,
         toggleTraffic.rejected,
+        toggleTrafficStaging.rejected,
         provisionCluster.rejected,
         unProvisionCluster.rejected,
         sendCredentials.rejected,

@@ -453,6 +453,10 @@ func (cluster *Cluster) SwitchTraffic() {
 	cluster.SetTraffic(!cluster.GetTraffic())
 }
 
+func (cluster *Cluster) SwitchTrafficStaging() {
+	cluster.SetTrafficStaging(!cluster.GetTrafficStaging())
+}
+
 func (cluster *Cluster) SwitchDelayStatCapture() {
 	cluster.Conf.DelayStatCapture = !cluster.Conf.DelayStatCapture
 	if !cluster.Conf.DelayStatCapture {

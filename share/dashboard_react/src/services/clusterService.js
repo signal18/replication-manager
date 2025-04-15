@@ -22,6 +22,7 @@ export const clusterService = {
   resetFailOverCounter,
   resetSLA,
   toggleTraffic,
+  toggleTrafficStaging,
   addServer,
   dropServer,
   dropServerByName,
@@ -182,6 +183,10 @@ function resetSLA(clusterName, baseURL) {
 
 function toggleTraffic(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat`)
+}
+
+function toggleTrafficStaging(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
 function addServer(clusterName, host, port, monitorType, tag, baseURL) {
