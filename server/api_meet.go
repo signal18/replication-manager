@@ -122,7 +122,7 @@ func (repman *ReplicationManager) MeetInfoHandler(w http.ResponseWriter, r *http
 	if userID == "" || err != nil {
 		http.Error(w, "Missing user ID in header", http.StatusInternalServerError)
 		if repman.Conf.LogSupport {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlWarn, "MeetInfo: No user ID in request header token : %s", err)
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlDbg, "MeetInfo: No user ID in request header token : %s", err)
 		}
 		return
 	}
