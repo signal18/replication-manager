@@ -30,6 +30,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
         if (!proxy.backendsRead && !proxy.backendsWrite) {
           data.push({
             logo: <ProxyLogo proxyName={proxy.type} />,
+            isStaging: proxy.isStaging,
             proxyId: proxy.id,
             showMenu: true, // to show the menu icon
             server: `${proxy.host}:${proxy.port}`,
@@ -45,6 +46,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
     return {
       logo: isNewProxy && <ProxyLogo proxyName={proxy.type} />,
       proxyId: proxy.id,
+      isStaging: proxy.isStaging,
       showMenu: isNewProxy,
       server: `${proxy.host}:${data.port}`,
       status: <ProxyStatus status={proxy.state} />,
