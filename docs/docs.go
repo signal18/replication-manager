@@ -769,6 +769,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag}": {
+            "post": {
+                "description": "This endpoint adds a server to the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Add a server to a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Host",
+                        "name": "host",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Port",
+                        "name": "port",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Type",
+                        "name": "type",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Tag",
+                        "name": "tag",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitor added",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "409": {
+                        "description": "Error adding new monitor",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/cancel-rolling-reprov": {
             "post": {
                 "description": "This endpoint cancels the rolling reprovision for the specified cluster.",
@@ -1714,7 +1798,111 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/start-traffic-staging": {
+            "post": {
+                "description": "This endpoint starts traffic for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTraffics"
+                ],
+                "summary": "Start traffic for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully started traffic",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/stop-traffic": {
+            "post": {
+                "description": "This endpoint stops traffic for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTraffics"
+                ],
+                "summary": "Stop traffic for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully stopped traffic",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/stop-traffic-staging": {
             "post": {
                 "description": "This endpoint stops traffic for the specified cluster.",
                 "consumes": [
@@ -3288,6 +3476,78 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/proxies/{proxyName}/actions/staging/{isStaging}": {
+            "post": {
+                "description": "Set the proxy service for a given cluster and proxy to staging",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Proxies"
+                ],
+                "summary": "Set Staging",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Proxy Name",
+                        "name": "proxyName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Is Staging",
+                        "name": "isStaging",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Proxy Service Set to Staging",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "503": {
+                        "description": "Not a Valid Server!",
                         "schema": {
                             "type": "string"
                         }
@@ -12394,6 +12654,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/cluster/{clusterName}/actions/dropserver/{serverName}": {
+            "post": {
+                "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Drop a server monitor from a cluster by name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Monitor Server ID",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Monitor dropped successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/meet/add/{channelId}/{userId}": {
             "get": {
                 "description": "Adds a user to a specific channel",
@@ -13597,6 +13916,9 @@ const docTemplate = `{
                         "$ref": "#/definitions/cluster.VariableDiff"
                     }
                 },
+                "diskStat": {
+                    "$ref": "#/definitions/misc.DiskStatManager"
+                },
                 "diskType": {
                     "type": "object",
                     "additionalProperties": {
@@ -13615,6 +13937,12 @@ const docTemplate = `{
                 },
                 "failoverLastTime": {
                     "type": "integer"
+                },
+                "falsePositiveChecks": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
+                    }
                 },
                 "fsType": {
                     "type": "object",
@@ -13700,10 +14028,13 @@ const docTemplate = `{
                 "isNeedProxiesConfigChange": {
                     "type": "boolean"
                 },
+                "isNeedProxiesReprov": {
+                    "type": "boolean"
+                },
                 "isNeedProxiesRestart": {
                     "type": "boolean"
                 },
-                "isNeedProxyRestart": {
+                "isNeedStagingChange": {
                     "type": "boolean"
                 },
                 "isNotMonitoring": {
@@ -13713,6 +14044,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "isProvision": {
+                    "type": "boolean"
+                },
+                "isRefreshStaging": {
                     "type": "boolean"
                 },
                 "isSplitBrain": {
@@ -13987,6 +14321,9 @@ const docTemplate = `{
                 },
                 "internalProxy": {
                     "$ref": "#/definitions/myproxy.Server"
+                },
+                "isStaging": {
+                    "type": "boolean"
                 },
                 "lock": {
                     "$ref": "#/definitions/sync.Mutex"
@@ -14413,6 +14750,10 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dbhelper.SlaveStatus"
                     }
+                },
+                "lastTLSConfig": {
+                    "description": "used to track last working TLS config",
+                    "type": "string"
                 },
                 "logOutput": {
                     "type": "string"
@@ -15209,6 +15550,9 @@ const docTemplate = `{
         "github_com_signal18_replication-manager_config.Config": {
             "type": "object",
             "properties": {
+                "ExternalScript": {
+                    "type": "boolean"
+                },
                 "alertPushoverAppToken": {
                     "type": "string"
                 },
@@ -15375,6 +15719,24 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "backupBinlogsKeep": {
+                    "type": "integer"
+                },
+                "backupCheckFreeSpace": {
+                    "type": "boolean"
+                },
+                "backupDiskTresholdCrit": {
+                    "type": "integer"
+                },
+                "backupDiskTresholdWarn": {
+                    "type": "integer"
+                },
+                "backupEstimateSize": {
+                    "type": "boolean"
+                },
+                "backupEstimateSizePercentage": {
+                    "type": "integer"
+                },
+                "backupGrowthPercentage": {
                     "type": "integer"
                 },
                 "backupKeepDaily": {
@@ -15728,6 +16090,9 @@ const docTemplate = `{
                 "dbServersTlsServerKey": {
                     "type": "string"
                 },
+                "dbServersTlsSslMode": {
+                    "type": "string"
+                },
                 "dbServersUseGeneratedCert": {
                     "type": "boolean"
                 },
@@ -15912,12 +16277,6 @@ const docTemplate = `{
                 "fullVersion": {
                     "type": "string"
                 },
-                "gitMaxWorker": {
-                    "type": "integer"
-                },
-                "gitMinWorker": {
-                    "type": "integer"
-                },
                 "gitMonitoringTicker": {
                     "type": "integer"
                 },
@@ -16095,6 +16454,9 @@ const docTemplate = `{
                 "logConfigLoadLevel": {
                     "type": "integer"
                 },
+                "logExternalScriptLevel": {
+                    "type": "integer"
+                },
                 "logFile": {
                     "type": "string"
                 },
@@ -16155,6 +16517,9 @@ const docTemplate = `{
                 },
                 "logSstLevel": {
                     "description": "internal replication-manager sst",
+                    "type": "integer"
+                },
+                "logStatsLevel": {
                     "type": "integer"
                 },
                 "logSupport": {
@@ -17216,6 +17581,9 @@ const docTemplate = `{
                 "sstSendBuffer": {
                     "type": "integer"
                 },
+                "stagingProxyHosts": {
+                    "type": "string"
+                },
                 "switchoverAtEqualGtid": {
                     "type": "boolean"
                 },
@@ -17228,11 +17596,17 @@ const docTemplate = `{
                 "switchoverDecreaseMaxConnValue": {
                     "type": "integer"
                 },
+                "switchoverLockUserOnFreeze": {
+                    "type": "boolean"
+                },
                 "switchoverLowerRelease": {
                     "type": "boolean"
                 },
                 "switchoverMaxSlaveDelay": {
                     "type": "integer"
+                },
+                "switchoverRedirectOnFreeze": {
+                    "type": "boolean"
                 },
                 "switchoverSlaveWaitCatch": {
                     "type": "boolean"
@@ -17283,6 +17657,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "testInjectTraffic": {
+                    "type": "boolean"
+                },
+                "testInjectTrafficStaging": {
                     "type": "boolean"
                 },
                 "topologyStaging": {
@@ -17539,6 +17916,58 @@ const docTemplate = `{
                 "text": {
                     "type": "string"
                 }
+            }
+        },
+        "misc.DiskStatManager": {
+            "type": "object",
+            "properties": {
+                "stats": {
+                    "$ref": "#/definitions/misc.DiskUsageStatMap"
+                }
+            }
+        },
+        "misc.DiskUsageStat": {
+            "type": "object",
+            "properties": {
+                "free": {
+                    "type": "integer"
+                },
+                "fstype": {
+                    "type": "string"
+                },
+                "inodesFree": {
+                    "type": "integer"
+                },
+                "inodesTotal": {
+                    "type": "integer"
+                },
+                "inodesUsed": {
+                    "type": "integer"
+                },
+                "inodesUsedPercent": {
+                    "type": "number"
+                },
+                "last_update": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "used": {
+                    "type": "integer"
+                },
+                "usedPercent": {
+                    "type": "number"
+                }
+            }
+        },
+        "misc.DiskUsageStatMap": {
+            "type": "object",
+            "additionalProperties": {
+                "$ref": "#/definitions/misc.DiskUsageStat"
             }
         },
         "myproxy.Server": {
@@ -18111,6 +18540,12 @@ const docTemplate = `{
                 "memprofile": {
                     "type": "string"
                 },
+                "monitorType": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
                 "os": {
                     "type": "string"
                 },
@@ -18172,6 +18607,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.Role"
+                    }
+                },
+                "serviceSslMode": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "boolean"
                     }
                 },
                 "serviceTarballs": {
