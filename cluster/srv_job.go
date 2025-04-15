@@ -611,6 +611,11 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	}
 
 	server.SetInReseedBackup(task)
+	defer func() {
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+	}()
 
 	//Delete wait logical backup cookie
 	server.DelWaitLogicalBackupCookie()
@@ -667,13 +672,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			}
 		}
 
-		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
-		if err != nil {
-			if server.HasReseedingState(task) {
-				server.SetInReseedBackup("")
-			}
-			return err
-		}
+		dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion) // Ignore error
 	}
 
 	server.JobsUpdateState(task, "processing", 1, 0)
