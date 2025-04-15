@@ -1310,6 +1310,7 @@ const initialState = {
   clusterMaster: null,
   clusterServers: null,
   clusterProxies: null,
+  clusterProxiesStaging: null,
   clusterCertificates: null,
   clusterStates: null,
   backups: {
@@ -1398,7 +1399,8 @@ export const clusterSlice = createSlice({
           state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
-          state.clusterProxies = action.payload.data
+          state.clusterProxies = action.payload?.data
+          state.clusterProxiesStaging = action.payload?.data?.filter((proxy) => proxy.isStaging).map((proxy) => proxy.name).join(',') || ''
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
