@@ -68,7 +68,9 @@ func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newSt
 			cluster.PostDetachStaging(srv.Host, srv.Port, newState, oldState)
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "No staging post detach script. Using default")
-			cluster.StagingServer.SetReadOnly() // Set the old staging server to read only
+			if cluster.StagingServer != nil {
+				cluster.StagingServer.SetReadOnly() // Set the old staging server to read only
+			}
 
 			cluster.StagingServer = srv          // Set the new staging server as the new staging server
 			cluster.StagingServer.SetReadWrite() // Set the new staging server to read write for proxysql read-only checks
