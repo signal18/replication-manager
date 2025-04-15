@@ -456,13 +456,20 @@ func (proxy *ProxySQLProxy) Refresh() error {
 				}
 				updated = true
 			} else if s.State == stateUnconn && bke.PrxStatus == "ONLINE" {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting writer offline standalone server %s", s.URL)
-				err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
-				if err != nil {
-					cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+				if cluster.Conf.TopologyStaging { // Need to be dropped since standalone should not be writing in staging topology
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor Non Staging ProxySQL: drop standalone in writer group from %s", s.URL)
+					err = psql.DropWriter(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+				} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor ProxySQL setting writer offline standalone server %s", s.URL)
+					err = psql.SetOffline(misc.Unbracket(s.Host), s.Port)
+					if err != nil {
+						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
+					}
+					updated = true
 				}
-				updated = true
-
 			} else if s.State == stateUnconn && bkeread.PrxStatus == "ONLINE" && IsBackendReader {
 				if cluster.Conf.TopologyStaging { // Need to be dropped since standalone should not be writing in staging topology
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor Non Staging ProxySQL: drop standalone in reader group from %s", s.URL)
