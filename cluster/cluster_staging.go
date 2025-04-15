@@ -106,7 +106,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Waiting for slave %s to stop replication", STG.URL)
 		waitstart := time.Now()
 		for STG.State == stateSlave {
-			if waitstart.Add(10 * time.Second).Before(time.Now()) {
+			if waitstart.Add(30 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for slave %s to stop replication", STG.URL)
 				return err
 			}
@@ -138,7 +138,7 @@ func (cluster *Cluster) RefreshStaging() error {
 
 		waitstart = time.Now()
 		for STG.State != stateUnconn {
-			if waitstart.Add(10 * time.Second).Before(time.Now()) {
+			if waitstart.Add(30 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for slave %s to be reset", STG.URL)
 				return err
 			}
@@ -178,7 +178,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		// Wait until the slave is stopped
 		waitstart := time.Now()
 		for SL.State == stateSlave {
-			if waitstart.Add(10 * time.Second).Before(time.Now()) {
+			if waitstart.Add(30 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for slave %s to stop replication", SL.URL)
 				return err
 			}
@@ -202,15 +202,19 @@ func (cluster *Cluster) RefreshStaging() error {
 			}
 		}
 
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Resetting master position on slave %s", SL.URL)
+		SL.StopSlave()
 		_, err = SL.ResetSlave()
 		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error resetting slave: %s", err)
 			return err
 		}
 
 		waitstart = time.Now()
 		for SL.State != stateUnconn {
-			if waitstart.Add(10 * time.Second).Before(time.Now()) {
+			if waitstart.Add(30 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for slave %s to be reset", SL.URL)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error resetting slave: %s", err)
 				return err
 			}
 
@@ -240,7 +244,7 @@ func (cluster *Cluster) RefreshStaging() error {
 
 		waitstart = time.Now()
 		for STG.State != stateSlave {
-			if waitstart.Add(10 * time.Second).Before(time.Now()) {
+			if waitstart.Add(30 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for standalone %s to be reseeded", STG.URL)
 				return err
 			}
