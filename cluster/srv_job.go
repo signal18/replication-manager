@@ -703,7 +703,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 				}
 			}
 
-			err := server.JobReseedMysqldump(backupfile)
+			err = server.JobReseedMysqldump(backupfile)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -754,7 +754,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			}
 		}()
 	}
-	return nil
+	return err
 }
 
 func (server *ServerMonitor) JobServerStop() (int64, error) {
