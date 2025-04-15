@@ -468,8 +468,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					if err != nil {
 						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 					}
-					updated = true
 				}
+				updated = true
 			} else if s.State == stateUnconn && bkeread.PrxStatus == "ONLINE" && IsBackendReader {
 				if cluster.Conf.TopologyStaging { // Need to be dropped since standalone should not be writing in staging topology
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "Monitor Non Staging ProxySQL: drop standalone in reader group from %s", s.URL)
@@ -484,8 +484,8 @@ func (proxy *ProxySQLProxy) Refresh() error {
 					if err != nil {
 						cluster.SetState("ERR00070", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00070"], err, s.URL), ErrFrom: "PRX", ServerUrl: proxy.Name})
 					}
-					updated = true
 				}
+				updated = true
 			} else if s.IsLeader() && (s.PrevState == stateUnconn || s.PrevState == stateFailed || (len(proxy.BackendsWrite) == 0 || !isBackendWriter)) {
 				// if the master comes back from a previously failed or standalone state, reintroduce it in
 				// the appropriate HostGroup
