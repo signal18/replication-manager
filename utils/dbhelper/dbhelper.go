@@ -2064,12 +2064,8 @@ func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, e
 	query := "SELECT user, host, password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user where host<>'localhost' "
 	if myver.IsPostgreSQL() {
 		query = "SELECT usename as user , '%' as host , 'unknow'  as password, 0 FROM pg_catalog.pg_user"
-	} else if (myver.IsMySQL() || myver.IsPercona()) && (myver.Major > 7 || (myver.Major == 5 && myver.Minor >= 7)) {
-		if myver.Major > 7 {
-			query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)  FROM mysql.user"
-		} else {
-			query = "SELECT user, host, '****' as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)    FROM mysql.user"
-		}
+	} else if myver.IsMySQLOrPercona() && myver.GreaterEqual("5.7.6") {
+		query = "SELECT user, host, authentication_string as password, CONV(LEFT(MD5(concat(user,host)), 16), 16, 10)  FROM mysql.user"
 	}
 
 	rows, err := db.Queryx(query)
@@ -2530,6 +2526,13 @@ func ResetMaster(db *sqlx.DB, Channel string, myver *version.Version) (string, e
 	} else {
 		stmt += "RESET MASTER"
 	}
+	_, err := db.Exec(stmt)
+
+	return stmt, err
+}
+
+func SetGTIDBinlogState(db *sqlx.DB, binlogstate string) (string, error) {
+	stmt := "SET GLOBAL gtid_binlog_state = '" + binlogstate + "'"
 	_, err := db.Exec(stmt)
 
 	return stmt, err
