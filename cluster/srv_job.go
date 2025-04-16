@@ -31,6 +31,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
+	"github.com/klauspost/pgzip"
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
@@ -1902,6 +1903,10 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	}
 	myargs = append(myargs, "--outputdir", outputdir, "--threads", threads, "--host", misc.Unbracket(server.Host), "--port", server.Port, "--user", cluster.GetDbUser(), "--password", cluster.GetDbPass())
 
+	if cluster.Conf.BackupSplitUsers {
+		myargs = append(myargs, cluster.GetSplittedUserPattern(config.ConstBackupLogicalTypeMydumper)...) // Omit from file
+	}
+
 	if cluster.Conf.BackupMyDumperRegex != "" {
 		myargs = append(myargs, "--regex", cluster.Conf.BackupMyDumperRegex)
 	}
@@ -2106,6 +2111,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 	} else {
 		task := cluster.Conf.BackupLogicalType
+
+		if cluster.Conf.BackupSplitUsers {
+			server.DumpCredentialsAndPrivileges()
+		}
 
 		if cluster.Conf.MonitorScheduler {
 			server.JobInsertTask(task, "0", cluster.Conf.MonitorAddress)
@@ -3341,5 +3350,108 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)
 	}
+	return nil
+}
+
+func (server *ServerMonitor) DumpCredentialsAndPrivileges() error {
+	cluster := server.ClusterGroup
+
+	var err error
+	var hasOldFile bool
+	var grants map[string]*dbhelper.Grant
+	var conn *sqlx.Conn
+
+	if server.IsInUsersBackup {
+		return nil
+	}
+
+	server.IsInUsersBackup = true
+	defer func() {
+		server.IsInUsersBackup = false
+	}()
+
+	if server.Conn == nil {
+		return errors.New("No connection pool")
+	}
+
+	conn, err = server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return fmt.Errorf("Error connecting to %s: %s", server.URL, err)
+	}
+
+	grants, _, err = dbhelper.GetUsers(server.Conn, server.DBVersion)
+	if err != nil {
+		return fmt.Errorf("Error getting users: %s", err)
+	}
+
+	if len(grants) == 0 {
+		return errors.New("No users found")
+	}
+
+	filepath := server.GetMyBackupDirectory() + "/grants.sql.gz"
+	_, err = os.Stat(filepath)
+	if err == nil {
+		os.Rename(filepath, filepath+".old")
+		hasOldFile = true
+	}
+
+	// Create a file to write the grants to
+	file, err := os.Create(filepath)
+	if err != nil {
+		if hasOldFile {
+			os.Rename(filepath+".old", filepath)
+		}
+		return fmt.Errorf("Error creating grants file: %s", err)
+	}
+
+	// Create a gzip writer
+	gzipWriter := pgzip.NewWriter(file)
+
+	defer func() {
+		gzcerr := gzipWriter.Close()
+		if gzcerr != nil && err == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip writer: %s", gzcerr)
+			err = gzcerr
+		}
+		cerr := file.Close()
+		if cerr != nil && err == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing file: %s", cerr)
+			err = cerr
+		}
+		if hasOldFile {
+			if err != nil {
+				os.Rename(filepath+".old", filepath)
+			} else {
+				os.Remove(filepath + ".old")
+			}
+		}
+	}()
+
+	for _, grant := range grants {
+		var userGrants []string
+		// Run SHOW GRANTS FOR 'user'@'host'
+		query := fmt.Sprintf("SHOW GRANTS FOR '%s'@'%s'", grant.User, grant.Host)
+		err = server.ConnGetQuery(conn, &userGrants, query)
+		if err != nil {
+			return fmt.Errorf("Error getting grants for user %s@%s: %s", grant.User, grant.Host, err)
+		}
+
+		_, err = fmt.Fprintf(gzipWriter, "-- Grants for '%s'@'%s'\n", grant.User, grant.Host)
+		if err != nil {
+			return fmt.Errorf("Error writing to grants file: %s", err)
+		}
+
+		for _, row := range userGrants {
+			_, err = fmt.Fprintln(gzipWriter, row+";")
+			if err != nil {
+				return fmt.Errorf("Error writing to grants file: %s", err)
+			}
+		}
+		_, err = fmt.Fprintln(gzipWriter, "")
+		if err != nil {
+			return fmt.Errorf("Error writing to grants file: %s", err)
+		}
+	}
+
 	return nil
 }

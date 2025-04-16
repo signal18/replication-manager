@@ -37,6 +37,22 @@ func (cluster *Cluster) GetCrcTable() *crc64.Table {
 	return cluster.crcTable
 }
 
+func (cluster *Cluster) GetSplittedUserPattern(backtype string) []string {
+	tables := []string{"mysql.user", "mysql.db", "mysql.tables_priv", "mysql.columns_priv", "mysql.procs_priv", "mysql.proxies_priv"}
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump:
+		for i, table := range tables {
+			tables[i] = `--ignore-table=` + table
+		}
+	case config.ConstBackupLogicalTypeMydumper:
+		for i, table := range tables {
+			tables[i] = `--omit-from-file=` + table
+		}
+	}
+
+	return tables
+}
+
 func (cluster *Cluster) getDumpParameter() string {
 	dump_param := cluster.Conf.BackupMysqldumpOptions
 	if cluster.master != nil {
@@ -89,6 +105,11 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 
 	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
 	dumpargs = append(dumpargs, strings.Split(server.GetSSLClientParam("client-dump"), " ")...)
+
+	if cluster.Conf.BackupSplitUsers {
+		dumpargs = append(dumpargs, cluster.GetSplittedUserPattern(config.ConstBackupLogicalTypeMysqldump)...)
+	}
+
 	return misc.RemoveEmptyString(dumpargs)
 }
 

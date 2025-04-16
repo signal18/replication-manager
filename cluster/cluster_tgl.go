@@ -160,6 +160,14 @@ func (cluster *Cluster) SwitchCompressBackups() {
 	cluster.Conf.CompressBackups = !cluster.Conf.CompressBackups
 }
 
+func (cluster *Cluster) SwitchBackupSplitUsers() {
+	cluster.Conf.BackupSplitUsers = !cluster.Conf.BackupSplitUsers
+}
+
+func (cluster *Cluster) SwitchBackupRestoreUsers() {
+	cluster.Conf.BackupRestoreUsers = !cluster.Conf.BackupRestoreUsers
+}
+
 func (cluster *Cluster) SwitchInteractive() {
 	if cluster.Conf.Interactive == true {
 		cluster.Conf.Interactive = false

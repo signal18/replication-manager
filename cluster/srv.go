@@ -199,6 +199,7 @@ type ServerMonitor struct {
 	IsReseeding                 string                     `json:"isReseeding"`
 	ReplicationTags             string                     `json:"replicationTags"`
 	JobResults                  *config.TasksMap           `json:"jobResults"`
+	IsInUsersBackup             bool
 	IsInSlowQueryCapture        bool
 	IsInPFSQueryCapture         bool
 	InPurgingBinaryLog          bool

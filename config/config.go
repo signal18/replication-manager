@@ -644,6 +644,9 @@ type Config struct {
 	BackupDatabaseAnalyzeCron                 string                 `mapstructure:"scheduler-db-servers-analyze-cron" toml:"scheduler-db-servers-analyze-cron" json:"schedulerDbServersAnalyzeCron"`
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
+	BackupSplitUsers                          bool                   `mapstructure:"backup-split-users" toml:"backup-split-users" json:"backupSplitUsers"`
+	BackupRestoreUsers                        bool                   `mapstructure:"backup-restore-users" toml:"backup-restore-users" json:"backupRestoreUsers"`
+	BackupPushFromNode                        bool                   `mapstructure:"backup-push-from-node" toml:"backup-push-from-node" json:"backupPushFromNode"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
 	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
 	BackupDiskTresholdWarn                    int                    `mapstructure:"backup-disk-treshold-warn" toml:"backup-disk-treshold-warn" json:"backupDiskTresholdWarn"`
