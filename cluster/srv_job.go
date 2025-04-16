@@ -1151,9 +1151,11 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	}
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--defaults-file=`+file, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--force`, `--batch`, `--verbose`)
+	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`, `--verbose`)
 	cliParams = append(cliParams, strings.Split(server.GetSSLClientParam("client"), " ")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "XXXX", -1))
 
 	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
