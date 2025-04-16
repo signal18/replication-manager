@@ -1138,17 +1138,11 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	fz, err := gzip.NewReader(gzfile)
+	fz, err := gzip.NewReaderN(gzfile, 1024*1024, 16)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 	defer fz.Close()
-
-	var buf bytes.Buffer
-	_, err = io.Copy(&buf, fz)
-	if err != nil {
-		return fmt.Errorf("[%s] Error happened when unzipping backup file in backup server for reseed:  %s ", server.URL, err)
-	}
 
 	cliParams := make([]string, 0)
 	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`, `--verbose`)
@@ -1161,7 +1155,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
 		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
 	}
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), &buf)
+
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
 
 	stderr, _ := clientCmd.StdoutPipe()
 	clientCmd.Stderr = clientCmd.Stdout
