@@ -262,6 +262,7 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
+	server.Tables = make([]v3.Table, 0)
 	server.HostCnf = url // store host from config file
 	server.QPS = 0
 	server.IsCompute = compute
