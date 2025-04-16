@@ -1107,6 +1107,15 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 		if server.IsMariaDB() && server.HaveMariaDBGTID {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
 			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+
+			if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
+				// Also reset GTID binlog state
+				_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
+				if err != nil {
+					return err
+				}
+			}
+
 			server.StartSlave()
 		}
 	}
