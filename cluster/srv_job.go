@@ -1138,15 +1138,16 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	fz, err := gzip.NewReaderN(gzfile, 8*1024*1024, 16)
+	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, 16)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 	defer fz.Close()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`, `--max-allowed-packet=128M`)
+	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`)
 	cliParams = append(cliParams, strings.Split(server.GetSSLClientParam("client"), " ")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "XXXX", -1))
