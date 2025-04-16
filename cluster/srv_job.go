@@ -1903,9 +1903,9 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	}
 	myargs = append(myargs, "--outputdir", outputdir, "--threads", threads, "--host", misc.Unbracket(server.Host), "--port", server.Port, "--user", cluster.GetDbUser(), "--password", cluster.GetDbPass())
 
-	if cluster.Conf.BackupSplitUsers {
-		myargs = append(myargs, cluster.GetSplittedUserPattern(config.ConstBackupLogicalTypeMydumper)...) // Omit from file
-	}
+	// if cluster.Conf.BackupSplitUsers {
+	// 	myargs = append(myargs, cluster.GetSplittedUserPattern(config.ConstBackupLogicalTypeMydumper)...) // Omit from file
+	// }
 
 	if cluster.Conf.BackupMyDumperRegex != "" {
 		myargs = append(myargs, "--regex", cluster.Conf.BackupMyDumperRegex)
