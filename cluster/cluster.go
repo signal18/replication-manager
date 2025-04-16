@@ -1627,28 +1627,30 @@ func (cluster *Cluster) MonitorSchema() {
 		}
 		// lookup other clusters
 
-		for _, cl := range cluster.clusterList {
-			if cl.GetName() != cluster.GetName() {
-
-				m := cl.GetMaster()
-				if m != nil {
-					cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
-					if cltbldef.TableName == t.TableName {
-						duplicates = append(duplicates, cl.GetMaster())
-						tableCluster = append(tableCluster, cl.GetName())
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
+		if cluster.Conf.MdbsProxyOn {
+			for _, cl := range cluster.clusterList {
+				if cl.GetName() != cluster.GetName() {
+					m := cl.GetMaster()
+					if m != nil {
+						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
+						if cltbldef.TableName == t.TableName {
+							duplicates = append(duplicates, cl.GetMaster())
+							tableCluster = append(tableCluster, cl.GetName())
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Found duplicate table %s in %s", t.TableSchema+"."+t.TableName, cl.GetMaster().URL)
+						}
 					}
 				}
 			}
-		}
-		t.TableClusters = strings.Join(tableCluster, ",")
-		tables[t.TableSchema+"."+t.TableName] = t
-		if haschanged && cluster.Conf.MdbsProxyOn {
-			for _, pri := range cluster.Proxies {
-				if prx, ok := pri.(*MariadbShardProxy); ok {
-					if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
-						cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
+			t.TableClusters = strings.Join(tableCluster, ",")
+			tables[t.TableSchema+"."+t.TableName] = t
+
+			if haschanged {
+				for _, pri := range cluster.Proxies {
+					if prx, ok := pri.(*MariadbShardProxy); ok {
+						if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
+							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
+						}
 					}
 				}
 			}
