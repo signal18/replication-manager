@@ -1138,14 +1138,14 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	fz, err := gzip.NewReaderN(gzfile, 1024*1024, 16)
+	fz, err := gzip.NewReaderN(gzfile, 8*1024*1024, 16)
 	if err != nil {
 		return fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 	defer fz.Close()
 
 	cliParams := make([]string, 0)
-	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`, `--verbose`)
+	cliParams = append(cliParams, `--host=`+misc.Unbracket(server.Host), `--port=`+server.Port, `--user=`+cluster.GetDbUser(), `--password=`+cluster.GetDbPass(), `--force`, `--batch`, `--max-allowed-packet=128M`)
 	cliParams = append(cliParams, strings.Split(server.GetSSLClientParam("client"), " ")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
@@ -1165,9 +1165,15 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 		return fmt.Errorf("Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), cluster.GetDbPass(), "XXXX"))
 	}
 
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
 	go func() {
-		server.copyTaskDebugLogs(stderr, config.ConstLogModBackupStream, "reseedmysqldump")
+		defer wg.Done()
+		server.copyLogs(stderr, config.ConstLogModBackupStream, config.LvlDbg)
 	}()
+
+	wg.Wait()
 
 	err = clientCmd.Wait()
 	if err != nil {
