@@ -1625,11 +1625,11 @@ func (cluster *Cluster) MonitorSchema() {
 			}
 			t.TableSync = oldtable.TableSync
 		}
-		// lookup other clusters
 
+		// If shardproxy is enabled, check for duplicates in child clusters
 		if cluster.Conf.MdbsProxyOn {
 			for _, cl := range cluster.clusterList {
-				if cl.GetName() != cluster.GetName() {
+				if cl.Conf.MdbsProxyOn && cl.Conf.ClusterHead == cluster.Name {
 					m := cl.GetMaster()
 					if m != nil {
 						cltbldef, _ := m.GetTableFromDict(t.TableSchema + "." + t.TableName)
