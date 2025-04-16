@@ -87,6 +87,8 @@ export const clusterService = {
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
+  killThread,
+  killQuery,
 
   // Test run APIs
   runSysbench,
@@ -427,6 +429,14 @@ function updateLongQueryTime(clusterName, dbId, time, baseURL) {
 
 function toggleDatabaseActions(clusterName, serviceName, dbId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/actions/${serviceName}`)
+}
+
+function killThread(clusterName, dbId, queryDigest, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/queries/${queryDigest}/actions/kill-thread`)
+}
+
+function killQuery(clusterName, dbId, queryDigest, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/queries/${queryDigest}/actions/kill-query`)
 }
 
 function checksumTable(clusterName, schema, table, baseURL) {
