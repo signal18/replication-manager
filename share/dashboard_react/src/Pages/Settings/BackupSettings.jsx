@@ -19,17 +19,26 @@ import { DataTable } from '../../components/DataTable'
 import ResticPurgeStrategy from './ResticPurgeStrategy'
 import NumberInput from '../../components/NumberInput'
 
+const sizeGenerator = () => { 
+  const result = []
+  let i = 1024;
+  while( i <= 1024 * 1024 * 1024) {
+    result.push(i)
+    i = i * 2
+  }
+
+  return result.map((size) => {
+    return { name: formatBytes(size, 0), value: size }
+  })
+}
+
 function BackupSettings({ selectedCluster, user }) {
   const dispatch = useDispatch()
   const [logicalBackupOptions, setLogicalBackupOptions] = useState([])
   const [physicalBackupOptions, setPhysicalBackupOptions] = useState([])
   const [binlogBackupOptions, setBinlogBackupOptions] = useState([])
   const [binlogParseOptions, setBinlogParseOptions] = useState([])
-  const [sizeOptions, setSizeOptions] = useState(
-    [1024, 2048, 4096, 8192, 16384, 32768, 65536, 1048576].map((size) => {
-      return { name: formatBytes(size, 0), value: size }
-    })
-  )
+  const [sizeOptions, setSizeOptions] = useState(sizeGenerator())
   const [selectedBinlogBackupType, setselectedBinlogBackupType] = useState('')
   const [action, setAction] = useState({
     title: '',
@@ -173,6 +182,26 @@ The script will be executed with the following parameters:
             }}
           />
         </Flex>
+      )
+    },
+    {
+      key: 'DB Client options',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.backupMysqlclientOptions}
+          confirmTitle={`Confirm backup-mysqlclient-options to `}
+          maxLength={1024}
+          className={styles.textbox}
+          onSave={(value) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'backup-mysqlclient-options',
+                value: btoa(value)
+              })
+            )
+          }
+        />
       )
     },
     {
@@ -352,8 +381,7 @@ The script will be executed with the following parameters:
         </Flex>
       )
     },
-
-    {
+   {
       key: 'Use Compression',
       value: (
         <RMSwitch
