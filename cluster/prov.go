@@ -8,12 +8,14 @@ package cluster
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 // Bootstrap provisions && setup topology
@@ -580,6 +582,16 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
 				server.SetReadWrite()
+
+				// Set master GTID mode to be compatible with the cluster
+				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+					// MySQL 5.7.6 and later
+					err := server.SetMyGTIDTransitional(true)
+					if err != nil {
+						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
+					}
+				}
+
 				if cluster.Conf.MultiMasterGrouprep {
 					// All clsuter node need a specialreplicaton for recovery parameters are not important as leader host is not needed
 					server.ChangeMasterTo(server, "CURRENT_POS")
@@ -587,6 +599,15 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				}
 				continue
 			} else {
+				// Set master GTID mode to be compatible with the cluster
+				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+					// MySQL 5.7.6 and later
+					err := server.SetMyGTIDTransitional(true)
+					if err != nil {
+						cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
+					}
+				}
+
 				if cluster.Conf.MultiMasterGrouprep {
 					err = server.ChangeMasterTo(server, "SLAVE_POS")
 					server.StartGroupReplication()
@@ -611,10 +632,27 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == masterKey {
 				dbhelper.FlushTables(server.Conn)
 				server.SetReadWrite()
+				// Set master GTID mode to be compatible with the cluster
+				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+					// MySQL 5.7.6 and later
+					err := server.SetMyGTIDTransitional(true)
+					if err != nil {
+						cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
+					}
+				}
 				continue
 			} else {
 				dbhelper.StopAllSlaves(server.Conn, server.DBVersion)
 				dbhelper.ResetAllSlaves(server.Conn, server.DBVersion)
+
+				// Set master GTID mode to be compatible with the cluster
+				if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+					// MySQL 5.7.6 and later
+					err := server.SetMyGTIDTransitional(true)
+					if err != nil {
+						cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
+					}
+				}
 
 				if relaykey == key {
 					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS")
@@ -640,6 +678,20 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	}
 	// Multi Master
 	if cluster.Conf.MultiMaster == true {
+		for _, server := range cluster.Servers {
+			if server.State == stateFailed {
+				continue
+			}
+			// Set master GTID mode to be compatible with the cluster
+			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+				// MySQL 5.7.6 and later
+				err := server.SetMyGTIDTransitional(true)
+				if err != nil {
+					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
+				}
+			}
+		}
+
 		for key, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue
@@ -668,10 +720,34 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	}
 	// Ring
 	if cluster.Conf.MultiMasterRing == true {
+		for _, server := range cluster.Servers {
+			if server.State == stateFailed {
+				continue
+			}
+			// Set master GTID mode to be compatible with the cluster
+			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+				// MySQL 5.7.6 and later
+				err := server.SetMyGTIDTransitional(true)
+				if err != nil {
+					cluster.SetState("ERR00098", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00098"], err.Error()), ErrFrom: "TOPO"})
+				}
+			}
+		}
+
 		for key, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue
 			}
+
+			// Set master GTID mode to be compatible with the cluster
+			if cluster.Conf.ForceSlaveGtid && server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+				// MySQL 5.7.6 and later
+				err := server.SetMyGTIDTransitional(true)
+				if err != nil {
+					cluster.SetState("ERR00099", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00099"], server.URL, err.Error()), ErrFrom: "TOPO", ServerUrl: server.URL})
+				}
+			}
+
 			i := (len(cluster.Servers) + key - 1) % len(cluster.Servers)
 			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS")
 			if err != nil {

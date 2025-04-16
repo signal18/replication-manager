@@ -497,3 +497,37 @@ func (server *ServerMonitor) SetPointInTimeMeta(value config.PointInTimeMeta) {
 func (server *ServerMonitor) SetSuspect() {
 	server.SetState(stateSuspect)
 }
+
+func (server *ServerMonitor) SetMyGTIDTransitional(force bool) error {
+	if server.DBVersion.IsMySQLOrPercona() && server.DBVersion.GreaterEqual("5.7.6") {
+		if server.Variables.Get("ENFORCE_GTID_CONSISTENCY") == "OFF" {
+			_, err := dbhelper.SetEnforceGTIDConsistency(server.Conn, "ON")
+			if err != nil {
+				return err
+			}
+		}
+
+		if server.Variables.Get("GTID_MODE") == "OFF" {
+			_, err := dbhelper.SetMySQLGtidMode(server.Conn, "OFF_PERMISSIVE")
+			if err != nil {
+				return err
+			}
+		}
+
+		if server.Variables.Get("GTID_MODE") == "OFF_PERMISSIVE" {
+			_, err := dbhelper.SetMySQLGtidMode(server.Conn, "ON_PERMISSIVE")
+			if err != nil {
+				return err
+			}
+		}
+
+		if server.Variables.Get("GTID_MODE") == "ON_PERMISSIVE" && force {
+			_, err := dbhelper.SetMySQLGtidMode(server.Conn, "ON")
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
