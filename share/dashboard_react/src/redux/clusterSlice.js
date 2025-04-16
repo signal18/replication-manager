@@ -865,6 +865,44 @@ export const toggleReadOnly = createAsyncThunk(
   }
 )
 
+export const killThread = createAsyncThunk(
+  'cluster/killThread',
+  async ({ clusterName, serverId, queryDigest }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.killThread(clusterName, serverId, queryDigest, baseURL)
+      if (status === 200) {
+        showSuccessBanner('Thread killed successfully!', status, thunkAPI)
+      } else {
+        showErrorBanner('Thread kill failed!', status, thunkAPI)
+      }
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Thread kill failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const killQuery = createAsyncThunk(
+  'cluster/killQuery',
+  async ({ clusterName, serverId, queryDigest }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.killQuery(clusterName, serverId, queryDigest, baseURL)
+      if (status === 200) {
+        showSuccessBanner('Query killed successfully!', status, thunkAPI)
+      } else {
+        showErrorBanner('Query kill failed!', status, thunkAPI)
+      }
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Query kill failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const resetMaster = createAsyncThunk('cluster/resetMaster', async ({ clusterName, serverId }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1547,6 +1585,8 @@ export const clusterSlice = createSlice({
         startProxy.pending,
         stopProxy.pending,
         refreshStaging.pending,
+        killThread.pending,
+        killQuery.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1615,6 +1655,8 @@ export const clusterSlice = createSlice({
         startProxy.fulfilled,
         stopProxy.fulfilled,
         refreshStaging.fulfilled,
+        killThread.fulfilled,
+        killQuery.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -1684,6 +1726,8 @@ export const clusterSlice = createSlice({
         startProxy.rejected,
         stopProxy.rejected,
         refreshStaging.rejected,
+        killThread.rejected,
+        killQuery.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

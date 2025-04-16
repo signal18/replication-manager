@@ -7,8 +7,9 @@ import { DataTable } from '../../../../components/DataTable'
 import { getReadableTime } from '../../../../utility/common'
 import DropdownSysbench from '../../../../components/DropdownSysbench'
 import { getDatabaseService } from '../../../../redux/clusterSlice'
+import ProcessMenu from './ProcessMenu'
 
-function ProcessList({ clusterName, dbId }) {
+function ProcessList({ clusterName, dbId, user }) {
   const dispatch = useDispatch()
   const [data, setData] = useState([])
 
@@ -82,6 +83,12 @@ function ProcessList({ clusterName, dbId }) {
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor((row) => user?.grants['db-kill'] && <ProcessMenu clusterName={clusterName} serverId={dbId} row={row} user={user} />, {
+        cell: (info) => info.getValue(),
+        header: '#',
+        enableSorting: false,
+        width: '40px'
+      }),
       columnHelper.accessor((row) => row.id, {
         header: 'Id',
         enableSorting: false
