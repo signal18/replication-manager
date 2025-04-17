@@ -8,7 +8,7 @@ import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
 import RMIconButton from '../../components/RMIconButton'
 import { TbDatabaseExport, TbDatabaseImport, TbReload } from 'react-icons/tb'
-import { refreshStaging, stagingReseedFromParent } from '../../redux/clusterSlice'
+import { refreshStaging, reseedStagingFromParent } from '../../redux/clusterSlice'
 
 function StagingSettings({ selectedCluster, user, openConfirmModal }) {
   const dispatch = useDispatch()
@@ -82,7 +82,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
           <RMIconButton icon={TbDatabaseImport} onClick={() => {
             openConfirmModal(`Confirm reseed staging from parent? All cluster will be overwritten!`, () => () => {
               dispatch(
-                stagingReseedFromParent({ clusterName: selectedCluster?.name })
+                reseedStagingFromParent({ clusterName: selectedCluster?.name })
               )
             })
           }} />
