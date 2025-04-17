@@ -60,7 +60,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		return nil
 	}
 
-	if cluster.StagingServer == nil {
+	if cluster.StagingServer == nil || cluster.StagingServer.State != stateUnconn {
 		for _, srv := range cluster.Servers {
 			if srv.State == stateUnconn {
 				cluster.StagingServer = srv
@@ -243,7 +243,7 @@ func (cluster *Cluster) RefreshStaging() error {
 		}
 
 		waitstart = time.Now()
-		for STG.State != stateSlave {
+		for STG.State != stateSlave && STG.State != stateSlaveLate {
 			if waitstart.Add(60 * time.Second).Before(time.Now()) {
 				err = fmt.Errorf("timeout waiting for standalone %s to be reseeded", STG.URL)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
