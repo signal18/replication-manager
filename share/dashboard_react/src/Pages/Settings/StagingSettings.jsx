@@ -53,6 +53,18 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
     },
     ...(selectedCluster?.config?.topologyStaging ? [
       {
+        key: 'Staging head cluster',
+        value: (
+          <TextForm
+            value={selectedCluster?.config?.replicationMultisourceHeadClusters}
+            confirmTitle={`Confirm staging replication-multisource-head-clusters to `}
+            onSave={(value) => {
+              dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-multisource-head-clusters', value }))
+            }}
+          />
+        )
+      },
+      {
         key: 'Refresh Staging',
         value: (
           <RMIconButton icon={TbDatabaseExport} onClick={() => {
