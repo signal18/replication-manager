@@ -385,7 +385,7 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
 }
 
-func (cluster *Cluster) RefreshFromParentCluster(parent *Cluster) error {
+func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster) error {
 	var err error
 
 	if parent == nil {

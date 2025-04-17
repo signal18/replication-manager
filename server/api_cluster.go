@@ -565,6 +565,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRejectSubscription)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reseed-parent", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
+	))
 }
 
 // @Summary Retrieve servers for a specific cluster
@@ -6499,4 +6504,46 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
+}
+
+func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var strUser string
+	var valid bool
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, strUser = repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.Conf.ReplicationMultisourceHeadClusters == "" {
+			http.Error(w, "No multisource cluster", 500)
+			return
+		}
+
+		pcluster := repman.GetParentClusterFromReplicationSource(mycluster.Conf.ReplicationMultisourceHeadClusters)
+		if pcluster == nil {
+			http.Error(w, "No parent cluster", 500)
+			return
+		}
+
+		if !pcluster.IsURLPassACL(strUser, strings.Replace(r.URL.Path, "/"+mycluster.Name+"/", "/"+pcluster.Name+"/", 1), true) {
+			http.Error(w, "No valid ACL in parent cluster", 403)
+			return
+		}
+
+		go mycluster.ReseedFromParentCluster(pcluster)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Reseed from parent queued"))
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Reseed from parent queued"))
 }
