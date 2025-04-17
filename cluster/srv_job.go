@@ -2010,6 +2010,8 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	cluster.SetInLogicalBackupState(true)
+	defer cluster.SetInLogicalBackupState(false)
+
 	start := time.Now()
 	var prevId int64
 	prev := cluster.BackupMetaMap.GetPreviousBackup(cluster.Conf.BackupLogicalType, server.URL)

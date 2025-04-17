@@ -209,6 +209,14 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 	}
 
 	parentDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name
+	_, err := os.Stat(parentDir)
+	if os.IsNotExist(err) {
+		err = os.MkdirAll(parentDir, os.ModePerm)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating directory %s: %s", parentDir, err)
+		}
+	}
+
 	diskstat, err := disk.Usage(parentDir)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
