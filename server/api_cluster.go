@@ -3073,6 +3073,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStagingPostDetachScript = value
 	case "replication-multisource-head-clusters":
 		mycluster.Conf.ReplicationMultisourceHeadClusters = value
+	case "replication-source-name":
+		mycluster.Conf.MasterConn = value
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 
