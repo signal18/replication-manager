@@ -1114,10 +1114,17 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "XXXX", -1))
 
-	cmdstring := "RESET MASTER;SET sql_log_bin=0;SET long_query_time=10;"
-	if server.DBVersion.IsMySQLOrPerconaGreater84() {
-		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=0;SET long_query_time=10;"
+	sql_log_bin := 0
+	if server.URL == cluster.GetMaster().URL {
+		sql_log_bin = 1
 	}
+
+	cmdstring := "RESET MASTER;SET sql_log_bin=%d;SET long_query_time=10;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "RESET BINARY LOGS AND GTIDS;SET sql_log_bin=%d;SET long_query_time=10;"
+	}
+
+	cmdstring = fmt.Sprintf(cmdstring, sql_log_bin)
 
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
 
