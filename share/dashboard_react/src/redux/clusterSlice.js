@@ -1221,12 +1221,12 @@ export const refreshStaging = createAsyncThunk(
   }
 )
 
-export const reloadStagingScript = createAsyncThunk(
-  'cluster/reloadStagingScript',
+export const reseedStagingFromParent = createAsyncThunk(
+  'cluster/reseedStagingFromParent',
   async ({ clusterName }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.reloadStagingScript(clusterName, baseURL)
+      const { data, status } = await clusterService.reseedStagingFromParent(clusterName, baseURL)
       showSuccessBanner(`Staging script reloaded successfully!`, status, thunkAPI)
       return { data, status }
     } catch (error) {

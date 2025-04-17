@@ -856,7 +856,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-reseed-parent") {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-reseed-from-parent") {
 			return true
 		}
 	}

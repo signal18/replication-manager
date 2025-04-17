@@ -45,7 +45,7 @@ export const clusterService = {
   configDiscoverDB,
   configDynamic,
   refreshStaging,
-  reloadStagingScript,
+  reseedStagingFromParent,
 
   // Server management APIs
   setMaintenanceMode,
@@ -287,8 +287,8 @@ function refreshStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-refresh`)
 }
 
-function reloadStagingScript(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-reload-script`)
+function reseedStagingFromParent(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-reseed-from-parent`)
 }
 //#endregion Cluster management APIs
 

@@ -566,7 +566,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRejectSubscription)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/actions/staging-reseed-parent", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reseed-from-parent", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
