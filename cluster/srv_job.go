@@ -1067,7 +1067,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 		return fmt.Errorf("No master. Cancel backup reseeding %s", server.URL)
 	}
 
-	myargs := strings.Split(strings.ReplaceAll(cluster.Conf.BackupMyLoaderOptions, "  ", " "), " ")
+	myargs := cluster.GetMyLoaderCompatibleOptions()
 	if server.URL == cluster.GetMaster().URL {
 		myargs = append(myargs, "--enable-binlog")
 	}
