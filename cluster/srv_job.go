@@ -574,7 +574,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	useMaster := true
 	var dest string
 	switch backtype {
-	case config.ConstBackupLogicalTypeMysqldump:
+	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
@@ -582,28 +582,27 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		dest = "dumpling"
 	}
 
-	// Can't handle script validation, unknown logic
-	if backtype != "script" {
-		backupfile := master.GetMyBackupDirectory() + dest
+	backupfile := master.GetMyBackupDirectory() + dest
 
-		bckserver := cluster.GetBackupServer()
-		if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
-			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
-				backupfile = bckserver.GetMyBackupDirectory() + dest
-				useMaster = false
-			} else {
-				//Remove false cookie
-				bckserver.DelBackupTypeCookie(backtype)
-			}
+	bckserver := cluster.GetBackupServer()
+	if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
+		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
+			backupfile = bckserver.GetMyBackupDirectory() + dest
+			useMaster = false
+		} else {
+			//Remove false cookie
+			bckserver.DelBackupTypeCookie(backtype)
+		}
+	}
+
+	if useMaster {
+		if _, err := os.Stat(backupfile); err != nil {
+			//Remove false cookie
+			master.DelBackupTypeCookie(backtype)
+			return fmt.Errorf("No backup file found on master for %s", backtype)
 		}
 
-		if useMaster {
-			if _, err := os.Stat(backupfile); err != nil {
-				//Remove false cookie
-				master.DelBackupTypeCookie(backtype)
-				return fmt.Errorf("No backup file found on master for %s", backtype)
-			}
-		}
+		bckserver = master
 	}
 
 	if server.HasAnyReseedingState() {
@@ -678,81 +677,57 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		go func() {
-			defer cluster.LogPanicToFile(task)
-
-			useMaster := true
-			file := "mysqldump.sql.gz"
-			backupfile := cluster.master.GetMyBackupDirectory() + file
-
-			bckserver := cluster.GetBackupServer()
-			if bckserver != nil && bckserver.HasBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump) {
-				if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-					backupfile = bckserver.GetMasterBackupDirectory() + file
-					useMaster = false
-				} else {
-					//Remove false cookie
-					bckserver.DelBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump)
-				}
+		err = server.JobReseedMysqldump(backupfile)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		} else {
+			if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
+				server.StartSlave()
 			}
 
-			if useMaster {
-				if _, err := os.Stat(backupfile); err != nil {
-					//Remove false cookie
-					cluster.master.DelBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump)
-				}
+			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
-
-			err = server.JobReseedMysqldump(backupfile)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-				}
-			} else {
-				if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-				}
-			}
-		}()
+		}
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		go func() {
-			defer cluster.LogPanicToFile(task)
-
-			useMaster := true
-			dir := "mydumper"
-			backupdir := cluster.master.GetMyBackupDirectory() + dir
-
-			bckserver := cluster.GetBackupServer()
-			if bckserver != nil && bckserver.HasBackupTypeCookie(config.ConstBackupLogicalTypeMydumper) {
-				if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dir); err == nil {
-					backupdir = bckserver.GetMasterBackupDirectory() + dir
-					useMaster = false
-				} else {
-					//Remove false cookie
-					bckserver.DelBackupTypeCookie(config.ConstBackupLogicalTypeMydumper)
-				}
+		err = server.JobReseedMyLoader(backupfile)
+		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
+			meta, err2 := server.JobMyLoaderParseMeta(backupfile)
+			if err2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
+				err = err2
 			}
 
-			if useMaster {
-				if _, err := os.Stat(backupdir); err != nil {
-					//Remove false cookie
-					cluster.master.DelBackupTypeCookie(config.ConstBackupLogicalTypeMydumper)
-				}
-			}
+			if server.IsMariaDB() && server.HaveMariaDBGTID {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+				server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
 
-			err = server.JobReseedMyLoader(backupdir)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
+					// Also reset GTID binlog state
+					_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
 				}
-			} else {
-				if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+
+				if err == nil {
+					server.StartSlave()
 				}
 			}
-		}()
+		}
+
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		} else {
+			if e2 := server.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		}
 	}
 	return err
 }
@@ -778,22 +753,35 @@ func (server *ServerMonitor) JobServerRestart() (int64, error) {
 }
 
 func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
-	cluster := server.ClusterGroup
-	task := "flashback" + cluster.Conf.BackupLogicalType
+	var dest, backupfile string
+	var err error
 
+	cluster := server.ClusterGroup
+	backtype := cluster.Conf.BackupLogicalType
+	task := "flashback" + backtype
+
+	// Ensure the cluster is discovered before proceeding
 	if !cluster.IsDiscovered() {
 		return errors.New("Cluster not discovered yet")
 	}
 
+	// Get the master node of the cluster
 	master := cluster.GetMaster()
 	if master == nil {
 		return errors.New("No master found. Cancel reseed logical backup")
 	}
 
+	// Check if the server is already reseeding
+	if server.HasAnyReseedingState() {
+		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
+		return err
+	}
+
+	// Decide on backup filename depending on the backup type
 	useMaster := true
-	var dest string
-	switch cluster.Conf.BackupLogicalType {
-	case config.ConstBackupLogicalTypeMysqldump:
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
 	case config.ConstBackupLogicalTypeMydumper:
 		dest = "mydumper"
@@ -801,43 +789,48 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		dest = "dumpling"
 	}
 
-	// Can't handle script validation, unknown logic
-	if cluster.Conf.BackupLogicalType != "script" {
-		backupfile := master.GetMyBackupDirectory() + dest
+	// Skip file lookup if using custom script
+	if backtype != "script" {
+		// Construct backup path on master
+		backupfile = master.GetMyBackupDirectory() + dest
 
+		// If a backup server has a valid backup for this type, use it instead
 		bckserver := cluster.GetBackupServer()
-		if bckserver != nil && bckserver.HasBackupTypeCookie(cluster.Conf.BackupLogicalType) {
+		if bckserver != nil && bckserver.HasBackupTypeCookie(backtype) {
 			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
 				backupfile = bckserver.GetMyBackupDirectory() + dest
 				useMaster = false
 			} else {
-				//Remove false cookie
-				bckserver.DelBackupTypeCookie(cluster.Conf.BackupLogicalType)
+				// Remove invalid cookie if file does not exist
+				bckserver.DelBackupTypeCookie(backtype)
 			}
 		}
 
+		// If no valid backup found, abort
 		if useMaster {
 			if _, err := os.Stat(backupfile); err != nil {
-				//Remove false cookie
 				master.DelBackupTypeCookie(cluster.Conf.BackupPhysicalType)
-				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", cluster.Conf.BackupLogicalType)
+				return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
 			}
 		}
 	}
 
-	if server.HasAnyReseedingState() {
-		err := fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, err.Error())
-		return err
-	}
-
+	// Mark the server as in reseed for this task
 	server.SetInReseedBackup(task)
+	defer func() {
+		// Clear reseed state if task is still marked
+		if server.HasReseedingState(task) {
+			server.SetInReseedBackup("")
+		}
+	}()
 
+	// Attempt to stop slave replication on the server
 	logs, err := server.StopSlave()
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
+	// Reconfigure replication to point to master
 	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
 		Host:      cluster.master.Host,
 		Port:      cluster.master.Port,
@@ -851,91 +844,78 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 	}, server.DBVersion)
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
-		if server.HasReseedingState(task) {
-			server.SetInReseedBackup("")
-		}
 		return err
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", cluster.Conf.BackupLogicalType, server.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive flashback logical backup %s request for server: %s", backtype, server.URL)
+
+	// If a custom script is configured, use it
 	if cluster.Conf.BackupLoadScript != "" {
-		server.SetInReseedBackup("script")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Using script from backup-load-script on %s", server.URL)
-		go server.JobReseedBackupScript()
-	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMysqldump {
-		go func() {
-			defer cluster.LogPanicToFile(task)
+		server.JobReseedBackupScript()
 
-			useSelfBackup := true
-			file := "mysqldump.sql.gz"
-			backupfile := server.GetMyBackupDirectory() + file
-
-			bckserver := cluster.GetBackupServer()
-			if bckserver != nil && bckserver.HasBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump) {
-				if _, err := os.Stat(bckserver.GetMyBackupDirectory() + file); err == nil {
-					backupfile = bckserver.GetMasterBackupDirectory() + file
-					useSelfBackup = false
-				} else {
-					//Remove false cookie
-					bckserver.DelBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump)
-				}
+		// Handle mysqldump-based reseed
+	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
+		err := server.JobReseedMysqldump(backupfile)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		} else {
+			// Restart slave if needed
+			if server.IsSlave {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
+				server.StartSlave()
 			}
 
-			if useSelfBackup {
-				if _, err := os.Stat(backupfile); err != nil {
-					//Remove false cookie
-					server.DelBackupTypeCookie(config.ConstBackupLogicalTypeMysqldump)
-				}
+			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
-			err := server.JobReseedMysqldump(backupfile)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", cluster.Conf.BackupLogicalType, server.URL, err.Error())
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-				}
+		}
+
+		// Handle mydumper-based reseed
+	} else if backtype == config.ConstBackupLogicalTypeMydumper {
+		err := server.JobReseedMyLoader(backupfile)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
+			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+			}
+		} else {
+			// Parse metadata from mydumper
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
+			meta, err2 := server.JobMyLoaderParseMeta(backupfile)
+			if err2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
+				err = err2
 			} else {
-				if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+				// Set GTID position for MariaDB
+				if server.IsMariaDB() && server.HaveMariaDBGTID {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+
+					// Reset binlog state if supported
+					if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
+						_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
+							if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+							}
+						}
+					}
 				}
-			}
-		}()
-	} else if cluster.Conf.BackupLogicalType == config.ConstBackupLogicalTypeMydumper {
-		go func() {
-			defer cluster.LogPanicToFile(task)
 
-			useSelfBackup := true
-			dir := "mydumper"
-			backupdir := server.GetMyBackupDirectory() + dir
-
-			bckserver := cluster.GetBackupServer()
-			if bckserver != nil && bckserver.HasBackupTypeCookie(config.ConstBackupLogicalTypeMydumper) {
-				if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dir); err == nil {
-					backupdir = bckserver.GetMasterBackupDirectory() + dir
-					useSelfBackup = false
-				} else {
-					//Remove false cookie
-					bckserver.DelBackupTypeCookie(config.ConstBackupLogicalTypeMydumper)
+				if err == nil {
+					server.StartSlave()
 				}
 			}
 
-			if useSelfBackup {
-				if _, err := os.Stat(backupdir); err != nil {
-					//Remove false cookie
-					server.DelBackupTypeCookie(config.ConstBackupLogicalTypeMydumper)
-				}
+			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
-			err := server.JobReseedMyLoader(backupdir)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", cluster.Conf.BackupLogicalType, server.URL, err.Error())
-				if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-				}
-			} else {
-				if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-				}
-			}
-		}()
+		}
 	}
 
 	return nil
@@ -1097,28 +1077,6 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Finish logical restaure %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	server.Refresh()
 
-	// Prevent set slave when in PITR
-	if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
-		meta, err := server.JobMyLoaderParseMeta(backupdir)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err)
-		}
-		if server.IsMariaDB() && server.HaveMariaDBGTID {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-			server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
-
-			if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
-				// Also reset GTID binlog state
-				_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
-				if err != nil {
-					return err
-				}
-			}
-
-			server.StartSlave()
-		}
-	}
 	return nil
 }
 
@@ -1126,11 +1084,6 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master. Cancel backup reseeding %s", server.URL)
-	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 
@@ -1188,11 +1141,6 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	err = clientCmd.Wait()
 	if err != nil {
 		return fmt.Errorf("Error waiting reseed %s at %s", server.URL, err)
-	}
-
-	if server.IsSlave && !server.PointInTimeMeta.IsInPITR {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave after dump on %s", server.URL)
-		server.StartSlave()
 	}
 
 	return nil

@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -381,4 +383,120 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 		return []string{}
 	}
 	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
+}
+
+func (cluster *Cluster) RefreshFromParentCluster(parent *Cluster) error {
+	var err error
+
+	if parent == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
+		return fmt.Errorf("parent cluster cannot be nil")
+	}
+
+	backtype := parent.Conf.BackupLogicalType
+
+	cmaster := cluster.GetMaster()
+	if cmaster == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master server found")
+		return fmt.Errorf("no master server found")
+	}
+
+	bcksrv := parent.GetBackupServer()
+	if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
+		parent.LogModulePrintf(parent.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
+		return err
+	}
+
+	pmaster := parent.GetMaster()
+	if pmaster == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master server found")
+		return fmt.Errorf("no master server found")
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
+
+	var dest string
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump, "script":
+		dest = "mysqldump.sql.gz"
+	case config.ConstBackupLogicalTypeMydumper:
+		dest = "mydumper"
+	case config.ConstBackupLogicalTypeDumpling:
+		dest = "dumpling"
+	}
+
+	// Can't handle script validation, unknown logic
+	backupfile := bcksrv.GetMyBackupDirectory() + dest
+	if _, err := os.Stat(backupfile); err != nil {
+		//Remove false cookie
+		return fmt.Errorf("No backup file found on parent for %s", backtype)
+	}
+
+	if cmaster.HasAnyReseedingState() {
+		return fmt.Errorf("Server is in reseeding state by %s", cmaster.IsReseeding)
+	}
+
+	task := "reseed" + parent.Conf.BackupLogicalType
+	cmaster.SetInReseedBackup(task)
+	defer func() {
+		if cmaster.HasReseedingState(task) {
+			cmaster.SetInReseedBackup("")
+		}
+	}()
+
+	//Delete wait logical backup cookie
+	cmaster.DelWaitLogicalBackupCookie()
+
+	// Set replication master to current master if not PITR
+	logs, err := cmaster.StopSlaveChannel(parent.Conf.MasterConn)
+	if err != nil {
+		cluster.LogSQL(logs, err, cmaster.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", cmaster.URL, err)
+	}
+
+	changeOpt := dbhelper.ChangeMasterOpt{
+		Host:      pmaster.Host,
+		Port:      pmaster.Port,
+		User:      parent.GetRplUser(),
+		Password:  parent.GetRplPass(),
+		Retry:     strconv.Itoa(parent.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(parent.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "SLAVE_POS",
+		SSL:       parent.Conf.ReplicationSSL,
+		Channel:   parent.Conf.MasterConn,
+	}
+
+	if cmaster.DBVersion.IsMySQLOrPercona() {
+		if cmaster.HasMySQLGTID() {
+			changeOpt.Mode = "MASTER_AUTO_POSITION"
+		} else {
+			changeOpt.Mode = "POSITIONAL"
+		}
+	}
+
+	dbhelper.ChangeMaster(cmaster.Conn, changeOpt, cmaster.DBVersion) // Ignore error
+
+	cmaster.JobsUpdateState(task, "processing", 1, 0)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, cmaster.URL)
+
+	if backtype == config.ConstBackupLogicalTypeMysqldump {
+		err = cmaster.JobReseedMysqldump(backupfile)
+	} else if backtype == config.ConstBackupLogicalTypeMydumper {
+		err = cmaster.JobReseedMyLoader(backupfile)
+	} else {
+		return fmt.Errorf("Unknown backup type %s", backtype)
+	}
+
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, cmaster.URL, err.Error())
+		if e2 := cmaster.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+	} else {
+		if e2 := cmaster.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+		}
+	}
+
+	return err
 }
