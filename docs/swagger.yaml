@@ -4044,6 +4044,39 @@ paths:
       summary: Cleanup replication bootstrap for a specific cluster
       tags:
       - ClusterReplication
+  /api/clusters/{clusterName}/actions/reseed-from-parent:
+    post:
+      description: Reseed the specified cluster from its parent cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Reseed from parent queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reseed from Parent Cluster
+      tags:
+      - ClusterReplication
   /api/clusters/{clusterName}/actions/reset-failover-control:
     post:
       consumes:

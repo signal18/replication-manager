@@ -6508,6 +6508,17 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 	}
 }
 
+// handlerMuxReseedFromParent handles the HTTP request to reseed a cluster from its parent cluster.
+// @Summary Reseed from Parent Cluster
+// @Description Reseed the specified cluster from its parent cluster.
+// @Tags ClusterReplication
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Reseed from parent queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/reseed-from-parent [post]
 func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	var strUser string
