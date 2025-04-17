@@ -43,7 +43,7 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
   }, [search])
 
   const searchData = (serverData) => {
-    const searchedData = serverData.filter((x) => {
+    const searchedData = serverData?.filter((x) => {
       const searchValue = search.toLowerCase()
       if (
         x.table_schema.toLowerCase().includes(searchValue) ||
@@ -52,7 +52,7 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
       ) {
         return x
       }
-    })
+    }) || []
     return searchedData
   }
 
