@@ -13,14 +13,18 @@ func (cluster *Cluster) GetMyDumperCompatibleOptions() []string {
 		return params
 	}
 
-	params = strings.Split(cluster.Conf.BackupMyDumperOptions, " ")
-	if len(params) == 0 {
-		return params
+	parts := strings.Split(cluster.Conf.BackupMyDumperOptions, " ")
+	if len(parts) == 0 {
+		return parts
 	}
 
-	// for i, param := range params {
+	for _, param := range parts {
+		if param == "" {
+			continue
+		}
 
-	// }
+		params = append(params, param)
+	}
 
 	return params
 }
