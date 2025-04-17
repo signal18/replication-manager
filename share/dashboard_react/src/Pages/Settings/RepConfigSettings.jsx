@@ -5,12 +5,24 @@ import { useDispatch } from 'react-redux'
 import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSwitch from '../../components/RMSwitch'
-import RMSlider from '../../components/Sliders/RMSlider'
+import TextForm from '../../components/TextForm'
 
 function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfirmModal }) {
   const dispatch = useDispatch()
 
   const dataObject = [
+    {
+      key: 'Replication channel',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.replicationSourceName}
+          confirmTitle={`Confirm staging replication-source-name to `}
+          onSave={(value) => {
+            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-source-name', value }))
+          }}
+        />
+      )
+    },
     {
       key: 'Enforce read only on replicas',
       value: (
