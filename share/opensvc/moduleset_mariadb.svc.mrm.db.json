@@ -3444,7 +3444,7 @@
                 {
                     "var_author": "admin Manager",
                     "var_class": "file",
-                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_rep_binlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"@ mariadb_command: EXECURE IMMEDIATE IF(@@log_bin=0,\\\"SELECT 'Unchanged log_bin'\\\",  \\\"SET GLOBAL log_bin=0\\\");\\n@ mariadb_default: EXECURE IMMEDIATE IF(@@log_bin=1,\\\"SELECT 'Unchanged log_bin'\\\",  \\\"SET GLOBAL log_bin=1\\\");\\n\\n@ mysql_command: SET GLOBAL log_bin=0;\\n@ mysql_default: SET GLOBAL log_bin=1;\\n\\n[mysqld]\\nskip-log-bin\"}",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/no_rep_binlog.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"@ mariadb_command: EXECUTE IMMEDIATE IF(@@log_bin=0,\\\"SELECT 'Unchanged log_bin'\\\",  \\\"SET GLOBAL log_bin=0\\\");\\n@ mariadb_default: EXECUTE IMMEDIATE IF(@@log_bin=1,\\\"SELECT 'Unchanged log_bin'\\\",  \\\"SET GLOBAL log_bin=1\\\");\\n\\n@ mysql_command: SET GLOBAL log_bin=0;\\n@ mysql_default: SET GLOBAL log_bin=1;\\n\\n[mysqld]\\nskip-log-bin\"}",
                     "var_updated": "2024-07-29 19:09:19",
                     "var_name": "db_cnf_rep_no_binlog",
                     "id": 6114
