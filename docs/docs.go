@@ -15437,6 +15437,9 @@ const docTemplate = `{
         "dbhelper.SlaveStatus": {
             "type": "object",
             "properties": {
+                "autoPosition": {
+                    "type": "integer"
+                },
                 "channelName": {
                     "$ref": "#/definitions/sql.NullString"
                 },
@@ -15812,6 +15815,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "backupMysqlbinlogPath": {
+                    "type": "string"
+                },
+                "backupMysqlclientOptions": {
                     "type": "string"
                 },
                 "backupMysqlclientgPath": {

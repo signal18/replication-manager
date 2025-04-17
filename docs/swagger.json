@@ -15426,6 +15426,9 @@
         "dbhelper.SlaveStatus": {
             "type": "object",
             "properties": {
+                "autoPosition": {
+                    "type": "integer"
+                },
                 "channelName": {
                     "$ref": "#/definitions/sql.NullString"
                 },
@@ -15801,6 +15804,9 @@
                     "type": "string"
                 },
                 "backupMysqlbinlogPath": {
+                    "type": "string"
+                },
+                "backupMysqlclientOptions": {
                     "type": "string"
                 },
                 "backupMysqlclientgPath": {
