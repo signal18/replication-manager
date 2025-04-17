@@ -34,11 +34,13 @@ import NewServerModal from '../../../components/Modals/NewServerModal'
 import parentStyles from '../styles.module.scss'
 import CopyTextModal from '../../../components/Modals/CopyTextModal'
 import SetCredentialsModal from '../../../components/Modals/SetCredentialsModal'
+import NewClusterModal from '../../../components/Modals/NewClusterModal'
 
 function ClusterDetail({ selectedCluster }) {
   const dispatch = useDispatch()
   const {
     common: { isDesktop },
+    globalClusters: { monitor },
     cluster: {
       clusterMaster,
       clusterServers,
@@ -49,6 +51,7 @@ function ClusterDetail({ selectedCluster }) {
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)
+  const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const [isCredentialModalOpen, setIsCredentialModalOpen] = useState(false)
   const [isClipboardModalOpen, setIsClipboardModalOpen] = useState(false)
   const [clipboardText, setClipboardText] = useState('')
@@ -96,7 +99,7 @@ function ClusterDetail({ selectedCluster }) {
             setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
           }
         },
-        ...( selectedCluster.config.topologyStaging ? [{
+        ...(selectedCluster.config.topologyStaging ? [{
           name: 'Toggle Traffic Staging',
           onClick: () => {
             openConfirmModal()
@@ -106,32 +109,38 @@ function ClusterDetail({ selectedCluster }) {
         }] : []),
         ...(clusterMaster?.state === 'Failed'
           ? [
-              {
-                name: 'Failover',
-                onClick: () => {
-                  openConfirmModal()
-                  setConfirmTitle('Confirm failover?')
-                  setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
-                }
+            {
+              name: 'Failover',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle('Confirm failover?')
+                setConfirmHandler(() => () => dispatch(failOverCluster({ clusterName: selectedCluster?.name })))
               }
-            ]
+            }
+          ]
           : [
-              {
-                name: 'Switchover',
-                onClick: () => {
-                  openConfirmModal()
-                  setConfirmTitle('Confirm switchover?')
-                  setConfirmHandler(
-                    () => () => dispatch(switchOverCluster({ clusterName: selectedCluster?.name }))
-                  )
-                }
+            {
+              name: 'Switchover',
+              onClick: () => {
+                openConfirmModal()
+                setConfirmTitle('Confirm switchover?')
+                setConfirmHandler(
+                  () => () => dispatch(switchOverCluster({ clusterName: selectedCluster?.name }))
+                )
               }
-            ])
+            }
+          ])
       ]
     },
     {
       name: 'Provision',
       subMenu: [
+        {
+          name: 'New Cluster Shard',
+          onClick: () => {
+            setIsNewClusterModalOpen(true)
+          }
+        },
         {
           name: 'New Monitor',
           onClick: () => {
@@ -462,6 +471,16 @@ function ClusterDetail({ selectedCluster }) {
           title={confirmTitle}
           showPrettyJsonCheckbox={true}
         />
+      )}
+
+      {isNewClusterModalOpen && (
+        <NewClusterModal 
+        plans={monitor?.servicePlans} 
+        orchestrators={monitor?.serviceOrchestrators} 
+        defaultOrchestrator={monitor?.config.provOrchestrator} 
+        isOpen={isNewClusterModalOpen} 
+        clusterHead={selectedCluster?.name}
+        closeModal={() => setIsNewClusterModalOpen(false)} />
       )}
 
       {isNewServerModalOpen && (

@@ -110,6 +110,8 @@ export const clusterService = {
   acceptExternalRole,
   refuseExternalRole,
   endExternalRole,
+
+  addClusterShard,
 }
 
 //#region Cluster data APIs
@@ -511,6 +513,10 @@ function refuseExternalRole(clusterName, username, roles, reason, baseURL) {
 
 function endExternalRole(clusterName, username, roles, reason, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, { username, roles, reason })
+}
+
+function addClusterShard(clusterName, shardClusterName, formdata, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/add/${shardClusterName}`, formdata)
 }
 
 //#endregion User management APIs

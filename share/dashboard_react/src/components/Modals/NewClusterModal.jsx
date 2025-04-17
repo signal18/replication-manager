@@ -20,8 +20,9 @@ import RMButton from '../RMButton'
 import { useTheme } from '../../ThemeProvider'
 import parentStyles from './styles.module.scss'
 import TableType2 from '../TableType2'
+import { addClusterShard } from '../../redux/clusterSlice'
 
-function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, closeModal }) {
+function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, closeModal, clusterHead = '' }) {
   const dispatch = useDispatch()
   const { theme } = useTheme()
   const [orchestratorOptions, setOrchestratorOptions] = useState([])
@@ -48,7 +49,11 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
       return
     }
 
-    dispatch(addCluster({ clusterName, formdata: { orchestrator, plan } }))
+    if (clusterHead != "") {
+      dispatch(addClusterShard({ clusterHead, clusterShard: clusterName, formdata: { orchestrator, plan } }))
+    } else {
+      dispatch(addCluster({ clusterName, formdata: { orchestrator, plan } }))
+    }
     closeModal()
   }
 
