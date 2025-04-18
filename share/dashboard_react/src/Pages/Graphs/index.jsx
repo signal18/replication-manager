@@ -104,6 +104,16 @@ function Graphs() {
           maxExtent={8000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
+        <Graphite
+          chartRef={sbmRef}
+          size={selectedHour.value}
+          step={selectedStep.value}
+          context={context}
+          title={'Mutex'}
+          target={'perSecond(mysql.*./mysql_global_status_wait_synch_mutex*)'}
+          maxExtent={8000}
+          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+        />
       </Flex>
     </Flex>
   )
