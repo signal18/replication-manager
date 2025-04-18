@@ -1699,11 +1699,18 @@ func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 	return source
 }
 
-func GetStatus(db *sqlx.DB, myver *version.Version) (map[string]string, string, error) {
+func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
+	if  pfs_mutex {
+		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/mutex/innodb%' AND COUNT_STAR <>0"
+	}
+	if  pfs_latch {
+		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/rwlock/innodb%' AND COUNT_STAR <>0"
+	}
+
 	if myver.IsPostgreSQL() {
 		query = `SELECT 'COM_QUERY' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
 			UNION ALL SELECT 'COM_INSERT' as "variable_name",SUM(tup_inserted)::text as "value" FROM pg_stat_database
@@ -1958,6 +1965,25 @@ func GetVariablesCase(db *sqlx.DB, myver *version.Version, vcase string) (map[st
 	}
 	return vars, query, err
 }
+
+func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) {
+	vars := make(map[string]string)
+	query := "SELECT /*replication-manager*/ UPPER(NAME) AS variable_name, ENABLED AS VALUE from performance_schema.setup_instruments"
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return vars, query, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v Variable
+		err = rows.Scan(&v.Variable_name, &v.Value)
+		if err != nil {
+			return vars, query, err
+		}
+		vars[v.Variable_name] = v.Value
+	}
+	return vars, query, err
+	}
 
 func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 

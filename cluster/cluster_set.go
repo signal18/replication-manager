@@ -2469,3 +2469,27 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 func (cluster *Cluster) SetLogStatsLevel(value int) {
 	cluster.Conf.LogStatsLevel = value
 }
+
+
+
+func (cluster *Cluster) SetMonitorPFSMutex(value bool) {
+	cluster.Conf.MonitorPFSMutex = value
+	if value {
+		cluster.DropDBTagConfig("logmutex")
+		} else	{
+		cluster.DropDBTagConfig("logmutex")
+	}
+}
+
+func (cluster *Cluster) SetMonitorPFSLatch(value bool) {
+	cluster.Conf.MonitorPFSLatch = value
+	if value {
+		cluster.DropDBTagConfig("loglatch")
+		} else	{
+		cluster.DropDBTagConfig("loglatch")
+	}
+}
+
+func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
+   cluster.Conf.MonitorPFSInstruments= value
+}

@@ -166,6 +166,7 @@ type ServerMonitor struct {
 	Status                      *config.StringsMap         `json:"-"`
 	PrevStatus                  *config.StringsMap         `json:"-"`
 	PFSQueries                  *config.PFSQueriesMap      `json:"-"` //PFS queries
+	PFSInstruments 				      *config.StringsMap         `json:"pfsInstruments"`
 	SlowPFSQueries              *config.PFSQueriesMap      `json:"-"` //PFS queries from slow
 	DictTables                  *config.TablesMap          `json:"-"`
 	Tables                      []v3.Table                 `json:"-"`
@@ -212,6 +213,7 @@ type ServerMonitor struct {
 	BinaryLogName               string
 	DBDataDir                   string
 	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
+
 }
 
 type ServerBackupMeta struct {
@@ -320,6 +322,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.Status = config.NewStringsMap()
 	server.PrevStatus = config.NewStringsMap()
 	server.PFSQueries = config.NewPFSQueriesMap()
+	server.PFSInstruments = config.NewStringsMap()
 	server.SlowPFSQueries = config.NewPFSQueriesMap()
 	server.DictTables = config.NewTablesMap()
 	server.Plugins = config.NewPluginsMap()
@@ -1014,9 +1017,11 @@ func (server *ServerMonitor) Refresh() error {
 		return nil
 	}
 	server.PrevStatus = config.FromStringSyncMap(server.PrevStatus, server.Status)
-	status, logs, _ := dbhelper.GetStatus(server.Conn, server.DBVersion)
+	status, logs, err := dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch())
+	if err !=nil {
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get status  %s %s", server.URL, err)
+	}
 	server.Status = config.FromNormalStringMap(server.Status, status)
-
 	server.HaveSemiSync = server.HasSemiSync()
 	server.AddReplicationTag(server.HaveGtidStrictMode, "SEMISYNC")
 	server.SemiSyncMasterStatus = server.IsSemiSyncMaster()
@@ -1027,7 +1032,13 @@ func (server *ServerMonitor) Refresh() error {
 	server.AddReplicationTag(server.IsWsrepDonor && server.IsMariaDB(), "DONOR")
 	server.IsWsrepPrimary = server.HasWsrepPrimary()
 	server.AddReplicationTag(server.IsWsrepPrimary && server.IsMariaDB(), "PRIMARY")
-
+	if server.HasLogMutex() || server.HasLogLatch() {
+	  pfsinstruments, logs , err:= dbhelper.GetPFSVariablesInstruments(server.Conn)
+		server.PFSInstruments =config.FromNormalStringMap(server.PFSInstruments,pfsinstruments)
+		if err !=nil {
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get PFS insruments %s %s", server.URL, err)
+		}
+  }
 	server.ReplicationHealth = server.CheckReplication()
 
 	if server.IsSlave == true {
@@ -1627,7 +1638,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 
 		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
-		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion)
+		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
 
 		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {

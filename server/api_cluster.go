@@ -2186,6 +2186,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-blacklist":
 		mycluster.SwitchGraphiteBlacklist()
+	case "monitoring-performance-schema-mutex":
+		mycluster.SwitchMonitorPFSMutex()
+	case "monitoring-performance-schema-latch":
+		mycluster.SwitchMonitorPFSLatch()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-copy-grants":
