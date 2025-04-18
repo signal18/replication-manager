@@ -105,12 +105,12 @@ function Graphs() {
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <Graphite
-          chartRef={sbmRef}
+          chartRef={mutexRef}
           size={selectedHour.value}
           step={selectedStep.value}
           context={context}
           title={'Mutex'}
-          target={'perSecond(mysql.*./mysql_global_status_wait_synch_mutex*)'}
+          target="aliasByNode(perSecond(mysql.*.mysql_global_status_wait_synch_mutex*), 2)"
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
       </Flex>
