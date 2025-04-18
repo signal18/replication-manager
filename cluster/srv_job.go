@@ -1898,7 +1898,9 @@ func (server *ServerMonitor) JobBackupMysqldumpUser(filename string) error {
 	dir := filepath.Dir(filename)
 	userpath := filepath.Join(dir, "mysql.users.sql.gz")
 
-	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), append(cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter()), server.GetSSLClientParam("client-dump")...)...)
+	dumpargs := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
+	dumpargs = append(dumpargs, "--insert-ignore", "--system=user", "mysql", "user")
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
 
