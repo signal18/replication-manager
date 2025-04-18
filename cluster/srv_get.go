@@ -816,7 +816,7 @@ func (server *ServerMonitor) GetCPUUsageFromThreadsPool() float64 {
 	return -1
 }
 
-func (server *ServerMonitor) GetSSLClientParam(tool string) string {
+func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 	var noSSLParams, skipVerify bool
 	var cacertfile, clicertfile, clikeyfile, path, sslMode string
 	cluster := server.ClusterGroup
@@ -870,39 +870,39 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
 				}
 
-				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
+				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use","--ssl-mode
 					switch sslMode {
 					case "DISABLED":
-						return "--ssl-mode=DISABLED"
+						return []string{"--ssl-mode=DISABLED"}
 					case "PREFERRED", "REQUIRED":
-						return "--ssl-mode=" + sslMode // No verify server cert
+						return []string{"--ssl-mode=" + sslMode} // No verify server cert
 					case "VERIFY_CA":
-						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile
+						return []string{"--ssl-mode=" + sslMode, "--ssl-ca=" + cacertfile}
 					case "VERIFY_IDENTITY":
-						return "--ssl-mode=" + sslMode + " --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+						return []string{"--ssl-mode=" + sslMode, "--ssl-ca=" + cacertfile, "--ssl-cert=" + clicertfile, "--ssl-key=" + clikeyfile}
 					}
-				} else { // Use old --ssl equivalent
+				} else { // Use old","--ssl equivalent
 					switch sslMode {
 					case "DISABLED":
-						return "--skip-ssl"
+						return []string{"--skip-ssl"}
 					case "PREFERRED", "REQUIRED":
-						return "--ssl --ssl-verify-server-cert=false"
+						return []string{"--ssl", "--ssl-verify-server-cert=false"}
 					case "VERIFY_CA":
-						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile
+						return []string{"--ssl", "--ssl-verify-server-cert", "--ssl-ca=" + cacertfile}
 					case "VERIFY_IDENTITY":
-						return "--ssl --ssl-verify-server-cert --ssl-ca=" + cacertfile + " --ssl-cert=" + clicertfile + " --ssl-key=" + clikeyfile
+						return []string{"--ssl", "--ssl-verify-server-cert", "--ssl-ca=" + cacertfile, "--ssl-cert=" + clicertfile, "--ssl-key=" + clikeyfile}
 					}
 				}
 			} else {
-				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use --ssl-mode
-					return "--ssl-mode=" + sslMode // No verify server cert
-				} else { // Use old --ssl equivalent
+				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use","--ssl-mode
+					return []string{"--ssl-mode=" + sslMode} // No verify server cert
+				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
-						return "--skip-ssl"
+						return []string{"--skip-ssl"}
 					}
 
 					// No verify server cert
-					return "--ssl --ssl-verify-server-cert=false"
+					return []string{"--ssl", "--ssl-verify-server-cert=false"}
 				}
 			}
 		}
@@ -911,18 +911,18 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) string {
 	// Only add for client dist 11.3 onwards, and DB pre 11.3
 	if !server.DBVersion.IsMariaDBGreater113() && ver.IsMariaDBGreater113() {
 		if server.HasSSL() {
-			return "--ssl --ssl-verify-server-cert=false"
+			return []string{"--ssl", "--ssl-verify-server-cert=false"}
 		} else {
 			switch tool {
 			case "client":
-				return "--skip-ssl"
+				return []string{"--skip-ssl"}
 			case "client-dump", "client-binlog":
-				return "--ssl=FALSE"
+				return []string{"--ssl=FALSE"}
 			}
 		}
 	}
 
-	return ""
+	return []string{}
 }
 
 func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
