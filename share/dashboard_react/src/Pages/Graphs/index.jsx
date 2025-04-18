@@ -111,7 +111,6 @@ function Graphs() {
           context={context}
           title={'Mutex'}
           target={'perSecond(mysql.*./mysql_global_status_wait_synch_mutex*)'}
-          maxExtent={8000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
       </Flex>
