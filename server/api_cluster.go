@@ -2235,6 +2235,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = !mycluster.Conf.BackupRestoreMysqlUser
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -3248,6 +3252,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "compress-backups":
 		mycluster.Conf.CompressBackups = isactive
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = isactive
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = isactive
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = isactive
 	case "backup-estimate-size":

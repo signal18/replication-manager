@@ -572,6 +572,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	}
 
 	useMaster := true
+	source := master
 	var dest string
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump, "script":
@@ -589,6 +590,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
 			backupfile = bckserver.GetMyBackupDirectory() + dest
 			useMaster = false
+			source = bckserver
 		} else {
 			//Remove false cookie
 			bckserver.DelBackupTypeCookie(backtype)
@@ -677,7 +679,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err = server.JobReseedMysqldump(backupfile)
+		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -694,7 +696,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			}
 		}
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = server.JobReseedMyLoader(backupfile)
+		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
 		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
 			meta, err2 := server.JobMyLoaderParseMeta(backupfile)
@@ -780,6 +782,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 	// Decide on backup filename depending on the backup type
 	useMaster := true
+	source := master
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump, "script":
 		dest = "mysqldump.sql.gz"
@@ -800,6 +803,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 			if _, err := os.Stat(bckserver.GetMyBackupDirectory() + dest); err == nil {
 				backupfile = bckserver.GetMyBackupDirectory() + dest
 				useMaster = false
+				source = bckserver
 			} else {
 				// Remove invalid cookie if file does not exist
 				bckserver.DelBackupTypeCookie(backtype)
@@ -856,7 +860,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mysqldump-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err := server.JobReseedMysqldump(backupfile)
+		err := server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -876,7 +880,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 
 		// Handle mydumper-based reseed
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err := server.JobReseedMyLoader(backupfile)
+		err := server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
 			if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
@@ -1036,9 +1040,35 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	return server.JobInsertTask("zfssnapback", "0", cluster.Conf.MonitorAddress)
 }
 
-func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
+func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
+
+	if restoreUser {
+		//walk dir
+		files, err := os.ReadDir(backupdir)
+		if err == nil {
+			if len(files) > 0 {
+				for _, file := range files {
+					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz.skip") {
+						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, strings.TrimSuffix(file.Name(), ".skip")))
+					}
+				}
+			}
+		}
+	} else {
+		//walk dir
+		files, err := os.ReadDir(backupdir)
+		if err == nil {
+			if len(files) > 0 {
+				for _, file := range files {
+					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz") {
+						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, file.Name()+".skip"))
+					}
+				}
+			}
+		}
+	}
 
 	defer server.SetInReseedBackup("")
 
@@ -1081,7 +1111,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string) error {
 	return nil
 }
 
-func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
+func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser bool) error {
 	cluster := server.ClusterGroup
 	var err error
 	defer server.SetInReseedBackup("")
@@ -1089,12 +1119,6 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Sending logical backup to reseed %s", server.URL)
 
 	server.StopSlave()
-
-	file, err := cluster.CreateTmpClientConfFile()
-	if err != nil {
-		return fmt.Errorf("[%s] Failed creating tmp connection file:  %s ", server.URL, err)
-	}
-	defer os.Remove(file)
 
 	gzfile, err := os.Open(backupfile)
 	if err != nil {
@@ -1128,10 +1152,19 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	if server.DBVersion.IsMySQLOrPerconaGreater84() {
 		cmdstring = "%sSET sql_log_bin=%d;SET long_query_time=10;"
 	}
-
 	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
 
-	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
+	var usergzfile io.Reader
+	if restoreUser {
+		usergzfile, err = server.ReadMysqldumpUser(backupfile)
+		if err != nil {
+			return fmt.Errorf("Error opening mysql.user file %s", err)
+		}
+
+		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), usergzfile, fz) //Append mysql.user
+	} else {
+		clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), fz)
+	}
 
 	stderr, _ := clientCmd.StdoutPipe()
 	clientCmd.Stderr = clientCmd.Stdout
@@ -1156,6 +1189,35 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string) error {
 	}
 
 	return nil
+}
+
+func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, error) {
+	cluster := server.ClusterGroup
+	var err error
+
+	dir := filepath.Dir(backupfile)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("Directory %s does not exist", dir)
+	}
+
+	userpath := filepath.Join(dir, "mysql.user.sql.gz")
+	if _, err := os.Stat(userpath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("File %s does not exist", userpath)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Opening mysql.user file %s", userpath)
+
+	gzfile, err := os.Open(backupfile)
+	if err != nil {
+		return nil, fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
+	}
+
+	fz, err := gzip.NewReaderN(gzfile, cluster.Conf.SSTSendBuffer, 16)
+	if err != nil {
+		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
+	}
+
+	return fz, nil
 }
 
 // JobReseedBackupScript will execute the backup load script
@@ -1684,14 +1746,17 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=(\/\*!.+\*\/)?\s*'(.+)'`)
 	}
 
+	if cluster.Conf.BackupSplitMysqlUser {
+		server.LastBackupMeta.Logical.SplitUser = true
+		err := server.JobBackupMysqldumpUser(filename)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
+			return err
+		}
+	}
+
 	var bfile, bgtid string
 	var bpos uint64
-
-	file, err2 := cluster.CreateTmpClientConfFile()
-	if err2 != nil {
-		return err2
-	}
-	defer os.Remove(file)
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
@@ -1826,10 +1891,71 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	return err
 }
 
+func (server *ServerMonitor) JobBackupMysqldumpUser(filename string) error {
+	cluster := server.ClusterGroup
+	var err error
+
+	dir := filepath.Dir(filename)
+	userpath := filepath.Join(dir, "mysql.users.sql.gz")
+
+	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), append(cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter()), server.GetSSLClientParam("client-dump")...)...)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+
+	f, err := os.Create(userpath)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump user backup request: %s", err.Error())
+		return err
+	}
+
+	gw := gzip.NewWriter(f)
+
+	// Buffer before gzip to improve compression
+	bw := bufio.NewWriterSize(gw, 64*1024) // 64KB buffer
+	defer func() {
+		if err := bw.Flush(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flushing buffer: %s", err.Error())
+		}
+		if err := gw.Close(); err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error closing gzip: %s", err.Error())
+		}
+		f.Close()
+	}()
+
+	dumpCmd.Stdout = gw
+	stderrIn, _ := dumpCmd.StderrPipe()
+
+	err = dumpCmd.Start()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error backup request: %s", err)
+		return err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		server.copyLogs(stderrIn, config.ConstLogModBackupStream, config.LvlDbg)
+	}()
+
+	// Wait for print log to finish
+	wg.Wait()
+
+	err = dumpCmd.Wait()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "mysqldump: %s", err)
+	}
+
+	return err
+}
+
 func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 	cluster := server.ClusterGroup
 	var err error
 	var bckConn *sqlx.DB
+
+	// Mydumper is fine with split user since we can
+	server.LastBackupMeta.Logical.SplitUser = true
 
 	defer cluster.SetInLogicalBackupState(false)
 
@@ -2609,12 +2735,6 @@ func (cluster *Cluster) CreateTmpClientConfFile() (string, error) {
 func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest *ServerMonitor) error {
 	defer dest.SetInReseedBackup("")
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rejoining from direct mysqldump from %s", source.URL)
-
-	file, err := cluster.CreateTmpClientConfFile()
-	if err != nil {
-		return err
-	}
-	defer os.Remove(file)
 
 	dest.StopSlave()
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(source, dest.JobGetDumpGtidParameter())...)

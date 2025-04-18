@@ -645,6 +645,8 @@ type Config struct {
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
+	BackupSplitMysqlUser                      bool                   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
+	BackupRestoreMysqlUser                    bool                   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`
 	BackupCheckFreeSpace                      bool                   `mapstructure:"backup-check-free-space" toml:"backup-check-free-space" json:"backupCheckFreeSpace"`
 	BackupDiskTresholdWarn                    int                    `mapstructure:"backup-disk-treshold-warn" toml:"backup-disk-treshold-warn" json:"backupDiskTresholdWarn"`
 	BackupDiskTresholdCrit                    int                    `mapstructure:"backup-disk-treshold-crit" toml:"backup-disk-treshold-crit" json:"backupDiskTresholdCrit"`

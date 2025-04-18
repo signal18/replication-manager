@@ -285,6 +285,28 @@ The script will be executed with the following parameters:
       )
     },
     {
+      key: 'Split Logical Dump with DB Credentials',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupSplitMysqlUser}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-split-mysql-user?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-split-mysql-user' }))}
+        />
+      )
+    },
+    {
+      key: 'Restore User When Reseed',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.backupRestoreMysqlUser}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for backup-restore-mysql-user?'}
+          onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restore-mysql-user' }))}
+        />
+      )
+    },
+    {
       key: 'Physical Backup',
       value: (
         <Flex className={styles.dropdownContainer}>

@@ -480,9 +480,14 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, cmaster.URL)
 
 	if backtype == config.ConstBackupLogicalTypeMysqldump {
-		err = cmaster.JobReseedMysqldump(backupfile)
+		if pmaster.LastBackupMeta.Logical != nil && !pmaster.LastBackupMeta.Logical.SplitUser {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
+			cmaster.JobsUpdateState(task, "Reseed mysqldump with no split user is not supported", 5, 1)
+			return fmt.Errorf("Reseed mysqldump with no split user is not supported")
+		}
+		err = cmaster.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = cmaster.JobReseedMyLoader(backupfile)
+		err = cmaster.JobReseedMyLoader(backupfile, false)
 	} else {
 		return fmt.Errorf("Unknown backup type %s", backtype)
 	}

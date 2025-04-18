@@ -792,6 +792,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
+	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
+	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
 	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
 	flags.IntVar(&conf.BackupDiskTresholdWarn, "backup-disk-treshold-warn", 85, "Warning threshold for used disk in percentage")
 	flags.IntVar(&conf.BackupDiskTresholdCrit, "backup-disk-treshold-crit", 95, "Critical threshold for used space in percentage. If disk usage is above this value, backup will be skipped")
@@ -1039,7 +1041,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 				crcTable := crc64.MakeTable(crc64.ECMA)
 				conf.ProvCodeApp = "ns" + strconv.FormatUint(crc64.Checksum([]byte(dbConfig.Get("email").(string)), crcTable), 10)
 			}
-
 		}
 	}
 
