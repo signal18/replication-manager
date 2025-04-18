@@ -135,34 +135,35 @@ func (cluster *Cluster) OnPremiseUnprovisionProxyService(pri DatabaseProxy) erro
 }
 
 func (cluster *Cluster) OnPremiseStartProxyService(pri DatabaseProxy) error {
+	var err error
 	if prx, ok := pri.(*MariadbShardProxy); ok {
-		cluster.OnPremiseStartDatabaseService(prx.ShardProxy)
+		err = cluster.OnPremiseStartDatabaseService(prx.ShardProxy)
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		cluster.OnPremiseStartHaProxyService(prx)
+		err = cluster.OnPremiseStartHaProxyService(prx)
 	}
 
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		cluster.OnPremiseStartProxySQLService(prx)
+		err = cluster.OnPremiseStartProxySQLService(prx)
 	}
 
-	cluster.errorChan <- nil
-	return nil
+	cluster.errorChan <- err
+	return err
 }
 
 func (cluster *Cluster) OnPremiseStopProxyService(pri DatabaseProxy) error {
-
+	var err error
 	if prx, ok := pri.(*MariadbShardProxy); ok {
-		prx.ShardProxy.Shutdown()
+		err = prx.ShardProxy.Shutdown()
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		cluster.OnPremiseStopHaproxyService(prx)
+		err = cluster.OnPremiseStopHaproxyService(prx)
 	}
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		cluster.OnPremiseStopProxySQLService(prx)
+		err = cluster.OnPremiseStopProxySQLService(prx)
 	}
 
-	return nil
+	return err
 }
