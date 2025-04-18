@@ -78,8 +78,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-          ...(user?.grants['proxy-start'] && isMenuOptionsVisible
-            ? [
+          ...(user?.grants['proxy-start'] ? [
                 {
                   name: 'Start Proxy',
                   onClick: () => {
@@ -90,8 +89,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-          ...(user?.grants['proxy-stop'] && isMenuOptionsVisible
-            ? [
+          ...(user?.grants['proxy-stop'] ? [
                 {
                   name: 'Stop Proxy',
                   onClick: () => {
