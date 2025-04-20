@@ -565,6 +565,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRejectSubscription)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reseed-from-parent", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
+	))
 }
 
 // @Summary Retrieve servers for a specific cluster
@@ -2230,6 +2235,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = !mycluster.Conf.BackupRestoreMysqlUser
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -3066,6 +3075,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStagingRefreshScript = value
 	case "topology-staging-post-detach-script":
 		mycluster.Conf.TopologyStagingPostDetachScript = value
+	case "replication-multisource-head-clusters":
+		mycluster.Conf.ReplicationMultisourceHeadClusters = value
+	case "replication-source-name":
+		mycluster.Conf.MasterConn = value
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 
@@ -3239,6 +3252,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "compress-backups":
 		mycluster.Conf.CompressBackups = isactive
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = isactive
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = isactive
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = isactive
 	case "backup-estimate-size":
@@ -6497,4 +6514,57 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
+}
+
+// handlerMuxReseedFromParent handles the HTTP request to reseed a cluster from its parent cluster.
+// @Summary Reseed from Parent Cluster
+// @Description Reseed the specified cluster from its parent cluster.
+// @Tags ClusterReplication
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Reseed from parent queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/reseed-from-parent [post]
+func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var strUser string
+	var valid bool
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, strUser = repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.Conf.ReplicationMultisourceHeadClusters == "" {
+			http.Error(w, "No multisource cluster", 500)
+			return
+		}
+
+		pcluster := repman.GetParentClusterFromReplicationSource(mycluster.Conf.ReplicationMultisourceHeadClusters)
+		if pcluster == nil {
+			http.Error(w, "No parent cluster", 500)
+			return
+		}
+
+		if !pcluster.IsURLPassACL(strUser, strings.Replace(r.URL.Path, "/"+mycluster.Name+"/", "/"+pcluster.Name+"/", 1), true) {
+			http.Error(w, "No valid ACL in parent cluster", 403)
+			return
+		}
+
+		go mycluster.ReseedFromParentCluster(pcluster)
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Reseed from parent queued"))
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Reseed from parent queued"))
 }

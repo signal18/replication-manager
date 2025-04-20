@@ -60,7 +60,7 @@ func (cluster *Cluster) GetShareDir() string {
 }
 
 // This will use installed mysqldump first
-func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file string) []string {
+func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid string) []string {
 	dumpver := cluster.VersionsMap.Get("client-dump")
 	events := ""
 	dumpslave := ""
@@ -77,7 +77,7 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 		events = "--events=false"
 	}
 
-	dumpargs := strings.Split(strings.ReplaceAll("--defaults-file="+file+" "+cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
+	dumpargs := strings.Split(strings.ReplaceAll(cluster.getDumpParameter()+" "+dumpslave+" "+usegtid+" "+events, "  ", " "), " ")
 
 	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.1") {
 		dumpargs = append(dumpargs, "--skip-log-queries")
@@ -87,9 +87,24 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 		dumpargs = append(dumpargs, "--mysqld-long-query-time=10") // Prevent mysqldump from logging to slow_log
 	}
 
-	dumpargs = append(dumpargs, "--apply-slave-statements", "--host="+misc.Unbracket(server.Host), "--port="+server.Port, "--user="+cluster.GetDbUser(), "--ignore-table=replication_manager_schema.jobs")
-	dumpargs = append(dumpargs, strings.Split(server.GetSSLClientParam("client-dump"), " ")...)
+	dumpargs = append(dumpargs, cluster.GetDumpCredentials(server)...)
+	dumpargs = append(dumpargs, "--apply-slave-statements", "--ignore-table=replication_manager_schema.jobs")
+	if cluster.Conf.BackupSplitMysqlUser && !slices.Contains(dumpargs, "--ignore-table=mysql.user") {
+		// Ignore mysql.user table to avoid dump of password this is needed for staging
+		dumpargs = append(dumpargs, "--ignore-table=mysql.user")
+	}
+	dumpargs = append(dumpargs, server.GetSSLClientParam("client-dump")...)
 	return misc.RemoveEmptyString(dumpargs)
+}
+
+// This will use installed mysqldump first
+func (cluster *Cluster) GetDumpCredentials(server *ServerMonitor) []string {
+	return []string{"--host=" + misc.Unbracket(server.Host), "--port=" + server.Port, "--user=" + cluster.GetDbUser(), "--password=" + cluster.GetDbPass()}
+}
+
+// This will use installed mysqldump first
+func (cluster *Cluster) GetBinlogCredentials(server *ServerMonitor) []string {
+	return []string{"--host=" + misc.Unbracket(server.Host), "--port=" + server.Port, "--user=" + cluster.GetRplUser(), "--password=" + cluster.GetRplPass()}
 }
 
 // GetMySQLClientParams returns the parameters to connect to a MySQL server
@@ -98,7 +113,7 @@ func (cluster *Cluster) GetMysqlDumpOptions(server *ServerMonitor, usegtid, file
 //   - interactive: if true, the password will be prompted and not included in the command line
 func (cluster *Cluster) GetMySQLClientParams(server *ServerMonitor, roleType string, interactive bool) []string {
 	args := []string{"--host=" + server.Host, "--port=" + server.Port}
-	args = append(args, strings.Split(server.GetSSLClientParam("client"), " ")...)
+	args = append(args, server.GetSSLClientParam("client")...)
 	var passwd string
 	if slices.Contains([]string{config.RoleSysOps, config.RoleExtSysOps, "system"}, roleType) {
 		args = append(args, "--user="+cluster.GetDbUser())

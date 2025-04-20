@@ -45,7 +45,7 @@ export const clusterService = {
   configDiscoverDB,
   configDynamic,
   refreshStaging,
-  reloadStagingScript,
+  reseedStagingFromParent,
 
   // Server management APIs
   setMaintenanceMode,
@@ -110,6 +110,8 @@ export const clusterService = {
   acceptExternalRole,
   refuseExternalRole,
   endExternalRole,
+
+  addClusterShard,
 }
 
 //#region Cluster data APIs
@@ -285,8 +287,8 @@ function refreshStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-refresh`)
 }
 
-function reloadStagingScript(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-reload-script`)
+function reseedStagingFromParent(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/staging-reseed-from-parent`)
 }
 //#endregion Cluster management APIs
 
@@ -511,6 +513,10 @@ function refuseExternalRole(clusterName, username, roles, reason, baseURL) {
 
 function endExternalRole(clusterName, username, roles, reason, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/ext-role/end`, { username, roles, reason })
+}
+
+function addClusterShard(clusterName, shardClusterName, formdata, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/add/${shardClusterName}`, formdata)
 }
 
 //#endregion User management APIs

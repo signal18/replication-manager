@@ -1314,6 +1314,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/reseed-from-parent": {
+            "post": {
+                "description": "Reseed the specified cluster from its parent cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterReplication"
+                ],
+                "summary": "Reseed from Parent Cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Reseed from parent queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/reset-failover-control": {
             "post": {
                 "description": "This endpoint resets the failover control for the specified cluster.",
@@ -15437,6 +15486,9 @@ const docTemplate = `{
         "dbhelper.SlaveStatus": {
             "type": "object",
             "properties": {
+                "autoPosition": {
+                    "type": "integer"
+                },
                 "channelName": {
                     "$ref": "#/definitions/sql.NullString"
                 },
@@ -15812,6 +15864,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "backupMysqlbinlogPath": {
+                    "type": "string"
+                },
+                "backupMysqlclientOptions": {
                     "type": "string"
                 },
                 "backupMysqlclientgPath": {

@@ -1266,6 +1266,13 @@ func (server *ServerMonitor) StopSlave() (string, error) {
 	return dbhelper.StopSlave(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 }
 
+func (server *ServerMonitor) StopSlaveChannel(channel string) (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection pool")
+	}
+	return dbhelper.StopSlave(server.Conn, channel, server.DBVersion)
+}
+
 func (server *ServerMonitor) StopAllSlaves() (string, error) {
 	if server.Conn == nil {
 		return "", errors.New("No database connection pool")
@@ -1310,6 +1317,13 @@ func (server *ServerMonitor) StartSlave() (string, error) {
 	cluster := server.ClusterGroup
 	return dbhelper.StartSlave(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 
+}
+
+func (server *ServerMonitor) StartSlaveChannel(channel string) (string, error) {
+	if server.Conn == nil {
+		return "", errors.New("No database connection")
+	}
+	return dbhelper.StartSlave(server.Conn, channel, server.DBVersion)
 }
 
 func (server *ServerMonitor) ResetMaster() (string, error) {
