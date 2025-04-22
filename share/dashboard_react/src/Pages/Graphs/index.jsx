@@ -4,12 +4,14 @@ import styles from './styles.module.scss'
 import { Flex } from '@chakra-ui/react'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
+import MutexTracingGraph from '../../components/MutexTracingGraph';
 
-function Graphs() {
+function Graphs({ selectedCluster }) {
   const qpsRef = useRef()
   const coreRef = useRef()
   const netRef = useRef()
   const sbmRef = useRef()
+  const mutexRef = useRef()
   const [context, setContext] = useState(null)
 
   const [hourOptions, setHourOptions] = useState([
@@ -104,15 +106,15 @@ function Graphs() {
           maxExtent={8000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
-          chartRef={mutexRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Mutex'}
-          target="aliasByNode(perSecond(mysql.*.mysql_global_status_wait_synch_mutex*), 2)"
-          className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
-        />
+        <MutexTracingGraph
+    chartRef={mutexRef}
+    size={selectedHour.value}
+    step={selectedStep.value}
+    context={context}
+    maxExtent={1000}
+    className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
+    clusterConfig={selectedCluster?.config}
+  />
       </Flex>
     </Flex>
   )
