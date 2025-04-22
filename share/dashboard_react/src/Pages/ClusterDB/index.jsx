@@ -8,7 +8,7 @@ import { Box } from '@chakra-ui/react'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterData, getClusterServers, getDatabaseService, setRefreshInterval } from '../../redux/clusterSlice'
+import { getClusterData, getClusterServers, getDatabaseService, getDatabaseVariables, setRefreshInterval } from '../../redux/clusterSlice'
 
 function ClusterDB(props) {
   const params = useParams()
@@ -16,6 +16,7 @@ function ClusterDB(props) {
   const navigate = useNavigate()
   const selectedTabRef = useRef(1)
   const digestModeRef = useRef('pfs')
+  const variableModeRef = useRef('diff')
   const [selectedTab, setSelectedTab] = useState(1)
   const [user, setUser] = useState(null)
   const [selectedDBServer, setSelectedDBServer] = useState(null)
@@ -113,7 +114,7 @@ function ClusterDB(props) {
       dispatch(getDatabaseService({ clusterName, serviceName: 'status-innodb', dbId }))
     }
     if (tabs.current[selectedTabRef.current] === 'Variables') {
-      dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId }))
+      dispatch(getDatabaseVariables({ clusterName, serviceName: 'variables', dbId, diff : variableModeRef.current === 'diff' }))
     }
     if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
       // if (selectedTabRef.current === 8) {
@@ -139,6 +140,10 @@ function ClusterDB(props) {
 
   const toggleDigestMode = () => {
     digestModeRef.current = digestModeRef.current === 'pfs' ? 'slow' : 'pfs'
+  }
+
+  const toggleVariableMode = (e) => {
+    variableModeRef.current = e.target.checked ? 'diff' : 'all'
   }
 
   return (
@@ -219,6 +224,8 @@ function ClusterDB(props) {
                     clusterName={clusterName}
                     user={user}
                     selectedDBServer={selectedDBServer}
+                    variableMode={variableModeRef.current}
+                    toggleVariableMode={toggleVariableMode}
                   />
                 ]
               : []),

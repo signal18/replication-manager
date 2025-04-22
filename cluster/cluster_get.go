@@ -219,6 +219,24 @@ func (cluster *Cluster) GetMysqlclientPath() string {
 	return cluster.Conf.BackupMysqlclientPath
 }
 
+func (cluster *Cluster) GetMysqlServerBinaryPath() string {
+	if cluster.Conf.BackupMysqlclientPath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mariadbd").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mysqld").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
+	}
+	return cluster.Conf.BackupMysqlclientPath
+}
+
 func (cluster *Cluster) GetDomain() string {
 	if cluster.Conf.ProvNetCNI {
 		return "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster

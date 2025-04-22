@@ -121,6 +121,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
@@ -3242,10 +3246,12 @@ func (repman *ReplicationManager) handlerMuxServerPFSStatementsSlowLog(w http.Re
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param diff path string false "Show differences"
 // @Success 200 {object} map[string]interface{} "Variables retrieved successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/variables [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables/{diff} [get]
 func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -3257,9 +3263,14 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && node.IsDown() == false {
+			if !node.IsConfigGen {
+				node.GetConfiguratorDefaults()
+			}
+
+			diff := vars["diff"] == "true"
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
-			l := node.GetVariables()
+			l := node.GetVariables(diff)
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)

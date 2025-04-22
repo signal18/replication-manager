@@ -16,7 +16,7 @@ import MetadataLocks from '../MetadataLocks'
 import ResponseTime from '../ResponseTime'
 import Errors from '../Errors'
 
-function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode }) {
   const [currentTab, setCurrentTab] = useState('')
 
   const {
@@ -75,7 +75,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       ) : currentTab === 'status' ? (
         <Status clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'variables' ? (
-        <Variables clusterName={clusterName} dbId={dbId} />
+        <Variables clusterName={clusterName} dbId={dbId} toggleVariableMode={toggleVariableMode} variableMode={variableMode} />
       ) : currentTab === 'opensvc' ? (
         <ServiceOpenSvc clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'metadata' ? (

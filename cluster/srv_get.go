@@ -290,15 +290,9 @@ func (server *ServerMonitor) GetQueryResponseTime() []dbhelper.ResponseTime {
 	return qrt
 }
 
-func (server *ServerMonitor) GetVariables() []dbhelper.Variable {
-	var variables []dbhelper.Variable
-	for k, v := range server.Variables.ToNewMap() {
-		var r dbhelper.Variable
-		r.Variable_name = k
-		r.Value = v
-		variables = append(variables, r)
-	}
-	sort.Sort(dbhelper.VariableSorter(variables))
+func (server *ServerMonitor) GetVariables(diff bool) []config.VariableState {
+	variables := server.VariablesMap.GetVariables(diff)
+	sort.Sort(config.VarStateSorter(variables))
 	return variables
 }
 

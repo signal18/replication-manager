@@ -7,6 +7,10 @@
 package cluster
 
 import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -205,6 +209,13 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err
 	}
+
+	err = server.GetConfiguratorDefaults()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to refresh local variables list. Error: %s", err)
+		return err
+	}
+
 	server.IsConfigGen = true
 	return nil
 }
@@ -298,4 +309,87 @@ func (server *ServerMonitor) GetJobDatadir() string {
 	}
 
 	return server.GetDatabaseDatadir() + "/.system/jobs"
+}
+
+func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
+	// Create the directory if it doesn't exist
+	parent := filepath.Dir(cnf)
+	if _, err := os.Stat(parent); os.IsNotExist(err) {
+		if err = os.MkdirAll(parent, 0755); err != nil {
+			return err
+		}
+	}
+
+	// Create the dummy.cnf file
+	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
+}
+
+func (server *ServerMonitor) GetConfiguratorDefaults() error {
+	cluster := server.ClusterGroup
+	cnf := filepath.Join(server.Datadir, "init/etc/mysql/dummy.cnf")
+
+	// Check if the file exists, create it if not
+	if _, err := os.Stat(cnf); err != nil {
+		if !os.IsNotExist(err) {
+			return err
+		}
+
+		// Create the dummy.cnf file if not exists
+		if err := server.CreateLocalCnf(cnf); err != nil {
+			return err
+		}
+	}
+
+	// Run mariadbd with --print-defaults
+	cmd := exec.Command(cluster.GetMysqlServerBinaryPath(), "--defaults-file="+cnf, "--print-defaults")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	// Step 3: Process output
+	lines := strings.Split(out.String(), "--")
+	prev_key := ""
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.ToUpper(strings.TrimSpace(parts[0]))
+			value := strings.TrimSpace(parts[1])
+			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+				if v.Config == nil {
+					v.Config = &value
+				} else if *v.Config != value {
+					if prev_key != key {
+						// If the previous key is not the same, update the value
+						*v.Config = value
+					} else {
+						// If the previous key is the same, append the value
+						*v.Config += "," + value
+					}
+					// Update the value in the map
+					server.VariablesMap.Store(key, v)
+				}
+			} else {
+				server.VariablesMap.Store(key, &config.VariableState{
+					Variable_name: key,
+					Config:        &value,
+				})
+			}
+
+			prev_key = key
+		}
+	}
+
+	return nil
 }

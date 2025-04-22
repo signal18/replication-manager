@@ -84,6 +84,7 @@ export const clusterService = {
 
   // Database service APIs
   getDatabaseService,
+  getDatabaseVariables,
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
@@ -423,6 +424,11 @@ function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+}
+
+//#region Database service APIs
+function getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}/${diff}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {

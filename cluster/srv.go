@@ -160,6 +160,7 @@ type ServerMonitor struct {
 	FullProcessList             []dbhelper.Processlist     `json:"-"`
 	Variables                   *config.StringsMap         `json:"-"`
 	SensitiveVariables          *config.StringsMap         `json:"-"`
+	VariablesMap                *config.VariablesMap       `json:"-"`
 	EngineInnoDB                *config.StringsMap         `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog             `json:"errorLog"`
 	SlowLog                     s18log.SlowLog             `json:"-"`
@@ -316,6 +317,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	// Initiate sync.Map pointers
 	server.Variables = config.NewStringsMap()
 	server.SensitiveVariables = config.NewStringsMap()
+	server.VariablesMap = config.NewVariablesMap()
 	server.EngineInnoDB = config.NewStringsMap()
 	server.Status = config.NewStringsMap()
 	server.PrevStatus = config.NewStringsMap()
@@ -407,11 +409,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.CurrentWorkLoad()
 	server.WorkLoad.Set("max", server.WorkLoad.Get("current"))
 	server.WorkLoad.Set("average", server.WorkLoad.Get("current"))
-
-	_, err = os.Stat(server.Datadir + "/config.tar.gz")
-	if os.IsNotExist(err) {
-		server.GetDatabaseConfig()
-	}
 
 	/*if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
@@ -760,6 +757,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
+		server.VariablesMap.SetDeployedValues(vars)
 		if err != nil {
 			return nil
 		}
@@ -1616,6 +1614,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		server.SensitiveVariables = new(config.StringsMap)
 	}
 	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
+	server.VariablesMap.SetDeployedValues(clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }
