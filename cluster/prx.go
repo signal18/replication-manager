@@ -114,7 +114,7 @@ type DatabaseProxy interface {
 
 	IsFilterInTags(filter string) bool
 	IsDown() bool
-	GetProxyConfig() string
+	GetProxyConfig() error
 	GetJanitorWeight() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string
