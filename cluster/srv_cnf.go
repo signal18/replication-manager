@@ -352,7 +352,7 @@ func (server *ServerMonitor) GetConfiguratorDefaults() error {
 
 	// Step 3: Process output
 	lines := strings.Split(out.String(), "--")
-	prev_key := ""
+	list := map[string]bool{}
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -361,7 +361,6 @@ func (server *ServerMonitor) GetConfiguratorDefaults() error {
 		}
 
 		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
-
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
 			key := strings.ToUpper(strings.TrimSpace(parts[0]))
@@ -370,12 +369,12 @@ func (server *ServerMonitor) GetConfiguratorDefaults() error {
 				if v.Config == nil {
 					v.Config = &value
 				} else if *v.Config != value {
-					if prev_key != key {
-						// If the previous key is not the same, update the value
-						*v.Config = value
-					} else {
+					if multi, ok := list[key]; ok && multi {
 						// If the previous key is the same, append the value
 						*v.Config += "," + value
+					} else {
+						// If the previous key is not the same, update the value
+						*v.Config = value
 					}
 					// Update the value in the map
 					server.VariablesMap.Store(key, v)
@@ -387,7 +386,7 @@ func (server *ServerMonitor) GetConfiguratorDefaults() error {
 				})
 			}
 
-			prev_key = key
+			list[key] = true
 		}
 	}
 
