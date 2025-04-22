@@ -27,7 +27,8 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
   const prevVariablesRef = useRef(variables)
   const { type, title, payload } = action
-  const showDiff = variableMode === 'diff' ? true : false
+  const [showDiff, setShowDiff] = useState(variableMode === 'diff' ? true : false)
+  const [showPreserved, setShowPreserved] = useState(false)
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -39,6 +40,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
 
   const setVariableMode = (e) => {
     const value = e.target.checked ? "diff" : "all"
+    setShowDiff(e.target.checked)
     toggleVariableMode(value)
   }
 
@@ -65,7 +67,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
 
   useEffect(() => {
     setVariablesData(searchData(variablesAllData))
-  }, [search])
+  }, [search, showPreserved])
 
   const searchData = (data) => {
     const searchedData = data.filter((x) => {
@@ -74,6 +76,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         return x
       }
     })
+    if (showPreserved) {
+      return searchedData.filter((x) => x.preserve === true)
+    }
     return searchedData
   }
 
@@ -159,6 +164,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         <Box className={styles.divider} />
         <Checkbox size='lg' isChecked={showDiff} onChange={setVariableMode} className={styles.checkbox}>
           Show diff only
+        </Checkbox>
+        <Box className={styles.divider} />
+        <Checkbox size='lg' isChecked={showPreserved} onChange={(e) => { setShowPreserved(e.target.checked) }} className={styles.checkbox}>
+          Only preserved options
         </Checkbox>
       </Flex>
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`}>

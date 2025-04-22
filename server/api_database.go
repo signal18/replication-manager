@@ -94,9 +94,11 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/need-rolling-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingRestart)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortRegenerateConfig)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
@@ -2860,6 +2862,42 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 				return
 			}
 			w.Write(data)
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersPortRegenerateConfig handles the HTTP request to regenerate the configuration of a specific server port within a cluster.
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Success 200 {string} string "Configuration regenerated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen [get]
+func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			node.GetDatabaseConfig() // Regenerate the config
+		} else if proxy != nil {
+			proxy.GetProxyConfig() // Regenerate the config
 		} else {
 			http.Error(w, "No server", 500)
 		}

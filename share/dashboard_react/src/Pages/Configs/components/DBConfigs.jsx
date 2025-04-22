@@ -8,8 +8,10 @@ import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
-import { addDBTag, dropDBTag } from '../../../redux/configSlice'
+import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import Gauge from '../../../components/Gauge'
+import RMIconButton from '../../../components/RMIconButton'
+import { HiRefresh } from 'react-icons/hi'
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -146,6 +148,16 @@ function DBConfigs({ selectedCluster, user }) {
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-apply-dynamic-config' }))
           }
         />
+      )
+    },
+    {
+      key: 'Generate All DB Config Files',
+      value: (
+        <RMIconButton icon={HiRefresh} onClick={() => { 
+          setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
+          setIsConfirmModalOpen(true)
+          setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
+        }} />
       )
     },
     {

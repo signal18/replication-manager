@@ -31,6 +31,7 @@ import {
 } from '../../../../redux/clusterSlice'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { generateConfig } from '../../../../redux/configSlice'
 
 function ServerMenu({
   clusterName,
@@ -247,6 +248,18 @@ function ServerMenu({
           {
             name: 'Provision',
             subMenu: [
+              ...(user?.grants['db-config-create']
+                ? [
+                    {
+                      name: 'Generate Database Config',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm generate db config for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(generateConfig({ clusterName, host: row.host, port: row.port })))
+                      }
+                    }
+                  ]
+                : []),
               ...(user?.grants['db-stop']
                 ? [
                     {

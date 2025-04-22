@@ -217,6 +217,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterApplyDynamicConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/generate-configs/{servertype}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRegenerateConfigs)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
@@ -6567,4 +6571,57 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Reseed from parent queued"))
+}
+
+// handlerMuxServersPortRegenerateConfig handles the HTTP request to regenerate the configuration of a specific server port within a cluster.
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Configuration regenerated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/settings/actions/generate-configs/{servertype} [get]
+func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+
+			vars["servertype"] = strings.ToLower(vars["servertype"])
+			if vars["servertype"] == "db" {
+				if len(mycluster.Servers) > 0 {
+					for _, srv := range mycluster.Servers {
+						if srv != nil {
+							srv.GetDatabaseConfig()
+						} else {
+							http.Error(w, "No server", 500)
+							return
+						}
+					}
+				}
+			} else if vars["servertype"] == "proxy" {
+				if len(mycluster.Proxies) > 0 {
+					for _, prx := range mycluster.Proxies {
+						if prx != nil {
+							prx.GetProxyConfig()
+						} else {
+							http.Error(w, "No server", 500)
+							return
+						}
+					}
+				}
+			} else {
+				http.Error(w, "No valid type", 500)
+				return
+			}
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
 }

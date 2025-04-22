@@ -5,9 +5,11 @@ import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import Gauge from '../../../components/Gauge'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
-import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
+import { addProxyTag, dropProxyTag, generateAllConfig } from '../../../redux/configSlice'
 import { useDispatch } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
+import { HiRefresh } from 'react-icons/hi'
+import RMIconButton from '../../../components/RMIconButton'
 
 function ProxyConfig({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -37,6 +39,16 @@ function ProxyConfig({ selectedCluster, user }) {
   const dataObject = [
     ...(user?.grants['proxy-config-flag']
       ? [
+        {
+          key: 'Generate All Proxy Config Files',
+          value: (
+            <RMIconButton icon={HiRefresh} onClick={() => { 
+              setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
+              setIsConfirmModalOpen(true)
+              setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
+            }} />
+          )
+        },
           {
             key: 'Manage Tags',
             value: (
