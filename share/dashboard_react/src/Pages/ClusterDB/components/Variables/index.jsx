@@ -27,7 +27,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
   const prevVariablesRef = useRef(variables)
   const { type, title, payload } = action
-  const [showDiff, setShowDiff] = useState(variableMode === 'diff')
+  const showDiff = variableMode === 'diff' ? true : false
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -35,6 +35,11 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
 
   const closeConfirmModal = () => {
     setIsConfirmModalOpen(false)
+  }
+
+  const setVariableMode = (e) => {
+    const value = e.target.selected ? "diff" : "all"
+    toggleVariableMode(value)
   }
 
   const handleConfirm = (value) => {
@@ -152,7 +157,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
           </HStack>
         </HStack>
         <Box className={styles.divider} />
-        <Checkbox size='lg' isChecked={showDiff} onChange={toggleVariableMode} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showDiff} onChange={setVariableMode} className={styles.checkbox}>
           Show diff only
         </Checkbox>
       </Flex>

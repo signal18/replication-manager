@@ -142,8 +142,8 @@ function ClusterDB(props) {
     digestModeRef.current = digestModeRef.current === 'pfs' ? 'slow' : 'pfs'
   }
 
-  const toggleVariableMode = (e) => {
-    variableModeRef.current = e.target.checked ? 'diff' : 'all'
+  const toggleVariableMode = (value) => {
+    variableModeRef.current = value
   }
 
   return (
