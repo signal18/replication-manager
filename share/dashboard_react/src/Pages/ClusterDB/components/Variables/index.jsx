@@ -38,7 +38,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   }
 
   const setVariableMode = (e) => {
-    const value = e.target.selected ? "diff" : "all"
+    const value = e.target.checked ? "diff" : "all"
     toggleVariableMode(value)
   }
 
