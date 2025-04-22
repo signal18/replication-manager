@@ -408,6 +408,11 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.WorkLoad.Set("max", server.WorkLoad.Get("current"))
 	server.WorkLoad.Set("average", server.WorkLoad.Get("current"))
 
+	_, err = os.Stat(server.Datadir + "/config.tar.gz")
+	if os.IsNotExist(err) {
+		server.GetDatabaseConfig()
+	}
+
 	/*if cluster.Conf.MasterSlavePgStream || cluster.Conf.MasterSlavePgLogical {
 		server.Conn, err = sqlx.Open("postgres", server.DSN)
 	} else {

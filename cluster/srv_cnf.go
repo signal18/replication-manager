@@ -194,7 +194,7 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 	return server.Variables.Get(variable)
 }
 
-func (server *ServerMonitor) GetDatabaseConfig() string {
+func (server *ServerMonitor) GetDatabaseConfig() error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
@@ -203,9 +203,10 @@ func (server *ServerMonitor) GetDatabaseConfig() string {
 	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
+		return err
 	}
 	server.IsConfigGen = true
-	return ""
+	return nil
 }
 
 func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
