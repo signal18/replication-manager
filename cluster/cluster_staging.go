@@ -497,10 +497,21 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster) error {
 		if e2 := cmaster.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, cmaster.URL)
+
 	} else {
 		if e2 := cmaster.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 		}
+
+		_, err2 := cmaster.StartSlaveChannel(parent.Conf.MasterConn)
+		if err2 != nil {
+			cluster.LogSQL(logs, err, cmaster.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", cmaster.URL, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave on %s", cmaster.URL)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, cmaster.URL)
+
 	}
 
 	return err
