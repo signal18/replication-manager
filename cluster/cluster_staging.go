@@ -400,7 +400,7 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 
 func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
-	var logs, dest string
+	var logs, dest, masterCurrentGTID string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
@@ -512,7 +512,9 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 				if target.IsMaster() {
 					metaGTID := gtid.NewList(meta.BinLogUuid)
 					newGTID := target.SlaveGtid.Merge(*metaGTID)
+					newCurrentGTID := target.CurrentGtid.Merge(*metaGTID)
 					masterGTIDList = newGTID.Sprint()
+					masterCurrentGTID = newCurrentGTID.Sprint()
 				}
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata with GTID %s, meta %s", masterGTIDList, meta.BinLogUuid)
 				target.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+masterGTIDList+"'", time.Second)
@@ -551,5 +553,5 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		return "", err
 	}
 
-	return masterGTIDList, nil
+	return masterCurrentGTID, nil
 }
