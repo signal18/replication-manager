@@ -514,7 +514,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 					newGTID := target.SlaveGtid.Merge(*metaGTID)
 					masterGTIDList = newGTID.Sprint()
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata with GTID %s, meta %s", masterGTIDList, meta.BinLogUuid)
 				target.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+masterGTIDList+"'", time.Second)
 			}
 		}
