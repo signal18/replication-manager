@@ -16,7 +16,7 @@ import RepConfigSettings from './RepConfigSettings'
 import AlertSettings from './AlertSettings'
 import StagingSettings from './StagingSettings'
 
-function Settings({ selectedCluster, user, onTabChange }) {
+function Settings({ selectedCluster, user, onTabChange, monitor }) {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [confirmTitle, setConfirmTitle] = useState('')
@@ -191,7 +191,7 @@ function Settings({ selectedCluster, user, onTabChange }) {
         isOpen={isStagingOpen}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<StagingSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} />}
+        body={<StagingSettings selectedCluster={selectedCluster} user={user} openConfirmModal={openConfirmModal} monitor={monitor} />}
       />
 
       {isConfirmModalOpen && (

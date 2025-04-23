@@ -254,7 +254,7 @@ function Home() {
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} />,
-                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} />,
+                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor}/>,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
                   ? [<Graphs />]

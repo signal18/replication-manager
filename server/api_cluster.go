@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
@@ -5648,7 +5649,7 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		go mycluster.RefreshStaging()
+		go mycluster.RefreshStaging(mycluster)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -6556,10 +6557,41 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 		}
 
 		go func() {
-			err := mycluster.ReseedFromParentCluster(pcluster)
+			cmaster := mycluster.GetMaster()
+			if cmaster == nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel reseed from parent cluster. No master found", mycluster.Name)
+				return
+			}
+
+			err := mycluster.ReseedFromParentCluster(pcluster, cmaster)
 			if err == nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", pcluster.Name)
-				mycluster.RefreshStaging()
+
+				slave := mycluster.GetSlaveByIndex(0)
+				if slave == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. No slave found for standalone candidate", mycluster.Name)
+					return
+				}
+				starttime := time.Now()
+				if slave.State == "SlaveLate" {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for slave to sync replication")
+					for slave.State == "SlaveLate" && time.Since(starttime) < 2*time.Minute {
+						time.Sleep(1 * time.Second)
+					}
+
+					if slave.State == "SlaveLate" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is still late after 2 minutes. Please refresh staging later or check the replication status")
+						return
+					}
+				}
+
+				if slave.State != "Slave" {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is not OK. Please check the replication status")
+					return
+				}
+
+				mycluster.RefreshStaging(pcluster)
+
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)
 			}
