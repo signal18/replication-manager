@@ -156,7 +156,7 @@ function DBConfigs({ selectedCluster, user }) {
         <RMIconButton icon={HiRefresh} onClick={() => { 
           setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
           setIsConfirmModalOpen(true)
-          setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
+          setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
         }} />
       )
     },
