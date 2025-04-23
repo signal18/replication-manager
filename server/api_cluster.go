@@ -6555,7 +6555,15 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 			return
 		}
 
-		go mycluster.ReseedFromParentCluster(pcluster)
+		go func() {
+			err := mycluster.ReseedFromParentCluster(pcluster)
+			if err == nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", pcluster.Name)
+				mycluster.RefreshStaging()
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)
+			}
+		}()
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Reseed from parent queued"))
