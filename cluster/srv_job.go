@@ -703,20 +703,28 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			if err2 != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
 				err = err2
+			} else {
+				// Set GTID position for MariaDB
+				if server.IsMariaDB() && server.HaveMariaDBGTID {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
+
+					// Reset binlog state if supported
+					if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
+						_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
+						if err != nil {
+							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error flashback %s on %s: %s", backtype, server.URL, err.Error())
+							if e2 := server.JobsUpdateState(task, err.Error(), 5, 1); e2 != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+							}
+						}
+					}
+				}
+
 			}
 
-			if server.IsMariaDB() && server.HaveMariaDBGTID {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
-				server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
-
-				if server.IsMariaDB() && server.DBVersion.GreaterEqual("10") {
-					// Also reset GTID binlog state
-					_, err = server.ResetGTIDBinlogState(meta.BinLogUuid)
-				}
-
-				if err == nil {
-					server.StartSlave()
-				}
+			if err == nil {
+				server.StartSlave()
 			}
 		}
 
