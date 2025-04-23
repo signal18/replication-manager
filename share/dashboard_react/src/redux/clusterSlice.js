@@ -711,10 +711,10 @@ export const stopDatabase = createAsyncThunk('cluster/stopDatabase', async ({ cl
   }
 })
 
-export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId }, thunkAPI) => {
+export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId, cfgAction }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.startDatabase(clusterName, serverId, baseURL)
+    const { data, status } = await clusterService.startDatabase(clusterName, serverId, cfgAction, baseURL)
     showSuccessBanner('Database has started!', status, thunkAPI)
     return { data, status }
   } catch (error) {

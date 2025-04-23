@@ -408,8 +408,8 @@ function unprovisionProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
 }
 
-function startProxy(clusterName, proxyId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
+function startProxy(clusterName, proxyId, cfgAction, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start/${cfgAction}`)
 }
 
 function stopProxy(clusterName, proxyId, baseURL) {

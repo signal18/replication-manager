@@ -37,7 +37,7 @@ func (cluster *Cluster) RollingReprov() error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
 				return err
 			}
-			err = cluster.StartDatabaseWaitRejoin(slave)
+			err = cluster.StartDatabaseWaitRejoin(slave, true)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling reprov %s", err)
 				return err
@@ -125,7 +125,7 @@ func (cluster *Cluster) RollingRestart() error {
 				return err
 			}
 
-			err = cluster.StartDatabaseWaitRejoin(slave)
+			err = cluster.StartDatabaseWaitRejoin(slave, cluster.Conf.ProvDbStartFetchConfig)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart slave does not restart %s %s", slave.URL, err)
 				return err
@@ -165,7 +165,7 @@ func (cluster *Cluster) RollingRestart() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not transit suspect %s %s", master.URL, err)
 		return err
 	}
-	err = cluster.StartDatabaseWaitRejoin(master)
+	err = cluster.StartDatabaseWaitRejoin(master, cluster.Conf.ProvDbStartFetchConfig)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel rolling restart old master does not restart %s %s", master.URL, err)
 		return err

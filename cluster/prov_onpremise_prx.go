@@ -137,7 +137,7 @@ func (cluster *Cluster) OnPremiseUnprovisionProxyService(pri DatabaseProxy) erro
 func (cluster *Cluster) OnPremiseStartProxyService(pri DatabaseProxy) error {
 	var err error
 	if prx, ok := pri.(*MariadbShardProxy); ok {
-		err = cluster.OnPremiseStartDatabaseService(prx.ShardProxy)
+		err = cluster.OnPremiseStartDatabaseService(prx.ShardProxy, cluster.Conf.ProvShardproxyStartFetchConfig)
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {

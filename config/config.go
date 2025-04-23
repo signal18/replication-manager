@@ -600,6 +600,8 @@ type Config struct {
 	ProvProxyBootstrapScript                  string                 `mapstructure:"prov-proxy-bootstrap-script" toml:"prov-proxy-bootstrap-script" json:"provProxyBootstrapScript"`
 	ProvDbCleanupScript                       string                 `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
 	ProvProxyCleanupScript                    string                 `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
+	ProvDbStartFetchConfig                    bool                   `mapstructure:"prov-db-start-fetch-config" toml:"prov-db-start-fetch-config" json:"provDbStartFetchConfig"`
+	ProvShardproxyStartFetchConfig            bool                   `mapstructure:"prov-shardproxy-start-fetch-config" toml:"prov-shardproxy-start-fetch-config" json:"provShardproxyStartFetchConfig"`
 	ProvDbStartScript                         string                 `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
 	ProvProxyStartScript                      string                 `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
 	ProvDbStopScript                          string                 `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`

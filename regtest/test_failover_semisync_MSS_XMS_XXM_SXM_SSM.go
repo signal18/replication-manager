@@ -42,10 +42,10 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinMSSXMSXXMSXMSSM(cluster *c
 		return false
 	}
 
-	cluster.StartDatabaseWaitRejoin(SaveMaster)
+	cluster.StartDatabaseWaitRejoin(SaveMaster, false)
 	time.Sleep(5 * time.Second)
 	cluster.RunBench()
-	cluster.StartDatabaseWaitRejoin(SaveMaster2)
+	cluster.StartDatabaseWaitRejoin(SaveMaster2, false)
 
 	for _, s := range cluster.GetSlaves() {
 		if s.IsReplicationBroken() {

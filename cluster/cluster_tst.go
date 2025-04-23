@@ -299,11 +299,11 @@ func (cluster *Cluster) FailoverNow() {
 	wg.Wait()
 }
 
-func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
+func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor, fetch bool) error {
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	err := cluster.StartDatabaseService(server)
+	err := cluster.StartDatabaseService(server, fetch)
 	wg2.Wait()
 	return err
 }

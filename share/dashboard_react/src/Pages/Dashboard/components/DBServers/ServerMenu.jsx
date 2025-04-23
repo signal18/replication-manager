@@ -275,15 +275,27 @@ function ServerMenu({
               ...(user?.grants['db-start']
                 ? [
                     {
-                      name: 'Start Database',
+                      name: 'Start DB Fetch Config',
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(`Confirm start for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id })))
+                        setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'fetch' })))
                       }
                     }
                   ]
                 : []),
+                ...(user?.grants['db-start']
+                  ? [
+                      {
+                        name: 'Start DB Keep Config',
+                        onClick: () => {
+                          openConfirmModal()
+                          setConfirmTitle(`Confirm start for ${serverName}?`)
+                          setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'keep' })))
+                        }
+                      }
+                    ]
+                  : []),
               ...(user?.grants['prov-db-provision']
                 ? [
                     {

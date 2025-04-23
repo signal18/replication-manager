@@ -298,7 +298,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) error {
+func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor, fetch bool) error {
 	server.GetDatabaseConfig()
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)

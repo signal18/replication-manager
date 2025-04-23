@@ -149,7 +149,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error {
+func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor, fetch bool) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
@@ -165,7 +165,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
 			return err
 		}
 	}

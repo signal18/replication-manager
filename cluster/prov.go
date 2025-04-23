@@ -431,24 +431,24 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 	return err
 }
 
-func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
+func (cluster *Cluster) StartDatabaseService(server *ServerMonitor, fetch bool) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		err = cluster.OpenSVCStartDatabaseService(server)
+		err = cluster.OpenSVCStartDatabaseService(server, fetch)
 	case config.ConstOrchestratorKubernetes:
-		err = cluster.K8SStartDatabaseService(server)
+		err = cluster.K8SStartDatabaseService(server, fetch)
 	case config.ConstOrchestratorSlapOS:
-		err = cluster.SlapOSStartDatabaseService(server)
+		err = cluster.SlapOSStartDatabaseService(server, fetch)
 	case config.ConstOrchestratorOnPremise:
-		err = cluster.OnPremiseStartDatabaseService(server)
+		err = cluster.OnPremiseStartDatabaseService(server, fetch)
 	case config.ConstOrchestratorLocalhost:
-		err = cluster.LocalhostStartDatabaseService(server)
+		err = cluster.LocalhostStartDatabaseService(server, fetch)
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StartDatabaseScript(server)
+	cluster.StartDatabaseScript(server, fetch)
 	if err == nil {
 		server.DelRestartCookie()
 	}

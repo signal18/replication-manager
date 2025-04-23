@@ -39,12 +39,12 @@ func (regtest *RegTest) TestFailoverSemisyncSlavekilledAutoRejoin(cluster *clust
 	}
 	cluster.PrepareBench()
 
-	cluster.StartDatabaseService(killedSlave)
+	cluster.StartDatabaseService(killedSlave, false)
 	time.Sleep(12 * time.Second)
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster)
+	cluster.StartDatabaseService(SaveMaster, false)
 	wg2.Wait()
 	SaveMaster.ReadAllRelayLogs()
 

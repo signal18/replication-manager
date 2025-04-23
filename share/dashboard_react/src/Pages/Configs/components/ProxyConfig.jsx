@@ -36,19 +36,20 @@ function ProxyConfig({ selectedCluster, user }) {
     setConfirmHandler(null)
   }
 
+  // {
+  //   key: 'Generate All Proxy Config Files',
+  //   value: (
+  //     <RMIconButton icon={HiRefresh} onClick={() => { 
+  //       setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
+  //       setIsConfirmModalOpen(true)
+  //       setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
+  //     }} />
+  //   )
+  // },
+  
   const dataObject = [
     ...(user?.grants['proxy-config-flag']
       ? [
-        {
-          key: 'Generate All Proxy Config Files',
-          value: (
-            <RMIconButton icon={HiRefresh} onClick={() => { 
-              setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
-              setIsConfirmModalOpen(true)
-              setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
-            }} />
-          )
-        },
           {
             key: 'Manage Tags',
             value: (

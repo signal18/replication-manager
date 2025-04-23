@@ -197,6 +197,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/stop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStop)),
@@ -2161,6 +2165,7 @@ func (repman *ReplicationManager) handlerMuxSetLongQueryTime(w http.ResponseWrit
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/start [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction} [get]
 func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2172,7 +2177,15 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.StartDatabaseService(node)
+			// Use default fetchCfg from cluster configuration
+			fetchCfg := mycluster.Conf.ProvDbStartFetchConfig
+			// Override the default value if cfgAction is provided
+			if vars["cfgAction"] == "keep" {
+				fetchCfg = false
+			} else if vars["cfgAction"] == "fetch" {
+				fetchCfg = true
+			}
+			mycluster.StartDatabaseService(node, fetchCfg)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
