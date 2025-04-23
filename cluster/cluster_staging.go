@@ -508,7 +508,7 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			err = err2
 		} else {
 			// Set GTID position for MariaDB
-			if target.IsMariaDB() && (target.HaveMariaDBGTID || (target.IsMaster() && target.SlaveGtid.Sprint() != "")) {
+			if target.IsMariaDB() && (target.HaveMariaDBGTID || (target.IsMaster() && target.SlaveGtid != nil && target.SlaveGtid.Sprint() != "")) {
 				if target.IsMaster() {
 					metaGTID := gtid.NewList(meta.BinLogUuid)
 					newGTID := target.SlaveGtid.Merge(*metaGTID)
