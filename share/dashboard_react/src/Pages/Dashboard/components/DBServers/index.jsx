@@ -43,6 +43,12 @@ function DBServers({ selectedCluster, user }) {
         })
       )
     }
+
+    return () => {
+      setData([])
+      setHasMariadbGtid(false)
+      setHasMysqlGtid(false)
+    }
   }, [clusterServers, clusterStates, clusterMaster?.id])
 
   const showGridView = () => {
