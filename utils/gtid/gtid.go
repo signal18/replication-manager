@@ -245,12 +245,12 @@ func (gl List) MergeGTID(g Gtid) (Gtid, int) {
 
 // Merge merges two GTID lists
 func (gl List) Merge(glcomp List) List {
-	for j, g := range glcomp {
+	for _, g := range glcomp {
 		newg, i := gl.MergeGTID(g)
 		if i == -1 {
 			gl = append(gl, newg)
 		} else {
-			gl[j] = newg
+			gl[i] = newg
 		}
 	}
 
