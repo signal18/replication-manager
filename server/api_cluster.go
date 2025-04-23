@@ -6590,7 +6590,15 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 					return
 				}
 
-				mycluster.RefreshStaging(pcluster, masterGTIDList) // refresh staging and sync the GTID list from current master
+				err := mycluster.RefreshStaging(pcluster, masterGTIDList) // refresh staging and sync the GTID list from current master
+				if err == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", pcluster.Name)
+					// Refresh staging is done. Now we can start the backup
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting backup for cluster %s", mycluster.Name)
+					go cmaster.JobBackupLogical()
+				} else {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Refresh standalone failed: %s", err)
+				}
 
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)
