@@ -5649,7 +5649,7 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		go mycluster.RefreshStaging(mycluster)
+		go mycluster.RefreshStaging(mycluster, "") // "" means no GTID sync needed since restore from same cluster
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -6563,7 +6563,7 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 				return
 			}
 
-			err := mycluster.ReseedFromParentCluster(pcluster, cmaster)
+			masterGTIDList, err := mycluster.ReseedFromParentCluster(pcluster, cmaster, "") // master will combine it's GTID list with the one from the parent cluster automatically
 			if err == nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", pcluster.Name)
 
@@ -6590,7 +6590,7 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 					return
 				}
 
-				mycluster.RefreshStaging(pcluster)
+				mycluster.RefreshStaging(pcluster, masterGTIDList) // refresh staging and sync the GTID list from current master
 
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)

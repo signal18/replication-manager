@@ -13,6 +13,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -50,7 +51,7 @@ func (cluster *Cluster) ReloadStagingScript() error {
 	return nil
 }
 
-func (cluster *Cluster) RefreshStaging(source *Cluster) error {
+func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) error {
 	var err error
 
 	if !cluster.Conf.TopologyStaging {
@@ -247,7 +248,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster) error {
 			}
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[STAGING] Reseed standalone %s from parent cluster %s backup", STG.URL, source.Name)
-			err = cluster.ReseedFromParentCluster(source, STG)
+			_, err = cluster.ReseedFromParentCluster(source, STG, masterGTIDList) // Sync GTID with cluster master
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
 				return err
@@ -397,33 +398,33 @@ func (cluster *Cluster) GetStagingProxyHosts() []string {
 	return strings.Split(cluster.Conf.StagingProxyHosts, ",")
 }
 
-func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor) error {
+func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerMonitor, masterGTIDList string) (string, error) {
 	var err error
 	var logs, dest string
 
 	if parent == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Parent cluster cannot be nil")
-		return fmt.Errorf("parent cluster cannot be nil")
+		return "", fmt.Errorf("parent cluster cannot be nil")
 	}
 
 	backtype := parent.Conf.BackupLogicalType
 
 	if target == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No target server found")
-		return fmt.Errorf("no target server found")
+		return "", fmt.Errorf("no target server found")
 	}
 
 	bcksrv := parent.GetBackupServer()
 	if bcksrv != nil && !bcksrv.HasBackupLogicalCookie() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
 		parent.LogModulePrintf(parent.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Parent cluster %s has no backup. Please run logical backup for refresh child cluster on %s", parent.Name, cluster.Name)
-		return err
+		return "", err
 	}
 
 	pmaster := parent.GetMaster()
 	if pmaster == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master server found")
-		return fmt.Errorf("no master server found")
+		return "", fmt.Errorf("no master server found")
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModExternalScript, config.LvlInfo, "Refresh data from parent cluster initiated")
@@ -441,11 +442,11 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 	backupfile := bcksrv.GetMyBackupDirectory() + dest
 	if _, err := os.Stat(backupfile); err != nil {
 		//Remove false cookie
-		return fmt.Errorf("No backup file found on parent for %s", backtype)
+		return "", fmt.Errorf("No backup file found on parent for %s", backtype)
 	}
 
 	if target.HasAnyReseedingState() {
-		return fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
+		return "", fmt.Errorf("Server is in reseeding state by %s", target.IsReseeding)
 	}
 
 	task := "reseed" + parent.Conf.BackupLogicalType
@@ -496,13 +497,29 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		if pmaster.LastBackupMeta.Logical != nil && !pmaster.LastBackupMeta.Logical.SplitUser {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed mysqldump with no split user is not supported")
 			target.JobsUpdateState(task, "Reseed mysqldump with no split user is not supported", 5, 1)
-			return fmt.Errorf("Reseed mysqldump with no split user is not supported")
+			return "", fmt.Errorf("Reseed mysqldump with no split user is not supported")
 		}
 		err = target.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
 		err = target.JobReseedMyLoader(backupfile, false)
+		meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
+		if err2 != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
+			err = err2
+		} else {
+			// Set GTID position for MariaDB
+			if target.IsMariaDB() && target.HaveMariaDBGTID {
+				if target.IsMaster() {
+					metaGTID := gtid.NewList(meta.BinLogUuid)
+					newGTID := target.SlaveGtid.Merge(*metaGTID)
+					masterGTIDList = newGTID.Sprint()
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Starting slave with mydumper metadata")
+				target.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+masterGTIDList+"'", time.Second)
+			}
+		}
 	} else {
-		return fmt.Errorf("Unknown backup type %s", backtype)
+		return "", fmt.Errorf("Unknown backup type %s", backtype)
 	}
 
 	if err != nil {
@@ -530,5 +547,9 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 
 	}
 
-	return err
+	if err != nil {
+		return "", err
+	}
+
+	return masterGTIDList, nil
 }
