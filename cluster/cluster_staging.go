@@ -252,6 +252,8 @@ func (cluster *Cluster) RefreshStaging(source *Cluster) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Reseed logical for refresh staging on %s failed: %s", STG.URL, err)
 				return err
 			}
+
+			STG.ChangeMasterTo(cluster.GetMaster(), "SLAVE_POS")
 		}
 
 		waitstart = time.Now()
