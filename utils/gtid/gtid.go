@@ -229,3 +229,30 @@ func (gl List) Equal(glcomp *List) bool {
 	}
 	return false
 }
+
+func (gl List) MergeGTID(g Gtid) (Gtid, int) {
+	for i, g1 := range gl {
+		if g1.DomainID == g.DomainID {
+			if g1.SeqNo > g.SeqNo {
+				return g1, i
+			} else if g1.SeqNo < g.SeqNo {
+				return g, i
+			}
+		}
+	}
+	return g, -1
+}
+
+// Merge merges two GTID lists
+func (gl List) Merge(glcomp List) List {
+	for j, g := range glcomp {
+		newg, i := gl.MergeGTID(g)
+		if i == -1 {
+			gl = append(gl, newg)
+		} else {
+			gl[j] = newg
+		}
+	}
+
+	return gl
+}
