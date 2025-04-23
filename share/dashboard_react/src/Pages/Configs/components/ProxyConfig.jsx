@@ -42,11 +42,11 @@ function ProxyConfig({ selectedCluster, user }) {
   //     <RMIconButton icon={HiRefresh} onClick={() => { 
   //       setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
   //       setIsConfirmModalOpen(true)
-  //       setConfirmHandler(() => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
+  //       setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
   //     }} />
   //   )
   // },
-  
+
   const dataObject = [
     ...(user?.grants['proxy-config-flag']
       ? [
