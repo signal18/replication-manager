@@ -1731,15 +1731,6 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 		gtidRegex = regexp.MustCompile(`GTID_PURGED\s*=(\/\*!.+\*\/)?\s*'(.+)'`)
 	}
 
-	if cluster.Conf.BackupSplitMysqlUser {
-		server.LastBackupMeta.Logical.SplitUser = true
-		err := server.JobBackupMysqldumpUser(filename)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
-			return err
-		}
-	}
-
 	var bfile, bgtid string
 	var bpos uint64
 
@@ -1876,11 +1867,11 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 	return err
 }
 
-func (server *ServerMonitor) JobBackupMysqldumpUser(filename string) error {
+func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	cluster := server.ClusterGroup
 	var err error
 
-	dir := filepath.Dir(filename)
+	dir := server.GetMyBackupDirectory()
 	userpath := filepath.Join(dir, "mysql.users.sql.gz")
 
 	dumpargs := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
@@ -2171,6 +2162,15 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
+
+	if cluster.Conf.BackupSplitMysqlUser {
+		server.LastBackupMeta.Logical.SplitUser = true
+		err := server.JobBackupMysqldumpUser()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
+			return err
+		}
+	}
 
 	//Skip other type if using backup script
 	if cluster.Conf.BackupSaveScript != "" {
