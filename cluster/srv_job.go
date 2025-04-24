@@ -1906,7 +1906,7 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	var err error
 
 	dir := server.GetMyBackupDirectory()
-	userpath := filepath.Join(dir, "mysql.users.sql.gz")
+	userpath := filepath.Join(dir, "mysql.user.sql.gz")
 
 	dumpargs := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client-dump")...)
 	dumpargs = append(dumpargs, "--insert-ignore", "--system=user")
