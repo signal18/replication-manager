@@ -1025,7 +1025,7 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	return server.JobInsertTask("zfssnapback", "0", cluster.Conf.MonitorAddress)
 }
 
-func (server *ServerMonitor) JobReseedMysqldumpUser() error {
+func (server *ServerMonitor) JobReseedMysqldumpUser(dir string) error {
 	cluster := server.ClusterGroup
 	sql_log_bin := 0
 	resetmaster := "RESET MASTER;"
@@ -1044,7 +1044,7 @@ func (server *ServerMonitor) JobReseedMysqldumpUser() error {
 	}
 	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
 
-	usergzfile, err := server.ReadMysqldumpUser()
+	usergzfile, err := server.ReadMysqldumpUser(dir)
 	if err != nil {
 		return fmt.Errorf("Error opening mysql.user file %s", err)
 	}
@@ -1071,7 +1071,7 @@ func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser boo
 
 	if restoreUser {
 		if server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.SplitUser {
-			err = server.JobReseedMysqldumpUser()
+			err = server.JobReseedMysqldumpUser(filepath.Dir(backupdir))
 			if err != nil {
 				return fmt.Errorf("Error restoring users %s", err)
 			}
@@ -1176,7 +1176,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 
 	var usergzfile io.Reader
 	if restoreUser && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.SplitUser {
-		usergzfile, err = server.ReadMysqldumpUser()
+		usergzfile, err = server.ReadMysqldumpUser(filepath.Dir(backupfile))
 		if err != nil {
 			return fmt.Errorf("Error opening mysql.user file %s", err)
 		}
@@ -1211,11 +1211,10 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	return nil
 }
 
-func (server *ServerMonitor) ReadMysqldumpUser() (io.Reader, error) {
+func (server *ServerMonitor) ReadMysqldumpUser(dir string) (io.Reader, error) {
 	cluster := server.ClusterGroup
 	var err error
 
-	dir := server.GetMyBackupDirectory()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("Directory %s does not exist", dir)
 	}
