@@ -1344,7 +1344,7 @@ func (cluster *Cluster) SetProxiesReprovCookie() {
 func (cluster *Cluster) SetReplicationCredential(credential string) {
 	cluster.Conf.RplUser = credential
 	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.User
+	new_secret.Value = cluster.Conf.RplUser
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("replication-credential")
 	cluster.Conf.Secrets["replication-credential"] = new_secret
 	cluster.SetClusterReplicationCredentialsFromConfig()
