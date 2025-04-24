@@ -2640,9 +2640,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
 		mycluster.Conf.User = value
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.User
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
+		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		mycluster.ReloadConfig(*mycluster.Conf)
-		//mycluster.SetDbServersMonitoringCredential(value)
+		// mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
