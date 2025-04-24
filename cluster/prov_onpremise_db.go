@@ -250,13 +250,13 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor, fet
 	return nil
 }
 
-func (cluster *Cluster) OnPremiseDryRunDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) OnPremisePrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
 
 	server.SetWaitStartCookie()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise dryrun database via ssh script")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config database via ssh script")
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise dryrun database via ssh failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
 		return err
 	}
 	defer client.Close()
@@ -277,7 +277,7 @@ func (cluster *Cluster) OnPremiseDryRunDatabaseService(server *ServerMonitor, fe
 	// prepare the receiver for current.cnf
 	rcv_port_pid, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise dryrun database via ssh failed : %s", err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
 		return err
 	}
 
@@ -289,7 +289,7 @@ func (cluster *Cluster) OnPremiseDryRunDatabaseService(server *ServerMonitor, fe
 		// prepare the receiver for dummy.cnf
 		rcv_port, err = cluster.SSTRunReceiverToFile(server, "dummy.cnf", ConstJobCreateFile, "printdefault")
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise dryrun database via ssh failed : %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
 			return err
 		}
 
@@ -298,11 +298,11 @@ func (cluster *Cluster) OnPremiseDryRunDatabaseService(server *ServerMonitor, fe
 		defer cluster.SSTCloseReceiver(rcv_port_int)
 	}
 
-	cmd := cluster.Configurator.GetSshDryRunDBScript()
+	cmd := cluster.Configurator.GetSshPrintDefaultDBScript()
 
 	filerc, err := os.Open(cmd)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise dryrun database via ssh script %%s failed : %s ", cmd, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh script %%s failed : %s ", cmd, err)
 		return errors.New("can't open script")
 	}
 
@@ -319,11 +319,11 @@ func (cluster *Cluster) OnPremiseDryRunDatabaseService(server *ServerMonitor, fe
 		stderr bytes.Buffer
 	)
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise dryrun database via ssh script %s", stderr.String())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise print default config database via ssh script %s", stderr.String())
 	}
 	out := stdout.String()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise dryrun script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
 
 	return nil
 }

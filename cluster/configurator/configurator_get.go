@@ -345,18 +345,18 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 }
 
-func (configurator *Configurator) GetSshDryRunDBScript() string {
+func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
 	dbtype := "mariadb"
 	if configurator.ClusterConfig.OnPremiseSSHStartDbScript != "" {
 		return configurator.ClusterConfig.OnPremiseSSHStartDbScript
 	}
 	if configurator.HaveDBTag("rpm") {
-		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/dry-run"
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/printcfg"
 	}
 	if configurator.HaveDBTag("package") {
-		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/dry-run"
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/printcfg"
 	}
-	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/dry-run"
+	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/printcfg"
 }
 
 func (configurator *Configurator) GetFileForWrite(path string, force bool) (*os.File, error) {
