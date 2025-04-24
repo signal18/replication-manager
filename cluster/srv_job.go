@@ -1236,7 +1236,21 @@ func (server *ServerMonitor) ReadMysqldumpUser(dir string) (io.Reader, error) {
 		return nil, fmt.Errorf("[%s] Failed to unzip backup file in backup server for reseed:  %s ", server.URL, err)
 	}
 
-	return fz, nil
+	pw := new(bytes.Buffer)
+	scanner := bufio.NewScanner(fz)
+	for scanner.Scan() {
+		line := scanner.Text()
+		cleaned := line
+		// REMOVE GRANT SUBSTRING FOR CONTAINING "IDENTIFIED BY" OR "IDENTIFIED WITH"
+		if strings.HasPrefix(line, "GRANT") && strings.Contains(line, "IDENTIFIED BY") || strings.Contains(line, "IDENTIFIED WITH") {
+			// Remove substring (IDENTIFIED .*) and exclude WITH
+			reIdentified := regexp.MustCompile(`(?i)\s+IDENTIFIED\s+(?:WITH\s+\S+(?:\s+(?:BY|AS)\s+'.*?')?|BY\s+(?:PASSWORD\s+)?'.*?')`)
+			cleaned = reIdentified.ReplaceAllString(line, "")
+		}
+		_, _ = pw.Write([]byte(cleaned + "\n"))
+	}
+
+	return pw, nil
 }
 
 // JobReseedBackupScript will execute the backup load script
