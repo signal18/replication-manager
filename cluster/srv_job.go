@@ -1025,20 +1025,55 @@ func (server *ServerMonitor) JobZFSSnapBack() (int64, error) {
 	return server.JobInsertTask("zfssnapback", "0", cluster.Conf.MonitorAddress)
 }
 
+func (server *ServerMonitor) JobReseedMysqldumpUser() error {
+	cluster := server.ClusterGroup
+	sql_log_bin := 0
+	resetmaster := "RESET MASTER;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		resetmaster = "RESET BINARY LOGS AND GTIDS;"
+	}
+
+	if server.URL == cluster.GetMaster().URL {
+		sql_log_bin = 1
+		resetmaster = ""
+	}
+
+	cmdstring := "%sSET sql_log_bin=%d;SET long_query_time=10;"
+	if server.DBVersion.IsMySQLOrPerconaGreater84() {
+		cmdstring = "%sSET sql_log_bin=%d;SET long_query_time=10;"
+	}
+	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
+
+	usergzfile, err := server.ReadMysqldumpUser()
+	if err != nil {
+		return fmt.Errorf("Error opening mysql.user file %s", err)
+	}
+
+	cliParams := append(cluster.GetDumpCredentials(server), server.GetSSLClientParam("client")...)
+	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
+	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
+
+	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), usergzfile)
+	var out bytes.Buffer
+	clientCmd.Stdout = &out
+
+	if err := clientCmd.Run(); err != nil {
+		return fmt.Errorf("Error restoring users %s", err)
+	}
+
+	return nil
+}
+
 func (server *ServerMonitor) JobReseedMyLoader(backupdir string, restoreUser bool) error {
+	var err error
 	cluster := server.ClusterGroup
 	threads := strconv.Itoa(cluster.Conf.BackupLogicalLoadThreads)
 
 	if restoreUser {
-		//walk dir
-		files, err := os.ReadDir(backupdir)
-		if err == nil {
-			if len(files) > 0 {
-				for _, file := range files {
-					if strings.HasPrefix(file.Name(), "mysql.user") && strings.HasSuffix(file.Name(), ".sql.gz.skip") {
-						os.Rename(filepath.Join(backupdir, file.Name()), filepath.Join(backupdir, strings.TrimSuffix(file.Name(), ".skip")))
-					}
-				}
+		if server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.SplitUser {
+			err = server.JobReseedMysqldumpUser()
+			if err != nil {
+				return fmt.Errorf("Error restoring users %s", err)
 			}
 		}
 	} else {
@@ -1140,8 +1175,8 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	cmdstring = fmt.Sprintf(cmdstring, resetmaster, sql_log_bin)
 
 	var usergzfile io.Reader
-	if restoreUser {
-		usergzfile, err = server.ReadMysqldumpUser(backupfile)
+	if restoreUser && server.LastBackupMeta.Logical != nil && server.LastBackupMeta.Logical.SplitUser {
+		usergzfile, err = server.ReadMysqldumpUser()
 		if err != nil {
 			return fmt.Errorf("Error opening mysql.user file %s", err)
 		}
@@ -1176,11 +1211,11 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	return nil
 }
 
-func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, error) {
+func (server *ServerMonitor) ReadMysqldumpUser() (io.Reader, error) {
 	cluster := server.ClusterGroup
 	var err error
 
-	dir := filepath.Dir(backupfile)
+	dir := server.GetMyBackupDirectory()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("Directory %s does not exist", dir)
 	}
@@ -1192,7 +1227,7 @@ func (server *ServerMonitor) ReadMysqldumpUser(backupfile string) (io.Reader, er
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Opening mysql.user file %s", userpath)
 
-	gzfile, err := os.Open(backupfile)
+	gzfile, err := os.Open(userpath)
 	if err != nil {
 		return nil, fmt.Errorf("[%s] Failed opening backup file in backup server for reseed:  %s ", server.URL, err)
 	}
@@ -2163,9 +2198,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	// Removing previous valid backup state and start
 	server.DelBackupLogicalCookie()
 
-	if cluster.Conf.BackupSplitMysqlUser {
+	// Always dump users for reusable backup for both mysqldump and mydumper
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.4") {
 		server.LastBackupMeta.Logical.SplitUser = true
-		err := server.JobBackupMysqldumpUser()
+		err = server.JobBackupMysqldumpUser()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error mysqldump backup request: %s", err.Error())
 			return err

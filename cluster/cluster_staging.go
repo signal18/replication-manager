@@ -501,7 +501,8 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 		}
 		err = target.JobReseedMysqldump(backupfile, false)
 	} else if backtype == config.ConstBackupLogicalTypeMydumper {
-		err = target.JobReseedMyLoader(backupfile, false)
+		restoreflag := pmaster.LastBackupMeta.Logical != nil && pmaster.LastBackupMeta.Logical.SplitUser && cluster.Conf.BackupRestoreMysqlUser
+		err = target.JobReseedMyLoader(backupfile, restoreflag)
 		meta, err2 := cluster.JobMyLoaderParseMeta(backupfile)
 		if err2 != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "MyLoader metadata parsing: %s", err2)
