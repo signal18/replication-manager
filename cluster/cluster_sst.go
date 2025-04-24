@@ -255,7 +255,6 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 	}()
 
 	sst.in, err = sst.listener.Accept()
-
 	if err != nil {
 
 		return

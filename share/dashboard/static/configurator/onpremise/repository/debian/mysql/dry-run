@@ -1,0 +1,121 @@
+#!/bin/bash
+function help {
+	echo "Required Environment:" >&2
+	echo "  REPLICATION_MANAGER_USER" >&2
+	echo "  REPLICATION_MANAGER_PASSWORD" >&2
+	echo "  REPLICATION_MANAGER_URL" >&2
+	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
+	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
+	echo "  REPLICATION_MANAGER_CFG_ACTION" >&2
+	echo "  REPLICATION_MANAGER_DB_CONFDIR" >&2
+	echo "  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
+	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
+}
+
+[ -z $REPLICATION_MANAGER_USER ] && help && exit 1
+[ -z $REPLICATION_MANAGER_PASSWORD ] && help && exit 1
+[ -z $REPLICATION_MANAGER_URL ] && help && exit 1
+[ -z $REPLICATION_MANAGER_CLUSTER_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
+[ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
+[ -z $REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY ] && help && exit 1
+[ -z $REPLICATION_MANAGER_CFG_ACTION ] && help && exit 1
+[ -z $REPLICATION_MANAGER_DB_CONFDIR ] && help && exit 1
+
+set -x
+
+GET="wget -q --no-check-certificate -O- --header Content-Type:application/json"
+AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLICATION_MANAGER_PASSWORD\"}"
+TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html "$REPLICATION_MANAGER_URL/api/login")
+
+if [[ -z "$TOKEN" ]]; then
+	echo "Failed to retrieve authentication token"
+	exit 1
+fi
+
+function get {
+	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
+}
+
+mysql_print_defaults_from_pid_file() {
+	local pid_file="$1"
+	local pid cmdline
+
+	if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
+		mysqld --default-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+	else 
+		pid=$(cat "$pid_file")
+		if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
+			echo "Process with PID $pid not found."
+			return 1
+		fi
+
+		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+		eval "$cmdline --print-defaults" | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+	fi
+
+}
+
+print_default_for_fetch() {
+	get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > config.tar.gz
+	if [[ $? -eq 0 ]]; then
+		mkdir -p /bootstrap
+		tar xzvf config.tar.gz -C /bootstrap
+
+		chown -R mysql:mysql /bootstrap/etc/mysql
+
+		# Create dummy config file for dry-run
+		echo "[mysqld]" > /bootstrap/dummy.cnf
+		echo "!includedir /bootstrap/etc/mysql/conf.d" >> /bootstrap/dummy.cnf
+		chown mysql:mysql /bootstrap/dummy.cnf
+
+		mysqld --default-file=/bootstrap/dummy.cnf --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
+		if [[ $? -eq 0 ]]; then
+			echo "Dry run (dummy) completed successfully."
+		else
+			echo "Error during dry run (dummy)."
+			exit 1
+		fi
+	else
+		echo "Failed to fetch configuration from Replication Manager."
+		exit 1
+	fi
+}
+
+# Start actions in background
+if [[ "$REPLICATION_MANAGER_CFG_ACTION" == "FETCH" ]]; then 
+	print_default_for_fetch &
+	FETCH_PID=$!
+fi
+
+if [[ -n "$REPLICATION_MANAGER_RECEIVER_ADDR_PID" ]]; then
+	if [[ -z "$REPLICATION_MANAGER_DB_PID" ]]; then
+		echo "REPLICATION_MANAGER_DB_PID is required when REPLICATION_MANAGER_RECEIVER_ADDR_PID is set."
+		exit 1
+	fi
+	mysql_print_defaults_from_pid_file "$REPLICATION_MANAGER_DB_PID" &
+	CURRENT_PID=$!
+fi
+
+# Wait for background processes
+if [[ -n "$CURRENT_PID" ]]; then
+	wait "$CURRENT_PID"
+	if [[ $? -eq 0 ]]; then
+		echo "Dry run (PID) completed successfully."
+	else
+		echo "Error during dry run (PID)."
+		exit 1
+	fi
+fi
+
+if [[ -n "$FETCH_PID" ]]; then
+	wait "$FETCH_PID"
+	if [[ $? -eq 0 ]]; then
+		echo "Dry run (FETCH) completed successfully."
+	else
+		echo "Error during dry run (FETCH)."
+		exit 1
+	fi
+fi
