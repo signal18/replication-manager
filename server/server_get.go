@@ -23,7 +23,7 @@ func (repman *ReplicationManager) GetParentClusterFromReplicationSource(source s
 	defer repman.Unlock()
 
 	for _, c := range repman.Clusters {
-		if c.Conf.MasterConn == source {
+		if c.Name == source {
 			return c
 		}
 	}

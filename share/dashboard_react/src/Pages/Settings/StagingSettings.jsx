@@ -9,9 +9,17 @@ import RMSwitch from '../../components/RMSwitch'
 import RMIconButton from '../../components/RMIconButton'
 import { TbDatabaseExport, TbDatabaseImport, TbReload } from 'react-icons/tb'
 import { refreshStaging, reseedStagingFromParent } from '../../redux/clusterSlice'
+import Dropdown from '../../components/Dropdown'
 
-function StagingSettings({ selectedCluster, user, openConfirmModal }) {
+function StagingSettings({ selectedCluster, user, openConfirmModal, monitor }) {
   const dispatch = useDispatch()
+  const [clusters, setClusters] = useState([])
+
+  useEffect(() => {
+    if (monitor?.clusters) {
+      setClusters(monitor?.clusters?.filter((cl) => cl != selectedCluster.name).map((cluster) => ({ name: cluster, value: cluster })))
+    }
+  },[monitor?.clusters?.join(',')])
 
   const dataObject = [
     {
@@ -55,13 +63,16 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
       {
         key: 'Staging multisource head cluster',
         value: (
-          <TextForm
-            value={selectedCluster?.config?.replicationMultisourceHeadClusters}
-            confirmTitle={`Confirm staging replication-multisource-head-clusters to `}
-            onSave={(value) => {
-              dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-multisource-head-clusters', value }))
-            }}
-          />
+          <Dropdown
+                id='replication-multisource-head-clusters'
+                confirmTitle={`Confirm staging replication-multisource-head-clusters to `}
+                onChange={(value) => {
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-multisource-head-clusters', value }))
+                }}
+                selectedValue={selectedCluster?.config?.replicationMultisourceHeadClusters}
+                options={clusters}
+                className={styles.fullWidth}
+              />
         )
       },
       {
@@ -77,10 +88,10 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
         )
       },
       {
-        key: 'Reseed Staging From Parent',
+        key: 'Bootstrap Staging From Parent',
         value: (
           <RMIconButton icon={TbDatabaseImport} onClick={() => {
-            openConfirmModal(`Confirm reseed staging from parent? All cluster will be overwritten!`, () => () => {
+            openConfirmModal(`Confirm bootstrap staging from parent? Data will be overwritten by parent cluster!`, () => () => {
               dispatch(
                 reseedStagingFromParent({ clusterName: selectedCluster?.name })
               )
