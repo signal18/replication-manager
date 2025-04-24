@@ -7,9 +7,14 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -848,4 +853,94 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
+}
+
+func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
+	var err error
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC print default config database via ssh script")
+
+	url, node := cluster.GetGottyServer(cluster.Name+"/svc/"+server.Name, "container#db")
+	gottyURL := strings.Replace(url, node, node+".signal18.io", 1)
+
+	var arguments []string
+	arguments = append(arguments, "--v2")
+	arguments = append(arguments, "--skip-tls-verify")
+	arguments = append(arguments, gottyURL)
+	client := exec.Command("gotty-client", arguments...)
+
+	var rcv_port_pid, rcv_port, pid_file, sst_env string
+	var rcv_port_pid_int, rcv_port_int int
+	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_DB_CONFDIR=\"%s\"\n", filepath.Join(server.GetDatabaseConfdir()))
+
+	if fetch {
+		sst_env += "EXPORT REPLICATION_MANAGER_CFG_ACTION=\"FETCH\"\n"
+	} else {
+		sst_env += "EXPORT REPLICATION_MANAGER_CFG_ACTION=\"KEEP\"\n"
+	}
+
+	pid_file = server.SensitiveVariables.Get("PID_FILE")
+	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_DB_PID=\"%s\"\n", pid_file)
+
+	// prepare the receiver for current.cnf
+	rcv_port_pid, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
+		return err
+	}
+
+	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_RECEIVER_ADDR_PID=\"%s:%s\"\n", cluster.Conf.BindAddr, rcv_port_pid)
+	rcv_port_pid_int, _ = strconv.Atoi(rcv_port_pid)
+	defer cluster.SSTCloseReceiver(rcv_port_pid_int)
+
+	if fetch {
+		// prepare the receiver for dummy.cnf
+		rcv_port, err = cluster.SSTRunReceiverToFile(server, "dummy.cnf", ConstJobCreateFile, "printdefault")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
+			return err
+		}
+
+		sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY=\"%s:%s\"\n", cluster.Conf.BindAddr, rcv_port)
+		rcv_port_int, _ = strconv.Atoi(rcv_port)
+		defer cluster.SSTCloseReceiver(rcv_port_int)
+	}
+
+	cmd := cluster.Configurator.GetSshPrintDefaultDBScript()
+
+	filerc, err := os.Open(cmd)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh script %%s failed : %s ", cmd, err)
+		return errors.New("can't open script")
+	}
+
+	defer filerc.Close()
+	buf := new(bytes.Buffer)
+	buf.ReadFrom(filerc)
+
+	cwd := strings.NewReader(fmt.Sprintf("cd %s\n", cluster.OsUser.HomeDir))
+	buf2 := strings.NewReader(server.GetSshEnv())
+	buf3 := strings.NewReader(sst_env)
+	r := io.MultiReader(cwd, buf2, buf3, buf)
+
+	var (
+		stdout bytes.Buffer
+		stderr bytes.Buffer
+	)
+
+	client.Stdin = r
+	client.Stdout = &stdout
+	client.Stderr = &stderr
+
+	err = client.Run()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh script %%s failed : %s ", cmd, err)
+		return errors.New("can't run script")
+	}
+
+	out := stdout.String()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC print default config script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
+
+	return nil
 }

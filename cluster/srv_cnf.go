@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -211,11 +212,36 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 		return err
 	}
 
-	err = server.GetConfiguratorDefaults()
+	err = cluster.PrintDefaultDatabaseService(server, true)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to refresh local variables list. Error: %s", err)
-		return err
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read default database service error: %s", err)
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		err = server.ReadVariablesFromConfig(filepath.Join(server.Datadir, "dummy.cnf"), false)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		err = server.ReadVariablesFromConfig(filepath.Join(server.Datadir, "current.cnf"), true)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
+	}()
+
+	wg.Wait()
+
+	// err = server.GetConfiguratorDefaults()
+	// if err != nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to refresh local variables list. Error: %s", err)
+	// 	return err
+	// }
 
 	server.IsConfigGen = true
 	return nil
@@ -385,6 +411,99 @@ func (server *ServerMonitor) GetConfiguratorDefaults() error {
 					Variable_name: key,
 					Config:        &value,
 				})
+			}
+
+			list[key] = true
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) ReadVariablesFromConfig(filepath string, deployed bool) error {
+	cluster := server.ClusterGroup
+
+	if _, err := os.Stat(filepath); err != nil {
+		if os.IsNotExist(err) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "File %s does not exist: %s", filepath, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", filepath, err)
+		}
+		return err
+	}
+
+	// Read the file
+	file, err := os.Open(filepath)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", filepath, err)
+		return err
+	}
+	defer file.Close()
+
+	// Read the contents of the file
+	var out bytes.Buffer
+	if _, err := out.ReadFrom(file); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", filepath, err)
+		return err
+	}
+
+	// Step 3: Process output
+	lines := strings.Split(out.String(), "--")
+	list := map[string]bool{}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			key := strings.ToUpper(strings.TrimSpace(parts[0]))
+			value := strings.TrimSpace(parts[1])
+			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+				if deployed {
+					if v.Deployed == nil {
+						v.Deployed = &value
+					} else if *v.Deployed != value {
+						if multi, ok := list[key]; ok && multi {
+							// If the previous key is the same, append the value
+							*v.Deployed += "," + value
+						} else {
+							// If the previous key is not the same, update the value
+							*v.Deployed = value
+						}
+						// Update the value in the map
+						server.VariablesMap.Store(key, v)
+					}
+				} else {
+					if v.Config == nil {
+						v.Config = &value
+					} else if *v.Config != value {
+						if multi, ok := list[key]; ok && multi {
+							// If the previous key is the same, append the value
+							*v.Config += "," + value
+						} else {
+							// If the previous key is not the same, update the value
+							*v.Config = value
+						}
+						// Update the value in the map
+						server.VariablesMap.Store(key, v)
+					}
+				}
+			} else {
+				if deployed {
+					server.VariablesMap.Store(key, &config.VariableState{
+						Variable_name: key,
+						Deployed:      &value,
+					})
+				} else {
+					server.VariablesMap.Store(key, &config.VariableState{
+						Variable_name: key,
+						Config:        &value,
+					})
+				}
 			}
 
 			list[key] = true
