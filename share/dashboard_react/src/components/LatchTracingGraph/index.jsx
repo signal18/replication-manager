@@ -2,25 +2,29 @@ import React, { useEffect, useRef } from 'react'
 import { Box } from '@chakra-ui/react';
 import '../../styles/_graphite.scss';
 
-function MutexTracingGraph({ context, size, step, className, maxExtent = 1000, clusterConfig }) {
+function LatchTracingGraph({ context, size, step, className, maxExtent = 1000, clusterConfig }) {
 //  console.log("clusterConfig:", clusterConfig);
 // console.log("monitoringPerformanceSchemaLatch:", clusterConfig?.monitoringPerformanceSchemaLatch);
   const chartRef = useRef(null);
 
   // Array of mutex metrics to display
-  const mutexMetrics = [
-    'mysql_global_status_wait_synch_mutex_innodb_buf_pool_mutex',
-    'mysql_global_status_wait_synch_mutex_innodb_buf_dblwr_mutex',
-    'mysql_global_status_wait_synch_mutex_innodb_fil_system_mutex',
-    'mysql_global_status_wait_synch_mutex_innodb_flush_list_mutex',
-    'mysql_global_status_wait_synch_mutex_innodb_lock_wait_mutex',
-    'mysql_global_status_wait_synch_mutex_innodb_trx_sys_mutex'
+  const latchMetrics = [
+    'mysql_global_status_wait_synch_rwlock_innodb_btr_search_latch',
+    'mysql_global_status_wait_synch_rwlock_innodb_fil_space_latch',
+    'mysql_global_status_wait_synch_rwlock_innodb_trx_purge_latch',
+    'mysql_global_status_wait_synch_rwlock_innodb_trx_rseg_latch',
+    'mysql_global_status_wait_synch_rwlock_innodb_lock_latch',
+    'mysql_global_status_wait_synch_rwlock_innodb_log_latch'
   ];
 
   // Convert long mutex names to shorter display names
-  const getShortMutexName = (metricName) => {
+  const getShortLatchName = (metricName) => {
     const parts = metricName.split('_');
-    return parts[6] + '_' + parts[7]+ '_' + parts[8];
+    if (parts[9] === undefined) {
+    return parts[6] + '_' + parts[7];
+  } else {
+    return parts[6] + '_' + parts[7]+ '_' + parts[8] ;
+  }
   };
 
   React.useEffect(() => {
@@ -32,10 +36,10 @@ function MutexTracingGraph({ context, size, step, className, maxExtent = 1000, c
     let graphite = context.graphite('/graphite');
 
     // Create a series of metrics for each mutex type
-    const metrics = mutexMetrics.map(metric => {
+    const metrics = latchMetrics.map(metric => {
       // Sum the metrics across all servers like your example does
       const path = `perSecond(sumSeries(mysql.*.${metric}))`;
-      return graphite.metric(path).alias(getShortMutexName(metric));
+      return graphite.metric(path).alias(getShortLatchName(metric));
     });
 
     const div = d3.select(chartRef.current).style('position', 'relative');
@@ -70,15 +74,15 @@ function MutexTracingGraph({ context, size, step, className, maxExtent = 1000, c
   }, [context, maxExtent, clusterConfig]);
 
   // Only render the component if monitoringPerformanceSchemaLatch is true
-  if (!clusterConfig || clusterConfig.monitoringPerformanceSchemaMutex != true) {
+  if (!clusterConfig || clusterConfig.monitoringPerformanceSchemaLatch != true) {
     return null;
   }
   return (
   <div className="graph-container">
-      <h3>Mutex</h3>
+      <h3>Latch</h3>
       <Box className={className} ref={chartRef}></Box>
     </div>
   );
 }
 
-export default MutexTracingGraph;
+export default LatchTracingGraph;

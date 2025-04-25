@@ -5,6 +5,7 @@ import { Flex } from '@chakra-ui/react'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import MutexTracingGraph from '../../components/MutexTracingGraph';
+import LatchTracingGraph from '../../components/LatchTracingGraph';
 
 function Graphs({ selectedCluster }) {
   const qpsRef = useRef()
@@ -34,7 +35,7 @@ function Graphs({ selectedCluster }) {
   ])
   const [selectedHour, setSelectedHour] = useState({ name: '2 hours', value: 720 })
   const [selectedStep, setSelectedStep] = useState({ name: '10 seconds', value: 1e4 })
-
+  //console.log("selectedCluster:", selectedCluster);
   useEffect(() => {
     if (cubism) {
       setContext(cubism.context().serverDelay(5e3).clientDelay(5e3).step(selectedStep.value).size(selectedHour.value))
@@ -107,14 +108,21 @@ function Graphs({ selectedCluster }) {
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
         <MutexTracingGraph
-    chartRef={mutexRef}
-    size={selectedHour.value}
-    step={selectedStep.value}
-    context={context}
-    maxExtent={1000}
-    className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
-    clusterConfig={selectedCluster?.config}
-  />
+          chartRef={mutexRef}
+          size={selectedHour.value}
+          step={selectedStep.value}
+          context={context}
+          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
+          clusterConfig={selectedCluster.config}
+        />
+        <LatchTracingGraph
+          chartRef={mutexRef}
+          size={selectedHour.value}
+          step={selectedStep.value}
+          context={context}
+          className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
+          clusterConfig={selectedCluster.config}
+        />
       </Flex>
     </Flex>
   )
