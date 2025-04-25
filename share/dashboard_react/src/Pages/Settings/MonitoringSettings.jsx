@@ -128,20 +128,6 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Monitoring InnoDB Status',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for monitoring-innodb-status?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.monitoringInnoDBStatus}
-          loading={monInnoDBLoading}
-        />
-      )
-    },
-    {
       key: 'Monitoring Variable Diff',
       value: (
         <RMSwitch
@@ -165,6 +151,48 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringProcesslist}
+          loading={monProcessListLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring InnoDB Status',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-innodb-status?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-innodb-status' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringInnoDBStatus}
+          loading={monInnoDBLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring InnoDB Mutex',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-performance-schema-mutex?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-mutex' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringPerformanceSchemaMutex}
+          loading={monProcessListLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring InnoDB Latch',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-performance-schema-latch?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-latch' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringPerformanceSchemaLatch}
           loading={monProcessListLoading}
         />
       )

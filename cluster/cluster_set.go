@@ -2475,18 +2475,18 @@ func (cluster *Cluster) SetLogStatsLevel(value int) {
 func (cluster *Cluster) SetMonitorPFSMutex(value bool) {
 	cluster.Conf.MonitorPFSMutex = value
 	if value {
-		cluster.DropDBTagConfig("logmutex")
+		cluster.AddDBTag("logmutex",true)
 		} else	{
-		cluster.DropDBTagConfig("logmutex")
+		cluster.DropDBTag("logmutex",true)
 	}
 }
 
 func (cluster *Cluster) SetMonitorPFSLatch(value bool) {
 	cluster.Conf.MonitorPFSLatch = value
 	if value {
-		cluster.DropDBTagConfig("loglatch")
+		cluster.AddDBTag("loglatch",true)
 		} else	{
-		cluster.DropDBTagConfig("loglatch")
+		cluster.DropDBTag("loglatch",true)
 	}
 }
 

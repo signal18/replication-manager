@@ -3871,7 +3871,7 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.AddDBTag(vars["tagValue"])
+		mycluster.AddDBTag(vars["tagValue"],false)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -3936,7 +3936,7 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.DropDBTag(vars["tagValue"])
+		mycluster.DropDBTag(vars["tagValue"],false)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
