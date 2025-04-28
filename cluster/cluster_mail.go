@@ -68,6 +68,10 @@ func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 	// Build final recipient list
 	var to []string
 	for email := range list {
+		if email == "" {
+			continue
+		}
+
 		to = append(to, email)
 	}
 
