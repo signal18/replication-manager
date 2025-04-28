@@ -1,162 +1,199 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import * as d3 from 'd3';
-import moment from 'moment';
+import axios from 'axios'; // Make sure axios is installed or use fetch instead
 
-const MultiMetricGraph = ({ context, metrics = [], className }) => {
-  const [data, setData] = useState([]);
+const MultiMetricGraph = ({ metrics, timeRange, ...props }) => {
+  const [chartData, setChartData] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
-  const metricHandles = useRef([]);
 
   useEffect(() => {
-    if (!context) return;
+    const fetchGraphiteData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
 
-    try {
-      const graphite = context.graphite('/graphite');
-      metricHandles.current = metrics.map(metric => {
-        // EXACT MATCH TO WORKING REQUEST FORMAT
-        const target = `alias(${metric.target},'')`;
+        if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
+          console.log("No metrics provided");
+          setChartData([]);
+          setIsLoading(false);
+          return;
+        }
 
-        const handle = context.metric((start, stop, step, callback) => {
-          // Match the exact request format from working components
-          const metricInstance = graphite.metric(target);
+        console.log("Metrics to fetch:", metrics);
 
-          metricInstance(start, stop, step, (data) => {
-            console.log('Received data for', target, data);
-            callback(data);
-          });
+        // Determine time range parameters
+        const now = Math.floor(Date.now() / 1000);
+        const from = timeRange?.from || (now - 3600); // Default to last hour
+        const until = timeRange?.until || now;
+
+        // Create an array of promises for each metric
+        const promises = metrics.map(async (metric) => {
+          if (!metric.target) {
+            console.warn("Metric missing target:", metric);
+            return null;
+          }
+
+          // Build the correct Graphite API URL
+          // Note: Using /render instead of /api/graphite/render based on your log
+          const encodedTarget = encodeURIComponent(metric.target);
+          const url = `/render?target=${encodedTarget}&format=json&from=${from}&until=${until}`;
+
+          console.log(`Fetching data for ${metric.name || metric.target} from ${url}`);
+
+          try {
+            const response = await axios.get(url);
+
+            if (response.data && Array.isArray(response.data) && response.data.length > 0) {
+              // Assign name and color from our metric object
+              const data = response.data[0];
+              data.name = metric.name || data.target;
+              data.color = metric.color || '#000000';
+              return data;
+            } else {
+              console.warn(`No data returned for ${metric.target}`);
+              return null;
+            }
+          } catch (err) {
+            console.error(`Error fetching data for ${metric.target}:`, err);
+            return null;
+          }
         });
 
-        return { ...metric, handle };
-      });
+        // Wait for all requests to complete
+        const results = await Promise.all(promises);
+        const validResults = results.filter(r => r !== null && r.datapoints && r.datapoints.length > 0);
 
-      const updateData = () => {
-        try {
-          const now = Date.now();
-          const step = context.step();
-          const start = now - (context.size() * step);
+        console.log("Fetched metrics data:", validResults);
 
-          const timestamps = d3.range(start, now, step);
-          const processedData = [];
+        if (validResults.length === 0) {
+          console.warn("No valid metric data fetched");
+          setChartData([]);
+          setIsLoading(false);
+          return;
+        }
 
-          timestamps.forEach(timestamp => {
-            const point = { timestamp, formattedTime: moment(timestamp).format('HH:mm:ss') };
-            let hasData = false;
-
-            metricHandles.current.forEach((metric, i) => {
-              const value = metric.handle.valueAt(timestamp);
-              if (value !== null && !isNaN(value)) {
-                point[`metric${i}`] = value;
-                hasData = true;
+        // Extract all timestamps
+        const timestamps = new Set();
+        validResults.forEach(metric => {
+          if (metric.datapoints) {
+            metric.datapoints.forEach(point => {
+              if (Array.isArray(point) && point.length > 1 && point[1] !== null) {
+                timestamps.add(point[1]);
               }
             });
+          }
+        });
 
-            if (hasData) processedData.push(point);
+        // Convert to array and sort
+        const sortedTimestamps = Array.from(timestamps).sort((a, b) => a - b);
+
+        // Create data points for each timestamp
+        const data = sortedTimestamps.map(timestamp => {
+          const date = new Date(timestamp * 1000);
+          const formattedTime = date.toTimeString().split(' ')[0];
+
+          const dataPoint = {
+            timestamp,
+            time: formattedTime
+          };
+
+          // Add values for each metric at this timestamp
+          validResults.forEach((metric, index) => {
+            const point = metric.datapoints.find(dp => dp[1] === timestamp);
+            const value = point ? point[0] : null;
+
+            if (value !== null && !isNaN(value)) {
+              dataPoint[`metric${index}`] = Number(value);
+              dataPoint[`name${index}`] = metric.name || metric.target;
+              dataPoint[`color${index}`] = metric.color || getColorForIndex(index);
+            }
           });
 
-          setData(processedData);
-        } catch (err) {
-          setError(err.message);
-        }
-      };
+          return dataPoint;
+        });
 
-      context.on('change', updateData);
-      updateData();
+        console.log(`Generated ${data.length} chart data points`);
+        setChartData(data);
+      } catch (err) {
+        console.error("Error in fetchGraphiteData:", err);
+        setError(err.message || "Failed to fetch metric data");
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      return () => context.on('change', null);
+    fetchGraphiteData();
+  }, [metrics, timeRange]);
 
-    } catch (err) {
-      setError(err.message);
-    }
-  }, [context, metrics]);
-
-  // Debug UI and render logic
-  if (error) return <div className={className} style={{ color: 'red' }}>{error}</div>;
-  if (isLoading) return <div className={className}>Loading metrics...</div>;
-  if (!data.length) return (
-    <div className={className}>
-      No metric data available
-      <div style={{ fontSize: '0.8em', color: '#666' }}>
-        Context: {context ? 'Valid' : 'Missing'} |
-        Metrics: {metrics.length} |
-        Last check: {new Date().toLocaleTimeString()}
+  if (isLoading) return <div>Loading metric data...</div>;
+  if (error) return <div>Error: {error}</div>;
+  if (!chartData || chartData.length === 0) {
+    return (
+      <div>
+        <div>No data available</div>
+        <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
+          Check browser console for detailed error information.
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
 
   return (
-    <div className={className} ref={containerRef}>
+    <div className="multi-metric-graph" {...props}>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart
-          data={data}
-          margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+          data={chartData}
+          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+          <CartesianGrid strokeDasharray="3 3" />
           <XAxis
-            dataKey="formattedTime"
-            tick={{ fontSize: 12 }}
-            label={{
-              value: 'Time',
-              position: 'insideBottomRight',
-              offset: 0
-            }}
+            dataKey="time"
+            label={{ value: 'Time', position: 'insideBottomRight', offset: 0 }}
+            animationDuration={0}
           />
           <YAxis
-            tick={{ fontSize: 12 }}
-            label={{
-              value: 'Value',
-              angle: -90,
-              position: 'insideLeft',
-              offset: 10
-            }}
+            label={{ value: 'Value', angle: -90, position: 'insideLeft' }}
+            animationDuration={0}
           />
           <Tooltip
-            contentStyle={{
-              background: '#fff',
-              border: '1px solid #ddd',
-              borderRadius: 4
+            formatter={(value, name, props) => {
+              const metricIndex = name.replace('metric', '');
+              const metricName = props.payload[`name${metricIndex}`] || name;
+              return [value, metricName];
             }}
-            labelFormatter={(label) => (
-              <div style={{ fontWeight: 'bold' }}>
-                {moment(label).format('HH:mm:ss')}
-              </div>
-            )}
-            formatter={(value, name) => [
-              Number(value).toLocaleString(),
-              data[0][`metricName${name.replace('metric', '')}`] || name
-            ]}
+            labelFormatter={(label) => `Time: ${label}`}
+            isAnimationActive={false}
           />
-          <Legend
-            wrapperStyle={{ paddingTop: 10 }}
-            formatter={(value, entry) => (
-              <span style={{ color: entry.color }}>
-                {entry.payload?.metricName || value}
-              </span>
-            )}
-          />
-          {metricHandles.map((metric, index) => (
-            <Line
-              key={index}
-              type="monotone"
-              dataKey={`metric${index}`}
-              name={metric.name}
-              stroke={metric.color || '#8884d8'}
-              strokeWidth={2}
-              dot={false}
-              activeDot={{
-                r: 6,
-                fill: '#fff',
-                strokeWidth: 2
-              }}
-              isAnimationActive={false}
-            />
-          ))}
+          <Legend />
+          {chartData.length > 0 && metrics.map((metric, index) => {
+            // Check if we have data for this metric
+            const hasData = Object.keys(chartData[0]).includes(`metric${index}`);
+            if (!hasData) return null;
+
+            return (
+              <Line
+                key={index}
+                type="monotone"
+                dataKey={`metric${index}`}
+                name={metric.name || metric.target || `Metric ${index + 1}`}
+                stroke={metric.color || getColorForIndex(index)}
+                dot={false}
+                activeDot={{ r: 6 }}
+                isAnimationActive={false}
+              />
+            );
+          })}
         </LineChart>
       </ResponsiveContainer>
-
-      {process.env.NODE_ENV === 'development' && renderDebugInfo()}
     </div>
   );
+};
+
+// Helper function to get colors for lines
+const getColorForIndex = (index) => {
+  const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F'];
+  return colors[index % colors.length];
 };
 
 export default MultiMetricGraph;

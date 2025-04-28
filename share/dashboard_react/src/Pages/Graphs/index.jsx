@@ -54,11 +54,6 @@ function Graphs({ selectedCluster }) {
   // Critical change: Start the context immediately
   newContext.start();
 
-  console.log('Context created with:', {
-    step: newContext.step(),
-    size: newContext.size(),
-    now: newContext.now()
-  });
 
   setContext(newContext);
 
