@@ -14,7 +14,7 @@ import data from "@emoji-mart/data";
 
 
 // eslint-disable-next-line react/display-name, react/prop-types
-const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
+const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 }) => {
     const dispatch = useDispatch();
     const { meetInfo, messages, loading} = useSelector((state) => state.meet, shallowEqual);
     const [message, setMessage] = useState('');
@@ -77,7 +77,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
     useEffect(() => {
         
             const interval = setInterval(() => {
-                if (isLogged){
+                if (isLogged && cloud18 ){
                     if (selectedChannel) {
                         setScrollPosition(messagesContainerRef.current?.scrollHeight - messagesContainerRef.current?.scrollTop);
                         dispatch(fetchNewMessages({ channelId: selectedChannel })); 
@@ -86,7 +86,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose }) => {
                 }
             }, 500);
         return () => clearInterval(interval);
-    }, [dispatch, selectedChannel, isLogged]);
+    }, [dispatch, selectedChannel, isLogged, cloud18]);
 
     if (!isOpen) return null;   
       
