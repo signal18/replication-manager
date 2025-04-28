@@ -15,12 +15,13 @@ import (
 )
 
 type MeetHook struct {
-	WebhookURL     string
-	AcceptedLevels []logrus.Level
-	Timeout        time.Duration
-	Async          bool
-	FieldHeader    string
-	Model          model.IncomingWebhookRequest
+	WebhookURL       string
+	AcceptedLevels   []logrus.Level
+	Timeout          time.Duration
+	Async            bool
+	FieldHeader      string
+	Model            model.IncomingWebhookRequest
+	AdditionalFields map[string]interface{}
 
 	hook *WebHook
 }
@@ -46,24 +47,20 @@ func (sh *MeetHook) Fire(e *logrus.Entry) error {
 		attachment.Text = sh.FieldHeader
 
 		for k, v := range e.Data {
-			field := &model.SlackAttachmentField{}
-
-			field.Title = k
-			if str, ok := v.(string); ok {
-				field.Value = str
-			} else {
-				field.Value = fmt.Sprint(v)
-			}
-
-			if len(field.Value.(string)) <= 20 {
-				field.Short = true
-			}
-			attachment.Fields = append(attachment.Fields, field)
+			attachment.Fields = append(attachment.Fields, sh.makeAttachmentField(k, v))
 		}
+
 		attachment.Pretext = e.Message
 	} else {
 		attachment.Text = e.Message
 	}
+
+	if len(sh.AdditionalFields) > 0 {
+		for k, v := range sh.AdditionalFields {
+			attachment.Fields = append(attachment.Fields, sh.makeAttachmentField(k, v))
+		}
+	}
+
 	attachment.Fallback = e.Message
 	attachment.Color = color
 
@@ -172,4 +169,20 @@ func (wh *WebHook) PostWebhookMessage(payload *model.IncomingWebhookRequest) err
 	}
 
 	return nil
+}
+
+func (sh *MeetHook) makeAttachmentField(title string, value interface{}) *model.SlackAttachmentField {
+	field := &model.SlackAttachmentField{}
+
+	field.Title = title
+	if str, ok := value.(string); ok {
+		field.Value = str
+	} else {
+		field.Value = fmt.Sprint(value)
+	}
+
+	if len(field.Value.(string)) <= 20 {
+		field.Short = true
+	}
+	return field
 }

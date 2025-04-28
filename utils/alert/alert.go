@@ -40,7 +40,15 @@ func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
 	}
 	e.Text = []byte(text)
 
-	return mailer.Send(e)
+	err := mailer.Send(e)
+	if err != nil {
+		if strings.Contains(err.Error(), "no address") {
+			return fmt.Errorf("to: %s, mailer: %v, err: %v", to, mailer, err)
+		}
+		return err
+	}
+
+	return nil
 }
 
 //Ahmad function to create a post for alert
