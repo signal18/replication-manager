@@ -9,7 +9,6 @@ package cluster
 import (
 	"bytes"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -212,16 +211,28 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 		return err
 	}
 
-	err = cluster.PrintDefaultDatabaseService(server, true)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read default database service error: %s", err)
-	}
+	server.IsConfigGen = true
+	return nil
+}
 
+func (server *ServerMonitor) PrintDefaults(fetch bool) error {
+	cluster := server.ClusterGroup
+	cluster.PrintDefaultDatabaseService(server, fetch)
+
+	server.ReadVariablesFromConfigs()
+
+	return nil
+}
+
+func (server *ServerMonitor) ReadVariablesFromConfigs() {
+	cluster := server.ClusterGroup
+
+	var err error
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfig(filepath.Join(server.Datadir, "dummy.cnf"), false)
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), false)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
@@ -229,22 +240,13 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfig(filepath.Join(server.Datadir, "current.cnf"), true)
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
 	}()
 
 	wg.Wait()
-
-	// err = server.GetConfiguratorDefaults()
-	// if err != nil {
-	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to refresh local variables list. Error: %s", err)
-	// 	return err
-	// }
-
-	server.IsConfigGen = true
-	return nil
 }
 
 func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
@@ -351,85 +353,17 @@ func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
 	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
 }
 
-func (server *ServerMonitor) GetConfiguratorDefaults() error {
-	cluster := server.ClusterGroup
-	cnf := filepath.Join(server.Datadir, "init/etc/mysql/dummy.cnf")
-
-	// Check if the file exists, create it if not
-	if _, err := os.Stat(cnf); err != nil {
-		if !os.IsNotExist(err) {
-			return err
-		}
-
-		// Create the dummy.cnf file if not exists
-		if err := server.CreateLocalCnf(cnf); err != nil {
-			return err
-		}
-	}
-
-	// Run mariadbd with --print-defaults
-	cmd := exec.Command(cluster.GetMysqlServerBinaryPath(), "--defaults-file="+cnf, "--print-defaults")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	// Step 3: Process output
-	lines := strings.Split(out.String(), "--")
-	list := map[string]bool{}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-
-		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			key := strings.ToUpper(strings.TrimSpace(parts[0]))
-			value := strings.TrimSpace(parts[1])
-			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-				if v.Config == nil {
-					v.Config = &value
-				} else if *v.Config != value {
-					if multi, ok := list[key]; ok && multi {
-						// If the previous key is the same, append the value
-						*v.Config += "," + value
-					} else {
-						// If the previous key is not the same, update the value
-						*v.Config = value
-					}
-					// Update the value in the map
-					server.VariablesMap.Store(key, v)
-				}
-			} else {
-				server.VariablesMap.Store(key, &config.VariableState{
-					Variable_name: key,
-					Config:        &value,
-				})
-			}
-
-			list[key] = true
-		}
-	}
-
-	return nil
-}
-
-func (server *ServerMonitor) ReadVariablesFromConfig(filepath string, deployed bool) error {
+func (server *ServerMonitor) ReadVariablesFromConfigFile(filepath string, deployed bool) error {
 	cluster := server.ClusterGroup
 
 	if _, err := os.Stat(filepath); err != nil {
 		if os.IsNotExist(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "File %s does not exist: %s", filepath, err)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", filepath, err)
+			return nil
 		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", filepath, err)
 		return err
+
 	}
 
 	// Read the file

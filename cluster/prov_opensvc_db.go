@@ -871,16 +871,10 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 
 	var rcv_port_pid, rcv_port, pid_file, sst_env string
 	var rcv_port_pid_int, rcv_port_int int
-	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_DB_CONFDIR=\"%s\"\n", filepath.Join(server.GetDatabaseConfdir()))
-
-	if fetch {
-		sst_env += "EXPORT REPLICATION_MANAGER_CFG_ACTION=\"FETCH\"\n"
-	} else {
-		sst_env += "EXPORT REPLICATION_MANAGER_CFG_ACTION=\"KEEP\"\n"
-	}
+	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_CONFDIR=\"%s\"\n", filepath.Join(server.GetDatabaseConfdir()))
 
 	pid_file = server.SensitiveVariables.Get("PID_FILE")
-	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_DB_PID=\"%s\"\n", pid_file)
+	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_PID=\"%s\"\n", pid_file)
 
 	// prepare the receiver for current.cnf
 	rcv_port_pid, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
@@ -889,22 +883,20 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 		return err
 	}
 
-	sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_RECEIVER_ADDR_PID=\"%s:%s\"\n", cluster.Conf.BindAddr, rcv_port_pid)
+	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_PID=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port_pid)
 	rcv_port_pid_int, _ = strconv.Atoi(rcv_port_pid)
 	defer cluster.SSTCloseReceiver(rcv_port_pid_int)
 
-	if fetch {
-		// prepare the receiver for dummy.cnf
-		rcv_port, err = cluster.SSTRunReceiverToFile(server, "dummy.cnf", ConstJobCreateFile, "printdefault")
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
-			return err
-		}
-
-		sst_env += fmt.Sprintf("EXPORT REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY=\"%s:%s\"\n", cluster.Conf.BindAddr, rcv_port)
-		rcv_port_int, _ = strconv.Atoi(rcv_port)
-		defer cluster.SSTCloseReceiver(rcv_port_int)
+	// prepare the receiver for dummy.cnf
+	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf"), ConstJobCreateFile, "printdefault")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
+		return err
 	}
+
+	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port)
+	rcv_port_int, _ = strconv.Atoi(rcv_port)
+	defer cluster.SSTCloseReceiver(rcv_port_int)
 
 	cmd := cluster.Configurator.GetSshPrintDefaultDBScript()
 

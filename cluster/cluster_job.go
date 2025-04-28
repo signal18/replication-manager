@@ -100,3 +100,12 @@ func (cluster *Cluster) GetSlowLogTable() {
 		wg.Wait()
 	}
 }
+
+func (cluster *Cluster) PrintDefaultDatabaseServices(regenerate bool) error {
+	for _, s := range cluster.Servers {
+		if s != nil {
+			s.PrintDefaults(regenerate)
+		}
+	}
+	return nil
+}

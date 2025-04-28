@@ -8,7 +8,6 @@ function help {
 	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
 	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
 	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
-	echo "  REPLICATION_MANAGER_CFG_ACTION" >&2
 	echo "  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
 	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
 }
@@ -20,9 +19,6 @@ function help {
 [ -z $REPLICATION_MANAGER_HOST_NAME ] && help && exit 1
 [ -z $REPLICATION_MANAGER_HOST_PORT ] && help && exit 1
 [ -z $REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY ] && help && exit 1
-[ -z $REPLICATION_MANAGER_CFG_ACTION ] && help && exit 1
-
-set -x
 
 $REPLICATION_MANAGER_DB_CONFDIR="/var/lib/replication-manager/$REPLICATION_MANAGER_CLUSTER_NAME/$REPLICATION_MANAGER_HOST_NAME_$REPLICATION_MANAGER_HOST_PORT/etc/mysql"
 
@@ -44,7 +40,7 @@ mysql_print_defaults_from_pid_file() {
 	local pid cmdline
 
 	if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
-		mariadbd --default-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+		mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
 	else 
 		pid=$(cat "$pid_file")
 		if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
@@ -52,17 +48,36 @@ mysql_print_defaults_from_pid_file() {
 			return 1
 		fi
 
-		cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline")
-		eval "$cmdline --print-defaults" | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
-	fi
+		# 1. Read the cmdline arguments safely
+		args=()
+		while IFS= read -r -d '' arg; do
+		args+=("$arg")
+		done < "/proc/$pid/cmdline"
 
+		# 2. Loop through arguments to find --defaults-file
+		defaults_file=""
+		for arg in "${args[@]}"; do
+		if [[ $arg == --defaults-file=* ]]; then
+		defaults_file="${arg#--defaults-file=}"
+		break
+		fi
+		done
+
+		# 3. If --defaults-file is not found, use the default path
+		if [[ -z $defaults_file ]]; then
+		defaults_file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf"
+		fi
+
+		# 4. Print defaults mysqld with the found or default --defaults-file
+		mysqld --defaults-file="$defaults_file" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+	fi
 }
 
 print_default_for_fetch() {
 	get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > config.tar.gz
 	if [[ $? -eq 0 ]]; then
 		mkdir -p /bootstrap
-		tar xzvf config.tar.gz -C /bootstrap
+		tar xzvf config.tar.gz -C /bootstrap &> /dev/null
 
 		chown -R mysql:mysql /bootstrap/etc/mysql
 
@@ -71,30 +86,26 @@ print_default_for_fetch() {
 		echo "!includedir /bootstrap/etc/mysql/conf.d" >> /bootstrap/dummy.cnf
 		chown mysql:mysql /bootstrap/dummy.cnf
 
-		mariadbd --default-file=/bootstrap/dummy.cnf --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
+		mariadbd --defaults-file=/bootstrap/dummy.cnf --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
 		if [[ $? -eq 0 ]]; then
 			echo "Dry run (dummy) completed successfully."
 		else
 			echo "Error during dry run (dummy)."
-			exit 1
+			return 1
 		fi
 	else
 		echo "Failed to fetch configuration from Replication Manager."
-		exit 1
+		return 1
 	fi
 }
 
+
+
 # Start actions in background
-if [[ "$REPLICATION_MANAGER_CFG_ACTION" == "FETCH" ]]; then 
-	print_default_for_fetch &
-	FETCH_PID=$!
-fi
+print_default_for_fetch &
+FETCH_PID=$!
 
 if [[ -n "$REPLICATION_MANAGER_RECEIVER_ADDR_PID" ]]; then
-	if [[ -z "$REPLICATION_MANAGER_DB_PID" ]]; then
-		echo "REPLICATION_MANAGER_DB_PID is required when REPLICATION_MANAGER_RECEIVER_ADDR_PID is set."
-		exit 1
-	fi
 	mysql_print_defaults_from_pid_file "$REPLICATION_MANAGER_DB_PID" &
 	CURRENT_PID=$!
 fi
@@ -106,7 +117,6 @@ if [[ -n "$CURRENT_PID" ]]; then
 		echo "Dry run (PID) completed successfully."
 	else
 		echo "Error during dry run (PID)."
-		exit 1
 	fi
 fi
 
@@ -116,6 +126,5 @@ if [[ -n "$FETCH_PID" ]]; then
 		echo "Dry run (FETCH) completed successfully."
 	else
 		echo "Error during dry run (FETCH)."
-		exit 1
 	fi
 fi

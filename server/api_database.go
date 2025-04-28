@@ -97,6 +97,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{generate}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortRegenerateConfig)),
 	))
@@ -2827,7 +2830,7 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 	}
 }
 
-// handlerMuxServersPortConfig handles the HTTP request to get the configuration of a specific server port within a cluster.
+// handlerMuxServersPortConfig handles the HTTP request to get the configuration of a specific server port within a cluster
 // @Summary Get server port configuration
 // @Description Retrieves the configuration of a specified server port within a cluster.
 // @Tags Database
@@ -2835,14 +2838,21 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
+// @Param generate path string false enum("skip","generate") default("generate") "Generate configuration file"
 // @Success 200 {file} file "Configuration file"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "File not found"
 // @Failure 500 {string} string "No cluster" or "No server"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{generate} [get]
 func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var skipGenerate bool
 	vars := mux.Vars(r)
+	if vars["generate"] == "skip" {
+		skipGenerate = true
+	}
+
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
@@ -2854,7 +2864,9 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			node.GetDatabaseConfig()
+			if !skipGenerate {
+				node.GetDatabaseConfig()
+			}
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -2865,7 +2877,9 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			w.Write(data)
 
 		} else if proxy != nil {
-			proxy.GetProxyConfig()
+			if !skipGenerate {
+				proxy.GetProxyConfig()
+			}
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -3313,9 +3327,9 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if !node.IsConfigGen {
-				node.GetConfiguratorDefaults()
+				node.ReadVariablesFromConfigs()
 			}
 
 			diff := vars["diff"] == "true"

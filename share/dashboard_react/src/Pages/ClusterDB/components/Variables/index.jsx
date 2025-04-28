@@ -29,6 +29,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   const { type, title, payload } = action
   const [showDiff, setShowDiff] = useState(variableMode === 'diff' ? true : false)
   const [showPreserved, setShowPreserved] = useState(false)
+  const [showCfg, setShowCfg] = useState(true)
+  const [showDeployed, setShowDeployed] = useState(true)
+  const [showRuntime, setShowRuntime] = useState(true)
 
   const openConfirmModal = () => {
     setIsConfirmModalOpen(true)
@@ -72,7 +75,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   const searchData = (data) => {
     const searchedData = data.filter((x) => {
       const searchValue = search.toLowerCase()
-      if (x.variableName.toLowerCase().includes(searchValue) || x.cnfValue?.toLowerCase().includes(searchValue)|| x.value?.toLowerCase().includes(searchValue)) {
+      if (x.variableName.toLowerCase().includes(searchValue) || (showCfg && x.cnfValue?.toLowerCase().includes(searchValue)) || (showDeployed && x.value?.toLowerCase().includes(searchValue)) || (showRuntime && x.runtimeValue?.toLowerCase().includes(searchValue))) {
         return x
       }
     })
@@ -94,8 +97,8 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         header: 'Status',
         width: '30%'
       }),
-      columnHelper.accessor((row) => row.cfgValue, {
-        header: 'Configurator Value',
+      ...(showCfg ? [columnHelper.accessor((row) => row.cfgValue, {
+        header: 'Configurator',
         width: '30%',
         cell: (info) => {
           const fullString = info.getValue()
@@ -110,9 +113,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
             </>
           )
         }
-      }),
-      columnHelper.accessor((row) => row.value, {
-        header: 'Server Value',
+      })]: []),
+      ...(showDeployed ? [columnHelper.accessor((row) => row.value, {
+        header: 'Deployed',
         width: '30%',
         cell: (info) => {
           const fullString = info.getValue()
@@ -127,7 +130,24 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
             </>
           )
         }
-      }),
+      })]:[]),
+      ...(showRuntime ? [columnHelper.accessor((row) => row.runtimeValue, {
+        header: 'Runtime',
+        width: '30%',
+        cell: (info) => {
+          const fullString = info.getValue()
+          const fullLength = fullString?.length
+          return (
+            <>
+              {fullLength > 15 ? (
+                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
+              ) : (
+                <span>{info.getValue()}</span>
+              )}
+            </>
+          )
+        }
+      })]: []),
       columnHelper.accessor((row) => (
         <VStack align={"center"} justifyContent={"center"}>
           { row?.preserve ? (
@@ -149,7 +169,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         id: 'actions'
       })
     ],
-    []
+    [showCfg, showDeployed, showRuntime]
   )
 
   return (
@@ -169,9 +189,20 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         <Checkbox size='lg' isChecked={showPreserved} onChange={(e) => { setShowPreserved(e.target.checked) }} className={styles.checkbox}>
           Only preserved options
         </Checkbox>
+        <Box className={styles.divider} />
+        <Text>Show columns:</Text>
+        <Checkbox size='lg' isChecked={showCfg} onChange={(e) => { setShowCfg(e.target.checked) }} className={styles.checkbox}>
+          Configurator
+        </Checkbox>
+        <Checkbox size='lg' isChecked={showDeployed} onChange={(e) => { setShowDeployed(e.target.checked) }} className={styles.checkbox}>
+          Deployed
+        </Checkbox>
+        <Checkbox size='lg' isChecked={showRuntime} onChange={(e) => { setShowRuntime(e.target.checked) }} className={styles.checkbox}>
+          Runtime
+        </Checkbox>
       </Flex>
-      <Box className={`${styles.tableContainer} ${styles.variableContainer}`}>
-        <DataTable data={variablesData} columns={columns} className={styles.table} />
+      <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
+        <DataTable data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>

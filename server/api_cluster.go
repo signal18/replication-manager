@@ -6596,14 +6596,10 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 			vars["servertype"] = strings.ToLower(vars["servertype"])
 			if vars["servertype"] == "db" {
 				if len(mycluster.Servers) > 0 {
-					for _, srv := range mycluster.Servers {
-						if srv != nil {
-							srv.GetDatabaseConfig()
-						} else {
-							http.Error(w, "No server", 500)
-							return
-						}
-					}
+					go mycluster.PrintDefaultDatabaseServices(true)
+				} else {
+					http.Error(w, "No server", 500)
+					return
 				}
 			} else if vars["servertype"] == "proxy" {
 				if len(mycluster.Proxies) > 0 {
