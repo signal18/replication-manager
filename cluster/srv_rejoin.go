@@ -236,10 +236,18 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Found same or lower sequence %s , %s", server.BinaryLogFile, server.BinaryLogPos)
 	}
 	var err error
-	realmaster := cluster.master
+	realmaster := cluster.GetMaster()
 	if cluster.Conf.MxsBinlogOn || cluster.Conf.MultiTierSlave {
 		realmaster = cluster.GetRelayServer()
+		if realmaster == nil {
+			return fmt.Errorf("No relay for current cluster and Maxscale Binlog Server or multi tier slave is active")
+		}
 	}
+
+	if realmaster == nil {
+		return fmt.Errorf("No master found for rejoin GTID position")
+	}
+
 	if server.HasGTIDReplication() || (realmaster.MxsHaveGtid && realmaster.IsMaxscale) {
 		logs, err := server.SetReplicationGTIDCurrentPosFromServer(realmaster)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed in GTID rejoin old master in sync %s, %s", server.URL, err)
