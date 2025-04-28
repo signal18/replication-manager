@@ -2267,6 +2267,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.SessionManager = repman.SessionManager
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
 	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
+	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
