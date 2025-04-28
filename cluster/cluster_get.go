@@ -234,7 +234,7 @@ func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 		}
 		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mysql"
 	}
-	return cluster.Conf.BackupMysqlclientPath
+	return fmt.Sprintf("%sd", cluster.Conf.BackupMysqlclientPath) // Add d to the end of the path (mysql to mysqld, mariadb to mariadbd)
 }
 
 func (cluster *Cluster) GetDomain() string {
