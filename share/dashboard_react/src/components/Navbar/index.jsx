@@ -46,13 +46,13 @@ function Navbar({ username }) {
 
   //to get the meet info
   useEffect(() => {
-    if (isLogged) {
+    if (isLogged && monitor?.config?.cloud18) {
       dispatch(getMeetInfo());
     }else{
       localStorage.removeItem('chatOpen');
       localStorage.removeItem('selectedChannel');
     }
-  }, [isLogged, dispatch]);
+  }, [isLogged, dispatch, monitor?.config?.cloud18]);
 
   useEffect(() => {
     if (meetInfo) {
@@ -193,7 +193,7 @@ function Navbar({ username }) {
         </HStack>
       </Flex>
 
-      <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)}  />
+      <MattermostIntegration isOpen={isChatOpen} setIsChatOpen={setIsChatOpen} onClose={() => setIsChatOpen(false)} cloud18={monitor?.config?.cloud18} />
 
       {isAuthorized() && !isDesktop && (
         <Box mx='auto' p='8px' marginTop='60px'>
