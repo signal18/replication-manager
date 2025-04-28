@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react'
 import '../../styles/_graphite.scss'
-import styles from './styles.module.scss'
+import styles from '../../styles/Graphs.module.scss';
 import { Flex } from '@chakra-ui/react'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
@@ -150,25 +150,19 @@ function Graphs({ selectedCluster }) {
           target={'sumSeries(mysql.*.mysql_global_status_performance_schema_memory)'}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        {context && (
-         <MultiMetricGraph
-           chartRef={redoRef}
-           context={context}
-           metrics={[
-             {
-               target: 'sumSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
-               name: 'Checkpoint Age',
-               color: '#ff7f0e'
-             },
-             {
-               target: 'sumSeries(mysql.*.mysql_global_variables_innodb_log_file_size)',
-               name: 'Log File Size',
-               color: '#1f77b4'
-             }
-           ]}
-           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
-         />
-         )}
+        <MultiMetricGraph
+         chartRef={redoRef}
+         context={context}
+         metricPaths={[
+           'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
+           'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)'
+         ]}
+         height={300}
+         className={`${styles.graph} ${styles.multiMetricGraph}`}
+         title="InnoDB Redo Log Status"
+         maxExtent={1000000000} // Example max value
+       />
+
       </Flex>
     </Flex>
   )

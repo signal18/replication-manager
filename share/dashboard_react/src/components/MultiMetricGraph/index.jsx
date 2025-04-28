@@ -1,199 +1,193 @@
-import React, { useState, useEffect } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import axios from 'axios'; // Make sure axios is installed or use fetch instead
+import React, { useEffect, useRef } from 'react';
+import { Box } from '@chakra-ui/react';
+import * as d3 from 'd3';
+import styles from '../../styles/_multimetricgraph.module.scss'; // Updated CSS Modules import
 
-const MultiMetricGraph = ({ metrics, timeRange, ...props }) => {
-  const [chartData, setChartData] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+function MultiMetricGraph({
+  context,
+  className,
+  maxExtent,
+  metricPaths = [],
+  title = "Metrics",
+  height = 300
+}) {
+  const chartRef = useRef(null);
+  const colorScale = d3.scaleOrdinal(d3.schemeCategory10);
+
+  const getDisplayName = (metricPath) => {
+    const parts = metricPath.split('.');
+    return parts[parts.length - 1];
+  };
 
   useEffect(() => {
-    const fetchGraphiteData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
+    if (!chartRef.current || !context || !metricPaths.length) return;
 
-        if (!metrics || !Array.isArray(metrics) || metrics.length === 0) {
-          console.log("No metrics provided");
-          setChartData([]);
-          setIsLoading(false);
-          return;
-        }
+    // Clear previous chart
+    const container = d3.select(chartRef.current);
+    container.selectAll('*').remove();
 
-        console.log("Metrics to fetch:", metrics);
+    // Get context time parameters
+    const now = Date.now();
+    const startTime = now - (context.size() * context.step());
+    const endTime = now;
+    const step = context.step();
 
-        // Determine time range parameters
-        const now = Math.floor(Date.now() / 1000);
-        const from = timeRange?.from || (now - 3600); // Default to last hour
-        const until = timeRange?.until || now;
+    // Create SVG elements
+    const svg = container.append('svg')
+      .attr('width', '100%')
+      .attr('height', height)
+      .attr('class', styles.chartSvg); // Use CSS Module class
 
-        // Create an array of promises for each metric
-        const promises = metrics.map(async (metric) => {
-          if (!metric.target) {
-            console.warn("Metric missing target:", metric);
-            return null;
-          }
+    // Set up dimensions
+    const margin = { top: 20, right: 30, bottom: 30, left: 40 };
+    const chartWidth = chartRef.current.clientWidth - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
 
-          // Build the correct Graphite API URL
-          // Note: Using /render instead of /api/graphite/render based on your log
-          const encodedTarget = encodeURIComponent(metric.target);
-          const url = `/render?target=${encodedTarget}&format=json&from=${from}&until=${until}`;
+    // Create scales
+    const xScale = d3.scaleTime()
+      .domain([new Date(startTime), new Date(endTime)])
+      .range([0, chartWidth]);
 
-          console.log(`Fetching data for ${metric.name || metric.target} from ${url}`);
+    const yScale = d3.scaleLinear()
+      .range([chartHeight, 0]);
 
-          try {
-            const response = await axios.get(url);
+    // Create line generator
+    const line = d3.line()
+      .defined(d => !isNaN(d.value))
+      .x(d => xScale(d.date))
+      .y(d => yScale(d.value));
 
-            if (response.data && Array.isArray(response.data) && response.data.length > 0) {
-              // Assign name and color from our metric object
-              const data = response.data[0];
-              data.name = metric.name || data.target;
-              data.color = metric.color || '#000000';
-              return data;
-            } else {
-              console.warn(`No data returned for ${metric.target}`);
-              return null;
-            }
-          } catch (err) {
-            console.error(`Error fetching data for ${metric.target}:`, err);
-            return null;
-          }
-        });
+    // Connect to graphite
+    const graphite = context.graphite('/graphite');
 
-        // Wait for all requests to complete
-        const results = await Promise.all(promises);
-        const validResults = results.filter(r => r !== null && r.datapoints && r.datapoints.length > 0);
-
-        console.log("Fetched metrics data:", validResults);
-
-        if (validResults.length === 0) {
-          console.warn("No valid metric data fetched");
-          setChartData([]);
-          setIsLoading(false);
-          return;
-        }
-
-        // Extract all timestamps
-        const timestamps = new Set();
-        validResults.forEach(metric => {
-          if (metric.datapoints) {
-            metric.datapoints.forEach(point => {
-              if (Array.isArray(point) && point.length > 1 && point[1] !== null) {
-                timestamps.add(point[1]);
-              }
-            });
-          }
-        });
-
-        // Convert to array and sort
-        const sortedTimestamps = Array.from(timestamps).sort((a, b) => a - b);
-
-        // Create data points for each timestamp
-        const data = sortedTimestamps.map(timestamp => {
-          const date = new Date(timestamp * 1000);
-          const formattedTime = date.toTimeString().split(' ')[0];
-
-          const dataPoint = {
-            timestamp,
-            time: formattedTime
-          };
-
-          // Add values for each metric at this timestamp
-          validResults.forEach((metric, index) => {
-            const point = metric.datapoints.find(dp => dp[1] === timestamp);
-            const value = point ? point[0] : null;
-
-            if (value !== null && !isNaN(value)) {
-              dataPoint[`metric${index}`] = Number(value);
-              dataPoint[`name${index}`] = metric.name || metric.target;
-              dataPoint[`color${index}`] = metric.color || getColorForIndex(index);
-            }
+    // Fetch data
+    Promise.all(
+      metricPaths.map(path => new Promise((resolve) => {
+        const metric = graphite.metric(path).alias(getDisplayName(path));
+        metric(startTime, endTime, step, (error, data) => {
+          resolve({
+            path,
+            data: data.map(d => ({
+              date: new Date(d.date),
+              value: +d.value
+            }))
           });
-
-          return dataPoint;
         });
+      }))
+    ).then(results => {
+      // Set Y domain
+      const allValues = results.flatMap(r => r.data.map(d => d.value));
+      yScale.domain(maxExtent !== undefined ?
+        [0, maxExtent] :
+        [0, d3.max(allValues)]
+      ).nice();
 
-        console.log(`Generated ${data.length} chart data points`);
-        setChartData(data);
-      } catch (err) {
-        console.error("Error in fetchGraphiteData:", err);
-        setError(err.message || "Failed to fetch metric data");
-      } finally {
-        setIsLoading(false);
-      }
+      // Create chart group
+      const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+      // Draw lines
+      results.forEach(({ path, data }) => {
+        g.append('path')
+          .datum(data)
+          .attr('class', styles.line) // CSS Module class
+          .attr('d', line)
+          .style('stroke', colorScale(path));
+      });
+
+      // Add X axis
+      g.append('g')
+        .attr('transform', `translate(0,${chartHeight})`)
+        .call(d3.axisBottom(xScale).ticks(5))
+        .attr('class', styles.axis); // CSS Module class
+
+      // Add Y axis
+      g.append('g')
+        .call(d3.axisLeft(yScale))
+        .attr('class', styles.axis); // CSS Module class
+
+      // Add legend
+      const legend = g.append('g')
+        .attr('transform', `translate(${chartWidth - 120}, 0)`);
+
+      metricPaths.forEach((path, i) => {
+        legend.append('rect')
+          .attr('x', 0)
+          .attr('y', i * 20)
+          .attr('width', 15)
+          .attr('height', 15)
+          .style('fill', colorScale(path));
+
+        legend.append('text')
+          .attr('x', 20)
+          .attr('y', i * 20 + 12)
+          .text(getDisplayName(path))
+          .attr('class', styles.legendText); // CSS Module class
+      });
+
+      // Add tooltip
+      const tooltip = container.append('div')
+        .attr('class', styles.tooltip); // CSS Module class
+
+      // Mouse interaction
+      g.append('rect')
+        .attr('width', chartWidth)
+        .attr('height', chartHeight)
+        .style('opacity', 0)
+        .on('mousemove', (event) => {
+          const [xPos] = d3.pointer(event);
+          const date = xScale.invert(xPos);
+
+          const tooltipContent = results.map(({ path, data }) => {
+            const bisect = d3.bisector(d => d.date).left;
+            const i = bisect(data, date, 1);
+            const d0 = data[i - 1];
+            const d1 = data[i];
+            const d = date - d0?.date > d1?.date - date ? d1 : d0;
+            return `
+              <div class="${styles.tooltipItem}">
+                <span class="${styles.tooltipColor}"
+                      style="background:${colorScale(path)}"></span>
+                ${getDisplayName(path)}: ${d?.value.toFixed(2) || 'N/A'}
+              </div>
+            `;
+          }).join('');
+
+          tooltip
+            .html(tooltipContent)
+            .style('left', `${event.pageX + 10}px`)
+            .style('top', `${event.pageY - 10}px`);
+        })
+        .on('mouseout', () => tooltip.style('opacity', 0));
+
+    }).catch(console.error);
+
+    // Handle resize
+    const resizeObserver = new ResizeObserver(() => {
+      container.selectAll('*').remove();
+      // Recreate the chart on resize
+      useEffect(() => {}, [context, metricPaths, height, maxExtent]);
+    });
+
+    resizeObserver.observe(chartRef.current);
+
+    return () => {
+      resizeObserver.disconnect();
+      container.selectAll('*').remove();
     };
-
-    fetchGraphiteData();
-  }, [metrics, timeRange]);
-
-  if (isLoading) return <div>Loading metric data...</div>;
-  if (error) return <div>Error: {error}</div>;
-  if (!chartData || chartData.length === 0) {
-    return (
-      <div>
-        <div>No data available</div>
-        <div style={{ marginTop: '10px', fontSize: '0.9em', color: '#666' }}>
-          Check browser console for detailed error information.
-        </div>
-      </div>
-    );
-  }
+  }, [context, metricPaths, height, maxExtent]);
 
   return (
-    <div className="multi-metric-graph" {...props}>
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart
-          data={chartData}
-          margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis
-            dataKey="time"
-            label={{ value: 'Time', position: 'insideBottomRight', offset: 0 }}
-            animationDuration={0}
-          />
-          <YAxis
-            label={{ value: 'Value', angle: -90, position: 'insideLeft' }}
-            animationDuration={0}
-          />
-          <Tooltip
-            formatter={(value, name, props) => {
-              const metricIndex = name.replace('metric', '');
-              const metricName = props.payload[`name${metricIndex}`] || name;
-              return [value, metricName];
-            }}
-            labelFormatter={(label) => `Time: ${label}`}
-            isAnimationActive={false}
-          />
-          <Legend />
-          {chartData.length > 0 && metrics.map((metric, index) => {
-            // Check if we have data for this metric
-            const hasData = Object.keys(chartData[0]).includes(`metric${index}`);
-            if (!hasData) return null;
-
-            return (
-              <Line
-                key={index}
-                type="monotone"
-                dataKey={`metric${index}`}
-                name={metric.name || metric.target || `Metric ${index + 1}`}
-                stroke={metric.color || getColorForIndex(index)}
-                dot={false}
-                activeDot={{ r: 6 }}
-                isAnimationActive={false}
-              />
-            );
-          })}
-        </LineChart>
-      </ResponsiveContainer>
+    <div className={styles.container}>
+      {title && <h3 className={styles.title}>{title}</h3>}
+      <Box
+        ref={chartRef}
+        className={`${styles.chartContainer} ${className}`}
+        width="100%"
+        height={height}
+      />
     </div>
   );
-};
-
-// Helper function to get colors for lines
-const getColorForIndex = (index) => {
-  const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F'];
-  return colors[index % colors.length];
-};
+}
 
 export default MultiMetricGraph;

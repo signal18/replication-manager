@@ -1,59 +1,56 @@
+// src/styles/_graphite.scss
 .axis {
   font-size: rem(14);
   background-color: var(--secondary-gray-color);
-}
 
-.axis text {
-  -webkit-transition: fill-opacity 250ms linear;
-}
+  text {
+    transition: fill-opacity 250ms linear;
+  }
 
-.axis path {
-  display: none;
-}
+  path {
+    display: none;
+  }
 
-.axis line {
-  stroke: var(--primary-color);
-  shape-rendering: crispEdges;
+  line {
+    stroke: var(--primary-color);
+    shape-rendering: crispEdges;
+  }
 }
 
 .horizon {
-  border-bottom: solid 1px var(--black-color);
+  border-top: 1px solid var(--black-color);
+  border-bottom: 1px solid var(--black-color);
   overflow: hidden;
   position: relative;
   background-color: var(--secondary-gray-color);
-}
 
-.horizon {
-  border-top: solid 1px var(--black-color);
-  border-bottom: solid 1px var(--black-color);
-}
+  + .horizon {
+    border-top: none;
+  }
 
-.horizon + .horizon {
-  border-top: none;
-}
+  canvas {
+    display: block;
+  }
 
-.horizon canvas {
-  display: block;
-}
+  .title,
+  .value {
+    position: absolute;
+    margin: 0 6px;
+    line-height: 30px;
+    white-space: nowrap;
+  }
 
-.horizon .title,
-.horizon .value {
-  bottom: 0;
-  line-height: 30px;
-  margin: 0 6px;
-  position: absolute;
-  white-space: nowrap;
-}
+  .title {
+    top: 0;
+    left: 0;
+    font-size: rem(20);
+    font-weight: bold;
+  }
 
-.horizon .title {
-  left: 0;
-  top: 0;
-  font-size: rem(20);
-  font-weight: bold;
-}
-
-.horizon .value {
-  right: 0;
+  .value {
+    right: 0;
+    bottom: 0;
+  }
 }
 
 .line {
