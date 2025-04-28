@@ -6,6 +6,7 @@ import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
 import MutexTracingGraph from '../../components/MutexTracingGraph';
 import LatchTracingGraph from '../../components/LatchTracingGraph';
+import MultiMetricGraph from '../../components/MultiMetricGraph';
 
 function Graphs({ selectedCluster }) {
   const qpsRef = useRef()
@@ -134,16 +135,31 @@ function Graphs({ selectedCluster }) {
           target={'sumSeries(mysql.*.mysql_global_status_performance_schema_memory)'}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <Graphite
+        <MultiMetricGraph
           chartRef={redoRef}
           size={selectedHour.value}
           step={selectedStep.value}
           context={context}
-        //  maxExtent={selectedCluster.}
-          title={'CheckpointAge'}
-          target={['maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)' , 'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size']
-          }
-          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+          title={'Checkpoint Age'}
+          metrics={[
+            {
+              target: 'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
+              name: 'Checkpoint Age',
+              color: '#ff7f0e',  // Orange
+              fill: true
+            },
+            {
+              target: 'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)',
+              name: 'Log File Size',
+              color: '#1f77b4',  // Blue
+              dashed: true,
+              isMaxExtent: true  // Use this to set y-axis max
+            }
+          ]}
+          showPercentage={true}
+          percentageMetrics={[0, 1]}  // Compare first and second metrics
+          className={`${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+          clusterConfig={selectedCluster.config}
         />
       </Flex>
     </Flex>
