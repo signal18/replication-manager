@@ -156,6 +156,34 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
+      key: 'Monitoring Performance Schema Memory',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-performance-schema-memory?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-memory' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringPerformanceSchemaMemory}
+          loading={monInnoDBLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Performance Schema Instruments',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-performance-schema-instruments?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-performance-schema-instruments' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringPerformanceIntruments}
+          loading={monInnoDBLoading}
+        />
+      )
+    },
+    {
       key: 'Monitoring InnoDB Status',
       value: (
         <RMSwitch

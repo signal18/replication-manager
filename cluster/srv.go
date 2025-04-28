@@ -1017,7 +1017,7 @@ func (server *ServerMonitor) Refresh() error {
 		return nil
 	}
 	server.PrevStatus = config.FromStringSyncMap(server.PrevStatus, server.Status)
-	status, logs, err := dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch())
+	status, logs, err := dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(),server.HasLogPFSMemory())
 	if err !=nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get status  %s %s", server.URL, err)
 	}
@@ -1638,7 +1638,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 
 		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
-		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch())
+		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
 
 		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {

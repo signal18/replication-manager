@@ -13,6 +13,8 @@ function Graphs({ selectedCluster }) {
   const netRef = useRef()
   const sbmRef = useRef()
   const mutexRef = useRef()
+  const pfsMemRef = useRef()
+  const redoRef = useRef()
   const [context, setContext] = useState(null)
 
   const [hourOptions, setHourOptions] = useState([
@@ -122,6 +124,26 @@ function Graphs({ selectedCluster }) {
           context={context}
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
           clusterConfig={selectedCluster.config}
+        />
+        <Graphite
+          chartRef={pfsMemRef}
+          size={selectedHour.value}
+          step={selectedStep.value}
+          context={context}
+          title={'PfsMemory'}
+          target={'sumSeries(mysql.*.mysql_global_status_performance_schema_memory)'}
+          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+        />
+        <Graphite
+          chartRef={redoRef}
+          size={selectedHour.value}
+          step={selectedStep.value}
+          context={context}
+        //  maxExtent={selectedCluster.}
+          title={'CheckpointAge'}
+          target={['maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)' , 'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size']
+          }
+          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
       </Flex>
     </Flex>

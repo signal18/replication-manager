@@ -196,6 +196,8 @@ type MasterStatus struct {
 	Executed_Gtid_Set string `json:"executedGtidSet"`
 }
 
+
+
 type SlaveStatus struct {
 	ConnectionName           sql.NullString `db:"Connection_name" json:"connectionName"`
 	ChannelName              sql.NullString `db:"Channel_Name" json:"channelName"`
@@ -1699,7 +1701,9 @@ func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 	return source
 }
 
-func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool) (map[string]string, string, error) {
+
+
+func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool, pfs_mem bool) (map[string]string, string, error) {
 
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
@@ -1739,6 +1743,37 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch boo
 		}
 		vars[v.Variable_name] = v.Value
 	}
+	if pfs_mem {
+
+
+		query_pfsmem:= "SHOW ENGINE PERFORMANCE_SCHEMA STATUS"
+		rows2, err := db.Queryx(query_pfsmem)
+
+		if err != nil {
+			return nil, query_pfsmem, errors.New("Could not get PFS engine status")
+		}
+		defer rows2.Close()
+		var rtype string
+		var rname string
+		var rvalue uint64
+
+		for rows2.Next() {
+
+			err := rows2.Scan(&rtype, &rname, &rvalue)
+			if err != nil {
+				return nil, query, errors.New("Could not get results from PFS status scan")
+			}
+			//fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
+			if strings.Contains(rname , "performance_schema.memory") {
+
+			//	fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
+
+					vars["performance_schema_memory"] =  strconv.FormatUint(rvalue, 10)
+			}
+		}
+
+	} //end if pfs_mem
+
 	return vars, query, nil
 }
 

@@ -89,8 +89,9 @@ type Config struct {
 	MonitorQueries                            bool                   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorPFS                                bool                   `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
 	MonitorPFSInstruments                     bool                   `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`
-	MonitorPFSMutex                      bool              `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
-	MonitorPFSLatch                      bool                   `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
+	MonitorPFSMutex                           bool                   `mapstructure:"monitoring-performance-schema-mutex" toml:"monitoring-performance-schema-mutex" json:"monitoringPerformanceSchemaMutex"`
+	MonitorPFSLatch                           bool                   `mapstructure:"monitoring-performance-schema-latch" toml:"monitoring-performance-schema-latch" json:"monitoringPerformanceSchemaLatch"`
+	MonitorPFSMemory                          bool                   `mapstructure:"monitoring-performance-schema-memory" toml:"monitoring-performance-schema-memory" json:"monitoringPerformanceSchemaMemory"`
 	MonitorPlugins                            bool                   `mapstructure:"monitoring-plugins" toml:"monitoring-plugins" json:"monitoringPlugins"`
 	MonitorInnoDBStatus                       bool                   `mapstructure:"monitoring-innodb-status" toml:"monitoring-innodb-status" json:"monitoringInnoDBStatus"`
 	MonitorLongQueryWithProcess               bool                   `mapstructure:"monitoring-long-query-with-process" toml:"monitoring-long-query-with-process" json:"monitoringLongQueryWithProcess"`

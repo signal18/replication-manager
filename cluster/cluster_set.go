@@ -2490,6 +2490,11 @@ func (cluster *Cluster) SetMonitorPFSLatch(value bool) {
 	}
 }
 
+func (cluster *Cluster) SetMonitorPFSMemory(value bool) {
+	cluster.Conf.MonitorPFSMemory = value
+}
+
+
 func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
-   cluster.Conf.MonitorPFSInstruments= value
+   cluster.Conf.MonitorPFSInstruments = value
 }

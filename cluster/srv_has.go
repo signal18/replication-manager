@@ -354,6 +354,17 @@ func (server *ServerMonitor) HasLogLatch() bool {
 	 return false
 }
 
+func (server *ServerMonitor)  HasLogPFSMemory() bool {
+ if server.GetCluster().Conf.MonitorPFSMemory && server.HasLogPFS()  {
+	 return true
+ }
+ return false
+}
+
+
+
+
+
 func (server *ServerMonitor) HasLogsInSystemTables() bool {
 	return server.Variables.Get("LOG_OUTPUT") == "TABLE"
 }

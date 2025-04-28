@@ -2190,6 +2190,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitorPFSMutex()
 	case "monitoring-performance-schema-latch":
 		mycluster.SwitchMonitorPFSLatch()
+	case "monitoring-performance-schema-memory":
+		mycluster.SwitchMonitorPFSMemory()	
+	case "monitoring-performance-schema-instruments":
+		mycluster.SwitchMonitorPFSInstruments()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-copy-grants":

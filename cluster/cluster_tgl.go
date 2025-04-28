@@ -338,6 +338,11 @@ func (cluster *Cluster) SwitchMonitorPFSLatch() {
   cluster.SetMonitorPFSLatch(!cluster.Conf.MonitorPFSLatch)
 }
 
+func (cluster *Cluster) SwitchMonitorPFSMemory() {
+  cluster.SetMonitorPFSMemory(!cluster.Conf.MonitorPFSMemory)
+}
+
+
 func (cluster *Cluster) SwitchMonitorPFSInstruments() {
    cluster.Conf.MonitorPFSInstruments= !cluster.Conf.MonitorPFSInstruments
 }
