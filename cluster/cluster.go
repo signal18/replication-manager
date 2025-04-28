@@ -464,7 +464,7 @@ func (cluster *Cluster) InitFromConf() {
 		Timeout:        5 * time.Second,
 	})
 
-	cloud18fields := make(map[string]string)
+	cloud18fields := make(map[string]interface{})
 	if cluster.Conf.Cloud18Alert {
 		cloud18fields["cloud18"] = cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
 		cloud18fields["client"] = cluster.Conf.Cloud18GitUser
