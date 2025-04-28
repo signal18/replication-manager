@@ -757,7 +757,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
-		server.VariablesMap.SetDeployedValues(vars)
+		server.VariablesMap.SetRuntimeValues(vars)
 		if err != nil {
 			return nil
 		}
@@ -1614,7 +1614,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		server.SensitiveVariables = new(config.StringsMap)
 	}
 	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
-	server.VariablesMap.SetDeployedValues(clsave.Variables)
+	server.VariablesMap.SetRuntimeValues(clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }

@@ -1002,6 +1002,7 @@ type VariableState struct {
 	Variable_name string  `json:"variableName"`
 	Config        *string `json:"cfgValue"`
 	Deployed      *string `json:"value"`
+	Runtime       *string `json:"runtimeValue"`
 	Preserve      bool    `json:"preserve"`
 }
 
@@ -1036,6 +1037,13 @@ func (v *VariableState) SetDeployedValue(value string) {
 		v.Deployed = new(string)
 	}
 	*v.Deployed = value
+}
+
+func (v *VariableState) SetRuntimeValue(value string) {
+	if v.Runtime == nil {
+		v.Runtime = new(string)
+	}
+	*v.Runtime = value
 }
 
 type VariablesMap struct {
@@ -1149,6 +1157,18 @@ func (m *VariablesMap) SetDeployedValues(strmap map[string]string) {
 		} else {
 			state := NewVariableState(k)
 			state.SetDeployedValue(v)
+			m.Store(k, state)
+		}
+	}
+}
+
+func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
+	for k, v := range strmap {
+		if state, ok := m.Load(k); ok {
+			state.(*VariableState).SetRuntimeValue(v)
+		} else {
+			state := NewVariableState(k)
+			state.SetRuntimeValue(v)
 			m.Store(k, state)
 		}
 	}
