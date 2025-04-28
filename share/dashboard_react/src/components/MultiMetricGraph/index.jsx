@@ -2,26 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 
 /**
- * A generic component for displaying multiple metrics in a single graph
- *
- * @param {Object} props
- * @param {Number} props.size - Width of the graph
- * @param {Number} props.step - Step size in milliseconds
- * @param {Object} props.context - Cubism context
- * @param {String} props.title - Main graph title
- * @param {Array} props.metrics - Array of metric objects
- * @param {String} props.metrics[].target - Graphite target for the metric
- * @param {String} props.metrics[].name - Display name for the metric
- * @param {String} props.metrics[].color - Color for the metric line (optional)
- * @param {Boolean} props.metrics[].dashed - Whether to use dashed line (optional)
- * @param {Boolean} props.metrics[].fill - Whether to fill area under line (optional)
- * @param {String} props.metrics[].fillColor - Fill color (optional)
- * @param {Boolean} props.metrics[].isMaxExtent - Whether this metric should be used as max extent (optional)
- * @param {String} props.maxExtent - Override for max extent (optional)
- * @param {String} props.className - CSS class name (optional)
- * @param {Object} props.clusterConfig - Cluster configuration with graphiteUrl
+ * MultiMetricGraph component for displaying multiple metrics in a single graph
+ * Compatible with existing Graphite/Cubism setup
  */
 function MultiMetricGraph({
+  chartRef,
   size,
   step,
   context,
@@ -29,11 +14,16 @@ function MultiMetricGraph({
   metrics,
   maxExtent,
   className,
-  clusterConfig,
-  showPercentage = false,
-  percentageMetrics = [0, 1] // Default to comparing first two metrics
+  showPercentage = false
 }) {
   const graphRef = useRef(null);
+
+  // Link the ref if provided
+  useEffect(() => {
+    if (chartRef) {
+      chartRef.current = graphRef.current;
+    }
+  }, [chartRef]);
 
   useEffect(() => {
     if (!context || !graphRef.current || !metrics || metrics.length === 0) return;
@@ -49,6 +39,7 @@ function MultiMetricGraph({
       .append("svg")
       .attr("width", width + margin.left + margin.right)
       .attr("height", height + margin.top + margin.bottom)
+      .attr("class", "multi-metric-graph-svg")
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
 
@@ -59,205 +50,279 @@ function MultiMetricGraph({
       .attr("class", "title")
       .text(title);
 
-    // Default colors if not specified
-    const defaultColors = [
-      "#1f77b4", // blue
-      "#ff7f0e", // orange
-      "#2ca02c", // green
-      "#d62728", // red
-      "#9467bd", // purple
-      "#8c564b", // brown
-      "#e377c2", // pink
-      "#7f7f7f", // gray
-      "#bcbd22", // olive
-      "#17becf"  // teal
-    ];
+    // Create a simple rule for the current time
+    const rule = svg.append("g")
+      .attr("class", "rule")
+      .style("display", "none");
 
-    // Prepare targets for the Graphite API
-    const targets = metrics.map(m => m.target);
-    const targetParams = targets.map(t => `target=${encodeURIComponent(t)}`).join('&');
+    rule.append("line")
+      .attr("y1", 0)
+      .attr("y2", height);
 
-    const endTime = Math.floor(Date.now() / 1000);
-    const startTime = endTime - (size * step / 1000);
+    rule.append("text")
+      .attr("y", -10)
+      .attr("text-anchor", "middle");
 
-    // Format the URL for Graphite API
-    const graphiteBaseUrl = clusterConfig?.graphiteUrl || 'http://your-graphite-url/render';
-    const graphiteParams = `?${targetParams}&from=${startTime}&until=${endTime}&format=json`;
-    const url = `${graphiteBaseUrl}${graphiteParams}`;
+    // Define timescale using Cubism context
+    const start = new Date(context.start());
+    const stop = new Date(context.stop());
 
-    // Fetch the data
-    fetch(url)
-      .then(response => response.json())
-      .then(data => {
-        if (!data || data.length === 0) return;
+    const xScale = d3.scaleTime()
+      .domain([start, stop])
+      .range([0, width]);
 
-        // Process data for all metrics
-        const processedData = data.map((metricData, index) => {
-          const points = metricData.datapoints.filter(d => d[0] !== null);
-          return {
-            name: metrics[index].name,
-            color: metrics[index].color || defaultColors[index % defaultColors.length],
-            dashed: metrics[index].dashed || false,
-            fill: metrics[index].fill || false,
-            fillColor: metrics[index].fillColor || null,
-            values: points.map(d => d[0]),
-            times: points.map(d => new Date(d[1] * 1000)),
-            isMaxExtent: metrics[index].isMaxExtent || false
-          };
-        });
+    // Setup the metrics
+    const metricDatasets = metrics.map(metric => ({
+      ...metric,
+      graphiteMetric: context.graphite(metric.target)
+    }));
 
-        // Check if we have valid data
-        if (processedData.some(d => d.values.length === 0)) return;
+    // Setup scales
+    let yDomain = [0, 0];
 
-        // Use the times from the first metric as reference
-        const timeData = processedData[0].times;
+    // If we have a maxExtent metric, set it as our max y value
+    const maxExtentMetric = metricDatasets.find(d => d.isMaxExtent);
 
-        // Determine y-axis max value
-        let yMax = 0;
+    if (maxExtentMetric) {
+      const maxExtentValues = [];
 
-        // If a specific maxExtent is provided, use that
-        if (maxExtent) {
-          const maxExtentData = data.find(d => d.target === maxExtent);
-          if (maxExtentData) {
-            yMax = d3.max(maxExtentData.datapoints.map(d => d[0])) * 1.1;
+      // We need to collect values across the time range
+      for (let i = 0; i < size; i++) {
+        const value = maxExtentMetric.graphiteMetric.valueAt(i);
+        if (value !== null && value !== undefined) {
+          maxExtentValues.push(value);
+        }
+      }
+
+      if (maxExtentValues.length > 0) {
+        yDomain[1] = d3.max(maxExtentValues) * 1.1; // Add 10% padding
+      }
+    }
+
+    // If no max extent is defined, find the max value across all metrics
+    if (yDomain[1] === 0) {
+      const allValues = [];
+
+      metricDatasets.forEach(dataset => {
+        for (let i = 0; i < size; i++) {
+          const value = dataset.graphiteMetric.valueAt(i);
+          if (value !== null && value !== undefined) {
+            allValues.push(value);
           }
         }
-        // If any metric is marked as maxExtent, use that
-        else if (processedData.some(d => d.isMaxExtent)) {
-          const maxExtentMetric = processedData.find(d => d.isMaxExtent);
-          yMax = d3.max(maxExtentMetric.values) * 1.1;
-        }
-        // Otherwise use the max of all metrics
-        else {
-          yMax = d3.max(processedData, d => d3.max(d.values)) * 1.1;
-        }
-
-        // Create scales
-        const xScale = d3.scaleTime()
-          .domain(d3.extent(timeData))
-          .range([0, width]);
-
-        const yScale = d3.scaleLinear()
-          .domain([0, yMax])
-          .range([height, 0]);
-
-        // Create axes
-        const xAxis = d3.axisBottom(xScale)
-          .ticks(5)
-          .tickFormat(d3.timeFormat("%H:%M"));
-
-        const yAxis = d3.axisLeft(yScale);
-
-        // Add X axis
-        svg.append("g")
-          .attr("transform", `translate(0,${height})`)
-          .call(xAxis);
-
-        // Add Y axis
-        svg.append("g")
-          .call(yAxis);
-
-        // Create and add lines for each metric
-        processedData.forEach(metric => {
-          // Create line generator
-          const line = d3.line()
-            .x((d, i) => xScale(metric.times[i]))
-            .y(d => yScale(d));
-
-          // Add line
-          svg.append("path")
-            .datum(metric.values)
-            .attr("fill", "none")
-            .attr("stroke", metric.color)
-            .attr("stroke-width", 1.5)
-            .attr("stroke-dasharray", metric.dashed ? "5,5" : "0")
-            .attr("d", line);
-
-          // Add fill if requested
-          if (metric.fill) {
-            svg.append("path")
-              .datum(metric.values)
-              .attr("fill", metric.fillColor || `${metric.color}33`) // Add transparency
-              .attr("d", d3.area()
-                .x((d, i) => xScale(metric.times[i]))
-                .y0(height)
-                .y1(d => yScale(d))
-              );
-          }
-        });
-
-        // Add percentage calculation if requested
-        if (showPercentage && percentageMetrics.length >= 2) {
-          const numericMetrics = percentageMetrics.map(idx => processedData[idx]).filter(Boolean);
-
-          if (numericMetrics.length >= 2) {
-            const numerator = numericMetrics[0].values[numericMetrics[0].values.length - 1];
-            const denominator = numericMetrics[1].values[numericMetrics[1].values.length - 1];
-
-            if (denominator !== 0) {
-              const percentage = (numerator / denominator * 100).toFixed(1);
-
-              svg.append("text")
-                .attr("x", width - 120)
-                .attr("y", 20)
-                .attr("class", "percentage")
-                .attr("text-anchor", "end")
-                .text(`${numericMetrics[0].name}/${numericMetrics[1].name}: ${percentage}%`);
-            }
-          }
-        }
-
-        // Add legend
-        const legend = svg.append("g")
-          .attr("transform", `translate(${width + 5}, 0)`);
-
-        processedData.forEach((metric, i) => {
-          // Add color box
-          legend.append("rect")
-            .attr("x", 0)
-            .attr("y", i * 25)
-            .attr("width", 15)
-            .attr("height", 15)
-            .attr("fill", metric.color);
-
-          // Add metric name
-          legend.append("text")
-            .attr("x", 20)
-            .attr("y", i * 25 + 12)
-            .text(metric.name);
-        });
-      })
-      .catch(error => {
-        console.error("Error fetching Graphite data:", error);
-        svg.append("text")
-          .attr("x", width / 2)
-          .attr("y", height / 2)
-          .attr("text-anchor", "middle")
-          .text("Error loading data");
       });
 
-  }, [context, size, step, title, metrics, maxExtent, clusterConfig, showPercentage, percentageMetrics]);
+      if (allValues.length > 0) {
+        yDomain[1] = d3.max(allValues) * 1.1; // Add 10% padding
+      } else {
+        yDomain[1] = 100; // Default if no data
+      }
+    }
 
-  // Apply inline styles to maintain component appearance without external CSS
-  const graphStyle = {
-    position: 'relative',
-    marginBottom: '20px',
-    border: '1px solid #ddd',
-    borderRadius: '4px',
-    background: '#fff',
-    padding: '10px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-  };
+    const yScale = d3.scaleLinear()
+      .domain(yDomain)
+      .range([height, 0]);
 
-  const containerStyle = {
-    width: '100%',
-    height: '150px',
-    overflow: 'hidden'
-  };
+    // Create axes
+    const xAxis = d3.axisBottom(xScale)
+      .ticks(5)
+      .tickFormat(d3.timeFormat("%H:%M"));
+
+    const yAxis = d3.axisLeft(yScale);
+
+    // Add X axis
+    svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", `translate(0,${height})`)
+      .call(xAxis);
+
+    // Add Y axis
+    svg.append("g")
+      .attr("class", "y axis")
+      .call(yAxis);
+
+    // Draw lines for each metric
+    metricDatasets.forEach(dataset => {
+      const line = d3.line()
+        .x((d, i) => xScale(new Date(context.start() + i * context.step())))
+        .y(d => yScale(d))
+        .defined(d => d !== null && d !== undefined);
+
+      // Collect values for this metric across the time range
+      const values = [];
+      for (let i = 0; i < size; i++) {
+        values.push(dataset.graphiteMetric.valueAt(i));
+      }
+
+      // Draw the line
+      svg.append("path")
+        .datum(values)
+        .attr("class", "line")
+        .attr("fill", "none")
+        .attr("stroke", dataset.color || "#000")
+        .attr("stroke-width", 1.5)
+        .attr("stroke-dasharray", dataset.dashed ? "5,5" : "0")
+        .attr("d", line);
+
+      // Add fill if requested
+      if (dataset.fill) {
+        const area = d3.area()
+          .x((d, i) => xScale(new Date(context.start() + i * context.step())))
+          .y0(height)
+          .y1(d => yScale(d))
+          .defined(d => d !== null && d !== undefined);
+
+        svg.append("path")
+          .datum(values)
+          .attr("class", "area")
+          .attr("fill", dataset.fillColor || `${dataset.color}33`) // Add transparency
+          .attr("d", area);
+      }
+    });
+
+    // Add legend
+    const legend = svg.append("g")
+      .attr("class", "legend")
+      .attr("transform", `translate(${width + 5}, 0)`);
+
+    metricDatasets.forEach((dataset, i) => {
+      // Add color box
+      legend.append("rect")
+        .attr("x", 0)
+        .attr("y", i * 25)
+        .attr("width", 15)
+        .attr("height", 15)
+        .attr("fill", dataset.color || "#000");
+
+      // Add metric name
+      legend.append("text")
+        .attr("x", 20)
+        .attr("y", i * 25 + 12)
+        .text(dataset.name || dataset.target);
+    });
+
+    // Add percentage calculation if requested
+    if (showPercentage && metrics.length >= 2) {
+      const metric1 = metricDatasets[0].graphiteMetric;
+      const metric2 = metricDatasets[1].graphiteMetric;
+
+      const percentageText = svg.append("text")
+        .attr("class", "percentage")
+        .attr("x", width - 120)
+        .attr("y", 20)
+        .attr("text-anchor", "end");
+
+      // Update percentage on focus change
+      context.on("focus", function(i) {
+        if (i === null) return;
+
+        const value1 = metric1.valueAt(i);
+        const value2 = metric2.valueAt(i);
+
+        if (value1 !== null && value2 !== null && value2 !== 0) {
+          const percentage = (value1 / value2 * 100).toFixed(1);
+          percentageText.text(`${metrics[0].name}/${metrics[1].name}: ${percentage}%`);
+        } else {
+          percentageText.text("");
+        }
+      });
+
+      // Initial percentage calculation (latest data point)
+      const latestIndex = size - 1;
+      const value1 = metric1.valueAt(latestIndex);
+      const value2 = metric2.valueAt(latestIndex);
+
+      if (value1 !== null && value2 !== null && value2 !== 0) {
+        const percentage = (value1 / value2 * 100).toFixed(1);
+        percentageText.text(`${metrics[0].name}/${metrics[1].name}: ${percentage}%`);
+      }
+    }
+
+    // Add focus tracking
+    const focus = svg.append("g")
+      .attr("class", "focus")
+      .style("display", "none");
+
+    focus.append("circle")
+      .attr("r", 5);
+
+    const focusText = focus.append("text")
+      .attr("x", 9)
+      .attr("dy", ".35em");
+
+    const overlay = svg.append("rect")
+      .attr("class", "overlay")
+      .attr("width", width)
+      .attr("height", height)
+      .attr("fill", "none")
+      .attr("pointer-events", "all");
+
+    // Add mouse tracking events
+    /* overlay.on("mouseover", () => focus.style("display", null))
+      .on("mouseout", () => focus.style("display", "none"))
+      .on("mousemove", function() {
+        const mouse = d3.mouse(this);
+        const x0 = xScale.invert(mouse[0]);
+        const i = Math.floor((x0 - start) / context.step());
+
+        if (i >= 0 && i < size) {
+          // Update focus for each metric
+          const values = metricDatasets.map(d => d.graphiteMetric.valueAt(i));
+
+          if (values.some(v => v !== null)) {
+            const tooltip = metricDatasets.map((d, idx) => {
+              const val = values[idx];
+              return val !== null ? `${d.name}: ${val.toFixed(2)}` : "";
+            }).filter(Boolean).join("\n");
+
+            focusText.text(tooltip);
+
+            // Move focus to current point on first metric
+            const primaryValue = values[0];
+            if (primaryValue !== null) {
+              focus.attr("transform", `translate(${mouse[0]},${yScale(primaryValue)})`);
+            }
+
+            // Update the rule line
+            rule.style("display", null);
+            rule.attr("transform", `translate(${mouse[0]},0)`);
+            rule.select("text").text(d3.timeFormat("%H:%M:%S")(xScale.invert(mouse[0])));
+          }
+        }
+      });
+*/
+
+    // Add styles directly to maintain consistent appearance
+    d3.select(graphRef.current).selectAll(".line")
+      .style("fill", "none")
+      .style("stroke-width", "1.5px");
+
+    d3.select(graphRef.current).selectAll(".axis path, .axis line")
+      .style("fill", "none")
+      .style("stroke", "#000")
+      .style("shape-rendering", "crispEdges");
+
+    d3.select(graphRef.current).selectAll(".overlay")
+      .style("fill", "none")
+      .style("pointer-events", "all");
+
+    d3.select(graphRef.current).selectAll(".focus circle")
+      .style("fill", "none")
+      .style("stroke", "#000");
+
+    d3.select(graphRef.current).selectAll(".title")
+      .style("font-size", "14px")
+      .style("font-weight", "bold");
+
+    d3.select(graphRef.current).selectAll(".percentage")
+      .style("font-size", "12px")
+      .style("font-weight", "bold");
+
+  }, [context, size, step, title, metrics, maxExtent, showPercentage]);
 
   return (
-    <div className={className} style={graphStyle}>
-      <div ref={graphRef} style={containerStyle}></div>
+    <div className={className}>
+      <div ref={graphRef} style={{ width: '100%', height: '100%' }}></div>
     </div>
   );
 }

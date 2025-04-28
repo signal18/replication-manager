@@ -140,13 +140,14 @@ function Graphs({ selectedCluster }) {
           size={selectedHour.value}
           step={selectedStep.value}
           context={context}
-          title={'Checkpoint Age'}
+          title={'Checkpoint Age vs Log File Size'}
           metrics={[
             {
               target: 'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
               name: 'Checkpoint Age',
               color: '#ff7f0e',  // Orange
-              fill: true
+              fill: true,
+              fillColor: 'rgba(255, 127, 14, 0.2)'
             },
             {
               target: 'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)',
@@ -157,9 +158,7 @@ function Graphs({ selectedCluster }) {
             }
           ]}
           showPercentage={true}
-          percentageMetrics={[0, 1]}  // Compare first and second metrics
-          className={`${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
-          clusterConfig={selectedCluster.config}
+          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
       </Flex>
     </Flex>
