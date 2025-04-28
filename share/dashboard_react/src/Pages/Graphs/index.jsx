@@ -8,6 +8,7 @@ import MutexTracingGraph from '../../components/MutexTracingGraph';
 import LatchTracingGraph from '../../components/LatchTracingGraph';
 import MultiMetricGraph from '../../components/MultiMetricGraph';
 
+
 function Graphs({ selectedCluster }) {
   const qpsRef = useRef()
   const coreRef = useRef()
@@ -16,7 +17,7 @@ function Graphs({ selectedCluster }) {
   const mutexRef = useRef()
   const pfsMemRef = useRef()
   const redoRef = useRef()
-  const [context, setContext] = useState(null)
+
 
   const [hourOptions, setHourOptions] = useState([
     { name: '1 hour', value: 360 },
@@ -39,16 +40,35 @@ function Graphs({ selectedCluster }) {
   const [selectedHour, setSelectedHour] = useState({ name: '2 hours', value: 720 })
   const [selectedStep, setSelectedStep] = useState({ name: '10 seconds', value: 1e4 })
   //console.log("selectedCluster:", selectedCluster);
-  useEffect(() => {
-    if (cubism) {
-      setContext(cubism.context().serverDelay(5e3).clientDelay(5e3).step(selectedStep.value).size(selectedHour.value))
-    }
-    return () => {
-      setContext(null)
-    }
-  }, [selectedHour, selectedStep])
+  const [context, setContext] = useState(null)
 
-  return (
+  useEffect(() => {
+  if (typeof window === 'undefined' || !window.cubism) return;
+
+  const newContext = window.cubism.context()
+    .serverDelay(0)  // Match your working components
+    .clientDelay(0)
+    .step(selectedStep.value)
+    .size(selectedHour.value);
+
+  // Critical change: Start the context immediately
+  newContext.start();
+
+  console.log('Context created with:', {
+    step: newContext.step(),
+    size: newContext.size(),
+    now: newContext.now()
+  });
+
+  setContext(newContext);
+
+  return () => {
+    newContext.stop();
+    setContext(null);
+  };
+}, [selectedHour.value, selectedStep.value]);
+
+    return (
     <Flex className={styles.graphContainer}>
       <Flex className={styles.filters}>
         <Dropdown
@@ -135,31 +155,25 @@ function Graphs({ selectedCluster }) {
           target={'sumSeries(mysql.*.mysql_global_status_performance_schema_memory)'}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <MultiMetricGraph
-          chartRef={redoRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
-          context={context}
-          title={'Checkpoint Age vs Log File Size'}
-          metrics={[
-            {
-              target: 'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
-              name: 'Checkpoint Age',
-              color: '#ff7f0e',  // Orange
-              fill: true,
-              fillColor: 'rgba(255, 127, 14, 0.2)'
-            },
-            {
-              target: 'averageSeries(mysql.*.mysql_global_variables_innodb_log_file_size)',
-              name: 'Log File Size',
-              color: '#1f77b4',  // Blue
-              dashed: true,
-              isMaxExtent: true  // Use this to set y-axis max
-            }
-          ]}
-          showPercentage={true}
-          className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
-        />
+        {context && (
+         <MultiMetricGraph
+           chartRef={redoRef}
+           context={context}
+           metrics={[
+             {
+               target: 'sumSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
+               name: 'Checkpoint Age',
+               color: '#ff7f0e'
+             },
+             {
+               target: 'sumSeries(mysql.*.mysql_global_variables_innodb_log_file_size)',
+               name: 'Log File Size',
+               color: '#1f77b4'
+             }
+           ]}
+           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
+         />
+         )}
       </Flex>
     </Flex>
   )
