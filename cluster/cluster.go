@@ -464,13 +464,20 @@ func (cluster *Cluster) InitFromConf() {
 		Timeout:        5 * time.Second,
 	})
 
+	cloud18fields := make(map[string]string)
+	if cluster.Conf.Cloud18Alert {
+		cloud18fields["cloud18"] = cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
+		cloud18fields["client"] = cluster.Conf.Cloud18GitUser
+	}
+
 	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
-		URL:            cluster.Conf.Cloud18AlertSlackURL,
-		AcceptedLevels: logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
-		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
-		User:           cluster.Conf.Cloud18AlertSlackUser,
-		Icon:           ":ghost:",
-		Timeout:        5 * time.Second,
+		URL:              cluster.Conf.Cloud18AlertSlackURL,
+		AcceptedLevels:   logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
+		Channel:          cluster.Conf.Cloud18AlertSlackChannel,
+		User:             cluster.Conf.Cloud18AlertSlackUser,
+		Icon:             ":ghost:",
+		Timeout:          5 * time.Second,
+		AdditionalFields: cloud18fields,
 	})
 
 	if cluster.Conf.SlackURL != "" {
@@ -482,12 +489,6 @@ func (cluster *Cluster) InitFromConf() {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
-
-	if cluster.Conf.MailTo != "" {
-		msg := "Replication-Manager started\nVersion: " + cluster.Conf.Version + "\nTimestamp: " + time.Now().Format("2006-01-02 15:04:05")
-		subj := "Replication-Manager started"
-		go cluster.SendEMailMessage(cluster.ToAlertMessage(msg), subj, cluster.GetAlertRecipients(AlertRecipient{DbOps: true, SysOps: false, Sponsor: true, ExtSysOps: true, ExtDbOps: true}))
-	}
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
 		Filename:   cluster.WorkingDir + "/sql_error.log",

@@ -13,13 +13,14 @@ import (
 
 // SlackConfig holds the configuration for a Slack or Mattermost webhook.
 type SlackConfig struct {
-	HookType       string         // Type of hook: "slack" or "meet" (Mattermost).
-	URL            string         // Webhook URL for sending messages.
-	Channel        string         // Target channel for notifications.
-	User           string         // Username used for sending messages.
-	Icon           string         // Emoji or image URL for the message sender.
-	Timeout        time.Duration  // Timeout duration for webhook requests.
-	AcceptedLevels []logrus.Level // Log levels that trigger notifications.
+	HookType         string            // Type of hook: "slack" or "meet" (Mattermost).
+	URL              string            // Webhook URL for sending messages.
+	Channel          string            // Target channel for notifications.
+	User             string            // Username used for sending messages.
+	Icon             string            // Emoji or image URL for the message sender.
+	Timeout          time.Duration     // Timeout duration for webhook requests.
+	AcceptedLevels   []logrus.Level    // Log levels that trigger notifications.
+	AdditionalFields map[string]string // Additional fields to include in the message.
 }
 
 // SlackmanHook represents an individual webhook configuration and its state.

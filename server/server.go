@@ -2100,14 +2100,8 @@ func (repman *ReplicationManager) Run() error {
 		cluster.SetCarbonLogger(repman.clog)
 	}
 
-	// Send email message
-	addr := repman.Conf.MonitorAddress
-	if repman.Conf.Cloud18 {
-		addr = repman.Conf.APIPublicURL
-	}
-	msg := fmt.Sprintf("Alert: Replication-Manager started\nVersion: %s\nTimestamp: %s\nMonitor: %s\n", repman.Conf.Version, time.Now().Format("2006-01-02 15:04:05"), addr)
-	subj := "Replication-Manager started"
-	go repman.SendEmailMessage(msg, subj, repman.Conf.MailTo, false, nil)
+	// Send initial email
+	repman.SendClustersInitMail()
 
 	repman.ReadCloud18Config()
 

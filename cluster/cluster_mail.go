@@ -36,7 +36,13 @@ type AlertRecipient struct {
 func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 	list := make(map[string]struct{})
 
-	to := strings.Split(recipient.To, ",")
+	// Add initial recipients
+	for _, email := range strings.Split(recipient.To, ",") {
+		email = strings.TrimSpace(email)
+		if email != "" {
+			list[email] = struct{}{}
+		}
+	}
 
 	if cluster.Conf.Cloud18 {
 		if recipient.All || (recipient.SysOps && cluster.Conf.Cloud18GitUser != "") {
@@ -52,10 +58,15 @@ func (cluster *Cluster) GetAlertRecipients(recipient AlertRecipient) string {
 			list[cluster.Conf.Cloud18ExternalDbOps] = struct{}{}
 		}
 		if recipient.All || recipient.Sponsor {
-			list[cluster.GetSponsorEmail()] = struct{}{}
+			email := cluster.GetSponsorEmail()
+			if email != "" {
+				list[email] = struct{}{}
+			}
 		}
 	}
 
+	// Build final recipient list
+	var to []string
 	for email := range list {
 		to = append(to, email)
 	}
