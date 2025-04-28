@@ -85,6 +85,7 @@ export const clusterService = {
   // Database service APIs
   getDatabaseService,
   getDatabaseVariables,
+  preserveVariable,
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
@@ -429,6 +430,10 @@ function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
 //#region Database service APIs
 function getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}/${diff}`)
+}
+
+function preserveVariable(clusterName, variableName, preserve, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/preserve-variable/${variableName}/${preserve}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {

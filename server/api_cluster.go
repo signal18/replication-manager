@@ -221,6 +221,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRegenerateConfigs)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterVariablesPreserve)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
@@ -6619,5 +6623,56 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxClusterVariablesPreserve handles the HTTP request to preserve or unpreserve a variable for a given cluster.
+// @Summary Preserve or unpreserve a variable
+// @Description Preserves or unpreserves a variable for the specified cluster.
+// @Tags Database
+// @Accept json
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param variableName path string true "Variable Name"
+// @Param preserve path string true "Preserve or unpreserve" Enums(true, false)
+// @Success 200 {string} string "Variable preserved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if vars["variableName"] == "" {
+			http.Error(w, "Variable name can not be empty", 500)
+			return
+		}
+
+		var preserve bool
+		var response string
+		if strings.ToUpper(vars["preserve"]) == "TRUE" {
+			preserve = true
+			response = "Variable preserved successfully"
+		} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+			preserve = false
+			response = "Variable unpreserved successfully"
+		} else {
+			http.Error(w, "No valid preserve key", 500)
+			return
+		}
+
+		mycluster.PreserveVariable(vars["variableName"], preserve)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
 	}
 }

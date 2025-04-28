@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useRef } from 'react'
 
 import styles from '../../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { getDatabaseVariables } from '../../../../redux/clusterSlice'
+import { getDatabaseVariables, preserveVariable } from '../../../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
@@ -49,9 +49,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
 
   const handleConfirm = (value) => {
       if (type === 'preserve-true') {
-        dispatch(preserveDbVariable({ clusterName: selectedCluster.name, serverName: selectedDBServer.name, preserve: true, variableName: payload }))
+        dispatch(preserveVariable({ clusterName, preserve: true, variableName: payload }))
       } else if (type === 'preserve-false') {
-        dispatch(preserveDbVariable({ clusterName: selectedCluster.name, serverName: selectedDBServer.name, preserve: false, variableName: payload }))
+        dispatch(preserveVariable({ clusterName, preserve: false, variableName: payload }))
       }
       closeConfirmModal()
     }
@@ -153,12 +153,12 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
           { row?.preserve ? (
             <>
               <Text>Preserved</Text>
-              <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-false", title: "Are you sure to remove variable's preservation?", payload: row.variableName }); openConfirmModal() }} />
+              <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }); openConfirmModal() }} />
             </>
           ) : (
             <>
               <Text>Not Preserved</Text>
-              <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-true", title: "Are you sure to preserve variable?", payload: row.variableName }); openConfirmModal() }} />
+              <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }); openConfirmModal() }} />
             </>
 
           )}

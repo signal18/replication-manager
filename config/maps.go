@@ -1220,7 +1220,7 @@ func (m *VariablesMap) GetVariables(differ bool) []VariableState {
 		val := v.(*VariableState)
 
 		if differ {
-			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || *val.Config != *val.Deployed {
+			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || (val.Config != nil && val.Deployed != nil && *val.Config != *val.Deployed) {
 				// Add to the diff map if Config or Deployed is different (or nil)
 				result = append(result, *val)
 			}

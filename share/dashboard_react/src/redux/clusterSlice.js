@@ -1066,6 +1066,23 @@ export const getDatabaseVariables = createAsyncThunk(
   }
 )
 
+export const preserveVariable = createAsyncThunk(
+  'cluster/getDatabaseService',
+  async ({ clusterName, variableName, preserve }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.preserveVariable(clusterName, variableName, preserve, baseURL)
+      if (status === 200) {
+        return { data, status }
+      }
+      
+      throw new Error(data)
+    } catch (error) {
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const updateLongQueryTime = createAsyncThunk(
   'cluster/updateLongQueryTime',
   async ({ clusterName, dbId, time }, thunkAPI) => {
