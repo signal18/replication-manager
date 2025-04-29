@@ -1704,7 +1704,7 @@ func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 
 
 func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool, pfs_mem bool) (map[string]string, string, error) {
-
+//fmt.Println("%s: %s", pfs_latch , pfs_mutex,pfs_mem)
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
@@ -1763,7 +1763,7 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch boo
 			if err != nil {
 				return nil, query, errors.New("Could not get results from PFS status scan")
 			}
-			//fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
+
 			if strings.Contains(rname , "performance_schema.memory") {
 
 			//	fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
@@ -1771,9 +1771,18 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch boo
 					vars["performance_schema_memory"] =  strconv.FormatUint(rvalue, 10)
 			}
 		}
-
 	} //end if pfs_mem
-
+  if  vars["ARIA_PAGECACHE_BLOCKS_USED"] !=""{
+//			fmt.Println(" status ARIA_PAGECACHE_BLOCKS_USED" , fmt.Sprint(vars["ARIA_PAGECACHE_BLOCKS_USED"]))
+			myUInt64, err := strconv.ParseUint( vars["ARIA_PAGECACHE_BLOCKS_USED"], 10, 64)
+			if err  == nil {
+				vars["ARIA_PAGECACHE_BYTES_DATA"] = strconv.FormatUint( myUInt64*8192,10)
+			} else {
+					vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
+		 }
+	} else {
+		vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
+	}
 	return vars, query, nil
 }
 

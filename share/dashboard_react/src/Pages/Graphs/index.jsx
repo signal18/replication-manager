@@ -4,10 +4,9 @@ import styles from '../../styles/Graphs.module.scss';
 import { Flex } from '@chakra-ui/react'
 import Graphite from '../../components/Graphite'
 import Dropdown from '../../components/Dropdown'
-import MutexTracingGraph from '../../components/MutexTracingGraph';
-import LatchTracingGraph from '../../components/LatchTracingGraph';
-import MultiMetricGraph from '../../components/MultiMetricGraph';
-
+import ChartLatchTracing from '../../components/ChartLatchTracing';
+import ChartMultiMetric from '../../components/ChartMultiMetric';
+import ChartBarStack from '../../components/ChartBarStack';
 
 function Graphs({ selectedCluster }) {
   const qpsRef = useRef()
@@ -125,32 +124,46 @@ function Graphs({ selectedCluster }) {
           maxExtent={8000}
           className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
         />
-        <MutexTracingGraph
-          chartRef={mutexRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
+        <ChartLatchTracing
           context={context}
+          title={'Mutex'}
+          metricPaths={[
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_pool_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_buf_dblwr_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_fil_system_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_flush_list_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_lock_wait_mutex)',
+            'maxSeries(mysql.*.mysql_global_status_wait_synch_mutex_innodb_trx_sys_mutex)'
+          ]}
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
-          clusterConfig={selectedCluster.config}
+          isVisible={selectedCluster.config.monitoringPerformanceSchemaMutex}
         />
-        <LatchTracingGraph
-          chartRef={mutexRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
+        <ChartLatchTracing
           context={context}
+          title={'latch'}
+         metricPaths={[
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_btr_search_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_fil_space_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_purge_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_trx_rseg_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_lock_latch)',
+         'sumSeries(mysql.*.mysql_global_status_wait_synch_rwlock_innodb_log_latch)'
+         ]}
           className={`${styles.graph} ${styles[`width${selectedHour.value}`]}`}
-          clusterConfig={selectedCluster.config}
+          isVisible={selectedCluster.config.monitoringPerformanceSchemaLatch}
         />
-        <Graphite
-          chartRef={pfsMemRef}
-          size={selectedHour.value}
-          step={selectedStep.value}
+        <ChartBarStack
           context={context}
-          title={'PfsMemory'}
-          target={'sumSeries(mysql.*.mysql_global_status_performance_schema_memory)'}
+          title={'Memory'}
+          metricPaths={[
+            'maxSeries(mysql.*.mysql_global_status_performance_schema_memory)',
+            'maxSeries(mysql.*.mysql_global_status_memory_used)',
+            'maxSeries(mysql.*.mysql_global_status_innodb_buffer_pool_bytes_data)',
+            'maxSeries(mysql.*.mysql_global_status_aria_pagecache_bytes_data)'
+          ]}
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
-        <MultiMetricGraph
+        <ChartMultiMetric
          context={context}
          metricPaths={[
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',

@@ -326,9 +326,9 @@ func (server *ServerMonitor) HasLogMutex() bool {
 	 if !( server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona() ) {
 		 return false
 	 }
-	 if !server.GetCluster().Conf.MonitorPFSInstruments{
-		 return false
-	 }
+	 //if !server.GetCluster().Conf.MonitorPFSInstruments{
+	//	 return false
+	// }
 	 if !server.GetCluster().Conf.MonitorPFSMutex{
 		 return false
 	 }
@@ -342,9 +342,9 @@ func (server *ServerMonitor) HasLogLatch() bool {
 	 if !( server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona() ) {
 		 return false
 	 }
-	 if !server.GetCluster().Conf.MonitorPFSInstruments{
-		 return false
-	 }
+	 // if !server.GetCluster().Conf.MonitorPFSInstruments{
+	//	 return false
+	// }
 	 if !server.GetCluster().Conf.MonitorPFSLatch{
 		 return false
 	 }
