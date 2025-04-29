@@ -1,0 +1,131 @@
+// _memoryusage.module.scss
+
+// Main container styling
+.container {
+  position: relative;
+  width: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+// Chart title styling
+.title {
+  margin: 0 0 1rem 1.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #2d3748;
+}
+
+// Chart container
+.chartContainer {
+  position: relative;
+  overflow: visible;
+}
+
+// Axis styling
+.axis {
+  path, line {
+    fill: none;
+    stroke: #cbd5e0;
+    shape-rendering: crispEdges;
+  }
+
+  text {
+    fill: #718096;
+    font-size: 0.75rem;
+  }
+}
+
+.legendText {
+  font-size: 0.8rem;
+  fill: #4a5568;
+}
+
+// Bar layer styling
+.layer rect {
+  transition: all 0.3s ease-out;
+}
+
+
+.totalLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  fill: #2d3748;
+}
+
+// Tooltip styling (if used)
+.tooltip {
+  position: absolute;
+  padding: 8px 12px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  pointer-events: none;
+  font-size: 0.85rem;
+
+  &Item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+  }
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .title {
+    font-size: 1rem;
+    margin-left: 1rem;
+  }
+
+  .legendText {
+    font-size: 0.7rem;
+  }
+
+  .totalLabel {
+    font-size: 0.6rem;
+  }
+}
+/* Add this to your _chartbarstack.module.scss file or create a new CSS file */
+
+/* Dark theme title styling */
+:global(.dark-theme-title) {
+  color: #e2e8f0 !important;
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #4a5568;
+}
+
+/* Dark theme chart container */
+:global(.dark-theme-chart) {
+  background-color: rgba(30, 34, 39, 0.7) !important;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Custom styles for the dark theme axis */
+.dark-axis {
+  color: #a0aec0;
+}
+
+.dark-axis path,
+.dark-axis line {
+  stroke: #4a5568;
+}
+
+.dark-axis text {
+  fill: #a0aec0;
+}
+
+/* Dark theme legend text */
+.dark-legend-text {
+  fill: #e2e8f0;
+}
+
+/* Dark theme total label */
+.dark-total-label {
+  fill: #e2e8f0;
+  font-weight: 500;
+}
