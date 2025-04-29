@@ -343,8 +343,8 @@ function stopDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/stop`)
 }
 
-function startDatabase(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start`)
+function startDatabase(clusterName, serverId, cfgAction, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start/${cfgAction}`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {
