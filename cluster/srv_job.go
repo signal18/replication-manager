@@ -2332,10 +2332,17 @@ func (server *ServerMonitor) copyLogsPrefix(r io.Reader, module int, level strin
 			break
 		} else {
 			//Remove empty lines
+			found := false
 			for _, p := range prefix {
 				if strings.HasPrefix(s.Text(), p) {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, strings.TrimPrefix(s.Text(), p))
+					found = true
+					break
 				}
+			}
+
+			if !found && strings.Contains(s.Text(), "bash:") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
 			}
 		}
 	}
