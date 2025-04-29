@@ -462,7 +462,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 
 func (server *ServerMonitor) WritePreservedVariables() error {
 	cluster := server.ClusterGroup
-	destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
+	destpath := filepath.Join(server.Datadir, "init/etc/mysql/custom.d/99_preserved.cnf")
 	destfile, err := os.OpenFile(destpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
@@ -501,6 +501,8 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing preserved variables %s", strings.Join(errvarlist, ", "))
 		return err
 	}
+
+	cluster.Configurator.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 
 	return nil
 
