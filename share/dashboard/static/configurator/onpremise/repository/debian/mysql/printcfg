@@ -1,16 +1,16 @@
 #!/bin/bash
 function help {
-	echo "Required Environment:" >&2
-	echo "  REPLICATION_MANAGER_USER" >&2
-	echo "  REPLICATION_MANAGER_PASSWORD" >&2
-	echo "  REPLICATION_MANAGER_URL" >&2
-	echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
-	echo "  REPLICATION_MANAGER_HOST_NAME" >&2
-	echo "  REPLICATION_MANAGER_HOST_PORT" >&2
-	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
-	echo "  REPLICATION_MANAGER_DB_CONFDIR" >&2
-	echo "  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
-	echo "  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
+echo "Required Environment:" >&2
+echo "  REPLICATION_MANAGER_USER" >&2
+echo "  REPLICATION_MANAGER_PASSWORD" >&2
+echo "  REPLICATION_MANAGER_URL" >&2
+echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+echo "  REPLICATION_MANAGER_HOST_NAME" >&2
+echo "  REPLICATION_MANAGER_HOST_PORT" >&2
+echo "  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
+echo "  REPLICATION_MANAGER_DB_CONFDIR" >&2
+echo "  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
+echo "  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
 }
 
 [ -z $REPLICATION_MANAGER_USER ] && help && exit 1
@@ -27,77 +27,77 @@ AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLIC
 TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html "$REPLICATION_MANAGER_URL/api/login")
 
 if [[ -z "$TOKEN" ]]; then
-	echo "Failed to retrieve authentication token"
-	exit 1
+echo "Failed to retrieve authentication token"
+exit 1
 fi
 
 function get {
-	$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
+$GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
 }
 
 mysql_print_defaults_from_pid_file() {
-	local pid_file="$1"
-	local pid cmdline
+local pid_file="$1"
+local pid cmdline
 
-	if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
-		mysqld --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
-	else 
-		pid=$(cat "$pid_file")
-		if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
-			echo "Process with PID $pid not found."
-			return 1
-		fi
+if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
+mysqld --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+else 
+pid=$(cat "$pid_file")
+if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
+echo "Process with PID $pid not found."
+return 1
+fi
 
-		# 1. Read the cmdline arguments safely
-		args=()
-		while IFS= read -r -d '' arg; do
-		args+=("$arg")
-		done < "/proc/$pid/cmdline"
+# 1. Read the cmdline arguments safely
+args=()
+while IFS= read -r -d '' arg; do
+args+=("$arg")
+done < "/proc/$pid/cmdline"
 
-		# 2. Loop through arguments to find --defaults-file
-		defaults_file=""
-		for arg in "${args[@]}"; do
-		if [[ $arg == --defaults-file=* ]]; then
-		defaults_file="${arg#--defaults-file=}"
-		break
-		fi
-		done
+# 2. Loop through arguments to find --defaults-file
+defaults_file=""
+for arg in "${args[@]}"; do
+if [[ $arg == --defaults-file=* ]]; then
+defaults_file="${arg#--defaults-file=}"
+break
+fi
+done
 
-		# 3. If --defaults-file is not found, use the default path
-		if [[ -z $defaults_file ]]; then
-		defaults_file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf"
-		fi
+# 3. If --defaults-file is not found, use the default path
+if [[ -z $defaults_file ]]; then
+defaults_file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf"
+fi
 
-		# 4. Print defaults mysqld with the found or default --defaults-file
-		mysqld --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
-	fi
+# 4. Print defaults mysqld with the found or default --defaults-file
+mysqld --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+fi
 
 }
 
 print_default_for_fetch() {
-	get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > config.tar.gz
-	if [[ $? -eq 0 ]]; then
-		mkdir -p /bootstrap
-		tar xzvf config.tar.gz -C /bootstrap &> /dev/null
+get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > config.tar.gz
+if [[ $? -eq 0 ]]; then
+mkdir -p /bootstrap
+tar xzvf config.tar.gz -C /bootstrap &> /dev/null
 
-		chown -R mysql:mysql /bootstrap/etc/mysql
+chown -R mysql:mysql /bootstrap/etc/mysql
 
-		# Create dummy config file for dry-run
-		echo "[mysqld]" > /bootstrap/dummy.cnf
-		echo "!includedir /bootstrap/etc/mysql/conf.d" >> /bootstrap/dummy.cnf
-		chown mysql:mysql /bootstrap/dummy.cnf
+# Create dummy config file for dry-run
+echo "[mysqld]" > /bootstrap/dummy.cnf
+echo "!includedir /bootstrap/etc/mysql/conf.d" >> /bootstrap/dummy.cnf
+chown mysql:mysql /bootstrap/dummy.cnf
 
-		mysqld --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
-		if [[ $? -eq 0 ]]; then
-			echo "Dry run (dummy) completed successfully."
-		else
-			echo "Error during dry run (dummy)."
-			return 1
-		fi
-	else
-		echo "Failed to fetch configuration from Replication Manager."
-		return 1
-	fi
+mysqld --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
+if [[ $? -eq 0 ]]; then
+echo "Dry run (dummy) completed successfully."
+else
+echo "Error during dry run (dummy)."
+return 1
+fi
+else
+echo "Failed to fetch configuration from Replication Manager."
+return 1
+fi
 }
 
 
@@ -107,25 +107,25 @@ print_default_for_fetch &
 FETCH_PID=$!
 
 if [[ -n "$REPLICATION_MANAGER_RECEIVER_ADDR_PID" ]]; then
-	mysql_print_defaults_from_pid_file "$REPLICATION_MANAGER_DB_PID" &
-	CURRENT_PID=$!
+mysql_print_defaults_from_pid_file "$REPLICATION_MANAGER_DB_PID" &
+CURRENT_PID=$!
 fi
 
 # Wait for background processes
 if [[ -n "$CURRENT_PID" ]]; then
-	wait "$CURRENT_PID"
-	if [[ $? -eq 0 ]]; then
-		echo "Dry run (PID) completed successfully."
-	else
-		echo "Error during dry run (PID)."
-	fi
+wait "$CURRENT_PID"
+if [[ $? -eq 0 ]]; then
+echo "Dry run (PID) completed successfully."
+else
+echo "Error during dry run (PID)."
+fi
 fi
 
 if [[ -n "$FETCH_PID" ]]; then
-	wait "$FETCH_PID"
-	if [[ $? -eq 0 ]]; then
-		echo "Dry run (FETCH) completed successfully."
-	else
-		echo "Error during dry run (FETCH)."
-	fi
+wait "$FETCH_PID"
+if [[ $? -eq 0 ]]; then
+echo "Dry run (FETCH) completed successfully."
+else
+echo "Error during dry run (FETCH)."
+fi
 fi

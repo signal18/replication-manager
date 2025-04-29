@@ -347,9 +347,6 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 
 func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
 	dbtype := "mariadb"
-	if configurator.ClusterConfig.OnPremiseSSHStartDbScript != "" {
-		return configurator.ClusterConfig.OnPremiseSSHStartDbScript
-	}
 	if configurator.HaveDBTag("rpm") {
 		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/printcfg"
 	}
