@@ -25,6 +25,64 @@ func (repman *ReplicationManager) InitMailer() error {
 	return nil
 }
 
+func (repman *ReplicationManager) SendClustersInitMail() {
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending clusters init mail")
+
+	if repman.Mailer == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Mailer not found. Initializing mailer")
+		if err := repman.InitMailer(); err != nil {
+			return
+		}
+	}
+
+	addr := repman.Conf.MonitorAddress
+	if repman.Conf.Cloud18 {
+		addr = repman.Conf.APIPublicURL
+	}
+
+	subj := fmt.Sprintf("Replication-Manager started on %s", addr)
+	msg := "Replication-Manager started"
+	clusternames := make([]string, 0)
+	clustersponsors := make(map[string]string)
+	for _, cl := range repman.Clusters {
+		clusternames = append(clusternames, cl.Name)
+		if repman.Conf.Cloud18 && cl.Conf.Cloud18 && cl.GetSponsorEmail() != "" {
+			sponsor := cl.GetSponsorEmail()
+			if _, ok := clustersponsors[sponsor]; !ok {
+				clustersponsors[sponsor] = cl.Name
+			} else {
+				clustersponsors[sponsor] += "," + cl.Name
+			}
+		}
+	}
+
+	msg += "\n- Cluster: %s"
+	msg += fmt.Sprintf("\n- Monitor: %s", addr)
+	msg += fmt.Sprintf("\n- Version: %s", repman.Version)
+	msg += fmt.Sprintf("\n- Timestamp: %s", time.Now().Format("2006-01-02 15:04:05"))
+	msg += "\n\nBest regards,\nReplication Manager"
+	err := repman.Mailer.SendEmailMessage(mailer.Email{Message: fmt.Sprintf(msg, strings.Join(clusternames, ", ")), Subject: subj, To: repman.Conf.MailTo, IsHTML: false})
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Error sending email: %v", err)
+	}
+
+	// Send email to sponsors
+	if repman.Conf.Cloud18 {
+		if len(clustersponsors) > 0 {
+			for email, clusters := range clustersponsors {
+				err = repman.Mailer.SendEmailMessage(mailer.Email{Message: fmt.Sprintf(msg, clusters), Subject: subj, To: email, IsHTML: false})
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlErr, "Error sending email for sponsor %s: %v", email, err)
+				}
+			}
+		}
+	}
+
+	if err == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModMailer, config.LvlInfo, "Email with subject %s sent to %s", subj, repman.Conf.MailTo)
+	}
+}
+
 // SendEmail sends an email based on the provided email struct
 func (repman *ReplicationManager) SendMail(email mailer.Email) error {
 	if repman.Mailer == nil {

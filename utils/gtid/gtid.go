@@ -229,3 +229,22 @@ func (gl List) Equal(glcomp *List) bool {
 	}
 	return false
 }
+
+func (gl List) Merge(glcomp List) List {
+	distinct := make(map[uint64]Gtid)
+	for _, g := range gl {
+		distinct[g.DomainID] = g
+	}
+
+	for _, g := range glcomp {
+		if existing, ok := distinct[g.DomainID]; !ok || g.SeqNo > existing.SeqNo {
+			distinct[g.DomainID] = g
+		}
+	}
+
+	result := make(List, 0, len(distinct))
+	for _, g := range distinct {
+		result = append(result, g)
+	}
+	return result
+}

@@ -1337,37 +1337,6 @@ func (server *ServerMonitor) ResetMaster() (string, error) {
 	return dbhelper.ResetMaster(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 }
 
-func (server *ServerMonitor) ResetGTIDBinlogState(gtid_pos string) (string, error) {
-	if server.Conn == nil {
-		return "", errors.New("No database connection pool")
-	}
-
-	prefix := strings.Split(gtid_pos, "-")[0]
-
-	binlogstate := server.Variables.Get("GTID_BINLOG_STATE")
-
-	// replace the GTID_BINLOG_STATE with the new GTID_BINLOG_POS
-	found := false
-	newstate := []string{}
-	for _, gtid := range strings.Split(binlogstate, ",") {
-		if strings.HasPrefix(gtid, prefix) {
-			found = true
-			if gtid > gtid_pos {
-				server.ResetMaster()
-				newstate = append(newstate, gtid_pos)
-			}
-		} else {
-			newstate = append(newstate, gtid)
-		}
-	}
-
-	if !found {
-		newstate = append(newstate, gtid_pos)
-	}
-
-	return dbhelper.SetGTIDBinlogState(server.Conn, strings.Join(newstate, ","))
-}
-
 func (server *ServerMonitor) ResetPFSQueries() error {
 	return server.ExecQueryNoBinLog("truncate performance_schema.events_statements_summary_by_digest", 5*time.Second)
 }

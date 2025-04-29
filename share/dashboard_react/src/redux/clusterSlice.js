@@ -1483,8 +1483,10 @@ export const clusterSlice = createSlice({
           state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
           state.isFetching.servers = false
-          state.clusterServers = action.payload.data
-          state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+          if (action.payload?.data && action.meta.arg?.clusterName == state.clusterData?.name) {
+              state.clusterServers = action.payload.data
+              state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+          }
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
           state.clusterProxies = action.payload?.data
