@@ -1,16 +1,16 @@
 #!/bin/bash
 function help {
-echo "Required Environment:" >&2
-echo "  REPLICATION_MANAGER_USER" >&2
-echo "  REPLICATION_MANAGER_PASSWORD" >&2
-echo "  REPLICATION_MANAGER_URL" >&2
-echo "  REPLICATION_MANAGER_CLUSTER_NAME" >&2
-echo "  REPLICATION_MANAGER_HOST_NAME" >&2
-echo "  REPLICATION_MANAGER_HOST_PORT" >&2
-echo "  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
-echo "  REPLICATION_MANAGER_DB_CONFDIR" >&2
-echo "  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
-echo "  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
+echo "OUT:Required Environment:" >&2
+echo "OUT:  REPLICATION_MANAGER_USER" >&2
+echo "OUT:  REPLICATION_MANAGER_PASSWORD" >&2
+echo "OUT:  REPLICATION_MANAGER_URL" >&2
+echo "OUT:  REPLICATION_MANAGER_CLUSTER_NAME" >&2
+echo "OUT:  REPLICATION_MANAGER_HOST_NAME" >&2
+echo "OUT:  REPLICATION_MANAGER_HOST_PORT" >&2
+echo "OUT:  REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" >&2
+echo "OUT:  REPLICATION_MANAGER_DB_CONFDIR" >&2
+echo "OUT:  REPLICATION_MANAGER_DB_PID (required if REPLICATION_MANAGER_RECEIVER_ADDR_PID is set)" >&2
+echo "OUT:  REPLICATION_MANAGER_RECEIVER_ADDR_PID (optional)" >&2
 }
 
 [ -z $REPLICATION_MANAGER_USER ] && help && exit 1
@@ -27,7 +27,7 @@ AUTH_DATA="{\"username\": \"$REPLICATION_MANAGER_USER\", \"password\": \"$REPLIC
 TOKEN=$($GET --post-data "$AUTH_DATA" --header Accept:text/html "$REPLICATION_MANAGER_URL/api/login")
 
 if [[ -z "$TOKEN" ]]; then
-echo "Failed to retrieve authentication token"
+echo "OUT:Failed to retrieve authentication token"
 exit 1
 fi
 
@@ -44,7 +44,7 @@ mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaul
 else 
 pid=$(cat "$pid_file")
 if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
-echo "Process with PID $pid not found."
+echo "OUT:Process with PID $pid not found."
 return 1
 fi
 
@@ -89,13 +89,13 @@ chown mysql:mysql /bootstrap/dummy.cnf
 
 mariadbd --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
 if [[ $? -eq 0 ]]; then
-echo "Dry run (dummy) completed successfully."
+echo "OUT:Dry run (dummy) completed successfully."
 else
-echo "Error during dry run (dummy)."
+echo "OUT:Error during dry run (dummy)."
 return 1
 fi
 else
-echo "Failed to fetch configuration from Replication Manager."
+echo "OUT:Failed to fetch configuration from Replication Manager."
 return 1
 fi
 }
@@ -117,17 +117,17 @@ fi
 if [[ -n "$CURRENT_PID" ]]; then
 wait "$CURRENT_PID"
 if [[ $? -eq 0 ]]; then
-echo "Dry run (PID) completed successfully."
+echo "OUT:Dry run (PID) completed successfully."
 else
-echo "Error during dry run (PID)."
+echo "OUT:Error during dry run (PID)."
 fi
 fi
 
 if [[ -n "$FETCH_PID" ]]; then
 wait "$FETCH_PID"
 if [[ $? -eq 0 ]]; then
-echo "Dry run (FETCH) completed successfully."
+echo "OUT:Dry run (FETCH) completed successfully."
 else
-echo "Error during dry run (FETCH)."
+echo "OUT:Error during dry run (FETCH)."
 fi
 fi

@@ -2323,6 +2323,22 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 	}
 }
 
+func (server *ServerMonitor) copyLogsPrefix(r io.Reader, module int, level string, prefix string) {
+	cluster := server.ClusterGroup
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			//Remove empty lines
+			if strings.HasPrefix(s.Text(), prefix) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, strings.TrimPrefix(s.Text(), prefix))
+			}
+		}
+	}
+}
+
 func (server *ServerMonitor) copyTaskDebugLogs(r io.Reader, module int, task string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)

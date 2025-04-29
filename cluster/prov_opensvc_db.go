@@ -937,7 +937,7 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	// Create a goroutine to read from the pty and write to stdout
 	go func() {
 		defer wg.Done()
-		server.copyLogs(ptyFile, config.ConstLogModOrchestrator, config.LvlDbg)
+		server.copyLogsPrefix(ptyFile, config.ConstLogModOrchestrator, config.LvlDbg, "OUT:")
 	}()
 
 	_, err = io.Copy(ptyFile, r)
