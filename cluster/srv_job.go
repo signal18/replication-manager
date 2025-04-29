@@ -2342,7 +2342,7 @@ func (server *ServerMonitor) copyLogsPrefix(r io.Reader, module int, level strin
 			}
 
 			if !found && strings.Contains(s.Text(), "bash:") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, s.Text())
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, config.LvlWarn, "[%s] %s", server.Name, s.Text()) // Warning for bash error
 			}
 		}
 	}
