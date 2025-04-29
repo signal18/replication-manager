@@ -105,14 +105,17 @@ func (cluster *Cluster) PrintDefaultDatabaseServices(regenerate bool) error {
 	defer cluster.LogPanicToFile("printdefault")
 	for _, srv := range cluster.Servers {
 		if srv != nil {
-			err := srv.PrintDefaults(regenerate)
+			err := cluster.PrintDefaultDatabaseService(srv, regenerate)
 			if err != nil {
 				if regenerate {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Print default and generate db config error: %s", err)
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Print default error: %s", err)
 				}
+				return err
 			}
+
+			srv.ReadVariablesFromConfigs()
 		}
 	}
 	return nil

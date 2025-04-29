@@ -215,15 +215,6 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 	return nil
 }
 
-func (server *ServerMonitor) PrintDefaults(fetch bool) error {
-	cluster := server.ClusterGroup
-	cluster.PrintDefaultDatabaseService(server, fetch)
-
-	server.ReadVariablesFromConfigs()
-
-	return nil
-}
-
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	cluster := server.ClusterGroup
 
