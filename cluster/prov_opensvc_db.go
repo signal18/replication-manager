@@ -923,8 +923,13 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
 		return err
 	}
+	defer ptyFile.Close()
 
-	pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
+	err = pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
+		return err
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -938,13 +943,6 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	_, err = io.Copy(ptyFile, r)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %v ", server.URL, err)
-		return err
-	}
-
-	// Close the pty file
-	err = ptyFile.Close()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
 		return err
 	}
 
