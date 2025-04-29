@@ -40,7 +40,7 @@ mysql_print_defaults_from_pid_file() {
 	local pid cmdline
 
 	if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
-		mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+		mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
 	else 
 		pid=$(cat "$pid_file")
 		if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
@@ -69,7 +69,7 @@ mysql_print_defaults_from_pid_file() {
 		fi
 
 		# 4. Print defaults mysqld with the found or default --defaults-file
-		mysqld --defaults-file="$defaults_file" --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+		mysqld --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
 	fi
 
 }
@@ -87,7 +87,7 @@ print_default_for_fetch() {
 		echo "!includedir /bootstrap/etc/mysql/conf.d" >> /bootstrap/dummy.cnf
 		chown mysql:mysql /bootstrap/dummy.cnf
 
-		mariadbd --defaults-file=/bootstrap/dummy.cnf --print-defaults | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
+		mariadbd --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
 		if [[ $? -eq 0 ]]; then
 			echo "Dry run (dummy) completed successfully."
 		else

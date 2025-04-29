@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"sync"
 
 	v3 "github.com/signal18/replication-manager/repmanv3"
@@ -1008,7 +1009,7 @@ type VariableState struct {
 
 func NewVariableState(varname string) *VariableState {
 	return &VariableState{
-		Variable_name: varname,
+		Variable_name: strings.ToLower(varname),
 		Config:        nil,
 		Deployed:      nil,
 		Preserve:      false,
@@ -1145,6 +1146,15 @@ func (m *VariablesMap) EmptyDeployedValues() {
 	m.Range(func(key, value any) bool {
 		if state, ok := value.(*VariableState); ok {
 			state.Deployed = nil
+		}
+		return true
+	})
+}
+
+func (m *VariablesMap) EmptyConfigValues() {
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok {
+			state.Config = nil
 		}
 		return true
 	})

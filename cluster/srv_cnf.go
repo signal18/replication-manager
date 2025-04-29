@@ -7,7 +7,7 @@
 package cluster
 
 import (
-	"bytes"
+	"bufio"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -353,40 +353,47 @@ func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
 	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
 }
 
-func (server *ServerMonitor) ReadVariablesFromConfigFile(filepath string, deployed bool) error {
+func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deployed bool) error {
 	cluster := server.ClusterGroup
+	var srcfile *os.File
+	var err error
 
-	if _, err := os.Stat(filepath); err != nil {
+	if _, err = os.Stat(srcpath); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", filepath, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", srcpath, err)
 		return err
-
 	}
 
 	// Read the file
-	file, err := os.Open(filepath)
+	srcfile, err = os.Open(srcpath)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", filepath, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
 	}
-	defer file.Close()
+	defer srcfile.Close()
 
-	// Read the contents of the file
-	var out bytes.Buffer
-	if _, err := out.ReadFrom(file); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", filepath, err)
-		return err
+	// Clear all previous values
+	if deployed {
+		server.VariablesMap.EmptyDeployedValues()
+	} else {
+		server.VariablesMap.EmptyConfigValues()
 	}
 
-	// Step 3: Process output
-	lines := strings.Split(out.String(), "--")
-	list := map[string]bool{}
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
 
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
 		if line == "" {
 			continue
 		}
@@ -394,55 +401,107 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(filepath string, deploy
 		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
-			key := strings.ToUpper(strings.TrimSpace(parts[0]))
+			varname := strings.TrimSpace(parts[0])
+			key := strings.ToUpper(varname)
 			value := strings.TrimSpace(parts[1])
-			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+			v, ok := server.VariablesMap.CheckAndGet(key)
+			if ok {
+				v.Variable_name = varname
 				if deployed {
 					if v.Deployed == nil {
 						v.Deployed = &value
 					} else if *v.Deployed != value {
-						if multi, ok := list[key]; ok && multi {
-							// If the previous key is the same, append the value
-							*v.Deployed += "," + value
+						// If the value contains "=" in the value, append else replace
+						if strings.Contains(value, "=") {
+							*v.Deployed += "\n" + value
 						} else {
-							// If the previous key is not the same, update the value
 							*v.Deployed = value
 						}
-						// Update the value in the map
-						server.VariablesMap.Store(key, v)
 					}
 				} else {
 					if v.Config == nil {
 						v.Config = &value
 					} else if *v.Config != value {
-						if multi, ok := list[key]; ok && multi {
-							// If the previous key is the same, append the value
-							*v.Config += "," + value
+						// If the value contains "=" in the value, append else replace
+						if strings.Contains(value, "=") {
+							*v.Config += "\n" + value
 						} else {
-							// If the previous key is not the same, update the value
 							*v.Config = value
 						}
-						// Update the value in the map
-						server.VariablesMap.Store(key, v)
 					}
 				}
 			} else {
+				v = &config.VariableState{Variable_name: varname}
 				if deployed {
-					server.VariablesMap.Store(key, &config.VariableState{
-						Variable_name: key,
-						Deployed:      &value,
-					})
+					v.Deployed = &value
 				} else {
-					server.VariablesMap.Store(key, &config.VariableState{
-						Variable_name: key,
-						Config:        &value,
-					})
+					v.Config = &value
 				}
+				server.VariablesMap.Store(key, v)
 			}
-
-			list[key] = true
 		}
 	}
 
+	if deployed {
+		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ",")
+		for _, opt := range list {
+			if opt == "" {
+				continue
+			}
+			opt = strings.TrimSpace(opt)
+			if v, ok := server.VariablesMap.CheckAndGet(opt); ok {
+				v.Preserve = true
+			}
+		}
+
+		server.WritePreservedVariables()
+	}
+
 	return nil
+}
+
+func (server *ServerMonitor) WritePreservedVariables() error {
+	cluster := server.ClusterGroup
+	destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
+	destfile, err := os.OpenFile(destpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
+	}
+	defer destfile.Close()
+
+	errvarlist := make([]string, 0)
+
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ",")
+	for _, opt := range list {
+		if opt == "" {
+			continue
+		}
+		opt = strings.TrimSpace(opt)
+		if v, ok := server.VariablesMap.CheckAndGet(opt); ok {
+			if v.Deployed != nil {
+				//Write the variable to the file
+				if strings.Contains(*v.Deployed, "\n") {
+					// split the value by new line, use loose_ prefix and write each line to the file
+					lines := strings.Split(*v.Deployed, "\n")
+					for _, line := range lines {
+						if _, err := destfile.WriteString("loose_" + v.Variable_name + "=" + line + "\n"); err != nil {
+							errvarlist = append(errvarlist, v.Variable_name+"="+line)
+						}
+					}
+				} else {
+					if _, err := destfile.WriteString(v.Variable_name + "=" + *v.Deployed + "\n"); err != nil {
+						errvarlist = append(errvarlist, v.Variable_name)
+					}
+				}
+			}
+		}
+	}
+
+	if len(errvarlist) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing preserved variables %s", strings.Join(errvarlist, ", "))
+		return err
+	}
+
+	return nil
+
 }
