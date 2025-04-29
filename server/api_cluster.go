@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
@@ -564,6 +565,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/unsubscribe", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRejectSubscription)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/staging-reseed-from-parent", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxReseedFromParent)),
 	))
 }
 
@@ -2238,6 +2244,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchBackupBinlogs()
 	case "compress-backups":
 		mycluster.SwitchCompressBackups()
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = !mycluster.Conf.BackupSplitMysqlUser
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = !mycluster.Conf.BackupRestoreMysqlUser
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
@@ -2355,6 +2365,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "cloud18-alert":
 		mycluster.Conf.SwitchCloud18Alert()
 		if mycluster.Conf.Cloud18Alert {
+			cloud18fields := make(map[string]interface{})
+			cloud18fields["cloud18"] = mycluster.Conf.Cloud18Domain + "/" + mycluster.Conf.Cloud18SubDomain + "-" + mycluster.Conf.Cloud18SubDomainZone
+			cloud18fields["client"] = mycluster.Conf.Cloud18GitUser
+			mycluster.LogSlack.SetAdditionalFields("cloud18", cloud18fields)
 			mycluster.LogSlack.Activate("cloud18", true)
 		} else {
 			mycluster.LogSlack.Deactivate("cloud18", true)
@@ -2638,9 +2652,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetDbServerHosts(value)
 	case "db-servers-credential":
 		mycluster.Conf.User = value
+		var new_secret config.Secret
+		new_secret.Value = mycluster.Conf.User
+		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("db-servers-credential")
+		mycluster.Conf.Secrets["db-servers-credential"] = new_secret
 		mycluster.SetClusterMonitorCredentialsFromConfig()
-		mycluster.ReloadConfig(*mycluster.Conf)
-		//mycluster.SetDbServersMonitoringCredential(value)
+		// mycluster.SetDbServersMonitoringCredential(value)
 	case "prov-service-plan":
 		mycluster.SetServicePlan(value)
 	case "prov-net-cni-cluster":
@@ -3074,6 +3091,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.TopologyStagingRefreshScript = value
 	case "topology-staging-post-detach-script":
 		mycluster.Conf.TopologyStagingPostDetachScript = value
+	case "replication-multisource-head-clusters":
+		mycluster.Conf.ReplicationMultisourceHeadClusters = value
+	case "replication-source-name":
+		mycluster.Conf.MasterConn = value
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 
@@ -3247,6 +3268,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		}
 	case "compress-backups":
 		mycluster.Conf.CompressBackups = isactive
+	case "backup-split-mysql-user":
+		mycluster.Conf.BackupSplitMysqlUser = isactive
+	case "backup-restore-mysql-user":
+		mycluster.Conf.BackupRestoreMysqlUser = isactive
 	case "backup-check-free-space":
 		mycluster.Conf.BackupCheckFreeSpace = isactive
 	case "backup-estimate-size":
@@ -5639,7 +5664,7 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		go mycluster.RefreshStaging()
+		go mycluster.RefreshStaging(mycluster, "") // "" means no GTID sync needed since restore from same cluster
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -6505,4 +6530,104 @@ func (repman *ReplicationManager) handlerMuxClusterHealth(w http.ResponseWriter,
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])
 	}
+}
+
+// handlerMuxReseedFromParent handles the HTTP request to reseed a cluster from its parent cluster.
+// @Summary Reseed from Parent Cluster
+// @Description Reseed the specified cluster from its parent cluster.
+// @Tags ClusterReplication
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Reseed from parent queued"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/reseed-from-parent [post]
+func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var strUser string
+	var valid bool
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, strUser = repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.Conf.ReplicationMultisourceHeadClusters == "" {
+			http.Error(w, "No multisource cluster", 500)
+			return
+		}
+
+		pcluster := repman.GetParentClusterFromReplicationSource(mycluster.Conf.ReplicationMultisourceHeadClusters)
+		if pcluster == nil {
+			http.Error(w, "No parent cluster", 500)
+			return
+		}
+
+		if !pcluster.IsURLPassACL(strUser, strings.Replace(r.URL.Path, "/"+mycluster.Name+"/", "/"+pcluster.Name+"/", 1), true) {
+			http.Error(w, "No valid ACL in parent cluster", 403)
+			return
+		}
+
+		go func() {
+			cmaster := mycluster.GetMaster()
+			if cmaster == nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel reseed from parent cluster. No master found", mycluster.Name)
+				return
+			}
+
+			masterGTIDList, err := mycluster.ReseedFromParentCluster(pcluster, cmaster, "") // master will combine it's GTID list with the one from the parent cluster automatically
+			if err == nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done. Refreshing staging", pcluster.Name)
+
+				slave := mycluster.GetSlaveByIndex(0)
+				if slave == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. No slave found for standalone candidate", mycluster.Name)
+					return
+				}
+				starttime := time.Now()
+				if slave.State == "SlaveLate" {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for slave to sync replication")
+					for slave.State == "SlaveLate" && time.Since(starttime) < 2*time.Minute {
+						time.Sleep(1 * time.Second)
+					}
+
+					if slave.State == "SlaveLate" {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is still late after 2 minutes. Please refresh staging later or check the replication status")
+						return
+					}
+				}
+
+				if slave.State != "Slave" {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Slave is not OK. Please check the replication status")
+					return
+				}
+
+				err := mycluster.RefreshStaging(pcluster, masterGTIDList) // refresh staging and sync the GTID list from current master
+				if err == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reseed from parent cluster %s done", pcluster.Name)
+					// Refresh staging is done. Now we can start the backup
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting backup for cluster %s", mycluster.Name)
+					go cmaster.JobBackupLogical()
+				} else {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Refresh standalone failed: %s", err)
+				}
+
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cancel refresh staging. Error reseeding from parent cluster: %s", err)
+			}
+		}()
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Reseed from parent queued"))
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Reseed from parent queued"))
 }

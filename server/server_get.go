@@ -18,6 +18,19 @@ func (repman *ReplicationManager) getClusterByName(clname string) *cluster.Clust
 	return c
 }
 
+func (repman *ReplicationManager) GetParentClusterFromReplicationSource(source string) *cluster.Cluster {
+	repman.Lock()
+	defer repman.Unlock()
+
+	for _, c := range repman.Clusters {
+		if c.Name == source {
+			return c
+		}
+	}
+
+	return nil
+}
+
 func (repman *ReplicationManager) GetDockerRepoPath(reponame string) string {
 	for _, c := range repman.ServiceRepos {
 		if c.Name == reponame {

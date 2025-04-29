@@ -20,7 +20,8 @@ import {
   setCluster,
   setRefreshInterval,
   pauseAutoReload,
-  getBackupStats
+  getBackupStats,
+  clearCluster
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -213,6 +214,9 @@ function Home() {
   const setDashboardTab = (cluster) => {
     selectedTabRef.current = 1
     isClusterOpenRef.current = true
+    if (selectedClusterNameRef.current !== cluster.name) {
+      dispatch(clearCluster({}))
+    }
     selectedClusterNameRef.current = cluster.name
     setSelectedTab(1)
   }
@@ -250,7 +254,7 @@ function Home() {
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} />,
-                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} />,
+                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor}/>,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
                   ? [<Graphs selectedCluster={selectedCluster} />]

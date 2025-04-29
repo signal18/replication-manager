@@ -7,11 +7,19 @@ import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import TextForm from '../../components/TextForm'
 import RMSwitch from '../../components/RMSwitch'
 import RMIconButton from '../../components/RMIconButton'
-import { TbDatabaseExport, TbReload } from 'react-icons/tb'
-import { refreshStaging, reloadStagingScript } from '../../redux/clusterSlice'
+import { TbDatabaseExport, TbDatabaseImport, TbReload } from 'react-icons/tb'
+import { refreshStaging, reseedStagingFromParent } from '../../redux/clusterSlice'
+import Dropdown from '../../components/Dropdown'
 
-function StagingSettings({ selectedCluster, user, openConfirmModal }) {
+function StagingSettings({ selectedCluster, user, openConfirmModal, monitor }) {
   const dispatch = useDispatch()
+  const [clusters, setClusters] = useState([])
+
+  useEffect(() => {
+    if (monitor?.clusters) {
+      setClusters(monitor?.clusters?.filter((cl) => cl != selectedCluster.name).map((cluster) => ({ name: cluster, value: cluster })))
+    }
+  },[monitor?.clusters?.join(',')])
 
   const dataObject = [
     {
@@ -53,6 +61,21 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
     },
     ...(selectedCluster?.config?.topologyStaging ? [
       {
+        key: 'Staging multisource head cluster',
+        value: (
+          <Dropdown
+                id='replication-multisource-head-clusters'
+                confirmTitle={`Confirm staging replication-multisource-head-clusters to `}
+                onChange={(value) => {
+                  dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-multisource-head-clusters', value }))
+                }}
+                selectedValue={selectedCluster?.config?.replicationMultisourceHeadClusters}
+                options={clusters}
+                className={styles.fullWidth}
+              />
+        )
+      },
+      {
         key: 'Refresh Staging',
         value: (
           <RMIconButton icon={TbDatabaseExport} onClick={() => {
@@ -65,12 +88,12 @@ function StagingSettings({ selectedCluster, user, openConfirmModal }) {
         )
       },
       {
-        key: 'Reload Staging Script Template',
+        key: 'Bootstrap Staging From Parent',
         value: (
-          <RMIconButton icon={TbReload} onClick={() => {
-            openConfirmModal(`Confirm reload staging script template? Current template will be overwritten!`, () => () => {
+          <RMIconButton icon={TbDatabaseImport} onClick={() => {
+            openConfirmModal(`Confirm bootstrap staging from parent? Data will be overwritten by parent cluster!`, () => () => {
               dispatch(
-                reloadStagingScript({ clusterName: selectedCluster?.name })
+                reseedStagingFromParent({ clusterName: selectedCluster?.name })
               )
             })
           }} />

@@ -1221,12 +1221,12 @@ export const refreshStaging = createAsyncThunk(
   }
 )
 
-export const reloadStagingScript = createAsyncThunk(
-  'cluster/reloadStagingScript',
+export const reseedStagingFromParent = createAsyncThunk(
+  'cluster/reseedStagingFromParent',
   async ({ clusterName }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.reloadStagingScript(clusterName, baseURL)
+      const { data, status } = await clusterService.reseedStagingFromParent(clusterName, baseURL)
       showSuccessBanner(`Staging script reloaded successfully!`, status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1332,6 +1332,21 @@ export const endExternalRole = createAsyncThunk(
   }
 )
 
+export const addClusterShard = createAsyncThunk('cluster/addClusterShard', async ({ clusterName, clusterShard, formdata }, thunkAPI) => {
+  try {
+    const { data, status } = await clusterService.addClusterShard(clusterName, clusterShard, formdata)
+    if (status === 200) {
+      showSuccessBanner("Add cluster '" + clusterName + "' is successful!", status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner("Add cluster '" + clusterName + "' is failed!", error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   loading: false,
   isFetching: {
@@ -1433,8 +1448,10 @@ export const clusterSlice = createSlice({
           state.clusterMaster = action.payload.data
         } else if (action.type.includes('getClusterServers')) {
           state.isFetching.servers = false
-          state.clusterServers = action.payload.data
-          state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+          if (action.payload?.data && action.meta.arg?.clusterName == state.clusterData?.name) {
+              state.clusterServers = action.payload.data
+              state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+          }
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
           state.clusterProxies = action.payload?.data
