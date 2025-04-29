@@ -20,7 +20,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/creack/pty"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -916,16 +915,29 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	cwd := strings.NewReader(fmt.Sprintf("cd %s\n", cluster.OsUser.HomeDir))
 	buf2 := strings.NewReader(server.GetSshEnv())
 	buf3 := strings.NewReader(sst_env)
-	r := io.MultiReader(cwd, buf2, buf3, buf)
+	exitcmd := strings.NewReader("exit\n")
+	r := io.MultiReader(cwd, buf2, buf3, buf, exitcmd)
 
-	// Start a pseudo-terminal for the command
-	ptyFile, err := pty.Start(client)
+	inpipe, err := client.StdinPipe()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
 		return err
 	}
 
-	pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
+	outPipe, err := client.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
+		return err
+	}
+
+	client.Stderr = client.Stdout
+
+	// Start a pseudo-terminal for the command
+	err = client.Start()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
+		return err
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -933,14 +945,13 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	// Create a goroutine to read from the pty and write to stdout
 	go func() {
 		defer wg.Done()
-		server.copyLogs(ptyFile, config.ConstLogModOrchestrator, config.LvlDbg)
+		server.copyLogs(outPipe, config.ConstLogModOrchestrator, config.LvlDbg)
 	}()
 
 	// Create a goroutine to read from the pty and write to the command
 	go func() {
-		defer ptyFile.Close()
 		defer wg.Done()
-		_, err := io.Copy(ptyFile, r)
+		_, err := io.Copy(inpipe, r)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %v ", server.URL, err)
 			return
