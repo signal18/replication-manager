@@ -35,6 +35,8 @@ function get {
 $GET --header Accept:application/json --header "Authorization: Bearer $TOKEN" "$@"
 }
 
+
+
 mysql_print_defaults_from_pid_file() {
 local pid_file="$1"
 local pid cmdline
@@ -68,8 +70,8 @@ if [[ -z $defaults_file ]]; then
 defaults_file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf"
 fi
 
-# 4. Print defaults mysqld with the found or default --defaults-file
-mysqld --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+# 4. Print defaults mariadbd with the found or default --defaults-file
+mariadbd --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
 fi
 }
 
