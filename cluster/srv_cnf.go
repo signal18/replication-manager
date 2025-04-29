@@ -406,7 +406,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 			value := strings.TrimSpace(parts[1])
 			v, ok := server.VariablesMap.CheckAndGet(key)
 			if ok {
-				v.Variable_name = varname
+				v.Variable_name = strings.ReplaceAll(varname, "-", "_")
 				if deployed {
 					if v.Deployed == nil {
 						v.Deployed = &value
