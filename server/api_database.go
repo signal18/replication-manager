@@ -2183,10 +2183,12 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 			// Use default fetchCfg from cluster configuration
 			fetchCfg := mycluster.Conf.ProvDbStartFetchConfig
 			// Override the default value if cfgAction is provided
-			if vars["cfgAction"] == "keep" {
+			if strings.ToUpper(vars["cfgAction"]) == "KEEP" {
 				fetchCfg = false
-			} else if vars["cfgAction"] == "fetch" {
+			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" {
 				fetchCfg = true
+			} else if vars["cfgAction"] != "" {
+				http.Error(w, "Invalid config action", http.StatusBadRequest)
 			}
 			mycluster.StartDatabaseService(node, fetchCfg)
 		} else {
