@@ -131,3 +131,4 @@ else
 echo "OUT:Error during dry run (FETCH)."
 fi
 fi
+exit 0
