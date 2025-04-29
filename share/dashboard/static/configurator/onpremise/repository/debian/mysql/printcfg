@@ -113,6 +113,7 @@ mysql_print_defaults_from_pid_file "$REPLICATION_MANAGER_DB_PID" &
 CURRENT_PID=$!
 fi
 
+ECODE=0
 # Wait for background processes
 if [[ -n "$CURRENT_PID" ]]; then
 wait "$CURRENT_PID"
@@ -120,6 +121,7 @@ if [[ $? -eq 0 ]]; then
 echo "OUT:Dry run (PID) completed successfully."
 else
 echo "OUT:Error during dry run (PID)."
+ECODE=1
 fi
 fi
 
@@ -129,6 +131,7 @@ if [[ $? -eq 0 ]]; then
 echo "OUT:Dry run (FETCH) completed successfully."
 else
 echo "OUT:Error during dry run (FETCH)."
+ECODE=1
 fi
 fi
-exit 0
+exit $ECODE
