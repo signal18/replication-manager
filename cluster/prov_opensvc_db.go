@@ -869,7 +869,6 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	arguments = append(arguments, "--skip-tls-verify")
 	arguments = append(arguments, gottyURL)
 	client := exec.Command("gotty-client", arguments...)
-	client.Env = append(client.Env, "TERM=xterm-256color")
 
 	var rcv_port_pid, rcv_port, pid_file, sst_env string
 	var rcv_port_pid_int, rcv_port_int int
@@ -930,7 +929,11 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 		return err
 	}
 
-	client.Stderr = client.Stdout
+	errPipe, err := client.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
+		return err
+	}
 
 	// Start a pseudo-terminal for the command
 	err = client.Start()
@@ -940,12 +943,18 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(2)
+	wg.Add(3)
 
 	// Create a goroutine to read from the pty and write to stdout
 	go func() {
 		defer wg.Done()
 		server.copyLogs(outPipe, config.ConstLogModOrchestrator, config.LvlDbg)
+	}()
+
+	// Create a goroutine to read from the pty and write to stdout
+	go func() {
+		defer wg.Done()
+		server.copyLogs(errPipe, config.ConstLogModOrchestrator, config.LvlDbg)
 	}()
 
 	// Create a goroutine to read from the pty and write to the command
@@ -962,6 +971,12 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 
 	// Wait for the command to finish
 	wg.Wait()
+
+	client.Wait()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
+		return err
+	}
 
 	return nil
 }
