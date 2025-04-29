@@ -401,12 +401,12 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) == 2 {
-			varname := strings.TrimSpace(parts[0])
+			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
 			key := strings.ToUpper(varname)
 			value := strings.TrimSpace(parts[1])
 			v, ok := server.VariablesMap.CheckAndGet(key)
 			if ok {
-				v.Variable_name = strings.ReplaceAll(varname, "-", "_")
+				v.Variable_name = varname
 				if deployed {
 					if v.Deployed == nil {
 						v.Deployed = &value
