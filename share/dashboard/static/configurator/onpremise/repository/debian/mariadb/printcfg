@@ -102,6 +102,8 @@ fi
 
 
 
+mkdir -p /bootstrap
+
 # Start actions in background
 print_default_for_fetch &
 FETCH_PID=$!
