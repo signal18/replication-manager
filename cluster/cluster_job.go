@@ -248,6 +248,7 @@ func (cluster *Cluster) PrintDefaultDatabaseServices(regenerate bool) error {
 	defer cluster.LogPanicToFile("printdefault")
 	for _, srv := range cluster.Servers {
 		if srv != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Print default database service for %s", srv.URL)
 			err := cluster.PrintDefaultDatabaseService(srv, regenerate)
 			if err != nil {
 				if regenerate {
