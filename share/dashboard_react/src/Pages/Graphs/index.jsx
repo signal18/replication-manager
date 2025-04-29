@@ -151,7 +151,6 @@ function Graphs({ selectedCluster }) {
           className={`${styles.graph} ${styles.qpsGraph} ${styles[`width${selectedHour.value}`]}`}
         />
         <MultiMetricGraph
-         chartRef={redoRef}
          context={context}
          metricPaths={[
            'maxSeries(mysql.*.mysql_global_status_innodb_checkpoint_age)',
@@ -160,7 +159,6 @@ function Graphs({ selectedCluster }) {
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="InnoDB Redo Log Status"
-         maxExtent={1000000000} // Example max value
        />
 
       </Flex>

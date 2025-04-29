@@ -37,6 +37,6 @@
 // Generate width classes based on hour selection
 @for $i from 1 through 6 {
   .width#{360 * $i} {
-    width: calc(#{100% / $i} - 1rem);
+  width: calc((100% / #{$i}) - 1rem);
   }
 }
