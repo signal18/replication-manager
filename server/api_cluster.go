@@ -6646,35 +6646,33 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		if mycluster.Conf.APISecureConfig {
-			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-				http.Error(w, "No valid ACL", 403)
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		vars["servertype"] = strings.ToLower(vars["servertype"])
+		if vars["servertype"] == "db" {
+			if len(mycluster.Servers) > 0 {
+				go mycluster.PrintDefaultDatabaseServices(true)
+			} else {
+				http.Error(w, "No server", 500)
 				return
 			}
-
-			vars["servertype"] = strings.ToLower(vars["servertype"])
-			if vars["servertype"] == "db" {
-				if len(mycluster.Servers) > 0 {
-					go mycluster.PrintDefaultDatabaseServices(true)
-				} else {
-					http.Error(w, "No server", 500)
-					return
-				}
-			} else if vars["servertype"] == "proxy" {
-				if len(mycluster.Proxies) > 0 {
-					for _, prx := range mycluster.Proxies {
-						if prx != nil {
-							prx.GetProxyConfig()
-						} else {
-							http.Error(w, "No server", 500)
-							return
-						}
+		} else if vars["servertype"] == "proxy" {
+			if len(mycluster.Proxies) > 0 {
+				for _, prx := range mycluster.Proxies {
+					if prx != nil {
+						prx.GetProxyConfig()
+					} else {
+						http.Error(w, "No server", 500)
+						return
 					}
 				}
-			} else {
-				http.Error(w, "No valid type", 500)
-				return
 			}
+		} else {
+			http.Error(w, "No valid type", 500)
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
