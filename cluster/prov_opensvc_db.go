@@ -913,7 +913,7 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(filerc)
 
-	cwd := strings.NewReader(fmt.Sprintf("cd %s\n", cluster.OsUser.HomeDir))
+	cwd := strings.NewReader(fmt.Sprintf("set +H; cd %s\n", cluster.OsUser.HomeDir))
 	buf2 := strings.NewReader(server.GetSshEnv())
 	buf3 := strings.NewReader(sst_env)
 	r := io.MultiReader(cwd, buf2, buf3, buf)
