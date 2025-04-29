@@ -929,7 +929,7 @@ func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor
 		return err
 	}
 
-	errPipe, err := client.StdoutPipe()
+	errPipe, err := client.StderrPipe()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
 		return err
