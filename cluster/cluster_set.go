@@ -2488,7 +2488,7 @@ func (cluster *Cluster) PreserveVariable(variable string, preserve bool) {
 	if preserve {
 		list := strings.Split(strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars), ",")
 		if cluster.Conf.ProvDBConfigPreserveVars == "" {
-			cluster.Conf.ProvDBConfigPreserveVars = varname
+			cluster.Conf.ProvDBConfigPreserveVars = variable
 		} else if !slices.Contains(list, varname) {
 			cluster.Conf.ProvDBConfigPreserveVars = cluster.Conf.ProvDBConfigPreserveVars + "," + variable
 		}
