@@ -61,7 +61,7 @@ export const generateConfig = createAsyncThunk('configs/generateConfig', async (
   }
 })
 
-export const generateAllConfig = createAsyncThunk('configs/generateConfig', async ({ clusterName, type }, thunkAPI) => {
+export const generateAllConfig = createAsyncThunk('configs/generateAllConfig', async ({ clusterName, type }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data, status } = await configService.generateAllConfigs(clusterName, type, baseURL)

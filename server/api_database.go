@@ -2924,7 +2924,7 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			node.GetDatabaseConfig() // Regenerate the config
+			mycluster.PrintDefaultDatabaseService(node, true) // Regenerate the config
 		} else if proxy != nil {
 			proxy.GetProxyConfig() // Regenerate the config
 		} else {
