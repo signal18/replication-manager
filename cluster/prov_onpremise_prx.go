@@ -74,7 +74,7 @@ func (cluster *Cluster) OnPremiseConnectProxy(server DatabaseProxy) (*sshclient.
 }
 
 func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error {
-	pri.GetProxyConfig()
+	pri.GetProxyConfig(true)
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Bootstrap MariaDB Sharding Cluster")

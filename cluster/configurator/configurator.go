@@ -445,7 +445,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	return nil
 }
 
-func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string) error {
+func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string, overwrite bool) error {
 
 	os.RemoveAll(Datadir + "/init")
 	// Extract files
@@ -511,12 +511,16 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 			return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
 		}
 	}*/
+	if !overwrite {
+		configurator.CopyPreservedVariables(Datadir)
+	}
+
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, overwrite bool) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -599,6 +603,10 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	rootchk, err := crypto.ChecksumDirectory(Datadir+"/init", false)
 	if err == nil {
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
+	}
+
+	if !overwrite {
+		configurator.CopyPreservedVariables(Datadir)
 	}
 
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")

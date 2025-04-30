@@ -39,10 +39,10 @@ func (cluster *Cluster) LocalhostProvisionHaProxyService(prx *HaproxyProxy) erro
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Remove datadir done: %s", out.Bytes())
-	prx.GetProxyConfig()
+	prx.GetProxyConfig(true)
 	os.Symlink(prx.Datadir+"/init/data", path)
 
-	err = cluster.LocalhostStartHaProxyService(prx)
+	err = cluster.LocalhostStartHaProxyService(prx, true)
 	if err != nil {
 		cluster.errorChan <- err
 		return err
@@ -65,8 +65,8 @@ func (cluster *Cluster) LocalhostStopHaProxyService(prx *HaproxyProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy) error {
-	prx.GetProxyConfig()
+func (cluster *Cluster) LocalhostStartHaProxyService(prx *HaproxyProxy, fetch bool) error {
+	prx.GetProxyConfig(fetch)
 	//init haproxy do start or reload
 	prx.Init()
 	/*mariadbdCmd := exec.Command(cluster.Conf.HaproxyBinaryPath+"/haproxy", "--config="+prx.Datadir+"/init/etc/haproxy.cnf", "--datadir="+prx.Datadir+"/var")

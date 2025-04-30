@@ -75,7 +75,7 @@ func (proxy *HaproxyProxy) Init() {
 	haproxydatadir := proxy.Datadir + "/var"
 
 	if _, err := os.Stat(haproxydatadir); os.IsNotExist(err) {
-		proxy.GetProxyConfig()
+		proxy.GetProxyConfig(true)
 		os.Symlink(proxy.Datadir+"/init/data", haproxydatadir)
 	}
 	//haproxysockFile := "haproxy.stats.sock"

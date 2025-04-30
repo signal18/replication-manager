@@ -83,7 +83,7 @@ func (cluster *Cluster) DropDBTag(dtag string) {
 			if !srv.IsMariaDB() {
 				cmd = "mysql_default"
 			}
-			srv.GetDatabaseConfig()
+			srv.GetDatabaseConfig(true)
 			_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(dtag, cmd), ";"))
 			if needrestart {
 				srv.SetRestartCookie()

@@ -6663,7 +6663,7 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 			if len(mycluster.Proxies) > 0 {
 				for _, prx := range mycluster.Proxies {
 					if prx != nil {
-						prx.GetProxyConfig()
+						prx.GetProxyConfig(true)
 					} else {
 						http.Error(w, "No server", 500)
 						return

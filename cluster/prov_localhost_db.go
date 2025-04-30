@@ -73,7 +73,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 			return err
 		}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Remove datadir done: %s", out.Bytes())*/
-	server.GetDatabaseConfig()
+	server.GetDatabaseConfig(true)
 	///	os.Symlink(server.Datadir+"/init/data", path)
 
 	/*cmd = exec.Command("cp", "-rp", cluster.Conf.ShareDir+"/tests/data"+cluster.Conf.ProvDatadirVersion, path)
@@ -299,7 +299,7 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 }
 
 func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor, fetch bool) error {
-	server.GetDatabaseConfig()
+	server.GetDatabaseConfig(fetch)
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)
 		if err != nil {

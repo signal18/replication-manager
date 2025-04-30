@@ -1326,7 +1326,7 @@ func (cluster *Cluster) SetDBDynamicConfig() {
 		if !srv.IsMariaDB() {
 			cmd = "mysql_command"
 		}
-		srv.GetDatabaseConfig()
+		srv.GetDatabaseConfig(true)
 		srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig("", cmd), ";"))
 	}
 }

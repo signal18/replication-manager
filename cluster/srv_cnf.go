@@ -198,14 +198,14 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 	return server.Variables.Get(variable)
 }
 
-func (server *ServerMonitor) GetDatabaseConfig() error {
+func (server *ServerMonitor) GetDatabaseConfig(overwrite bool) error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
 
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion)
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, overwrite)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err
@@ -453,7 +453,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 
 func (server *ServerMonitor) WritePreservedVariables() error {
 	cluster := server.ClusterGroup
-	destpath := filepath.Join(server.Datadir, "init/etc/mysql/custom.d/99_preserved.cnf")
+	destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
 	destfile, err := os.OpenFile(destpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
@@ -469,18 +469,23 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		}
 		opt = strings.TrimSpace(opt)
 		if v, ok := server.VariablesMap.CheckAndGet(opt); ok {
-			if v.Deployed != nil {
+			value := v.Deployed
+			if value == nil && v.Runtime != nil {
+				value = v.Runtime
+			}
+
+			if value != nil {
 				//Write the variable to the file
-				if strings.Contains(*v.Deployed, "\n") {
+				if strings.Contains(*value, "\n") {
 					// split the value by new line, use loose_ prefix and write each line to the file
-					lines := strings.Split(*v.Deployed, "\n")
+					lines := strings.Split(*value, "\n")
 					for _, line := range lines {
 						if _, err := destfile.WriteString("loose_" + v.Variable_name + "=" + line + "\n"); err != nil {
 							errvarlist = append(errvarlist, v.Variable_name+"="+line)
 						}
 					}
 				} else {
-					if _, err := destfile.WriteString(v.Variable_name + "=" + *v.Deployed + "\n"); err != nil {
+					if _, err := destfile.WriteString(v.Variable_name + "=" + *value + "\n"); err != nil {
 						errvarlist = append(errvarlist, v.Variable_name)
 					}
 				}
@@ -492,8 +497,6 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing preserved variables %s", strings.Join(errvarlist, ", "))
 		return err
 	}
-
-	cluster.Configurator.TarGz(server.Datadir+"/config.tar.gz", server.Datadir+"/init")
 
 	return nil
 

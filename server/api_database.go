@@ -2867,7 +2867,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			if !skipGenerate {
-				node.GetDatabaseConfig()
+				node.GetDatabaseConfig(true)
 			}
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
@@ -2880,7 +2880,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 
 		} else if proxy != nil {
 			if !skipGenerate {
-				proxy.GetProxyConfig()
+				proxy.GetProxyConfig(true)
 			}
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
@@ -2933,7 +2933,7 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 				node.ReadVariablesFromConfigs()
 			}()
 		} else if proxy != nil {
-			proxy.GetProxyConfig() // Regenerate the config
+			proxy.GetProxyConfig(true) // Regenerate the config
 		} else {
 			http.Error(w, "No server", 500)
 		}
