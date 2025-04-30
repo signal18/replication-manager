@@ -85,6 +85,7 @@ chown -R mysql:mysql /bootstrap/etc/mysql
 # Create dummy config file for dry-run
 echo "[mysqld]" > /bootstrap/dummy.cnf
 echo '!includedir /bootstrap/etc/mysql/conf.d' >> /bootstrap/dummy.cnf
+echo '!includedir /bootstrap/etc/mysql/custom.d' >> /bootstrap/dummy.cnf
 chown mysql:mysql /bootstrap/dummy.cnf
 
 mysqld --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
