@@ -838,7 +838,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
-	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "Comma-separated list of configuration keys to preserve during provisioning")
+	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "aria_log_dir_path,basedir,character_sets_dir,datadir,general_log_file,innodb_data_home_dir,innodb_log_group_home_dir,innodb_undo_directory,log_bin,log_bin_index,log_error,log_slow_query_file,plugin_dir,relay_log,relay_log_index", "Comma-separated list of configuration keys to preserve during config change")
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
