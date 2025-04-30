@@ -256,7 +256,6 @@ func (cluster *Cluster) PrintDefaultDatabaseServices(regenerate bool) error {
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Print default error: %s", err)
 				}
-				return err
 			}
 
 			srv.ReadVariablesFromConfigs()
