@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 	"sync"
+	"time"
 
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -1005,6 +1006,11 @@ type VariableState struct {
 	Deployed      *string `json:"value"`
 	Runtime       *string `json:"runtimeValue"`
 	Preserve      bool    `json:"preserve"`
+}
+
+type LastConfigUpdate struct {
+	Config   time.Time `json:"config"`
+	Deployed time.Time `json:"deployed"`
 }
 
 func NewVariableState(varname string) *VariableState {

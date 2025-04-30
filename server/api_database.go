@@ -3337,9 +3337,7 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && !node.IsDown() {
-			if !node.IsConfigGen {
-				node.ReadVariablesFromConfigs()
-			}
+			node.ReadVariablesFromConfigs()
 
 			diff := vars["diff"] == "true"
 			e := json.NewEncoder(w)

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -349,7 +350,20 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 	var srcfile *os.File
 	var err error
 
-	if _, err = os.Stat(srcpath); err != nil {
+	var lastUpdate time.Time
+	if deployed {
+		lastUpdate = server.LastConfigUpdate.Deployed
+	} else {
+		lastUpdate = server.LastConfigUpdate.Config
+	}
+
+	finfo, err := os.Stat(srcpath)
+	if err != nil {
+		if deployed {
+			server.LastConfigUpdate.Deployed = time.Time{}
+		} else {
+			server.LastConfigUpdate.Config = time.Time{}
+		}
 		if os.IsNotExist(err) {
 			return nil
 		}
@@ -358,12 +372,25 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		return err
 	}
 
+	if !lastUpdate.Before(finfo.ModTime()) {
+		// No need to read the file if it hasn't changed
+		return nil
+	}
+
+	if deployed {
+		server.LastConfigUpdate.Deployed = finfo.ModTime()
+	} else {
+		server.LastConfigUpdate.Config = finfo.ModTime()
+	}
+
 	// Read the file
 	srcfile, err = os.Open(srcpath)
 	if err != nil {
+		server.LastConfigUpdate.Config = time.Time{}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
 	}
+
 	defer srcfile.Close()
 
 	// Clear all previous values

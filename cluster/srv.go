@@ -212,7 +212,8 @@ type ServerMonitor struct {
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
-	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
+	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
+	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 }
 
 type ServerBackupMeta struct {
