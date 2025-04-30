@@ -440,7 +440,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 				continue
 			}
 			opt = strings.TrimSpace(opt)
-			if v, ok := server.VariablesMap.CheckAndGet(opt); ok {
+			if v, ok := server.VariablesMap.CheckAndGet(strings.ToUpper(opt)); ok {
 				v.Preserve = true
 			}
 		}
