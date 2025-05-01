@@ -523,13 +523,13 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
-		mycluster.AddDBTag(in.TagValue)
+		mycluster.AddDBTag(in.TagValue,false)
 
 	case v3.ClusterSetting_DROP_DB_TAG:
 		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
-		mycluster.DropDBTag(in.TagValue)
+		mycluster.DropDBTag(in.TagValue,false)
 	}
 
 	return res, nil

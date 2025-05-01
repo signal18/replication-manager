@@ -267,10 +267,10 @@ var configuratorCmd = &cobra.Command{
 							PanIndex = 1
 						case 1:
 							if addedTags[dbCurrrentTag] {
-								cluster.DropDBTag(dbCurrrentTag)
+								cluster.DropDBTag(dbCurrrentTag,false)
 								addedTags[dbCurrrentTag] = false
 							} else {
-								cluster.AddDBTag(dbCurrrentTag)
+								cluster.AddDBTag(dbCurrrentTag,false)
 								addedTags[dbCurrrentTag] = true
 							}
 							cluster.SetTagsFromConfigurator()
