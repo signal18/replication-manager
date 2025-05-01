@@ -1,10 +1,13 @@
-// _memoryusage.module.scss
-
+// _chartbarstack.module.scss
 // Main container styling
 .container {
   position: relative;
   width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: transparent;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 // Chart title styling
@@ -12,56 +15,91 @@
   margin: 0 0 1rem 1.5rem;
   font-size: 1.2rem;
   font-weight: 600;
-  color: #2d3748;
+  color: var(--text-color, #2d3748);
 }
 
 // Chart container
 .chartContainer {
   position: relative;
   overflow: visible;
+  transition: background-color 0.3s ease;
+  margin: 0;
+  padding: 0;
+  border: none;
 }
 
 // Axis styling
 .axis {
   path, line {
     fill: none;
-    stroke: #cbd5e0;
+    stroke: var(--gray-color, #cbd5e0);
     shape-rendering: crispEdges;
   }
-
   text {
-    fill: #718096;
+    fill: var(--darkgray-color, #718096);
     font-size: 0.75rem;
   }
 }
 
+// Dark theme axis styling
+.dark-axis {
+  path, line {
+    fill: none;
+    stroke: var(--secondary-gray-color, #2a3048);
+    shape-rendering: crispEdges;
+  }
+  text {
+    fill: var(--text-color, #e7e9ef);
+    font-size: 0.75rem;
+  }
+}
+
+// Legend text styling
 .legendText {
   font-size: 0.8rem;
-  fill: #4a5568;
+  fill: var(--text-color, #4a5568);
+}
+
+// Dark theme legend text
+.dark-legend-text {
+  font-size: 0.8rem;
+  fill: var(--text-color, #e7e9ef);
 }
 
 // Bar layer styling
 .layer rect {
   transition: all 0.3s ease-out;
+
+  &:hover {
+    opacity: 0.8;
+  }
 }
 
-
+// Total label styling
 .totalLabel {
   font-size: 0.75rem;
   font-weight: 500;
-  fill: #2d3748;
+  fill: var(--text-color, #2d3748);
+}
+
+// Dark theme total label
+.dark-total-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  fill: var(--text-color, #e7e9ef);
 }
 
 // Tooltip styling (if used)
 .tooltip {
   position: absolute;
   padding: 8px 12px;
-  background: white;
-  border: 1px solid #e2e8f0;
+  background: var(--white-color, white);
+  border: 1px solid var(--gray-color, #e2e8f0);
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   pointer-events: none;
   font-size: 0.85rem;
+  color: var(--text-color, #2d3748);
 
   &Item {
     display: flex;
@@ -71,61 +109,58 @@
   }
 }
 
+// Dark theme tooltip
+.dark-tooltip {
+  background: var(--secondary-color, #2a4365);
+  border: 1px solid var(--quaternary-color, #2c5282);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  color: var(--text-color, #e7e9ef);
+}
+
+// Dark theme legend container
+.dark-legend {
+  color: var(--text-color, #e7e9ef);
+}
+
 // Responsive adjustments
 @media (max-width: 768px) {
   .title {
     font-size: 1rem;
     margin-left: 1rem;
   }
-
-  .legendText {
+  .legendText, .dark-legend-text {
     font-size: 0.7rem;
   }
-
-  .totalLabel {
+  .totalLabel, .dark-total-label {
     font-size: 0.6rem;
   }
 }
-/* Add this to your _chartbarstack.module.scss file or create a new CSS file */
 
-/* Dark theme title styling */
+/* Global styles for theme integration */
 :global(.dark-theme-title) {
-  color: #e2e8f0 !important;
+  color: var(--text-color, #e7e9ef) !important;
   font-size: 1.25rem;
   font-weight: 500;
   margin-bottom: 1rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid #4a5568;
 }
 
 /* Dark theme chart container */
 :global(.dark-theme-chart) {
-  background-color: rgba(30, 34, 39, 0.7) !important;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  // Dark mode specific styles
+
+//  background-color: var(--body-bg-color, #131a34) !important;
+  background-color: var(--body-bg-color, #2a3048) !important;
+
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
-/* Custom styles for the dark theme axis */
-.dark-axis {
-  color: #a0aec0;
-}
-
-.dark-axis path,
-.dark-axis line {
-  stroke: #4a5568;
-}
-
-.dark-axis text {
-  fill: #a0aec0;
-}
-
-/* Dark theme legend text */
-.dark-legend-text {
-  fill: #e2e8f0;
-}
-
-/* Dark theme total label */
-.dark-total-label {
-  fill: #e2e8f0;
-  font-weight: 500;
+/* Light theme chart container */
+:global(.light-theme-chart) {
+  background-color: var(--white-color, #ffffff) !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
 }

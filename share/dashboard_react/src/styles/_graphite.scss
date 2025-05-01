@@ -1,16 +1,15 @@
 // src/styles/_graphite.scss
+
 .axis {
   font-size: rem(14);
-  background-color: var(--secondary-gray-color);
-
+  background-color: transparent; // Changed from var(--secondary-gray-color)
   text {
     transition: fill-opacity 250ms linear;
+    fill: var(--text-color); // Added for consistent text color
   }
-
   path {
     display: none;
   }
-
   line {
     stroke: var(--primary-color);
     shape-rendering: crispEdges;
@@ -18,11 +17,11 @@
 }
 
 .horizon {
-  border-top: 1px solid var(--black-color);
-  border-bottom: 1px solid var(--black-color);
+  border-top: 1px solid var(--border-color, var(--darkgray-color));
+  border-bottom: 1px solid var(--border-color, var(--darkgray-color));
   overflow: hidden;
   position: relative;
-  background-color: var(--secondary-gray-color);
+  background-color: transparent; // Changed from var(--secondary-gray-color)
 
   + .horizon {
     border-top: none;
@@ -38,6 +37,7 @@
     margin: 0 6px;
     line-height: 30px;
     white-space: nowrap;
+    color: var(--text-color); // Added for consistent text color
   }
 
   .title {
@@ -57,4 +57,22 @@
   background: var(--danger-primary-color);
   opacity: 0.7;
   z-index: 2;
+}
+
+// Add container styling
+.graphite-container {
+  background-color: var(--body-bg-color, #131a34);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow: hidden;
+
+  // Dark mode specific styles
+  .dark-theme & {
+    background-color: var(--secondary-gray-color, #2a3048);
+  }
+
+  // Light mode specific styles
+  .light-theme & {
+    background-color: var(--white-color, #ffffff);
+  }
 }
