@@ -330,6 +330,23 @@ func (cluster *Cluster) SwitchGraphiteBlacklist() {
 	cluster.Conf.GraphiteBlacklist = !cluster.Conf.GraphiteBlacklist
 }
 
+func (cluster *Cluster) SwitchMonitorPFSMutex() {
+  cluster.SetMonitorPFSMutex(!cluster.Conf.MonitorPFSMutex)
+}
+
+func (cluster *Cluster) SwitchMonitorPFSLatch() {
+  cluster.SetMonitorPFSLatch(!cluster.Conf.MonitorPFSLatch)
+}
+
+func (cluster *Cluster) SwitchMonitorPFSMemory() {
+  cluster.SetMonitorPFSMemory(!cluster.Conf.MonitorPFSMemory)
+}
+
+
+func (cluster *Cluster) SwitchMonitorPFSInstruments() {
+   cluster.Conf.MonitorPFSInstruments= !cluster.Conf.MonitorPFSInstruments
+}
+
 func (cluster *Cluster) SwitchFailoverLowerRelease() {
 	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
 }

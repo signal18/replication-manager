@@ -257,7 +257,7 @@ function Home() {
                 <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor}/>,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
-                  ? [<Graphs />]
+                  ? [<Graphs selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['cluster-show-agents']
                   ? [<Agents user={user} selectedCluster={selectedCluster} />]

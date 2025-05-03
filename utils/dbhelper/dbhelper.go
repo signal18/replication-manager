@@ -196,6 +196,8 @@ type MasterStatus struct {
 	Executed_Gtid_Set string `json:"executedGtidSet"`
 }
 
+
+
 type SlaveStatus struct {
 	ConnectionName           sql.NullString `db:"Connection_name" json:"connectionName"`
 	ChannelName              sql.NullString `db:"Channel_Name" json:"channelName"`
@@ -1699,11 +1701,20 @@ func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 	return source
 }
 
-func GetStatus(db *sqlx.DB, myver *version.Version) (map[string]string, string, error) {
 
+
+func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool, pfs_mem bool) (map[string]string, string, error) {
+//fmt.Println("%s: %s", pfs_latch , pfs_mutex,pfs_mem)
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
+	if  pfs_mutex {
+		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/mutex/innodb%' AND COUNT_STAR <>0"
+	}
+	if  pfs_latch {
+		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/rwlock/innodb%' AND COUNT_STAR <>0"
+	}
+
 	if myver.IsPostgreSQL() {
 		query = `SELECT 'COM_QUERY' as "variable_name",  SUM(xact_commit + xact_rollback)::text as "value" FROM pg_stat_database
 			UNION ALL SELECT 'COM_INSERT' as "variable_name",SUM(tup_inserted)::text as "value" FROM pg_stat_database
@@ -1731,6 +1742,46 @@ func GetStatus(db *sqlx.DB, myver *version.Version) (map[string]string, string, 
 			return nil, query, errors.New("Could not get results from status scan")
 		}
 		vars[v.Variable_name] = v.Value
+	}
+	if pfs_mem {
+
+
+		query_pfsmem:= "SHOW ENGINE PERFORMANCE_SCHEMA STATUS"
+		rows2, err := db.Queryx(query_pfsmem)
+
+		if err != nil {
+			return nil, query_pfsmem, errors.New("Could not get PFS engine status")
+		}
+		defer rows2.Close()
+		var rtype string
+		var rname string
+		var rvalue uint64
+
+		for rows2.Next() {
+
+			err := rows2.Scan(&rtype, &rname, &rvalue)
+			if err != nil {
+				return nil, query, errors.New("Could not get results from PFS status scan")
+			}
+
+			if strings.Contains(rname , "performance_schema.memory") {
+
+			//	fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
+
+					vars["performance_schema_memory"] =  strconv.FormatUint(rvalue, 10)
+			}
+		}
+	} //end if pfs_mem
+  if  vars["ARIA_PAGECACHE_BLOCKS_USED"] !=""{
+//			fmt.Println(" status ARIA_PAGECACHE_BLOCKS_USED" , fmt.Sprint(vars["ARIA_PAGECACHE_BLOCKS_USED"]))
+			myUInt64, err := strconv.ParseUint( vars["ARIA_PAGECACHE_BLOCKS_USED"], 10, 64)
+			if err  == nil {
+				vars["ARIA_PAGECACHE_BYTES_DATA"] = strconv.FormatUint( myUInt64*8192,10)
+			} else {
+					vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
+		 }
+	} else {
+		vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
 	}
 	return vars, query, nil
 }
@@ -1958,6 +2009,25 @@ func GetVariablesCase(db *sqlx.DB, myver *version.Version, vcase string) (map[st
 	}
 	return vars, query, err
 }
+
+func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) {
+	vars := make(map[string]string)
+	query := "SELECT /*replication-manager*/ UPPER(NAME) AS variable_name, ENABLED AS VALUE from performance_schema.setup_instruments"
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return vars, query, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v Variable
+		err = rows.Scan(&v.Variable_name, &v.Value)
+		if err != nil {
+			return vars, query, err
+		}
+		vars[v.Variable_name] = v.Value
+	}
+	return vars, query, err
+	}
 
 func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 

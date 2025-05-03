@@ -2475,6 +2475,32 @@ func (cluster *Cluster) SetLogStatsLevel(value int) {
 	cluster.Conf.LogStatsLevel = value
 }
 
+func (cluster *Cluster) SetMonitorPFSMutex(value bool) {
+	cluster.Conf.MonitorPFSMutex = value
+	if value {
+		cluster.AddDBTag("logmutex", true)
+	} else {
+		cluster.DropDBTag("logmutex", true)
+	}
+}
+
+func (cluster *Cluster) SetMonitorPFSLatch(value bool) {
+	cluster.Conf.MonitorPFSLatch = value
+	if value {
+		cluster.AddDBTag("loglatch", true)
+	} else {
+		cluster.DropDBTag("loglatch", true)
+	}
+}
+
+func (cluster *Cluster) SetMonitorPFSMemory(value bool) {
+	cluster.Conf.MonitorPFSMemory = value
+}
+
+func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
+	cluster.Conf.MonitorPFSInstruments = value
+}
+
 func (cluster *Cluster) PreserveVariableToAllNodes(variable string, preserve bool) {
 	for _, srv := range cluster.Servers {
 		v, ok := srv.VariablesMap.CheckAndGet(variable)

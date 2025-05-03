@@ -1,63 +1,78 @@
+// src/styles/_graphite.scss
+
 .axis {
   font-size: rem(14);
-  background-color: var(--secondary-gray-color);
-}
-
-.axis text {
-  -webkit-transition: fill-opacity 250ms linear;
-}
-
-.axis path {
-  display: none;
-}
-
-.axis line {
-  stroke: var(--primary-color);
-  shape-rendering: crispEdges;
+  background-color: transparent; // Changed from var(--secondary-gray-color)
+  text {
+    transition: fill-opacity 250ms linear;
+    fill: var(--text-color); // Added for consistent text color
+  }
+  path {
+    display: none;
+  }
+  line {
+    stroke: var(--primary-color);
+    shape-rendering: crispEdges;
+  }
 }
 
 .horizon {
-  border-bottom: solid 1px var(--black-color);
+  border-top: 1px solid var(--border-color, var(--darkgray-color));
+  border-bottom: 1px solid var(--border-color, var(--darkgray-color));
   overflow: hidden;
   position: relative;
-  background-color: var(--secondary-gray-color);
-}
+  background-color: transparent; // Changed from var(--secondary-gray-color)
 
-.horizon {
-  border-top: solid 1px var(--black-color);
-  border-bottom: solid 1px var(--black-color);
-}
+  + .horizon {
+    border-top: none;
+  }
 
-.horizon + .horizon {
-  border-top: none;
-}
+  canvas {
+    display: block;
+  }
 
-.horizon canvas {
-  display: block;
-}
+  .title,
+  .value {
+    position: absolute;
+    margin: 0 6px;
+    line-height: 30px;
+    white-space: nowrap;
+    color: var(--text-color); // Added for consistent text color
+  }
 
-.horizon .title,
-.horizon .value {
-  bottom: 0;
-  line-height: 30px;
-  margin: 0 6px;
-  position: absolute;
-  white-space: nowrap;
-}
+  .title {
+    top: 0;
+    left: 0;
+    font-size: rem(20);
+    font-weight: bold;
+  }
 
-.horizon .title {
-  left: 0;
-  top: 0;
-  font-size: rem(20);
-  font-weight: bold;
-}
-
-.horizon .value {
-  right: 0;
+  .value {
+    right: 0;
+    bottom: 0;
+  }
 }
 
 .line {
   background: var(--danger-primary-color);
   opacity: 0.7;
   z-index: 2;
+}
+
+// Add container styling
+.graphite-container {
+  background-color: var(--body-bg-color, #131a34);
+  border-radius: 8px;
+  padding: 1rem;
+  overflow: hidden;
+
+  // Dark mode specific styles
+  .dark-theme & {
+    background-color: var(--secondary-gray-color, #2a3048);
+  }
+
+  // Light mode specific styles
+  .light-theme & {
+    background-color: var(--white-color, #ffffff);
+  }
 }

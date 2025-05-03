@@ -2200,6 +2200,14 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchGraphiteMetrics()
 	case "graphite-blacklist":
 		mycluster.SwitchGraphiteBlacklist()
+	case "monitoring-performance-schema-mutex":
+		mycluster.SwitchMonitorPFSMutex()
+	case "monitoring-performance-schema-latch":
+		mycluster.SwitchMonitorPFSLatch()
+	case "monitoring-performance-schema-memory":
+		mycluster.SwitchMonitorPFSMemory()	
+	case "monitoring-performance-schema-instruments":
+		mycluster.SwitchMonitorPFSInstruments()
 	case "shardproxy-copy-grants":
 		mycluster.SwitchProxysqlCopyGrants()
 	case "proxysql-copy-grants":
@@ -3900,7 +3908,7 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.AddDBTag(vars["tagValue"])
+		mycluster.AddDBTag(vars["tagValue"],false)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
@@ -3965,7 +3973,7 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		mycluster.DropDBTag(vars["tagValue"])
+		mycluster.DropDBTag(vars["tagValue"],false)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
 		return
