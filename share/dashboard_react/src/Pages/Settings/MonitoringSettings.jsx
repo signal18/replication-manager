@@ -19,6 +19,9 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       monInnoDBLoading,
       monVarDiffLoading,
       monProcessListLoading,
+      monProcessListLoadingInactive,
+      monProcessListLoadingTransactions ,
+      monProcessListLoadingInformationSchema ,
       captureTriggerLoading,
       monIgnoreErrLoading
     }
@@ -151,6 +154,48 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
           }
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.monitoringProcesslist}
+          loading={monProcessListLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Processlist Information Schema',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-processlist-information-schema?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist-information-schema' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringProcesslistInformationSchema}
+          loading={monProcessListLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Processlist Inactive',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-processlist-inactive?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist-inactive' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringProcesslistInactive}
+          loading={monProcessListLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Processlist Transactions',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-processlist-transactions?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-processlist-transactions' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringProcesslistTransactions}
           loading={monProcessListLoading}
         />
       )

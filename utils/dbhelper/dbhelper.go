@@ -147,19 +147,28 @@ type Event struct {
 }
 
 type Processlist struct {
-	Id           uint64          `json:"id" db:"Id"`
-	User         string          `json:"user" db:"User"`
-	Host         string          `json:"host" db:"Host"`
-	Db           sql.NullString  `json:"db" db:"db"`
-	Command      string          `json:"command" db:"Command"`
-	Time         sql.NullFloat64 `json:"time" db:"Time"`
-	TimeMs       sql.NullFloat64 `json:"timeMs" db:"Time_ms"`
-	State        sql.NullString  `json:"state" db:"State"`
-	Info         sql.NullString  `json:"info" db:"Info"`
-	Progress     sql.NullFloat64 `json:"progress" db:"Progress"`
-	RowsSent     uint64          `json:"rowsSent" db:"Rows_sent"`
-	RowsExamined uint64          `json:"rowsExamined" db:"Rows_examined"`
-	Url          string          `json:"url" db:"Url"`
+	Id                 uint64          `json:"id" db:"Id"`
+	User               string          `json:"user" db:"User"`
+	Host               string          `json:"host" db:"Host"`
+	Db                 sql.NullString  `json:"db" db:"db"`
+	Command            string          `json:"command" db:"Command"`
+	Time               sql.NullFloat64 `json:"time" db:"Time"`
+	TimeMs             sql.NullFloat64 `json:"timeMs" db:"Time_ms"`
+	State              sql.NullString  `json:"state" db:"State"`
+	Info               sql.NullString  `json:"info" db:"Info"`
+	Progress           sql.NullFloat64 `json:"progress" db:"Progress"`
+	RowsSent           uint64          `json:"rowsSent" db:"Rows_sent"`
+	RowsExamined       uint64          `json:"rowsExamined" db:"Rows_examined"`
+	Url                string          `json:"url" db:"Url"`
+	TrxIsolation       sql.NullString  `json:"trxIsolationLevel" db:"trx_isolation_level"`
+	TrxTime            uint64          `json:"trxTime" db:"trx_time"`
+	TrxTablesInUse     uint64          `json:"txrTablesInUse" db:"trx_tables_in_use"`
+	TrxTablesLocked    uint64          `json:"trxTablesLocked" db:"trx_tables_locked"`
+	TrxLockStructs     uint64          `json:"trxLockStructs"  db:"trx_lock_structs"`
+	TrxLockMemoryBytes uint64          `json:"trxLockMemoryBytes"  db:"trx_lock_memory_bytes"`
+	TrxRowsLocked      uint64          `json:"trxRowsLocked"   db:"trx_rows_locked"`
+	TrxRowsModified    uint64          `json:"trxRowsModified"  db:"trx_rows_modified"`
+	TrxIsReadOnly      int             `json:"trxIsReadOnly"  db:"trx_is_read_only"`
 }
 
 type LogSlow struct {
@@ -195,8 +204,6 @@ type MasterStatus struct {
 	Binlog_Ignore_DB  string `json:"binlogIgnoreDB"`
 	Executed_Gtid_Set string `json:"executedGtidSet"`
 }
-
-
 
 type SlaveStatus struct {
 	ConnectionName           sql.NullString `db:"Connection_name" json:"connectionName"`
@@ -543,18 +550,40 @@ func AnalyzeQuery(db *sqlx.DB, version *version.Version, schema string, query st
 	return res, stmt, err
 }
 
-func GetProcesslistTable(db *sqlx.DB, version *version.Version) ([]Processlist, string, error) {
+func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_querying bool, order_by_trx_time bool, full_process_is bool, limit string, user string) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	stmt := ""
+	filter_order_limit := ""
+	filter_user := "1=1"
+
+	if user != "" {
+		filter_user = "  User='+" + user + "' "
+	}
+	if inactive_querying || order_by_trx_time {
+		filter_order_limit = " WHERE " + filter_user
+	} else {
+		filter_order_limit = " WHERE " + filter_user + " AND  a.command='query' "
+	}
+	if order_by_trx_time {
+		filter_order_limit += " ORDER BY b.trx_started DESC LIMIT " + limit
+	} else {
+		filter_order_limit += " ORDER BY a.TIME_MS DESC LIMIT " + limit
+	}
 	if version.IsMariaDB() {
 		//MariaDB
-		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO_BINARY,''),1,1000) as Info, CASE WHEN Max_Stage < 2 THEN Progress ELSE (Stage-1)/Max_Stage*100+Progress/Max_Stage END AS Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME_MS DESC LIMIT 50"
+		stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`, a.Command, a.Time_ms as Time, a.State, SUBSTRING(COALESCE(a.INFO_BINARY,''),1,1000) as Info, CASE WHEN a.Max_Stage < 2 THEN Progress ELSE (a.Stage-1)/a.Max_Stage*100+a.Progress/a.Max_Stage END AS Progress, COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " + filter_order_limit
+		if !full_process_is {
+			stmt = "SHOW FULL PROCESSLIST"
+		}
 	} else if version.IsMySQLOrPercona() {
 		//MySQL
-		stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
+		stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`, a.Command, a.Time as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info ,0 as Progress  COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " + filter_order_limit
 		if version.GreaterEqual("8.0") {
-			stmt = "SELECT Id, User, Host, `Db` AS `db`, Command, Time_ms as Time, State, SUBSTRING(COALESCE(INFO,''),1,1000) as Info ,0 as Progress FROM INFORMATION_SCHEMA.PROCESSLIST WHERE command='query' ORDER BY TIME DESC LIMIT 50"
+			stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`, a.Command, a.Time_ms as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info ,0 as Progress COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id  " + filter_order_limit
+		}
+		if !full_process_is {
+			stmt = "SHOW FULL PROCESSLIST"
 		}
 	} else if version.IsPostgreSQL() {
 		// WHERE state <> 'idle' 		AND pid<>pg_backend_pid()
@@ -567,7 +596,7 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version) ([]Processlist, 
 	return pl, stmt, nil
 }
 
-func GetProcesslistTableFromUser(db *sqlx.DB, version *version.Version, user string) ([]Processlist, string, error) {
+/*func GetProcesslistTableFromUser(db *sqlx.DB, version *version.Version, user string) ([]Processlist, string, error) {
 	pl := []Processlist{}
 	var err error
 	stmt := ""
@@ -610,7 +639,7 @@ func GetProcesslist(db *sqlx.DB, version *version.Version) ([]Processlist, strin
 		return nil, query, fmt.Errorf("ERROR: Could not get processlist: %s", err)
 	}
 	return pl, query, nil
-}
+}*/
 
 func GetServers(db *sqlx.DB) ([]MySQLServer, string, error) {
 	db.MapperFunc(strings.Title)
@@ -910,7 +939,7 @@ func GetHostFromProcessList(db *sqlx.DB, user string, version *version.Version) 
 	pl := []Processlist{}
 	var err error
 	logs := ""
-	pl, logs, err = GetProcesslistTableFromUser(db, version, user)
+	pl, logs, err = GetProcesslistTable(db, version, false, false, false, "50", user)
 	if err != nil {
 		return "N/A", logs, err
 	}
@@ -1701,17 +1730,15 @@ func GetVariableSource(db *sqlx.DB, myver *version.Version) string {
 	return source
 }
 
-
-
-func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch bool, pfs_mem bool) (map[string]string, string, error) {
-//fmt.Println("%s: %s", pfs_latch , pfs_mutex,pfs_mem)
+func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool, pfs_latch bool, pfs_mem bool) (map[string]string, string, error) {
+	//fmt.Println("%s: %s", pfs_latch , pfs_mutex,pfs_mem)
 	source := GetVariableSource(db, myver)
 	vars := make(map[string]string)
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
-	if  pfs_mutex {
+	if pfs_mutex {
 		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/mutex/innodb%' AND COUNT_STAR <>0"
 	}
-	if  pfs_latch {
+	if pfs_latch {
 		query += " UNION ALL SELECT UPPER(REPLACE(EVENT_NAME,'/','_')) as Variable_name,COUNT_STAR as Value FROM performance_schema.events_waits_summary_global_by_event_name WHERE EVENT_NAME like 'wait/synch/rwlock/innodb%' AND COUNT_STAR <>0"
 	}
 
@@ -1745,8 +1772,7 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch boo
 	}
 	if pfs_mem {
 
-
-		query_pfsmem:= "SHOW ENGINE PERFORMANCE_SCHEMA STATUS"
+		query_pfsmem := "SHOW ENGINE PERFORMANCE_SCHEMA STATUS"
 		rows2, err := db.Queryx(query_pfsmem)
 
 		if err != nil {
@@ -1764,24 +1790,24 @@ func GetStatus(db *sqlx.DB, myver *version.Version, pfs_mutex bool,pfs_latch boo
 				return nil, query, errors.New("Could not get results from PFS status scan")
 			}
 
-			if strings.Contains(rname , "performance_schema.memory") {
+			if strings.Contains(rname, "performance_schema.memory") {
 
-			//	fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
+				//	fmt.Println("%s: %s", rname , fmt.Sprint(rvalue))
 
-					vars["performance_schema_memory"] =  strconv.FormatUint(rvalue, 10)
+				vars["performance_schema_memory"] = strconv.FormatUint(rvalue, 10)
 			}
 		}
 	} //end if pfs_mem
-  if  vars["ARIA_PAGECACHE_BLOCKS_USED"] !=""{
-//			fmt.Println(" status ARIA_PAGECACHE_BLOCKS_USED" , fmt.Sprint(vars["ARIA_PAGECACHE_BLOCKS_USED"]))
-			myUInt64, err := strconv.ParseUint( vars["ARIA_PAGECACHE_BLOCKS_USED"], 10, 64)
-			if err  == nil {
-				vars["ARIA_PAGECACHE_BYTES_DATA"] = strconv.FormatUint( myUInt64*8192,10)
-			} else {
-					vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
-		 }
+	if vars["ARIA_PAGECACHE_BLOCKS_USED"] != "" {
+		//			fmt.Println(" status ARIA_PAGECACHE_BLOCKS_USED" , fmt.Sprint(vars["ARIA_PAGECACHE_BLOCKS_USED"]))
+		myUInt64, err := strconv.ParseUint(vars["ARIA_PAGECACHE_BLOCKS_USED"], 10, 64)
+		if err == nil {
+			vars["ARIA_PAGECACHE_BYTES_DATA"] = strconv.FormatUint(myUInt64*8192, 10)
+		} else {
+			vars["ARIA_PAGECACHE_BYTES_DATA"] = "0"
+		}
 	} else {
-		vars["ARIA_PAGECACHE_BYTES_DATA"] ="0"
+		vars["ARIA_PAGECACHE_BYTES_DATA"] = "0"
 	}
 	return vars, query, nil
 }
@@ -2027,7 +2053,7 @@ func GetPFSVariablesInstruments(db *sqlx.DB) (map[string]string, string, error) 
 		vars[v.Variable_name] = v.Value
 	}
 	return vars, query, err
-	}
+}
 
 func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 

@@ -1208,11 +1208,16 @@ func (cluster *Cluster) GetTopMetrics(srvid string) []config.ServerTop {
 
 		sv := config.ServerTop{Id: srv.Id, Url: srv.URL, Header: topheader}
 		srvps := srv.FullProcessList
-		sort.Sort(FullProcessListSorter(srvps))
+		if cluster.Conf.MonitorProcessListTransactions {
+			sort.Sort(FullProcessListSorterByTrxTime(srvps))
+
+		} else {
+			sort.Sort(FullProcessListSorterByQueryTime(srvps))
+		}
 		ct := 0
 		for _, value := range srvps {
 
-			if value.Command != "Sleep" {
+			if value.Command != "Sleep" || cluster.Conf.MonitorProcessListInactive || cluster.Conf.MonitorProcessListTransactions {
 				ct++
 				value.Url = srv.URL
 				top = append(top, value)

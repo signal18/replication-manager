@@ -274,11 +274,19 @@ func (a QueryRuleSorter) Len() int           { return len(a) }
 func (a QueryRuleSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a QueryRuleSorter) Less(i, j int) bool { return a[i].Id < a[j].Id }
 
-type FullProcessListSorter []dbhelper.Processlist
+type FullProcessListSorterByQueryTime []dbhelper.Processlist
 
-func (a FullProcessListSorter) Len() int           { return len(a) }
-func (a FullProcessListSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a FullProcessListSorter) Less(i, j int) bool { return a[i].Time.Float64 > a[j].Time.Float64 }
+func (a FullProcessListSorterByQueryTime) Len() int      { return len(a) }
+func (a FullProcessListSorterByQueryTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a FullProcessListSorterByQueryTime) Less(i, j int) bool {
+	return a[i].Time.Float64 > a[j].Time.Float64
+}
+
+type FullProcessListSorterByTrxTime []dbhelper.Processlist
+
+func (a FullProcessListSorterByTrxTime) Len() int           { return len(a) }
+func (a FullProcessListSorterByTrxTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a FullProcessListSorterByTrxTime) Less(i, j int) bool { return a[i].TrxTime > a[j].TrxTime }
 
 // The Agent describes the server where the cluster runs on.
 // swagger:response agent

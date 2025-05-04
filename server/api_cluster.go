@@ -2197,7 +2197,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "monitoring-performance-schema-latch":
 		mycluster.SwitchMonitorPFSLatch()
 	case "monitoring-performance-schema-memory":
-		mycluster.SwitchMonitorPFSMemory()	
+		mycluster.SwitchMonitorPFSMemory()
 	case "monitoring-performance-schema-instruments":
 		mycluster.SwitchMonitorPFSInstruments()
 	case "shardproxy-copy-grants":
@@ -2270,6 +2270,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringVariableDiff()
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
+	case "monitoring-processlist-inactive":
+		mycluster.SwitchMonitoringProcesslistInactive()
+	case "monitoring-processlist-transactions":
+		mycluster.SwitchMonitoringProcesslistTransactions()
+	case "monitoring-processlist-information-schema":
+		mycluster.SwitchMonitoringProcesslistInformationSchema()				
 	case "force-slave-readonly":
 		mycluster.SwitchForceSlaveReadOnly()
 	case "force-binlog-row":

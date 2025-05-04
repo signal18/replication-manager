@@ -58,7 +58,16 @@ function Top({ selectedCluster }) {
             progress: { Float64: '' },
             rowsSent: '',
             rowsExamined: '',
-            url: ''
+            url: '',
+            trxTime: 0,
+            trxIsolationLevel: { String: '' },
+            txrTablesInUse: 0,
+            trxTablesLocked: 0,
+            trxLockStructs: 0,
+            trxLockMemoryBytes: 0,
+            trxRowsModified: 0,
+            trxRowsLocked: 0,
+            trxIsReadOnly: 0
           })
 
           // Append the empty data to processlist
@@ -111,6 +120,20 @@ function Top({ selectedCluster }) {
         maxWidth: '400px',
         cell: (info) => <ShowMoreText text={info.getValue()} />,
         enableSorting: false
+      }),
+      columnHelper.accessor((row) => row.trxTime, {
+        header: 'TrxTime',
+        maxWidth: '50px',
+        cell: (info) => (
+          <Tooltip label={getReadableTime(info.getValue())}>
+            <span>{info.getValue()}</span>
+          </Tooltip>
+        ),
+        enableSorting: true
+      }),
+      columnHelper.accessor((row) => row.trxIsolationLevel.String, {
+        header: 'TrxIsolation',
+        maxWidth: '200px'
       })
     ],
     []
