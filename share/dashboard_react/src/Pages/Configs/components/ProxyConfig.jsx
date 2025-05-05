@@ -10,6 +10,7 @@ import { useDispatch } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
 import { HiRefresh } from 'react-icons/hi'
 import RMIconButton from '../../../components/RMIconButton'
+import { convertSize } from '../../../utility/common'
 
 function ProxyConfig({ selectedCluster, user }) {
   const dispatch = useDispatch()
@@ -37,10 +38,23 @@ function ProxyConfig({ selectedCluster, user }) {
   }
 
   // {
+  //   key: 'Cluster Proxy Start Fetch Config',
+  //   value: (
+  //     <RMSwitch
+  //       isChecked={selectedCluster?.config?.provProxyStartFetchConfig}
+  //       isDisabled={user?.grants['cluster-settings'] == false}
+  //       confirmTitle={'Confirm switch settings for prov-proxy-start-fetch-config?'}
+  //       onChange={() =>
+  //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-proxy-start-fetch-config' }))
+  //       }
+  //     />
+  //   )
+  // },
+  // {
   //   key: 'Generate All Proxy Config Files',
   //   value: (
   //     <RMIconButton icon={HiRefresh} onClick={() => { 
-  //       setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
+  //       setConfirmTitle('Confirm generate Proxy Config from configurator settings to monitor datadir?'); 
   //       setIsConfirmModalOpen(true)
   //       setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'proxy'})))
   //     }} />
@@ -109,7 +123,7 @@ function ProxyConfig({ selectedCluster, user }) {
           <Gauge
             minValue={1}
             maxValue={25600}
-            value={selectedCluster?.config?.provProxyMemory}
+            value={convertSize(selectedCluster?.config?.provProxyMemory,"M","M")}
             text={'Memory'}
             width={220}
             height={150}
@@ -137,7 +151,7 @@ function ProxyConfig({ selectedCluster, user }) {
           <Gauge
             minValue={1}
             maxValue={10000}
-            value={selectedCluster?.config?.provProxyDiskSize}
+            value={convertSize(selectedCluster?.config?.provProxyDiskSize,"G","G")}
             text={'Disk size'}
             width={220}
             height={150}

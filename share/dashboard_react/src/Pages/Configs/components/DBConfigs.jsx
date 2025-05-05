@@ -13,6 +13,7 @@ import Gauge from '../../../components/Gauge'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
 import PreservedConfigs from './PreservedConfigs'
+import { convertSize } from '../../../utility/common'
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -126,14 +127,14 @@ function DBConfigs({ selectedCluster, user }) {
 
   const dataObject = [
     {
-      key: 'Force Write Config Files',
+      key: 'Cluster DB Start Fetch Config',
       value: (
         <RMSwitch
-          isChecked={selectedCluster?.config?.provDBForceWriteConfig}
+          isChecked={selectedCluster?.config?.provDbStartFetchConfig}
           isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-force-write-config?'}
+          confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
           onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-force-write-config' }))
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
           }
         />
       )
@@ -229,7 +230,7 @@ function DBConfigs({ selectedCluster, user }) {
           <Gauge
             minValue={1}
             maxValue={25600}
-            value={selectedCluster?.config?.provDbMemory}
+            value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
             text={'Memory'}
             width={220}
             height={150}
@@ -257,7 +258,7 @@ function DBConfigs({ selectedCluster, user }) {
           <Gauge
             minValue={1}
             maxValue={10000}
-            value={selectedCluster?.config?.provDbDiskSize}
+            value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
             text={'Disk size'}
             width={220}
             height={150}

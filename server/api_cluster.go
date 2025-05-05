@@ -2358,6 +2358,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchReplicationNoRelay()
 	case "prov-db-force-write-config":
 		mycluster.SwitchForceWriteConfig()
+	case "prov-db-start-fetch-config":
+		mycluster.Conf.ProvDBStartFetchConfig = !mycluster.Conf.ProvDBStartFetchConfig
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = !mycluster.Conf.ProvProxyStartFetchConfig
 	case "backup-keep-until-valid":
 		mycluster.SwitchBackupKeepUntilValid()
 	case "mail-smtp-tls-skip-verify":
@@ -3256,6 +3260,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvNetCNI = isactive
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
+	case "prov-db-start-fetch-config":
+		mycluster.Conf.ProvDBStartFetchConfig = isactive
+	case "prov-proxy-start-fetch-config":
+		mycluster.Conf.ProvProxyStartFetchConfig = isactive
 	case "prov-docker-daemon-private":
 		mycluster.Conf.ProvDockerDaemonPrivate = isactive
 	case "backup-restic-aws":
