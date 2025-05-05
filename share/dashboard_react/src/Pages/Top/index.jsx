@@ -122,7 +122,7 @@ function Top({ selectedCluster }) {
         enableSorting: false
       }),
       columnHelper.accessor((row) => row.trxTime, {
-        header: 'TrxTime',
+        header: 'Trx Time',
         maxWidth: '50px',
         cell: (info) => (
           <Tooltip label={getReadableTime(info.getValue())}>
@@ -132,7 +132,7 @@ function Top({ selectedCluster }) {
         enableSorting: true
       }),
       columnHelper.accessor((row) => row.trxIsolationLevel.String, {
-        header: 'TrxIsolation',
+        header: 'Isolation',
         maxWidth: '200px'
       })
     ],
