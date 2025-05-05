@@ -46,6 +46,18 @@ function CopyToClipboard({
     }
   }
 
+  // check if the text is a valid JSON
+  const isValidJson = (str) => {
+    try {
+      JSON.parse(str)
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+  
+  const sanitizedText = isValidJson(text) ? JSON.stringify(JSON.parse(text), null, printPretty ? 2 : 0) : text
+
   const fallbackCopyTextToClipboard = (textToCopy) => {
     const element = fromModal ? document.querySelector("[class*='modal__body']") : document.body
     console.log('element::', element)
@@ -103,7 +115,7 @@ function CopyToClipboard({
 
       {keepOpen && printPretty ? (
         <span className={'textToCopy'}>
-          <pre>{JSON.stringify(JSON.parse(text), null, 2)} </pre>
+          <pre>{sanitizedText}</pre>
         </span>
       ) : (
         <span className={'textToCopy'} dangerouslySetInnerHTML={{ __html: text }} />
