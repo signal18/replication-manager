@@ -897,8 +897,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvProxyStartScript, "prov-proxy-start-script", "", "Proxy start script")
 	flags.StringVar(&conf.ProvDbStopScript, "prov-db-stop-script", "", "Database stop script")
 	flags.StringVar(&conf.ProvProxyStopScript, "prov-proxy-stop-script", "", "Proxy stop script")
-	flags.BoolVar(&conf.ProvDBStartFetchConfig, "prov-db-start-fetch-config", false, "Fetch config every db start. Default FALSE to prevent overload")
-	flags.BoolVar(&conf.ProvProxyStartFetchConfig, "prov-proxy-start-fetch-config", false, "Fetch config every proxy start. Default FALSE to prevent overload")
 
 	flags.BoolVar(&conf.OnPremiseSSH, "onpremise-ssh", false, "Connect to host via SSH using user private key")
 	flags.StringVar(&conf.OnPremiseSSHPrivateKey, "onpremise-ssh-private-key", "", "Private key for ssh if none use the user HOME directory")

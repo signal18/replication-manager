@@ -126,19 +126,19 @@ function DBConfigs({ selectedCluster, user }) {
   ])
 
   const dataObject = [
-    {
-      key: 'Cluster DB Start Fetch Config',
-      value: (
-        <RMSwitch
-          isChecked={selectedCluster?.config?.provDbStartFetchConfig}
-          isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
-          }
-        />
-      )
-    },
+    // {
+    //   key: 'Cluster DB Start Fetch Config',
+    //   value: (
+    //     <RMSwitch
+    //       isChecked={selectedCluster?.config?.provDbStartFetchConfig}
+    //       isDisabled={user?.grants['cluster-settings'] == false}
+    //       confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
+    //       onChange={() =>
+    //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
+    //       }
+    //     />
+    //   )
+    // },
     {
       key: 'Apply Dynamic Config',
       value: (
