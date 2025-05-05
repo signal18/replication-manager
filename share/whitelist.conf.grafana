@@ -1,4 +1,6 @@
 # Comment will not be parsed
+engine_innodb_history_list_lenght_inside_innodb
+engine_innodb_read_views_open_inside_innodb
 mysql_binlog_file_number
 mysql_binlog_files
 mysql_global_status_aborted_clients

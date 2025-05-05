@@ -41,11 +41,11 @@ function Graphite({
 
     // Initialize graphite context
     let graphite = context.graphite('/graphite');
-    let data = graphite.metric(target).alias(title);
+    let data = graphite.metric(target).alias(title || 'Metric 1');
     let data2 = null;
 
     if (title2 && target2) {
-      data2 = graphite.metric(target2).alias(title2);
+      data2 = graphite.metric(target2).alias(title2 || 'Metric 2');
     }
 
     const div = d3.select(chartRef.current)
@@ -55,7 +55,7 @@ function Graphite({
       .style('overflow', 'hidden');
 
     // Render the chart
-    div
+    const horizons = div
       .selectAll('.horizon')
       .data(data2 ? [data, data2] : [data])
       .enter()
@@ -64,11 +64,47 @@ function Graphite({
       .style('background-color', themeColors.panelBackground)
       .call(context.horizon().extent([0, maxExtent]).height(256));
 
+    // Create title elements manually to ensure correct values
+    horizons.each(function(d, i) {
+      d3.select(this)
+        .append('div')
+        .attr('class', 'title')
+        .text(i === 0 ? title || 'Metric 1' : title2 || 'Metric 2');
+    });
+
+    // Create a tooltip container for displaying values at mouse position
+    const tooltip = div.append('div')
+      .attr('class', 'graphite-tooltip')
+      .style('position', 'absolute')
+      .style('top', '10px')  // Position at top of chart
+      .style('background', themeColors.background === 'var(--white-color, #ffffff)' ? 'rgba(255, 255, 255, 0.9)' : 'rgba(42, 48, 72, 0.9)')
+      .style('color', themeColors.text)
+      .style('padding', '4px 8px')
+      .style('border-radius', '4px')
+      .style('font-size', '14px')
+      .style('pointer-events', 'none') // Don't interfere with mouse events
+      .style('z-index', '10')
+      .style('display', 'none')
+      .style('white-space', 'nowrap')
+      .style('box-shadow', '0 1px 4px rgba(0,0,0,0.1)');
+
+    // Create tooltip content elements
+    const metrics = data2 ? [data, data2] : [data];
+    const tooltipItems = tooltip.selectAll('.tooltip-item')
+      .data(metrics)
+      .enter()
+      .append('div')
+      .attr('class', 'tooltip-item')
+      .style('margin', '2px 0')
+      .text((d, i) => (i === 0 ? title : title2) || `Metric ${i+1}: -`);
+
+    // Add axis
     div.append('div')
       .attr('class', 'axis')
       .style('background-color', themeColors.panelBackground)
       .call(context.axis().orient('top'));
 
+    // Add rule for mouse tracking
     div.append('div')
       .attr('class', 'rule')
       .call(context.rule());
@@ -77,30 +113,48 @@ function Graphite({
     div.selectAll('text')
       .style('fill', themeColors.text);
 
-    // Apply background color to specific elements
-    div.selectAll('.title, .value')
-      .style('color', themeColors.text);
-
-    // On mousemove, reposition the chart values to match the rule
+    // On focus (mouseover), update the tooltip display
     context.on('focus', function(i) {
-      d3.selectAll('.value').style(
-        'right',
-        i == null ? null : i < 30 ? context.size() - i - 40 + 'px' : context.size() - i + 'px'
-      );
+      if (i == null) {
+        // Hide tooltip when not hovering
+        tooltip.style('display', 'none');
+      } else {
+        // Show and position tooltip at mouse x-coordinate
+
+        // Update tooltip content
+        tooltipItems.each(function(d, idx) {
+          if (!d) return;
+
+          try {
+            const value = typeof d.valueAt === 'function' ? d.valueAt(i) : null;
+            const formattedValue = value !== null && value !== undefined
+              ? d3.format(',.2f')(value)
+              : 'N/A';
+            const metricName = idx === 0 ? title || 'Metric 1' : title2 || 'Metric 2';
+
+            d3.select(this).text(`${metricName}: ${formattedValue}`);
+          } catch (error) {
+            console.error('Error updating tooltip value:', error);
+            d3.select(this).text(`${idx === 0 ? title : title2 || `Metric ${idx+1}`}: Error`);
+          }
+        });
+
+        // Position tooltip at the mouse x-coordinate
+        tooltip
+          .style('display', 'block')
+          .style('left', `${Math.max(0, i - 50)}px`);  // Center tooltip on cursor
+      }
     });
 
     mountedRef.current = true;
 
     return () => {
       if (!mountedRef.current) return;
-
       // Remove the focus handler
       context.stop();
       context.on('focus', null);
-
       // Clear the D3 selection
       div.selectAll('*').remove();
-
       // Clean up references
       data = null;
       data2 = null;

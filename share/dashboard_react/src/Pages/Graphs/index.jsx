@@ -13,9 +13,9 @@ function Graphs({ selectedCluster }) {
   const coreRef = useRef()
   const netRef = useRef()
   const sbmRef = useRef()
-  const mutexRef = useRef()
-  const pfsMemRef = useRef()
-  const redoRef = useRef()
+  const ihlRef = useRef()
+  const irvef = useRef()
+
 
 
   const [hourOptions, setHourOptions] = useState([
@@ -172,6 +172,26 @@ function Graphs({ selectedCluster }) {
          height={300}
          className={`${styles.graph} ${styles.multiMetricGraph}`}
          title="InnoDB Redo Log Status"
+       />
+       <Graphite
+         chartRef={ihlRef}
+         size={selectedHour.value}
+         step={selectedStep.value}
+         context={context}
+        maxExtent={100000}
+         title={'InnodbHistoryListLenght'}
+         target={'maxSeries(mysql.*.engine_innodb_history_list_lenght_inside_innodb)'}
+         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
+       />
+       <Graphite
+         chartRef={irvef}
+         size={selectedHour.value}
+         step={selectedStep.value}
+         context={context}
+         maxExtent={100000}
+         title={'InnodbReadViews'}
+         target={'maxSeries(mysql.*.engine_innodb_read_views_open_inside_innodb)'}
+         className={`${styles.graph}  ${styles[`width${selectedHour.value}`]}`}
        />
 
       </Flex>

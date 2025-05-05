@@ -2278,6 +2278,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringVariableDiff()
 	case "monitoring-processlist":
 		mycluster.SwitchMonitoringProcesslist()
+	case "monitoring-processlist-inactive":
+		mycluster.SwitchMonitoringProcesslistInactive()
+	case "monitoring-processlist-transactions":
+		mycluster.SwitchMonitoringProcesslistTransactions()
+	case "monitoring-processlist-information-schema":
+		mycluster.SwitchMonitoringProcesslistInformationSchema()				
 	case "force-slave-readonly":
 		mycluster.SwitchForceSlaveReadOnly()
 	case "force-binlog-row":

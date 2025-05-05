@@ -1,4 +1,6 @@
 # Comment will not be parsed
+engine_innodb_history_list_lenght_inside_innodb
+engine_innodb_read_views_open_inside_innodb
 mysql_global_status_bytes_received
 mysql_global_status_bytes_sent
 mysql_global_status_com_update
