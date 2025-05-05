@@ -9,19 +9,40 @@ import OrchestratorDisks from './components/OrchestratorDisks'
 import OrchestratorDbVM from './components/OrchestratorDbVM'
 import Certificates from './components/Certificates'
 import { useDispatch, useSelector } from 'react-redux'
-import { getClusterCertificates } from '../../redux/clusterSlice'
+import { getClusterCertificates, getDatabaseVariables } from '../../redux/clusterSlice'
 
 function Configs({ selectedCluster, user }) {
   const dispatch = useDispatch()
 
   const {
-    cluster: { clusterCertificates }
+    cluster: {
+      clusterCertificates,
+      clusterMaster: { id: clusterMasterId },
+      database: { variables },
+    }
   } = useSelector((state) => state)
+
   useEffect(() => {
     if (selectedCluster && clusterCertificates == null) {
       dispatch(getClusterCertificates({ clusterName: selectedCluster?.name }))
     }
-  }, [selectedCluster])
+  }, [selectedCluster, clusterCertificates])
+
+  useEffect(() => {
+    if (selectedCluster && variables == null) {
+      const dbId = clusterMasterId
+        || selectedCluster?.dbServers?.[0]?.id
+        || '';
+      dispatch(getDatabaseVariables({
+        clusterName: selectedCluster?.name,
+        serviceName: 'variables',
+        dbId,
+        diff: false,
+      }))
+    }
+  }, [selectedCluster, clusterMasterId, variables])
+
+
   return (
     <VStack className={styles.configContainer}>
       <AccordionComponent

@@ -102,6 +102,16 @@
 
   .addedTags {
     width: 40%;
+    .accordion {
+      width: 100%;
+    }
+    .accordionHeader,
+    .accordionBody {
+      border-radius: 0 !important;
+    }
+    .accordionBody {
+      padding: rem(4);
+    }
   }
   .tags {
     gap: rem(8);

@@ -12,6 +12,7 @@ import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSli
 import Gauge from '../../../components/Gauge'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
+import PreservedConfigs from './PreservedConfigs'
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -408,6 +409,13 @@ function DBConfigs({ selectedCluster, user }) {
                   />
                 ))}
             </HStack>
+            <AccordionComponent
+                  heading={'Preserved Variables'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<PreservedConfigs clusterName={selectedCluster?.name} preserved={selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase()} />}
+                />
           </VStack>
         </HStack>
       )}
