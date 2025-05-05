@@ -5,6 +5,19 @@ import styles from './styles.module.scss'
 
 function CopyObjectText({ text, showPrettyJsonCheckbox = true, fromModal = false }) {
   const [printPretty, setPrintPretty] = useState(true)
+
+  // check if the text is a valid JSON
+  const isValidJson = (str) => {
+    try {
+      JSON.parse(str)
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+  
+  const sanitizedText = isValidJson(text) ? JSON.stringify(JSON.parse(text), null, printPretty ? 2 : 0) : text
+
   return (
     <VStack className={styles.copyContainer}>
       {showPrettyJsonCheckbox && (
@@ -20,7 +33,7 @@ function CopyObjectText({ text, showPrettyJsonCheckbox = true, fromModal = false
       )}
 
       <CopyToClipboard
-        text={printPretty ? JSON.stringify(JSON.parse(text), null, 2) : text}
+        text={sanitizedText}
         fromModal={fromModal}
         keepOpen={true}
         printPretty={printPretty}
