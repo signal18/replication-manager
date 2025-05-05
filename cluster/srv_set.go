@@ -402,6 +402,10 @@ func (server *ServerMonitor) SetConfigCookie() error {
 	return server.createCookie("cookie_config")
 }
 
+func (server *ServerMonitor) SetNoPreserveCookie() error {
+	return server.createCookie("cookie_nopreserve")
+}
+
 func (server *ServerMonitor) SetWaitBackupCookie() error {
 	return server.createCookie("cookie_waitbackup")
 }

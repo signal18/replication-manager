@@ -62,6 +62,10 @@ func (server *ServerMonitor) DelConfigCookie() error {
 	return server.delCookie("cookie_config")
 }
 
+func (server *ServerMonitor) DelNoPreserveCookie() error {
+	return server.delCookie("cookie_nopreserve")
+}
+
 func (server *ServerMonitor) DelWaitBackupCookie() error {
 	return server.delCookie("cookie_waitbackup")
 }

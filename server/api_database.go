@@ -2846,14 +2846,9 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 // @Failure 404 {string} string "File not found"
 // @Failure 500 {string} string "No cluster" or "No server"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config [get]
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{generate} [get]
 func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	var skipGenerate bool
 	vars := mux.Vars(r)
-	if vars["generate"] == "skip" {
-		skipGenerate = true
-	}
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
@@ -2866,9 +2861,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			if !skipGenerate {
-				node.GetDatabaseConfig(true)
-			}
+			node.GetDatabaseConfig(node.HasNoPreserveCookie())
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -2879,9 +2872,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			w.Write(data)
 
 		} else if proxy != nil {
-			if !skipGenerate {
-				proxy.GetProxyConfig(true)
-			}
+			proxy.GetProxyConfig(node.HasNoPreserveCookie())
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
