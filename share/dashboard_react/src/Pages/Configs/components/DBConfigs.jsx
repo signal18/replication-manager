@@ -415,7 +415,7 @@ function DBConfigs({ selectedCluster, user }) {
                   className={styles.accordion}
                   headerClassName={styles.accordionHeader}
                   panelClassName={styles.accordionBody}
-                  body={<PreservedConfigs clusterName={selectedCluster?.name} preserved={selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase()} />}
+                  body={<PreservedConfigs selectedCluster={selectedCluster}/>}
                 />
           </VStack>
         </HStack>

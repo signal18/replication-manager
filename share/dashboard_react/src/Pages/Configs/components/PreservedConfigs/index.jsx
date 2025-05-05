@@ -2,7 +2,7 @@ import { Box, VStack } from '@chakra-ui/react'
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { preserveVariable } from '../../../../redux/clusterSlice'
+import { getDatabaseVariables, preserveVariable } from '../../../../redux/clusterSlice'
 import { isEqual } from 'lodash'
 import RMIconButton from '../../../../components/RMIconButton'
 import { TbTrash } from 'react-icons/tb'
@@ -11,13 +11,14 @@ import ComboBox from '../../../../components/ComboBox'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 
-function PreservedConfigs({ clusterName, preserved = "" }) {
+function PreservedConfigs({ selectedCluster }) {
     const dispatch = useDispatch()
     const columnHelper = createColumnHelper()
 
     const {
         cluster: {
             database: { variables },
+            clusterMaster,
         }
     } = useSelector((state) => state)
 
@@ -29,15 +30,29 @@ function PreservedConfigs({ clusterName, preserved = "" }) {
     const { type, title, payload } = action
 
     useEffect(() => {
-        if (!isEqual(variables, prevVariablesRef.current)) {
+        if (selectedCluster && (variables == null || variables.length === 0)) {
+          const dbId = clusterMaster?.id
+            || selectedCluster?.dbServers?.[0]?.id
+            || '';
+          dispatch(getDatabaseVariables({
+            clusterName: selectedCluster?.name,
+            serviceName: 'variables',
+            dbId,
+            diff: false,
+          }))
+        }
+      }, [selectedCluster?.name, selectedCluster?.dbServers?.[0]?.id, clusterMaster?.id, variables])
+
+    useEffect(() => {
+        if (!isEqual(variables, prevVariablesRef.current) || (variables?.length > 0 && variablesData.length === 0)) {
             setVariablesData(variables?.map(x => x.variableName) || [])
             prevVariablesRef.current = variables
         }
     }, [variables])
 
     useEffect(() => {
-        setPreservedConfigs(preserved.split(',').filter(Boolean))
-    }, [preserved])
+        setPreservedConfigs(selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase().split(',').filter(Boolean))
+    }, [selectedCluster?.config?.provDbConfigPreserveVars])
 
     const openConfirmModal = (e) => {
         setIsConfirmModalOpen(true)
