@@ -2180,17 +2180,21 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			// Use default fetchCfg from cluster configuration
-			fetchCfg := mycluster.Conf.ProvDbStartFetchConfig
 			// Override the default value if cfgAction is provided
 			if strings.ToUpper(vars["cfgAction"]) == "KEEP" {
-				fetchCfg = false
+				mycluster.PrintDefaultDatabaseService(node)
+				if node.HasNoPreserveCookie() {
+					node.DelNoPreserveCookie()
+				}
 			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" {
-				fetchCfg = true
+				mycluster.PrintDefaultDatabaseService(node)
+				if !node.HasNoPreserveCookie() {
+					node.SetNoPreserveCookie()
+				}
 			} else if vars["cfgAction"] != "" {
 				http.Error(w, "Invalid config action", http.StatusBadRequest)
 			}
-			mycluster.StartDatabaseService(node, fetchCfg)
+			mycluster.StartDatabaseService(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -2858,10 +2862,11 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 				return
 			}
 		}
+
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			node.GetDatabaseConfig(node.HasNoPreserveCookie())
+			node.GetDatabaseConfig()
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -2872,7 +2877,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 			w.Write(data)
 
 		} else if proxy != nil {
-			proxy.GetProxyConfig(node.HasNoPreserveCookie())
+			proxy.GetProxyConfig()
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -2917,14 +2922,14 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 		if node != nil {
 			go func() {
 				defer mycluster.LogPanicToFile("printdefault")
-				err := mycluster.PrintDefaultDatabaseService(node, true) // Regenerate the config
+				err := mycluster.PrintDefaultDatabaseService(node)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error regenerating config for %s:%s: %s", vars["serverName"], vars["serverPort"], err.Error())
 				}
 				node.ReadVariablesFromConfigs()
 			}()
 		} else if proxy != nil {
-			proxy.GetProxyConfig(true) // Regenerate the config
+			proxy.GetProxyConfig() // Regenerate the config
 		} else {
 			http.Error(w, "No server", 500)
 		}

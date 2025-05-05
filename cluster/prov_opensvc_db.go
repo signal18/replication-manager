@@ -156,7 +156,7 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + server.Name)
@@ -857,7 +857,7 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 	return vm
 }
 
-func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor) error {
 	var err error
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC print default config database via ssh script")

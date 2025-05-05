@@ -431,24 +431,24 @@ func (cluster *Cluster) ShutdownDatabase(server *ServerMonitor) error {
 	return err
 }
 
-func (cluster *Cluster) StartDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Starting Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		err = cluster.OpenSVCStartDatabaseService(server, fetch)
+		err = cluster.OpenSVCStartDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
-		err = cluster.K8SStartDatabaseService(server, fetch)
+		err = cluster.K8SStartDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
-		err = cluster.SlapOSStartDatabaseService(server, fetch)
+		err = cluster.SlapOSStartDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		err = cluster.OnPremiseStartDatabaseService(server, fetch)
+		err = cluster.OnPremiseStartDatabaseService(server)
 	case config.ConstOrchestratorLocalhost:
-		err = cluster.LocalhostStartDatabaseService(server, fetch)
+		err = cluster.LocalhostStartDatabaseService(server)
 	default:
 		return errors.New("No valid orchestrator")
 	}
-	cluster.StartDatabaseScript(server, fetch)
+	cluster.StartDatabaseScript(server)
 	if err == nil {
 		server.DelRestartCookie()
 	}
@@ -834,20 +834,20 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	return nil
 }
 
-func (cluster *Cluster) PrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) PrintDefaultDatabaseService(server *ServerMonitor) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Print default config for Database service %s", cluster.Name+"/svc/"+server.Name)
 	var err error
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
-		err = cluster.OpenSVCPrintDefaultDatabaseService(server, fetch)
+		err = cluster.OpenSVCPrintDefaultDatabaseService(server)
 	case config.ConstOrchestratorKubernetes:
-		err = cluster.K8SPrintDefaultDatabaseService(server, fetch)
+		err = cluster.K8SPrintDefaultDatabaseService(server)
 	case config.ConstOrchestratorSlapOS:
-		err = cluster.SlapOSPrintDefaultDatabaseService(server, fetch)
+		err = cluster.SlapOSPrintDefaultDatabaseService(server)
 	case config.ConstOrchestratorOnPremise:
-		err = cluster.OnPremisePrintDefaultDatabaseService(server, fetch)
+		err = cluster.OnPremisePrintDefaultDatabaseService(server)
 	case config.ConstOrchestratorLocalhost:
-		err = cluster.LocalhostPrintDefaultDatabaseService(server, fetch)
+		err = cluster.LocalhostPrintDefaultDatabaseService(server)
 	default:
 		return errors.New("No valid orchestrator")
 	}

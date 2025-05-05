@@ -95,14 +95,14 @@ func (proxy *MariadbShardProxy) Init() {
 	cluster.AddShardingHostGroup(proxy)
 }
 
-func (proxy *MariadbShardProxy) GetProxyConfig(fetch bool) error {
+func (proxy *MariadbShardProxy) GetProxyConfig() error {
 	cluster := proxy.ClusterGroup
 	if proxy.ShardProxy == nil {
 		proxy.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Can't get shard proxy config start monitoring")
 		proxy.ClusterGroup.ShardProxyBootstrap(proxy)
-		return proxy.ShardProxy.GetDatabaseConfig(fetch)
+		return proxy.ShardProxy.GetDatabaseConfig()
 	} else {
-		return proxy.ShardProxy.GetDatabaseConfig(fetch)
+		return proxy.ShardProxy.GetDatabaseConfig()
 	}
 }
 

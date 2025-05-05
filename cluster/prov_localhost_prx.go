@@ -9,7 +9,7 @@ package cluster
 import "github.com/signal18/replication-manager/config"
 
 func (cluster *Cluster) LocalhostProvisionProxyService(pri DatabaseProxy) error {
-	pri.GetProxyConfig(true)
+	pri.GetProxyConfig()
 
 	if prx, ok := pri.(*MariadbShardProxy); ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Bootstrap MariaDB Sharding Cluster")
@@ -75,11 +75,11 @@ func (cluster *Cluster) LocalhostStartProxyService(pri DatabaseProxy) error {
 	}
 
 	if prx, ok := pri.(*HaproxyProxy); ok {
-		cluster.LocalhostStartHaProxyService(prx, true)
+		cluster.LocalhostStartHaProxyService(prx)
 	}
 
 	if prx, ok := pri.(*ProxySQLProxy); ok {
-		cluster.LocalhostStartProxySQLService(prx, true)
+		cluster.LocalhostStartProxySQLService(prx)
 	}
 
 	cluster.errorChan <- nil

@@ -203,7 +203,7 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 	return nil
 }
 
-func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start database via ssh script")
@@ -227,14 +227,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor, fet
 	buf.ReadFrom(filerc)
 
 	buf2 := strings.NewReader(server.GetSshEnv())
-
-	var buf3 io.Reader
-	if fetch {
-		buf3 = strings.NewReader("export REPLICATION_MANAGER_CFG_ACTION=\"FETCH\"\n")
-	} else {
-		buf3 = strings.NewReader("export REPLICATION_MANAGER_CFG_ACTION=\"KEEP\"\n")
-	}
-	r := io.MultiReader(buf2, buf3, buf)
+	r := io.MultiReader(buf2, buf)
 
 	var (
 		stdout bytes.Buffer
@@ -250,7 +243,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor, fet
 	return nil
 }
 
-func (cluster *Cluster) OnPremisePrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) OnPremisePrintDefaultDatabaseService(server *ServerMonitor) error {
 
 	server.SetWaitStartCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config database via ssh script")

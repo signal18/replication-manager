@@ -42,7 +42,7 @@ func (regtest *RegTest) TestFailoverAssyncAutoRejoinNoGtid(cluster *cluster.Clus
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster, false)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 
 	if cluster.CheckTableConsistency("test.sbtest") != true {

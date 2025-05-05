@@ -74,16 +74,16 @@ func (cluster *Cluster) CancelRollingReprov() error {
 	return nil
 }
 
-func (cluster *Cluster) DropDBTag(dtag string,dynamic bool) {
+func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Dropping database tag %s ", dtag)
-	if (cluster.Conf.ProvDBApplyDynamicConfig || dynamic) {
+	if cluster.Conf.ProvDBApplyDynamicConfig || dynamic {
 		for _, srv := range cluster.Servers {
 			cmd := "mariadb_default"
 			if !srv.IsMariaDB() {
 				cmd = "mysql_default"
 			}
-			srv.GetDatabaseConfig(true)
+			srv.GetDatabaseConfig()
 			_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(dtag, cmd), ";"))
 			if needrestart {
 				srv.SetRestartCookie()

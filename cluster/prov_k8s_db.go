@@ -97,7 +97,7 @@ func (cluster *Cluster) K8SProvisionDatabaseService(s *ServerMonitor) {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Created Kubernetes physical volume claim %q.\n", pvcresult.GetObjectMeta().GetName())
 
-	s.GetDatabaseConfig(true)
+	s.GetDatabaseConfig()
 	data, err := os.ReadFile(s.Datadir + "/config.tar.gz")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Provision can not found file %s ", s.Datadir+"/config.tar.gz")
@@ -252,7 +252,7 @@ func (cluster *Cluster) K8SStopDatabaseService(s *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) K8SStartDatabaseService(s *ServerMonitor) error {
 	return nil
 }
 
@@ -287,6 +287,6 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 
 }
 
-func (cluster *Cluster) K8SPrintDefaultDatabaseService(s *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) K8SPrintDefaultDatabaseService(s *ServerMonitor) error {
 	return nil
 }

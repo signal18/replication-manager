@@ -99,7 +99,7 @@ func (cluster *Cluster) StopDatabaseScript(server *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) StartDatabaseScript(server *ServerMonitor) error {
 	if cluster.Conf.ProvDbStartScript == "" {
 		return nil
 	}

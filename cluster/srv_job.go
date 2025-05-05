@@ -2501,7 +2501,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	scriptpath := server.Datadir + "/init/init/dbjobs_new"
 
 	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
-		server.GetDatabaseConfig(true)
+		server.GetDatabaseConfig()
 	}
 
 	if server.GetCluster().GetConf().OnPremiseSSHDbJobScript != "" {

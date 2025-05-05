@@ -57,7 +57,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster, false)
+	cluster.StartDatabaseService(SaveMaster)
 	wg2.Wait()
 	//Recovered as slave first wait that it trigger master failover
 	time.Sleep(5 * time.Second)
@@ -65,7 +65,7 @@ func (regtest *RegTest) TestFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS(cluster *
 
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
-	cluster.StartDatabaseService(SaveMaster2, false)
+	cluster.StartDatabaseService(SaveMaster2)
 	wg2.Wait()
 
 	for _, s := range cluster.GetSlaves() {

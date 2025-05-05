@@ -56,10 +56,10 @@ func (cluster *Cluster) LocalhostProvisionProxySQLService(prx *ProxySQLProxy) er
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Remove datadir done: %s", out.Bytes())
-	prx.GetProxyConfig(true)
+	prx.GetProxyConfig()
 	os.Symlink(prx.Datadir+"/init/data", path)
 
-	err = cluster.LocalhostStartProxySQLService(prx, true)
+	err = cluster.LocalhostStartProxySQLService(prx)
 	if err != nil {
 		cluster.errorChan <- err
 		return err
@@ -78,8 +78,8 @@ func (cluster *Cluster) LocalhostStopProxySQLService(prx *ProxySQLProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartProxySQLService(prx *ProxySQLProxy, fetch bool) error {
-	prx.GetProxyConfig(fetch)
+func (cluster *Cluster) LocalhostStartProxySQLService(prx *ProxySQLProxy) error {
+	prx.GetProxyConfig()
 
 	/*	path := prx.Datadir + "/var"
 			err := os.RemoveAll(path + "/" + server.Id + ".pid")

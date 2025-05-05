@@ -18,12 +18,12 @@ func (cluster *Cluster) SlapOSStopDatabaseService(s *ServerMonitor) error {
 	return nil
 }
 
-func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor) error {
 	//	s.JobServerRestart()
 	s.SetWaitStartCookie()
 	return nil
 }
 
-func (cluster *Cluster) SlapOSPrintDefaultDatabaseService(s *ServerMonitor, fetch bool) error {
+func (cluster *Cluster) SlapOSPrintDefaultDatabaseService(s *ServerMonitor) error {
 	return nil
 }

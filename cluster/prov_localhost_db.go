@@ -73,7 +73,7 @@ func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor)
 			return err
 		}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,LvlInfo, "Remove datadir done: %s", out.Bytes())*/
-	server.GetDatabaseConfig(true)
+	server.GetDatabaseConfig()
 	///	os.Symlink(server.Datadir+"/init/data", path)
 
 	/*cmd = exec.Command("cp", "-rp", cluster.Conf.ShareDir+"/tests/data"+cluster.Conf.ProvDatadirVersion, path)
@@ -298,8 +298,8 @@ func (cluster *Cluster) LocalhostStartDatabaseServiceFistTime(server *ServerMoni
 	return nil
 }
 
-func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor, fetch bool) error {
-	server.GetDatabaseConfig(fetch)
+func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) error {
+	server.GetDatabaseConfig()
 	if server.Id == "" {
 		_, err := os.Stat(server.Id)
 		if err != nil {
@@ -365,7 +365,6 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor, fet
 	return nil
 }
 
-func (cluster *Cluster) LocalhostPrintDefaultDatabaseService(server *ServerMonitor, fetch bool) error {
-
+func (cluster *Cluster) LocalhostPrintDefaultDatabaseService(server *ServerMonitor) error {
 	return fmt.Errorf("Not implemented")
 }

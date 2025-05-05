@@ -199,14 +199,14 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 	return server.Variables.Get(variable)
 }
 
-func (server *ServerMonitor) GetDatabaseConfig(overwrite bool) error {
+func (server *ServerMonitor) GetDatabaseConfig() error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
 
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, overwrite)
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, server.HasNoPreserveCookie())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err
