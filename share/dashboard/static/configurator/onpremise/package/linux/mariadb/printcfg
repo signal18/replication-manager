@@ -42,7 +42,7 @@ local pid_file="$1"
 local pid cmdline
 
 if [[ -z "$pid_file" || ! -f "$pid_file" ]]; then
-mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+mariadbd --defaults-file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/dummy/socat-pid.out"
 else 
 pid=$(cat "$pid_file")
 if [[ -z "$pid" || ! -d "/proc/$pid" ]]; then
@@ -71,24 +71,24 @@ defaults_file="$REPLICATION_MANAGER_DB_CONFDIR/my.cnf"
 fi
 
 # 4. Print defaults mariadbd with the found or default --defaults-file
-mariadbd --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/socat-pid.out"
+mariadbd --defaults-file="$defaults_file" --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_PID" &>"/bootstrap/dummy/socat-pid.out"
 fi
 }
 
 print_default_for_fetch() {
 get "$REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config" > config.tar.gz
 if [[ $? -eq 0 ]]; then
-tar xzvf config.tar.gz -C /bootstrap &> /dev/null
+tar xzvf config.tar.gz -C /bootstrap/dummy &> /dev/null
 
-chown -R mysql:mysql /bootstrap/etc/mysql
+chown -R mysql:mysql /bootstrap/dummy/etc/mysql
 
 # Create dummy config file for dry-run
-echo "[mysqld]" > /bootstrap/dummy.cnf
-echo '!includedir /bootstrap/etc/mysql/conf.d' >> /bootstrap/dummy.cnf
-echo '!includedir /bootstrap/etc/mysql/custom.d' >> /bootstrap/dummy.cnf
-chown mysql:mysql /bootstrap/dummy.cnf
+echo "[mysqld]" > /bootstrap/dummy/dummy.cnf
+echo '!includedir /bootstrap/dummy/etc/mysql/conf.d' >> /bootstrap/dummy/dummy.cnf
+echo '!includedir /bootstrap/dummy/etc/mysql/custom.d' >> /bootstrap/dummy/dummy.cnf
+chown mysql:mysql /bootstrap/dummy/dummy.cnf
 
-mariadbd --defaults-file=/bootstrap/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/socat-dummy.out"
+mariadbd --defaults-file=/bootstrap/dummy/dummy.cnf --print-defaults | sed 's/ --/\n--/g' | socat -u stdio TCP:"$REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY" &>"/bootstrap/dummy/socat-dummy.out"
 if [[ $? -eq 0 ]]; then
 echo "OUT:Dry run (dummy) completed successfully."
 else
@@ -102,7 +102,7 @@ fi
 }
 
 
-mkdir -p /bootstrap
+mkdir -p /bootstrap/dummy
 
 # Start actions in background
 print_default_for_fetch &
