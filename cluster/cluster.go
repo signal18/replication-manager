@@ -284,9 +284,15 @@ func (a FullProcessListSorterByQueryTime) Less(i, j int) bool {
 
 type FullProcessListSorterByTrxTime []dbhelper.Processlist
 
-func (a FullProcessListSorterByTrxTime) Len() int           { return len(a) }
-func (a FullProcessListSorterByTrxTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a FullProcessListSorterByTrxTime) Less(i, j int) bool { return a[i].TrxTime > a[j].TrxTime }
+func (a FullProcessListSorterByTrxTime) Len() int      { return len(a) }
+func (a FullProcessListSorterByTrxTime) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a FullProcessListSorterByTrxTime) Less(i, j int) bool {
+	if a[i].TrxTime == a[j].TrxTime {
+		return a[i].Time.Float64 > a[j].Time.Float64
+	} else {
+		return a[i].TrxTime > a[j].TrxTime
+	}
+}
 
 // The Agent describes the server where the cluster runs on.
 // swagger:response agent
