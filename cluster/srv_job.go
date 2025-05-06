@@ -3312,3 +3312,36 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	}
 	return nil
 }
+
+type ConfigReceiverResponse struct {
+	MonitorAddress    string `json:"monitor_address"`
+	DummyConfigPort   string `json:"dummy_config_port"`
+	CurrentConfigPort string `json:"current_config_port"`
+	CurrentPIDFile    string `json:"current_pid_file"`
+	DefaultConfigPath string `json:"default_config_dir"`
+}
+
+func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, error) {
+	cluster := server.ClusterGroup
+	var rcv_port_pid, rcv_port, pid_file string
+
+	pid_file = server.SensitiveVariables.Get("PID_FILE")
+	// prepare the receiver for current.cnf
+	rcv_port_pid, err := cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
+		return nil, err
+	}
+
+	rcv_port_pid_int, _ := strconv.Atoi(rcv_port_pid)
+
+	// prepare the receiver for dummy.cnf
+	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf"), ConstJobCreateFile, "printdefault")
+	if err != nil {
+		cluster.SSTCloseReceiver(rcv_port_pid_int)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
+		return nil, err
+	}
+
+	return &ConfigReceiverResponse{MonitorAddress: cluster.Conf.MonitorAddress, DummyConfigPort: rcv_port, CurrentConfigPort: rcv_port_pid, CurrentPIDFile: pid_file, DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf")}, nil
+}

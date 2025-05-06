@@ -94,6 +94,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/need-rolling-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingRestart)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfig)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
@@ -102,6 +105,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortRegenerateConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
@@ -3870,6 +3879,118 @@ func (repman *ReplicationManager) handlerMuxServersTaskCancel(w http.ResponseWri
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
 			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServerConfig handles the HTTP request to get the configuration of a specific server port within a cluster
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Produce application/octet-stream
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {file} file "Configuration file"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "File not found"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config [get]
+func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		proxy := mycluster.GetProxyFromName(vars["serverName"])
+		if node != nil {
+			node.GetDatabaseConfig()
+			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong reading : " + string(node.Datadir+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+				return
+			}
+			w.Write(data)
+
+		} else if proxy != nil {
+			proxy.GetProxyConfig()
+			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong reading : " + string(proxy.GetDatadir()+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+
+				return
+			}
+			w.Write(data)
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersPortConfigReceiver handles the HTTP request to open receiver ports for configuration files on a specific server within a cluster. It will return the environment variables.
+// @Summary Open receiver ports for configuration files on a server
+// @Description Opens receiver ports for configuration files on a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With Port)"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "export <environment variables>; export <environment variables>; ..."
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error opening receiver ports"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-receiver [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver [get]
+func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		var node *cluster.ServerMonitor
+		if vars["serverPort"] == "" {
+			node = mycluster.GetServerFromName(vars["serverName"])
+		} else {
+			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		}
+		if node != nil {
+			env, err := node.JobReceiveConfigFiles()
+			if err != nil {
+				http.Error(w, "Error while opening receiver ports", 500)
+			}
+
+			jsonData, err := json.Marshal(env)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(jsonData)
+			return
 		} else {
 			http.Error(w, "No server", 500)
 		}

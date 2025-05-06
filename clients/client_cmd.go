@@ -69,6 +69,8 @@ var (
 	cliPrefMaster                string
 	cliStatusErrors              bool
 	cliServerID                  string
+	cliServerHost                string
+	cliServerPort                string
 	cliServerSet                 string
 	cliServerGet                 string
 	cliServerAction              string
@@ -301,6 +303,14 @@ func initClusterFlags(cmd *cobra.Command) {
 	viper.BindPFlags(cmd.Flags())
 }
 
+func initPrintDefaultsFlags(cmd *cobra.Command) {
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliServerID, "id", "", "server id")
+	cmd.Flags().StringVar(&cliServerHost, "srv-host", "", "server host")
+	cmd.Flags().StringVar(&cliServerPort, "srv-port", "", "server host")
+	viper.BindPFlags(cmd.Flags())
+}
+
 func init() {
 
 	rootClientCmd.AddCommand(clientConsoleCmd)
@@ -347,6 +357,8 @@ func init() {
 
 	rootClientCmd.AddCommand(versionClientCmd)
 
+	rootClientCmd.AddCommand(printDefaultsCmd)
+	initPrintDefaultsFlags(printDefaultsCmd)
 }
 
 func cliGetClusters() ([]string, error) {

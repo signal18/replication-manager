@@ -245,7 +245,6 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 
 func (cluster *Cluster) OnPremisePrintDefaultDatabaseService(server *ServerMonitor) error {
 
-	server.SetWaitStartCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config database via ssh script")
 	client, err := cluster.OnPremiseConnect(server)
 	if err != nil {
