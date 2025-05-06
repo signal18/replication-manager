@@ -76,7 +76,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 				return
 			}
 		}
-		err = svc.DeteteServiceTags(idsrv)
+		err = svc.DeleteServiceTags(idsrv)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
 			cluster.errorChan <- err
