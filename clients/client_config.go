@@ -24,8 +24,8 @@ import (
 
 var printDefaultsCmd = &cobra.Command{
 	Use:   "print-defaults",
-	Short: "Bootstrap a replication environment",
-	Long:  `The bootstrap command is used to create a new replication environment from scratch`,
+	Short: "Send mariadbd --print-defaults results to the monitor",
+	Long:  `The print-defaults command sends the mariadbd --print-defaults command results to the monitor`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if cliServerID == "" && cliServerHost == "" {
 			fmt.Fprintf(os.Stderr, "API call error: %s", "No server id specified. Please use --id or --srv-host")

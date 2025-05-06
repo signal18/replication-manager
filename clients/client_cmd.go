@@ -305,6 +305,7 @@ func initClusterFlags(cmd *cobra.Command) {
 
 func initPrintDefaultsFlags(cmd *cobra.Command) {
 	initServerApiFlags(cmd)
+	initClusterFlags(cmd)
 	cmd.Flags().StringVar(&cliServerID, "id", "", "server id")
 	cmd.Flags().StringVar(&cliServerHost, "srv-host", "", "server host")
 	cmd.Flags().StringVar(&cliServerPort, "srv-port", "", "server host")
