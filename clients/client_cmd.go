@@ -157,7 +157,7 @@ func cliInit(needcluster bool) {
 		cliSettings.Conf = new(config.Config)
 	}
 
-	if cliEncryptSecret != "" {
+	if cliEncryptSecret != "" && cfgGroup != "" {
 		cliToken, err = cliSecretLogin()
 	}
 
@@ -465,7 +465,7 @@ func cliLogin() (string, error) {
 }
 
 func cliSecretLogin() (string, error) {
-	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers/"
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cfgGroup + "/servers/"
 	if cliServerID != "" {
 		urlpost += cliServerID + "/secret-login"
 	} else {
