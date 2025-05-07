@@ -42,14 +42,12 @@ var showCmd = &cobra.Command{
 		var myReport Report
 
 		for _, cluster := range cliClusters {
-
 			var myObjects Objects
 			myObjects.Name = cluster
 			if strings.Contains(cliShowObjects, "settings") {
 				urlpost = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cluster
 				res, err := cliAPICmd(urlpost, nil)
 				if err == nil {
-
 					json.Unmarshal([]byte(res), &myObjects.Settings)
 				}
 			}

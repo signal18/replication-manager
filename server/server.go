@@ -260,7 +260,7 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 }
 
-func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 
 	if WithDeprecate == "ON" {
@@ -269,7 +269,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	var usr string
 	var configPath string
 	//var pid string
-	flag.StringVar(&usr, "user", "", "help message")
+	if !isClient { // client should not use this
+		flag.StringVar(&usr, "user", "", "help message")
+	}
 	//flag.StringVar(&pid, "pidfile", "", "help message")
 	flag.StringVar(&configPath, "config", "", "help message")
 	flag.Parse()
@@ -352,10 +354,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	flags.BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
 	flags.BoolVar(&conf.MonitorProcessList, "monitoring-processlist", true, "Enable capture monitoring-processlist-limit longuest queries or trx via processlist")
-	flags.StringVar(&conf.MonitorProcessListLimit , "monitoring-processlist-limit" , "50" ," limit impact on monitoring bandwidth")
-	flags.BoolVar(&conf.MonitorProcessListInactive ,"monitoring-processlist-inactive"  , false ," Show innactive transactions or queries in process")
-	flags.BoolVar(&conf.MonitorProcessListTransactions , "monitoring-processlist-transactions" ,false, "Report queries or transcations in process")
-	flags.BoolVar(&conf.MonitorProcessListInformationSchema		,"monitoring-processlist-information-schema", true ,"Use Information instead SHOW FULL PROCESSLIST") 
+	flags.StringVar(&conf.MonitorProcessListLimit, "monitoring-processlist-limit", "50", " limit impact on monitoring bandwidth")
+	flags.BoolVar(&conf.MonitorProcessListInactive, "monitoring-processlist-inactive", false, " Show innactive transactions or queries in process")
+	flags.BoolVar(&conf.MonitorProcessListTransactions, "monitoring-processlist-transactions", false, "Report queries or transcations in process")
+	flags.BoolVar(&conf.MonitorProcessListInformationSchema, "monitoring-processlist-information-schema", true, "Use Information instead SHOW FULL PROCESSLIST")
 	flags.StringVar(&conf.MonitorAddress, "monitoring-address", "localhost", "How to contact this monitoring")
 	flags.StringVar(&conf.MonitorTenant, "monitoring-tenant", "default", "Can be use to store multi tenant identifier")
 	flags.Int64Var(&conf.MonitorWaitRetry, "monitoring-wait-retry", 60, "Retry this number of time before giving up state transition <999999")
