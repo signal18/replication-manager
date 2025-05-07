@@ -90,9 +90,14 @@ func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 			}
 		}
 	}
+
 	changed := cluster.DropDBTagConfig(dtag)
-	if changed && !cluster.Conf.ProvDBApplyDynamicConfig {
-		cluster.SetDBRestartCookie()
+	if changed {
+		if !cluster.Conf.ProvDBApplyDynamicConfig {
+			cluster.SetDBRestartCookie()
+		}
+
+		cluster.SetConfigChangeCookie()
 	}
 
 }
@@ -105,7 +110,6 @@ func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
-
 	cluster.Configurator.DropProxyTag(dtag)
 	cluster.Conf.ProvProxTags = strings.Join(cluster.Configurator.GetProxyTags(), ",")
 	cluster.SetClusterCredentialsFromConfig()

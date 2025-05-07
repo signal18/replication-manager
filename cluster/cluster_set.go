@@ -376,21 +376,18 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
-
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
-
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCoresFromConfigurator() {
-
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBRestartCookie()
 }
@@ -408,6 +405,7 @@ func (cluster *Cluster) SetDBIOPSFromConfigurator() {
 func (cluster *Cluster) SetTagsFromConfigurator() {
 	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
 	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
+	cluster.SetConfigRefreshCookie() //Need to refresh the config
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
@@ -1293,6 +1291,21 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 			pri.SetRestartCookie()
 
 		}*/
+	}
+}
+
+// Set Cookie for all servers that configuration has changed
+func (cluster *Cluster) SetConfigChangeCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigCookie()        // Persist until config deployed
+		srv.SetConfigRefreshCookie() // Until config refreshed
+	}
+}
+
+// Set Cookie for all servers that configuration variables need refresh
+func (cluster *Cluster) SetConfigRefreshCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigRefreshCookie()
 	}
 }
 

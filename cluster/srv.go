@@ -606,6 +606,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 				}
 			}
 
+			server.SetConfigRefreshCookie() // set cookie to refresh config
+
 			if cluster.Topology == config.TopoActivePassive {
 				server.SetState(stateMaster)
 			} else if cluster.GetTopology() != config.TopoMultiMasterWsrep || cluster.GetTopology() != config.TopoMultiMasterGrouprep {
@@ -899,7 +901,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		if cluster.Conf.MonitorProcessList {
 
-			server.FullProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion,server.GetCluster().Conf.MonitorProcessListInactive,server.GetCluster().Conf.MonitorProcessListTransactions,server.GetCluster().Conf.MonitorProcessListInformationSchema,server.GetCluster().Conf.MonitorProcessListLimit,"")
+			server.FullProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, server.GetCluster().Conf.MonitorProcessListInformationSchema, server.GetCluster().Conf.MonitorProcessListLimit, "")
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get process %s %s", server.URL, err)
 			if err != nil {
 				cluster.SetState("ERR00075", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -1620,8 +1622,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	for {
 
 		var clsave Save
-		clsave.ProcessList,
-			logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion,server.GetCluster().Conf.MonitorProcessListInactive,server.GetCluster().Conf.MonitorProcessListTransactions,false,server.GetCluster().Conf.MonitorProcessListLimit,"")
+		clsave.ProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, false, server.GetCluster().Conf.MonitorProcessListLimit, "")
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
 
 		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)

@@ -3345,3 +3345,56 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 
 	return &ConfigReceiverResponse{MonitorAddress: cluster.Conf.MonitorAddress, DummyConfigPort: rcv_port, CurrentConfigPort: rcv_port_pid, CurrentPIDFile: pid_file, DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf")}, nil
 }
+
+func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
+	cluster := server.ClusterGroup
+	eCmd := exec.Command("echo", encrypted)
+	// Create a pipe for the stdout of lsCmd
+	eStdout, err := eCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating stdout pipe for log message: %s", err.Error())
+		return "", err
+	}
+
+	dCmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", ""+key+"", "-iv", ""+iv+"")
+	dCmd.Stdin = eStdout
+	dStdout, err := dCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error piping log message decryption: %s", err.Error())
+		return "", err
+	}
+	// Start the first command
+	if err := eCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message: %s", err.Error())
+		return "", err
+	}
+
+	// Start the second command
+	if err := dCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message decrypt: %s", err.Error())
+		return "", err
+	}
+
+	// Create a buffer to hold the decrypted output
+	var decryptedOutput bytes.Buffer
+
+	// Copy the decrypted output to the buffer
+	_, err = io.Copy(&decryptedOutput, dStdout)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading decrypted output: %s", err.Error())
+		return "", err
+	}
+
+	// Wait for the commands to complete
+	if err := eCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message done: %s", err.Error())
+		return "", err
+	}
+
+	if err := dCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message decription: %s", err.Error())
+		return "", err
+	}
+
+	return strings.TrimSpace(decryptedOutput.String()), nil
+}

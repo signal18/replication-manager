@@ -43,6 +43,7 @@ var (
 	cliHost                      string
 	cliPort                      string
 	cliCert                      string
+	cliEncryptSecret             string
 	cliNoCheckCert               bool
 	cliToken                     string
 	cliClusters                  []string
@@ -156,16 +157,23 @@ func cliInit(needcluster bool) {
 		cliSettings.Conf = new(config.Config)
 	}
 
-	cliToken, err = cliLogin()
-	if err != nil {
-		cliPassword = cliGetpasswd()
+	if cliEncryptSecret != "" {
+		cliToken, err = cliSecretLogin()
+	}
 
+	if cliToken == "" {
 		cliToken, err = cliLogin()
 		if err != nil {
-			fmt.Printf("\n'%s'\n", err)
-			os.Exit(14)
+			cliPassword = cliGetpasswd()
+
+			cliToken, err = cliLogin()
+			if err != nil {
+				fmt.Printf("\n'%s'\n", err)
+				os.Exit(14)
+			}
 		}
 	}
+
 	cliClusters, err = cliGetClusters()
 	if err != nil {
 		log.WithError(err).Fatal()
@@ -222,6 +230,7 @@ func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	cmd.Flags().StringVar(&cliEncryptSecret, "enc-secret", "", "Encryption secret")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	viper.BindPFlags(cmd.Flags())
 }
@@ -421,9 +430,48 @@ func cliPrintfTb(x, y int, fg, bg termbox.Attribute, format string, args ...inte
 }
 
 func cliLogin() (string, error) {
-
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/login"
 	var jsonStr = []byte(`{"username":"` + cliUser + `", "password":"` + cliPassword + `"}`)
+	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return "", errors.New("Wrong credentential")
+	}
+
+	type Result struct {
+		Token string `json:"token"`
+	}
+	var r Result
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR in login", err)
+		return "", err
+	}
+	return r.Token, nil
+}
+
+func cliSecretLogin() (string, error) {
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers/"
+	if cliServerID != "" {
+		urlpost += cliServerID + "/secret-login"
+	} else {
+		urlpost += cliServerHost + "/" + cliServerPort + "/secret-login"
+	}
+	var jsonStr = []byte(`{"secret":"` + cliEncryptSecret + `"}`)
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		return "", err

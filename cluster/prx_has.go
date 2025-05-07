@@ -48,6 +48,10 @@ func (proxy *Proxy) HasConfigCookie() bool {
 	return proxy.hasCookie("cookie_config")
 }
 
+func (proxy *Proxy) HasConfigRefreshCookie() bool {
+	return proxy.hasCookie("cookie_configrefresh")
+}
+
 func (proxy *Proxy) HasNoPreserveCookie() bool {
 	return proxy.hasCookie("cookie_nopreserve")
 }

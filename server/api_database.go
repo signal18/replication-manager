@@ -13,9 +13,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
+	jwt "github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -23,6 +25,12 @@ import (
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/secret-login", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.secretLoginHandler)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.secretLoginHandler)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-master", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsMasterStatus)),
@@ -115,7 +123,6 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
-
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -2636,6 +2643,54 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.Respon
 	}
 }
 
+// handlerMuxServerNeedConfigRefresh handles the HTTP request to check if a server needs a config refresh.
+// @Summary Check if a server needs a config refresh
+// @Description Checks if a specified server within a cluster needs a config refresh.
+// @Tags Database
+// @Produce text/plain
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Success 200 {string} string "200 -Need config refresh!"
+// @Failure 500 {string} string "500 -No config refresh needed!" or "500 -No valid server!" or "500 -No cluster!"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh [get]
+func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			if node.HasConfigRefreshCookie() {
+				w.Write([]byte("200 -Need config refresh!"))
+				node.DelConfigCookie()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config refresh needed!"))
+
+		} else if proxy != nil {
+			if proxy.HasConfigRefreshCookie() {
+				w.Write([]byte("200 -Need config refresh!"))
+				proxy.DelWaitStartCookie()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config refresh needed!"))
+			//http.Error(w, "No start needed", 501)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+		}
+
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
+		return
+	}
+}
+
 // handlerMuxServerNeedRollingReprov handles the HTTP request to check if a cluster needs a rolling reprovision.
 // @Summary Check if a cluster needs a rolling reprovision
 // @Description Checks if a specified cluster needs a rolling reprovision.
@@ -3997,4 +4052,130 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.Res
 	} else {
 		http.Error(w, "No cluster", 500)
 	}
+}
+
+// secretLoginHandler handles the HTTP request for secret login.
+// @Summary Secret login
+// @Description Handles secret login for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param data body DecodedData true "Encoded data"
+// @Success 200 {string} string "Token"
+// @Failure 400 {string} string "Decode reading body" or "Decode body"
+// @Failure 401 {string} string "Invalid secret"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server" or "Error decrypting data" or "Error signing token"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/secret-login [post]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login [post]
+func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	var decodedData DecodedData
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(body, &decodedData)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	var node *cluster.ServerMonitor
+	if vars["serverPort"] == "" {
+		node = mycluster.GetServerFromName(vars["serverName"])
+	} else {
+		node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	}
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+	// Decrypt the encrypted data
+	key := crypto.GetSHA256Hash(node.Pass)
+	iv := crypto.GetMD5Hash(node.Pass)
+
+	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
+	if err != nil {
+		http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if decrypted != mycluster.GetDbPass() {
+		http.Error(w, "Invalid secret", http.StatusUnauthorized)
+		return
+	}
+
+	user, ok := mycluster.APIUsers["system"]
+	if !ok {
+		newpasswd, err := mycluster.GeneratePassword()
+		if err != nil {
+			newpasswd, err = mycluster.GeneratePassword()
+			if err != nil {
+				http.Error(w, "Error generating password: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		uform := cluster.UserForm{
+			Username: "system",
+			Grants:   "db proxy",
+			Password: newpasswd,
+		}
+
+		mycluster.AddUser(uform, "admin", true)
+		user = mycluster.APIUsers["system"]
+	}
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{user.User, "Member", repman.Conf.GetEncryptedString(user.Password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	//set claims
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		fmt.Fprintln(w, "Error while signing the token")
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	//create a token instance using the token string
+	specs := r.Header.Get("Accept")
+	//resp := token{tokenString}
+
+	resp := AuthToken{
+		Token: tokenString,
+	}
+
+	if strings.Contains(specs, "text/html") {
+		w.Write([]byte(tokenString))
+		return
+	}
+
+	repman.jsonResponse(resp, w)
 }

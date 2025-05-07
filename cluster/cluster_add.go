@@ -78,6 +78,8 @@ func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 		} else {
 			cluster.SetDBRestartCookie()
 		}
+
+		cluster.SetConfigChangeCookie()
 	}
 
 }

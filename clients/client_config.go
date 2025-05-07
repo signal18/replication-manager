@@ -33,7 +33,11 @@ var printDefaultsCmd = &cobra.Command{
 		}
 		log.SetFormatter(&log.TextFormatter{})
 		cliInit(true)
-		RunConfigPrintJobs()
+		if needRefreshConfig() {
+			RunConfigPrintJobs()
+		} else {
+			fmt.Println("No need to refresh configuration.")
+		}
 	},
 }
 
@@ -379,4 +383,25 @@ func fetchConfigReceiver() (*cluster.ConfigReceiverResponse, error) {
 	}
 
 	return &receiverResp, nil
+}
+
+func needRefreshConfig() bool {
+	//var r string
+	var urlpost string = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers"
+	if cliServerID != "" {
+		urlpost = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/need-config-refresh", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
+	} else {
+		if cliServerPort == "" {
+			cliServerPort = "3306"
+		}
+		urlpost = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/need-config-refresh", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
+	}
+
+	_, err := cliAPICmd(urlpost, nil)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "API call error: %s", err)
+		os.Exit(1)
+	}
+
+	return true
 }

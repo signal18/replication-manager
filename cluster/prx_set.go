@@ -111,6 +111,10 @@ func (proxy *Proxy) SetConfigCookie() error {
 	return proxy.createCookie("cookie_config")
 }
 
+func (proxy *Proxy) SetConfigRefreshCookie() error {
+	return proxy.createCookie("cookie_configrefresh")
+}
+
 func (proxy *Proxy) SetNoPreserveCookie() error {
 	return proxy.createCookie("cookie_nopreserve")
 }

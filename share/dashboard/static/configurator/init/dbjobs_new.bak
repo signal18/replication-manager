@@ -1,7 +1,4 @@
 #!/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
-
 USER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%
 PASSWORD=$MYSQL_ROOT_PASSWORD
 MYSQL_PORT=%%ENV:SERVER_PORT%%
@@ -433,17 +430,6 @@ mkdir -p "$LOCK_DIR"
 echo "" > $LOG_DIR/curl_response.txt
 echo "" > $LOG_DIR/request.txt
 echo "" > $LOG_DIR/encrypt.txt
-
-####################
-# Check if the configuration file has changed using repman client
-####################
-
-ENC_KEY=$(encrypt_data "$MYSQL_ROOT_PASSWORD")
-$REPMAN_CLIENT "print-defaults" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY"
-
-#####################
-# OTHER JOBS
-#####################
 
 for job in "${JOBS[@]}"; do
 
