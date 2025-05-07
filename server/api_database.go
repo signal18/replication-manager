@@ -4115,7 +4115,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	key := crypto.GetSHA256Hash(node.Pass)
 	iv := crypto.GetMD5Hash(node.Pass)
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Received login with encrypted secret %s", decodedData.Data)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Received login with encrypted secret %s", decodedData.Data)
 
 	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
 	if err != nil {
