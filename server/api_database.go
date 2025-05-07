@@ -2665,7 +2665,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 	if mycluster != nil {
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
-		if node != nil {
+		if node != nil && !node.IsDown() {
 			if node.HasConfigRefreshCookie() {
 				w.Write([]byte("200 -Need config refresh!"))
 				node.DelConfigCookie()
@@ -2674,7 +2674,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No config refresh needed!"))
 
-		} else if proxy != nil {
+		} else if proxy != nil && !proxy.IsDown() {
 			if proxy.HasConfigRefreshCookie() {
 				w.Write([]byte("200 -Need config refresh!"))
 				proxy.DelWaitStartCookie()
