@@ -3318,7 +3318,16 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 			return err
 		}
-		server.WritePreservedVariables()
+
+		// Write preserved variables
+		destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
+		err = server.WritePreservedVariables(filename, destpath)
+		if err == nil {
+			// Rename the old file to .old and the new file to the original name
+			// This is a workaround to avoid overwriting the original file when error occurs
+			os.Rename(destpath, destpath+".old")
+			os.Rename(destpath+".tmp", destpath)
+		}
 	case "printdefault-dummy":
 		filename := filepath.Join(server.Datadir, "dummy.cnf")
 		os.Rename(filename, filename+".old")

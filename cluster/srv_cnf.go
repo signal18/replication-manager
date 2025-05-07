@@ -477,15 +477,17 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 	return nil
 }
 
-func (server *ServerMonitor) WritePreservedVariables() error {
+func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) error {
 	cluster := server.ClusterGroup
-	destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
-	srcpath := filepath.Join(server.Datadir, "current.cnf")
-	destfile, err := os.OpenFile(destpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	destfile, err := os.OpenFile(destpath+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
 	}
 	defer destfile.Close()
+
+	if _, err := destfile.WriteString("[mysqld]" + "\n"); err != nil {
+		return err
+	}
 
 	// Read the file
 	srcfile, err := os.Open(srcpath)
@@ -532,7 +534,7 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 			delete(remaining, varname)
 			// Write the line to the file
 			if _, err := destfile.WriteString(line + "\n"); err != nil {
-				errvarlist = append(errvarlist, err)
+				return err
 			}
 			break
 		}
@@ -547,7 +549,7 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 			if v.Deployed != nil {
 				// Write the line to the file
 				if _, err := destfile.WriteString(key + "=" + *v.Deployed + "\n"); err != nil {
-					errvarlist = append(errvarlist, err)
+					return err
 				}
 			} else if v.Runtime != nil {
 				if *v.Runtime == "" && *v.Config != "" {
@@ -555,7 +557,7 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 				}
 				// Write the line to the file
 				if _, err := destfile.WriteString(key + "=" + *v.Runtime + "\n"); err != nil {
-					errvarlist = append(errvarlist, err)
+					return err
 				}
 			}
 		}
@@ -565,6 +567,7 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 
 	if err := scanner.Err(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
 	}
 
 	if len(errvarlist) > 0 {
