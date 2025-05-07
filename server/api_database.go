@@ -4107,11 +4107,15 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	key := crypto.GetSHA256Hash(node.Pass)
 	iv := crypto.GetMD5Hash(node.Pass)
 
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "encrypted string %s", decodedData.Data)
+
 	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
 	if err != nil {
 		http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "decrypted string %s", decrypted)
 
 	if decrypted != mycluster.GetDbPass() {
 		http.Error(w, "Invalid secret", http.StatusUnauthorized)
