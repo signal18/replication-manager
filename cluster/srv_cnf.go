@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -479,47 +480,60 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 func (server *ServerMonitor) WritePreservedVariables() error {
 	cluster := server.ClusterGroup
 	destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
+	srcpath := filepath.Join(server.Datadir, "current.cnf")
 	destfile, err := os.OpenFile(destpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
 	}
 	defer destfile.Close()
 
-	errvarlist := make([]string, 0)
+	// Read the file
+	srcfile, err := os.Open(srcpath)
+	if err != nil {
+		server.LastConfigUpdate.Config = time.Time{}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
 
-	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ",")
-	for _, opt := range list {
-		if opt == "" {
+	defer srcfile.Close()
+
+	list := strings.Split(strings.ToLower(cluster.Conf.ProvDBConfigPreserveVars), ",")
+
+	errvarlist := make([]error, 0)
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
 			continue
 		}
-		opt = strings.TrimSpace(opt)
-		if v, ok := server.VariablesMap.CheckAndGet(opt); ok {
-			value := v.Deployed
-			if value == nil && v.Runtime != nil {
-				value = v.Runtime
-			}
 
-			if value != nil {
-				//Write the variable to the file
-				if strings.Contains(*value, "\n") {
-					// split the value by new line, use loose_ prefix and write each line to the file
-					lines := strings.Split(*value, "\n")
-					for _, line := range lines {
-						if _, err := destfile.WriteString("loose_" + v.Variable_name + "=" + line + "\n"); err != nil {
-							errvarlist = append(errvarlist, v.Variable_name+"="+line)
-						}
-					}
-				} else {
-					if _, err := destfile.WriteString(v.Variable_name + "=" + *value + "\n"); err != nil {
-						errvarlist = append(errvarlist, v.Variable_name)
-					}
-				}
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		if line == "" {
+			continue
+		}
+
+		varname := strings.ToLower(strings.TrimPrefix(line, "loose_")) // handle --loose_option
+		parts := strings.SplitN(varname, "=", 2)
+		varname = strings.TrimSpace(parts[0])
+
+		if slices.Contains(list, varname) {
+			// Write the line to the file
+			if _, err := destfile.WriteString(line + "\n"); err != nil {
+				errvarlist = append(errvarlist, err)
 			}
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+	}
+
 	if len(errvarlist) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing preserved variables %s", strings.Join(errvarlist, ", "))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", destpath, errvarlist)
 		return err
 	}
 
