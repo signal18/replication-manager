@@ -552,9 +552,6 @@ func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) e
 					return err
 				}
 			} else if v.Runtime != nil {
-				if *v.Runtime == "" && v.Config != nil && *v.Config != "" {
-					key = "loose_" + v.Variable_name
-				}
 				// Write the line to the file
 				if _, err := destfile.WriteString(key + "=" + *v.Runtime + "\n"); err != nil {
 					return err
