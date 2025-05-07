@@ -498,6 +498,14 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	defer srcfile.Close()
 
 	list := strings.Split(strings.ToLower(cluster.Conf.ProvDBConfigPreserveVars), ",")
+	remaining := make(map[string]bool)
+	for _, opt := range list {
+		if opt == "" {
+			continue
+		}
+		opt = strings.TrimSpace(opt)
+		remaining[opt] = true
+	}
 
 	errvarlist := make([]error, 0)
 	// Read the file content
@@ -521,12 +529,39 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		varname = strings.TrimSpace(parts[0])
 
 		if slices.Contains(list, varname) {
+			delete(remaining, varname)
 			// Write the line to the file
 			if _, err := destfile.WriteString(line + "\n"); err != nil {
 				errvarlist = append(errvarlist, err)
 			}
+			break
 		}
 	}
+
+	for key := range remaining {
+		if key == "" {
+			continue
+		}
+
+		if v, ok := server.VariablesMap.CheckAndGet(strings.ToUpper(key)); ok {
+			if v.Deployed != nil {
+				// Write the line to the file
+				if _, err := destfile.WriteString(key + "=" + *v.Deployed + "\n"); err != nil {
+					errvarlist = append(errvarlist, err)
+				}
+			} else if v.Runtime != nil {
+				if *v.Runtime == "" && *v.Config != "" {
+					key = "loose_" + v.Variable_name
+				}
+				// Write the line to the file
+				if _, err := destfile.WriteString(key + "=" + *v.Runtime + "\n"); err != nil {
+					errvarlist = append(errvarlist, err)
+				}
+			}
+		}
+	}
+
+	// Write the preserved runtime variables
 
 	if err := scanner.Err(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
