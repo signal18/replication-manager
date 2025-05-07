@@ -207,7 +207,18 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 		cluster.Configurator.AddDBTag("spider")
 	}
 
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, server.HasNoPreserveCookie())
+	var skipslavestart bool
+	diff := server.VariablesMap.GetVariables(true)
+	if len(diff) > 0 {
+		for _, v := range diff {
+			if strings.Contains(v.Variable_name, "relay_log") {
+				skipslavestart = true
+				break
+			}
+		}
+	}
+
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, server.HasNoPreserveCookie(), skipslavestart)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err

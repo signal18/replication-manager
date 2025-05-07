@@ -511,16 +511,16 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 			return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
 		}
 	}*/
-	if !overwrite {
-		configurator.CopyPreservedVariables(Datadir)
-	}
+	// if !overwrite {
+	// 	configurator.CopyPreservedVariables(Datadir)
+	// }
 
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
 
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, overwrite bool) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, overwrite, skipslavestart bool) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -606,7 +606,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	}
 
 	if !overwrite {
-		configurator.CopyPreservedVariables(Datadir)
+		configurator.CopyPreservedVariables(Datadir, skipslavestart)
 	}
 
 	configurator.TarGz(Datadir+"/config.tar.gz", Datadir+"/init")
