@@ -440,7 +440,7 @@ echo "" > $LOG_DIR/encrypt.txt
 # Check if the configuration file has changed using repman client
 ####################
 
-ENC_KEY=$(encrypt_data "$MYSQL_ROOT_PASSWORD")
+ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY"
 
 #####################

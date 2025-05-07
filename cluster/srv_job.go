@@ -3396,5 +3396,21 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 		return "", err
 	}
 
-	return strings.TrimSpace(decryptedOutput.String()), nil
+	output := decryptedOutput.Bytes()
+	pos := bytes.LastIndex(output, []byte("}"))
+	if pos > 1 {
+		output = output[:pos+1]
+	}
+
+	var secretKey struct {
+		Secret string `json:"secret"`
+	}
+
+	err = json.Unmarshal(output, &secretKey)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
+		return "", err
+	}
+
+	return strings.TrimSpace(secretKey.Secret), nil
 }
