@@ -239,7 +239,10 @@ func PrintDefaultsForFetch(receiver *cluster.ConfigReceiverResponse, logFile str
 
 // fetchAndExtractConfig fetches the configuration from the provided URL and extracts it to the specified directory.
 func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir string) error {
+
+	var bearer = "Bearer " + cliToken
 	var configURL string
+
 	// Construct the config URL
 	if cliServerID != "" {
 		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
@@ -250,8 +253,13 @@ func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir 
 		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
 	}
 
-	// Send a GET request to the specified URL
-	resp, err := http.Get(configURL)
+	req, err := http.NewRequest("GET", configURL, nil)
+	if err != nil {
+		return err
+	}
+	//	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
+	req.Header.Set("Authorization", bearer)
+	resp, err := cliConn.Do(req)
 	if err != nil {
 		return fmt.Errorf("error fetching config from '%s': %w", configURL, err)
 	}
