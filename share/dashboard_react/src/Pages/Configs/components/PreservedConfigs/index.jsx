@@ -74,7 +74,7 @@ function PreservedConfigs({ selectedCluster }) {
 
     const handleConfirm = () => {
         if (type === 'preserve-true') {
-            dispatch(preserveVariable({ clusterName, preserve: true, variableName: payload }))
+            dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: payload }))
             setPreservedConfigs((prev) => {
                 if (!prev.includes(payload)) {
                     return [...prev, payload]
@@ -82,7 +82,7 @@ function PreservedConfigs({ selectedCluster }) {
                 return prev
             })
         } else if (type === 'preserve-false') {
-            dispatch(preserveVariable({ clusterName, preserve: false, variableName: payload }))
+            dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: false, variableName: payload }))
             setPreservedConfigs((prev) => {
                 const index = prev.indexOf(payload)
                 if (index > -1) {
