@@ -471,7 +471,7 @@ func cliSecretLogin() (string, error) {
 	} else {
 		urlpost += cliServerHost + "/" + cliServerPort + "/secret-login"
 	}
-	var jsonStr = []byte(`{"secret":"` + cliEncryptSecret + `"}`)
+	var jsonStr = []byte(`{"data":"` + cliEncryptSecret + `"}`)
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		return "", err
