@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -239,75 +238,6 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 	out := stdout.String()
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
-
-	return nil
-}
-
-func (cluster *Cluster) OnPremisePrintDefaultDatabaseService(server *ServerMonitor) error {
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config database via ssh script")
-	client, err := cluster.OnPremiseConnect(server)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
-		return err
-	}
-	defer client.Close()
-
-	var rcv_port_pid, rcv_port, pid_file, sst_env string
-	var rcv_port_pid_int, rcv_port_int int
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_CONFDIR=\"%s\"\n", filepath.Join(server.GetDatabaseConfdir()))
-
-	pid_file = server.SensitiveVariables.Get("PID_FILE")
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_PID=\"%s\"\n", pid_file)
-
-	// prepare the receiver for current.cnf
-	rcv_port_pid, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
-		return err
-	}
-
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_PID=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port_pid)
-	rcv_port_pid_int, _ = strconv.Atoi(rcv_port_pid)
-	defer cluster.SSTCloseReceiver(rcv_port_pid_int)
-
-	// prepare the receiver for dummy.cnf
-	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf"), ConstJobCreateFile, "printdefault")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
-		return err
-	}
-
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port)
-	rcv_port_int, _ = strconv.Atoi(rcv_port)
-	defer cluster.SSTCloseReceiver(rcv_port_int)
-
-	cmd := cluster.Configurator.GetSshPrintDefaultDBScript()
-
-	filerc, err := os.Open(cmd)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh script %%s failed : %s ", cmd, err)
-		return errors.New("can't open script")
-	}
-
-	defer filerc.Close()
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(filerc)
-
-	buf2 := strings.NewReader(server.GetSshEnv())
-	buf3 := strings.NewReader(sst_env)
-	r := io.MultiReader(buf2, buf3, buf)
-
-	var (
-		stdout bytes.Buffer
-		stderr bytes.Buffer
-	)
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise print default config database via ssh script %s", stderr.String())
-	}
-	out := stdout.String()
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise print default config script: %s ,out: %s ,err: %s", cmd, out, stderr.String())
 
 	return nil
 }

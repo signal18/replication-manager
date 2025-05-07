@@ -286,7 +286,3 @@ func (cluster *Cluster) K8SUnprovisionDatabaseService(s *ServerMonitor) {
 	cluster.errorChan <- nil
 
 }
-
-func (cluster *Cluster) K8SPrintDefaultDatabaseService(s *ServerMonitor) error {
-	return nil
-}

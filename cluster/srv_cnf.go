@@ -471,8 +471,6 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 				v.Preserve = true
 			}
 		}
-
-		server.WritePreservedVariables()
 	}
 
 	return nil

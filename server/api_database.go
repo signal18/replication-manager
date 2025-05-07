@@ -2204,12 +2204,10 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		if node != nil {
 			// Override the default value if cfgAction is provided
 			if strings.ToUpper(vars["cfgAction"]) == "KEEP" {
-				mycluster.PrintDefaultDatabaseService(node)
 				if node.HasNoPreserveCookie() {
 					node.DelNoPreserveCookie()
 				}
 			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" {
-				mycluster.PrintDefaultDatabaseService(node)
 				if !node.HasNoPreserveCookie() {
 					node.SetNoPreserveCookie()
 				}
@@ -2992,11 +2990,13 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 		if node != nil {
 			go func() {
 				defer mycluster.LogPanicToFile("printdefault")
-				err := mycluster.PrintDefaultDatabaseService(node)
+
+				err := node.GetDatabaseConfig()
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error regenerating config for %s:%s: %s", vars["serverName"], vars["serverPort"], err.Error())
 				}
-				node.ReadVariablesFromConfigs()
+
+				node.SetConfigRefreshCookie()
 			}()
 		} else if proxy != nil {
 			proxy.GetProxyConfig() // Regenerate the config

@@ -23,7 +23,3 @@ func (cluster *Cluster) SlapOSStartDatabaseService(s *ServerMonitor) error {
 	s.SetWaitStartCookie()
 	return nil
 }
-
-func (cluster *Cluster) SlapOSPrintDefaultDatabaseService(s *ServerMonitor) error {
-	return nil
-}

@@ -2283,7 +2283,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "monitoring-processlist-transactions":
 		mycluster.SwitchMonitoringProcesslistTransactions()
 	case "monitoring-processlist-information-schema":
-		mycluster.SwitchMonitoringProcesslistInformationSchema()				
+		mycluster.SwitchMonitoringProcesslistInformationSchema()
 	case "force-slave-readonly":
 		mycluster.SwitchForceSlaveReadOnly()
 	case "force-binlog-row":
@@ -6668,7 +6668,7 @@ func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.Resp
 		vars["servertype"] = strings.ToLower(vars["servertype"])
 		if vars["servertype"] == "db" {
 			if len(mycluster.Servers) > 0 {
-				go mycluster.PrintDefaultDatabaseServices(true)
+				mycluster.SetConfigRefreshCookie()
 			} else {
 				http.Error(w, "No server", 500)
 				return

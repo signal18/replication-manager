@@ -364,7 +364,3 @@ func (cluster *Cluster) LocalhostStartDatabaseService(server *ServerMonitor) err
 
 	return nil
 }
-
-func (cluster *Cluster) LocalhostPrintDefaultDatabaseService(server *ServerMonitor) error {
-	return fmt.Errorf("Not implemented")
-}

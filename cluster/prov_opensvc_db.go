@@ -7,20 +7,13 @@
 package cluster
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 
-	"github.com/creack/pty"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -855,105 +848,4 @@ run_args = -e MYSQL_ROOT_PASSWORD={env.mysql_root_password}
 		}
 	}
 	return vm
-}
-
-func (cluster *Cluster) OpenSVCPrintDefaultDatabaseService(server *ServerMonitor) error {
-	var err error
-
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OpenSVC print default config database via ssh script")
-
-	url, node := cluster.GetGottyServer(cluster.Name+"/svc/"+server.Name, "container#db")
-	gottyURL := strings.Replace(url, node, node+".signal18.io", 1)
-
-	var arguments []string
-	arguments = append(arguments, "--v2")
-	arguments = append(arguments, "--skip-tls-verify")
-	arguments = append(arguments, gottyURL)
-	client := exec.Command("gotty-client", arguments...)
-	client.Env = append(client.Env, "TERM=xterm-256color")
-
-	var rcv_port_pid, rcv_port, pid_file, sst_env string
-	var rcv_port_pid_int, rcv_port_int int
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_CONFDIR=\"%s\"\n", filepath.Join(server.GetDatabaseConfdir()))
-
-	pid_file = server.SensitiveVariables.Get("PID_FILE")
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_DB_PID=\"%s\"\n", pid_file)
-
-	// prepare the receiver for current.cnf
-	rcv_port_pid, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
-		return err
-	}
-
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_PID=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port_pid)
-	rcv_port_pid_int, _ = strconv.Atoi(rcv_port_pid)
-	defer cluster.SSTCloseReceiver(rcv_port_pid_int)
-
-	// prepare the receiver for dummy.cnf
-	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf"), ConstJobCreateFile, "printdefault")
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh failed : %s", err)
-		return err
-	}
-
-	sst_env += fmt.Sprintf("export REPLICATION_MANAGER_RECEIVER_ADDR_DUMMY=\"%s:%s\"\n", cluster.Conf.MonitorAddress, rcv_port)
-	rcv_port_int, _ = strconv.Atoi(rcv_port)
-	defer cluster.SSTCloseReceiver(rcv_port_int)
-
-	cmd := cluster.Configurator.GetSshPrintDefaultDBScript()
-
-	filerc, err := os.Open(cmd)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database via ssh script %%s failed : %s ", cmd, err)
-		return errors.New("can't open script")
-	}
-
-	defer filerc.Close()
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(filerc)
-
-	cwd := strings.NewReader(fmt.Sprintf("cd %s\n", cluster.OsUser.HomeDir))
-	buf2 := strings.NewReader(server.GetTTYEnv())
-	buf3 := strings.NewReader(sst_env)
-	r := io.MultiReader(cwd, buf2, buf3, buf)
-
-	ptyFile, err := pty.Start(client)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
-		return err
-	}
-	defer ptyFile.Close()
-
-	err = pty.Setsize(ptyFile, &pty.Winsize{Cols: 120, Rows: 25})
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
-		return err
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	// Create a goroutine to read from the pty and write to stdout
-	go func() {
-		defer wg.Done()
-		server.copyLogsPrefix(ptyFile, config.ConstLogModOrchestrator, config.LvlDbg, "OUT:")
-	}()
-
-	_, err = io.Copy(ptyFile, r)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %v ", server.URL, err)
-		return err
-	}
-
-	wg.Wait()
-	// Wait for the command to finish
-
-	err = client.Wait()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OpenSVC print default config database %s via ssh failed : %s", server.URL, err)
-		return err
-	}
-
-	return nil
 }

@@ -3309,6 +3309,24 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.WriteBackupMetadata(config.BackupMethodPhysical)
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)
+	case "printdefault-current":
+		filename := filepath.Join(server.Datadir, "current.cnf")
+		os.Rename(filename, filename+".old")
+		os.Rename(filename+".tmp", filename)
+		err := server.ReadVariablesFromConfigFile(filename, true)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+			return err
+		}
+		server.WritePreservedVariables()
+	case "printdefault-dummy":
+		filename := filepath.Join(server.Datadir, "dummy.cnf")
+		os.Rename(filename, filename+".old")
+		os.Rename(filename+".tmp", filename)
+		err := server.ReadVariablesFromConfigFile(filename, false)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
 	}
 	return nil
 }
@@ -3327,7 +3345,7 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 
 	pid_file = server.SensitiveVariables.Get("PID_FILE")
 	// prepare the receiver for current.cnf
-	rcv_port_pid, err := cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf"), ConstJobCreateFile, "printdefault")
+	rcv_port_pid, err := cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf.tmp"), ConstJobCreateFile, "printdefault-current")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
 		return nil, err
@@ -3336,7 +3354,7 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 	rcv_port_pid_int, _ := strconv.Atoi(rcv_port_pid)
 
 	// prepare the receiver for dummy.cnf
-	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf"), ConstJobCreateFile, "printdefault")
+	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf.tmp"), ConstJobCreateFile, "printdefault-dummy")
 	if err != nil {
 		cluster.SSTCloseReceiver(rcv_port_pid_int)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)

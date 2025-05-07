@@ -833,23 +833,3 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 	}
 	return nil
 }
-
-func (cluster *Cluster) PrintDefaultDatabaseService(server *ServerMonitor) error {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Print default config for Database service %s", cluster.Name+"/svc/"+server.Name)
-	var err error
-	switch cluster.GetOrchestrator() {
-	case config.ConstOrchestratorOpenSVC:
-		err = cluster.OpenSVCPrintDefaultDatabaseService(server)
-	case config.ConstOrchestratorKubernetes:
-		err = cluster.K8SPrintDefaultDatabaseService(server)
-	case config.ConstOrchestratorSlapOS:
-		err = cluster.SlapOSPrintDefaultDatabaseService(server)
-	case config.ConstOrchestratorOnPremise:
-		err = cluster.OnPremisePrintDefaultDatabaseService(server)
-	case config.ConstOrchestratorLocalhost:
-		err = cluster.LocalhostPrintDefaultDatabaseService(server)
-	default:
-		return errors.New("No valid orchestrator")
-	}
-	return err
-}
