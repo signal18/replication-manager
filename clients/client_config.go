@@ -32,8 +32,8 @@ var printDefaultsCmd = &cobra.Command{
 			os.Exit(1)
 		}
 		log.SetFormatter(&log.TextFormatter{})
-		cliInit(true)
 		if needRefreshConfig() {
+			cliInit(true)
 			RunConfigPrintJobs()
 		} else {
 			fmt.Println("No need to refresh configuration.")
@@ -387,14 +387,14 @@ func fetchConfigReceiver() (*cluster.ConfigReceiverResponse, error) {
 
 func needRefreshConfig() bool {
 	//var r string
-	var urlpost string = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cliClusters[cliClusterIndex] + "/servers"
+	var urlpost string = "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cfgGroup + "/servers/"
 	if cliServerID != "" {
-		urlpost = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/need-config-refresh", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
+		urlpost += cliServerID + "/need-config-refresh"
 	} else {
 		if cliServerPort == "" {
 			cliServerPort = "3306"
 		}
-		urlpost = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/need-config-refresh", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
+		urlpost += cliServerHost + "/" + cliServerPort + "/need-config-refresh"
 	}
 
 	_, err := cliAPICmd(urlpost, nil)
