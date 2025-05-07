@@ -30,3 +30,8 @@ if [ $? -eq 0 ]; then
 fi
 chown -R 999:999 /bootstrap/data
 chmod -R 0755 /bootstrap/init
+
+get $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > /bootstrap/init/replication-manager-cli
+if [ $? -eq 0 ]; then
+	chmod +x /bootstrap/init/replication-manager-cli
+fi

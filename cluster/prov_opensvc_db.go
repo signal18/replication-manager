@@ -402,7 +402,7 @@ func (cluster *Cluster) OpenSVCGetInitContainerSection(port string) map[string]s
 		} else {
 			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
 		}
-		svccontainer["command"] = "-c 'wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh; wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > /bootstrap/init/replication-manager-cli; chmod +x /bootstrap/init/replication-manager-cli'"
+		svccontainer["command"] = "-c 'wget --no-check-certificate -q -O- $REPLICATION_MANAGER_URL/static/configurator/opensvc/bootstrap | sh'"
 	}
 	svccontainer["entrypoint"] = "/bin/sh"
 	svccontainer["secrets_environment"] = "env/REPLICATION_MANAGER_PASSWORD"
