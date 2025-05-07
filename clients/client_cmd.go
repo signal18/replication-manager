@@ -159,9 +159,11 @@ func cliInit(needcluster bool) {
 
 	if cliEncryptSecret != "" && cfgGroup != "" {
 		cliToken, err = cliSecretLogin()
-	}
-
-	if cliToken == "" {
+		if err != nil {
+			fmt.Printf("\n'%s'\n", err)
+			os.Exit(14)
+		}
+	} else {
 		cliToken, err = cliLogin()
 		if err != nil {
 			cliPassword = cliGetpasswd()
