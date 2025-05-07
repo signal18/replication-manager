@@ -848,7 +848,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
-	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "tmpdir,slave_load_tmpdir,log_error,slow_query_log_file,general_log_file,innodb_data_home_dir,innodb_log_group_home_dir,innodb_undo_directory,log_bin,log_bin_index,relay_log,relay_log_index,slave_load_tmpdir,aria_log_dir_path,server_audit_file_path,sql_error_log_filename", "Comma-separated list of configuration keys to preserve during config change")
+	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "log_error,slow_query_log_file,general_log_file,innodb_data_home_dir,innodb_log_group_home_dir,innodb_undo_directory,log_bin,log_bin_index,relay_log,relay_log_index,slave_load_tmpdir,aria_log_dir_path,server_audit_file_path,sql_error_log_filename", "Comma-separated list of configuration keys to preserve during config change")
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
 	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256M", "Memory in M for micro service VM")
