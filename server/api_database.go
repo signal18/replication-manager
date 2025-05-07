@@ -95,6 +95,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigChange)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/need-config-refresh", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
+	))
 	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
 	))
@@ -4033,6 +4039,8 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.Res
 			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		}
 		if node != nil {
+			node.DelConfigRefreshCookie()
+
 			env, err := node.JobReceiveConfigFiles()
 			if err != nil {
 				http.Error(w, "Error while opening receiver ports", 500)
