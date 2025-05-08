@@ -35,10 +35,14 @@ if [ $? -eq 0 ]; then
 
 fi
 
+CURRENT_VERSION=$(cat /bootstrap/version)
+if [ -z "$CURRENT_VERSION" ]; then
+	CURRENT_VERSION="0.0.0"
+fi
+
 get $REPLICATION_MANAGER_URL/api/version > version
 mkdir -p /bootstrap
 MONITOR_VERSION=$(cat version)
-CURRENT_VERSION=$(cat /bootstrap/version)
 
 # If the version is not the same or the file not exists, download the new version
 if [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -f /bootstrap/replication-manager-cli ]; then
