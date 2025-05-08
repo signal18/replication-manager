@@ -10,6 +10,7 @@ import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import ComboBox from '../../../../components/ComboBox'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
+import TextForm from '../../../../components/TextForm'
 
 function PreservedConfigs({ selectedCluster }) {
     const dispatch = useDispatch()
@@ -30,9 +31,9 @@ function PreservedConfigs({ selectedCluster }) {
     const { type, title, payload } = action
 
     useEffect(() => {
-        if (selectedCluster && (variables == null || variables.length === 0)) {
+        if (selectedCluster) {
           const dbId = clusterMaster?.id
-            || selectedCluster?.dbServers?.[0]?.id
+            || selectedCluster?.dbServers?.[0]
             || '';
           dispatch(getDatabaseVariables({
             clusterName: selectedCluster?.name,
@@ -41,7 +42,7 @@ function PreservedConfigs({ selectedCluster }) {
             diff: false,
           }))
         }
-      }, [selectedCluster?.name, selectedCluster?.dbServers?.[0]?.id, clusterMaster?.id, variables])
+      }, [selectedCluster?.name, selectedCluster?.dbServers?.[0], clusterMaster?.id])
 
     useEffect(() => {
         if (!isEqual(variables, prevVariablesRef.current) || (variables?.length > 0 && variablesData.length === 0)) {
@@ -51,7 +52,7 @@ function PreservedConfigs({ selectedCluster }) {
     }, [variables])
 
     useEffect(() => {
-        setPreservedConfigs(selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase().split(' ').filter(Boolean))
+        setPreservedConfigs(selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase().split(';').filter(Boolean))
     }, [selectedCluster?.config?.provDbConfigPreserveVars])
 
     const openConfirmModal = (e) => {
@@ -95,9 +96,11 @@ function PreservedConfigs({ selectedCluster }) {
     }
 
     const tableData = useMemo(() => {
-        return preservedConfigs.map((item) => {
+        return preservedConfigs.map((item = '') => {
+            const [vname, vval] = item.split('=').filter(Boolean)
             return {
-                variableName: item,
+                variableName: vname,
+                value: vval || '',
                 rowColor: variablesData.find((x) => x === item) ? '' : 'orange'
             }
         })
@@ -105,9 +108,16 @@ function PreservedConfigs({ selectedCluster }) {
 
     const columns = useMemo(
         () => [
-            columnHelper.accessor('variableName', {
+            columnHelper.accessor("variableName", {
                 header: 'Variable',
-                size: 200
+                size: 100,
+                maxSize: 200
+            }),
+            columnHelper.accessor("value", {
+                header: 'Value',
+                size: 100,
+                maxSize: 200,
+                cell: (info) => (<TextForm value={info.getValue()} confirmTitle={`Confirm set value to `} maxLength={1024} className={styles.textContainer} onSave={(value) => {dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: info.row.original.variableName + "=" + value }))}}/>)
             }),
             columnHelper.display({
                 id: 'actions',

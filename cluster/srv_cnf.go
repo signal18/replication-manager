@@ -461,8 +461,9 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		}
 	}
 
-	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, " ")
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
 	for _, opt := range list {
+		opt = strings.TrimSpace(opt)
 		if opt == "" {
 			continue
 		}
@@ -517,7 +518,8 @@ func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) e
 	fixedlist := make([]string, 0)
 	dynamiclist := make([]string, 0)
 	remaining := make(map[string]bool)
-	for _, opt := range strings.Split(strings.ToLower(cluster.Conf.ProvDBConfigPreserveVars), " ") {
+	for _, opt := range strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";") {
+		opt = strings.TrimSpace(opt)
 		if opt == "" {
 			continue
 		}
@@ -569,8 +571,7 @@ func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) e
 		key := strings.ToUpper(opt)
 		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
 			if v.Runtime != nil {
-				// Use loose_ in case the variable is not in the config
-				if _, err := destfile.WriteString("loose_" + opt + "=" + *v.Runtime + "\n"); err != nil {
+				if _, err := destfile.WriteString(opt + "=" + *v.Runtime + "\n"); err != nil {
 					errvarlist = append(errvarlist, err)
 				}
 			}

@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -2523,43 +2522,58 @@ func (cluster *Cluster) SetPreserveFlagToAllNodes(variable string, value string)
 	}
 }
 
+func (cluster *Cluster) DelPreserveFlagToAllNodes(variable string) {
+	for _, srv := range cluster.Servers {
+		v, ok := srv.VariablesMap.CheckAndGet(variable)
+		if ok {
+			v.Preserve = nil
+		}
+	}
+}
+
 func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
 	parts := strings.SplitN(variable, "=", 2)
+	key := ""
 	value := ""
 	if len(parts) == 2 {
 		variable = strings.TrimSpace(parts[0])
 		value = strings.TrimSpace(parts[1])
-	}
 
-	varname := strings.ToUpper(variable)
-	if preserve {
-		// Add value to variable if not empty
+		key = strings.ToUpper(variable)
 		if value != "" {
 			variable = variable + "=" + value
 		}
-		list := strings.Split(strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars), " ")
-		if cluster.Conf.ProvDBConfigPreserveVars == "" {
-			cluster.Conf.ProvDBConfigPreserveVars = variable
-		} else if !slices.Contains(list, varname) {
-			cluster.Conf.ProvDBConfigPreserveVars = cluster.Conf.ProvDBConfigPreserveVars + " " + variable
-		}
+	}
 
-		cluster.SetPreserveFlagToAllNodes(varname, value)
-	} else {
-		var found bool
-		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, " ")
-		for i, v := range list {
-			if strings.ToUpper(v) == varname {
-				found = true
+	var found bool
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+	for i, v := range list {
+		parts = strings.SplitN(v, "=", 2)
+		if key == strings.ToUpper(parts[0]) {
+			found = true
+			if preserve {
+				list[i] = variable
+			} else {
 				list = append(list[:i], list[i+1:]...)
-				break
 			}
+			break
 		}
-		if found {
-			cluster.Conf.ProvDBConfigPreserveVars = strings.Join(list, " ")
+	}
+
+	if !found && preserve {
+		if cluster.Conf.ProvDBConfigPreserveVars == "" {
+			list = make([]string, 0) // prevent unwanted spaces
 		}
 
-		cluster.SetPreserveFlagToAllNodes(varname, value)
+		list = append(list, variable)
+	}
+
+	cluster.Conf.ProvDBConfigPreserveVars = strings.Join(list, ";")
+
+	if preserve {
+		cluster.SetPreserveFlagToAllNodes(key, value)
+	} else {
+		cluster.DelPreserveFlagToAllNodes(key)
 	}
 
 	return nil
