@@ -7,13 +7,13 @@
 package configurator
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
 )
 
@@ -80,7 +80,7 @@ func (configurator *Configurator) SetProxyDiskSize(value string) {
 	configurator.ClusterConfig.ProvProxDisk = value
 }
 
-func (configurator *Configurator) CopyPreservedVariables(dirpath string, skipslavestart bool) error {
+func (configurator *Configurator) CopyPreservedVariables(dirpath string) error {
 	srcpath := filepath.Join(dirpath, "99_preserved.cnf")
 	destpath := filepath.Join(dirpath, "init/etc/mysql/custom.d/99_preserved.cnf")
 
@@ -90,44 +90,7 @@ func (configurator *Configurator) CopyPreservedVariables(dirpath string, skipsla
 	}
 
 	// Copy the file
-	in, err := os.Open(srcpath)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-
-	out, err := os.Create(destpath)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if e := out.Close(); e != nil {
-			err = e
-		}
-	}()
-
-	_, err = io.Copy(out, in)
-	if err != nil {
-		return err
-	}
-
-	if skipslavestart {
-		// Add skip-slave-start option to the file
-		if _, err := out.WriteString("\nskip-slave-start=1\n"); err != nil {
-			return err
-		}
-	}
-
-	err = out.Sync()
-	if err != nil {
-		return err
-	}
-
-	si, err := os.Stat(srcpath)
-	if err != nil {
-		return err
-	}
-	err = os.Chmod(destpath, si.Mode())
+	err := misc.CopyFile(srcpath, destpath)
 	if err != nil {
 		return err
 	}
