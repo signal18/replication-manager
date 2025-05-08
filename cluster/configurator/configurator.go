@@ -511,7 +511,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 			return fmt.Errorf("Chown failed %q: %s", Datadir+"/init/data", err)
 		}
 	}*/
-	if !preserve {
+	if preserve {
 		configurator.CopyPreservedVariables(Datadir)
 	}
 
@@ -605,7 +605,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
 
-	if !preserve {
+	if preserve {
 		configurator.CopyPreservedVariables(Datadir)
 	}
 
