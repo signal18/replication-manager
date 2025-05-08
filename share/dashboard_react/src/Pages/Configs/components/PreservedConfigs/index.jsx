@@ -51,7 +51,7 @@ function PreservedConfigs({ selectedCluster }) {
     }, [variables])
 
     useEffect(() => {
-        setPreservedConfigs(selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase().split(',').filter(Boolean))
+        setPreservedConfigs(selectedCluster?.config?.provDbConfigPreserveVars?.toLowerCase().split(' ').filter(Boolean))
     }, [selectedCluster?.config?.provDbConfigPreserveVars])
 
     const openConfirmModal = (e) => {

@@ -6719,6 +6719,9 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 		if vars["variableName"] == "" {
 			http.Error(w, "Variable name can not be empty", 500)
 			return
+		} else if strings.HasPrefix(vars["variableName"], "optimizer_switch") {
+			http.Error(w, "Can not preserve 'optimizer_switch'. Use db-tags instead", 500)
+			return
 		}
 
 		var preserve bool

@@ -1,5 +1,5 @@
 import { Box, Checkbox, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
-import React, { useEffect, useMemo, useState, useRef } from 'react'
+import React, { useEffect, useMemo, useState, useRef, useReducer } from 'react'
 
 import styles from '../../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
@@ -12,7 +12,50 @@ import RMIconButton from '../../../../components/RMIconButton'
 import { TbShield, TbTrash } from 'react-icons/tb'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 
+const defaultState = {
+  showCfg: true,
+  showDeployed: true,
+  showRuntime: true,
+  showPreserve: true,
+  showRowDiff: false,
+  showRowPreserved: false,
+  search: '',
+  confirmState: {
+    isOpen: false,
+    type: '',
+    title: '',
+    action: null,
+    payload: ''
+  }
+}
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'SET_SEARCH':
+      return { ...state, search: action.payload }
+    case 'SET_SHOW_CFG':
+      return { ...state, showCfg: action.payload }
+    case 'SET_SHOW_DEPLOYED':
+      return { ...state, showDeployed: action.payload }
+    case 'SET_SHOW_RUNTIME':
+      return { ...state, showRuntime: action.payload }
+    case 'SET_SHOW_PRESERVE':
+      return { ...state, showPreserve: action.payload }
+    case 'SET_SHOW_ROW_DIFF':
+      return { ...state, showRowDiff: action.payload }
+    case 'SET_SHOW_ROW_PRESERVED':
+      return { ...state, showRowPreserved: action.payload }
+    case 'SET_CONFIRM_OPEN':
+      return { ...state, confirmState: { ...state.confirmState, isOpen: action.payload } }
+    case 'SET_CONFIRM_ACTION':
+      return { ...state, confirmState: { ...state.confirmState, ...action.payload, isOpen: true} }
+    default:
+      return state
+  }
+}
+
 function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
+  const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
   const {
     cluster: {
@@ -20,34 +63,28 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
     }
   } = useSelector((state) => state)
 
-  const [search, setSearch] = useState('')
-  const [action, setAction] = useState({ type: '', title: '', payload: '' })
   const [variablesData, setVariablesData] = useState(variables || [])
   const [variablesAllData, setvariablesAllData] = useState(variables || [])
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(null)
   const prevVariablesRef = useRef(variables)
-  const { type, title, payload } = action
-  const [showDiff, setShowDiff] = useState(variableMode === 'diff' ? true : false)
-  const [showPreserved, setShowPreserved] = useState(false)
-  const [showCfg, setShowCfg] = useState(true)
-  const [showDeployed, setShowDeployed] = useState(true)
-  const [showRuntime, setShowRuntime] = useState(true)
 
-  const openConfirmModal = () => {
-    setIsConfirmModalOpen(true)
-  }
+  const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, search, confirmState } = vState
+  const { isOpen, title, payload } = confirmState
 
+  useEffect(() => {
+      vDispatch({ type: 'SET_SHOW_ROW_DIFF', payload: (variableMode === 'diff') })
+  }, [variableMode])
+      
   const closeConfirmModal = () => {
-    setIsConfirmModalOpen(false)
+    vDispatch({ type: 'SET_CONFIRM_OPEN', payload: false})
   }
 
   const setVariableMode = (e) => {
     const value = e.target.checked ? "diff" : "all"
-    setShowDiff(e.target.checked)
+    vDispatch({ type: 'SET_SHOW_ROW_DIFF', payload: e.target.checked })
     toggleVariableMode(value)
   }
 
-  const handleConfirm = (value) => {
+  const handleConfirm = () => {
       if (type === 'preserve-true') {
         dispatch(preserveVariable({ clusterName, preserve: true, variableName: payload }))
       } else if (type === 'preserve-false') {
@@ -57,7 +94,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
     }
 
   useEffect(() => {
-    dispatch(getDatabaseVariables({ clusterName, serviceName: 'variables', dbId, diff: showDiff }))
+    dispatch(getDatabaseVariables({ clusterName, serviceName: 'variables', dbId, diff: showRowDiff }))
   }, [])
 
   useEffect(() => {
@@ -70,7 +107,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
 
   useEffect(() => {
     setVariablesData(searchData(variablesAllData))
-  }, [search, showPreserved])
+  }, [search, showRowPreserved])
 
   const searchData = (data) => {
     const searchedData = data.filter((x) => {
@@ -79,14 +116,14 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         return x
       }
     })
-    if (showPreserved) {
+    if (showRowPreserved) {
       return searchedData.filter((x) => x.preserve === true)
     }
     return searchedData
   }
 
   const handleSearch = (e) => {
-    setSearch(e.target.value)
+    vDispatch({ type: 'SET_SEARCH', payload: e.target.value })
   }
 
   const columnHelper = createColumnHelper()
@@ -95,11 +132,15 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
     () => [
       columnHelper.accessor((row) => row.variableName, {
         header: 'Status',
-        width: '30%'
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
       }),
       ...(showCfg ? [columnHelper.accessor((row) => row.cfgValue, {
         header: 'Configurator',
-        width: '30%',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
@@ -116,7 +157,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       })]: []),
       ...(showDeployed ? [columnHelper.accessor((row) => row.value, {
         header: 'Deployed',
-        width: '30%',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
@@ -133,7 +176,28 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       })]:[]),
       ...(showRuntime ? [columnHelper.accessor((row) => row.runtimeValue, {
         header: 'Runtime',
-        width: '30%',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
+        cell: (info) => {
+          const fullString = info.getValue()
+          const fullLength = fullString?.length
+          return (
+            <>
+              {fullLength > 15 ? (
+                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
+              ) : (
+                <span>{info.getValue()}</span>
+              )}
+            </>
+          )
+        }
+      })]: []),
+      ...(showPreserve ? [columnHelper.accessor((row) => row.preserveValue, {
+        header: 'Preserve',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
@@ -151,25 +215,21 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       columnHelper.accessor((row) => (
         <VStack align={"center"} justifyContent={"center"}>
           { row?.preserve ? (
-            <>
-              <Text>Preserved</Text>
-              <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }); openConfirmModal() }} />
-            </>
+              <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }}) }} />
           ) : (
-            <>
-              <Text>Not Preserved</Text>
-              <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); setAction({ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }); openConfirmModal() }} />
-            </>
-
+              <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }}) }} />
           )}
         </VStack>
       ), {
         cell: (info) => info.getValue(),
         header: 'Actions',
-        id: 'actions'
+        id: 'actions',
+        size: 100,
+        maxSize: 200,
+        minSize: 50
       })
     ],
-    [showCfg, showDeployed, showRuntime]
+    [showCfg, showDeployed, showRuntime, showPreserve]
   )
 
   return (
@@ -182,29 +242,32 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
           </HStack>
         </HStack>
         <Box className={styles.divider} />
-        <Checkbox size='lg' isChecked={showDiff} onChange={setVariableMode} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showRowDiff} onChange={setVariableMode} className={styles.checkbox}>
           Show diff only
         </Checkbox>
         <Box className={styles.divider} />
-        <Checkbox size='lg' isChecked={showPreserved} onChange={(e) => { setShowPreserved(e.target.checked) }} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showRowPreserved} onChange={(e) => { vDispatch({ type: "SET_SHOW_ROW_PRESERVED", payload: e.target.checked}) }} className={styles.checkbox}>
           Only preserved options
         </Checkbox>
         <Box className={styles.divider} />
         <Text>Show columns:</Text>
-        <Checkbox size='lg' isChecked={showCfg} onChange={(e) => { setShowCfg(e.target.checked) }} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showCfg} onChange={(e) => { vDispatch({ type: "SET_SHOW_CFG", payload: e.target.checked}) }} className={styles.checkbox}>
           Configurator
         </Checkbox>
-        <Checkbox size='lg' isChecked={showDeployed} onChange={(e) => { setShowDeployed(e.target.checked) }} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showDeployed} onChange={(e) => { vDispatch({ type: "SET_SHOW_DEPLOYED", payload: e.target.checked}) }} className={styles.checkbox}>
           Deployed
         </Checkbox>
-        <Checkbox size='lg' isChecked={showRuntime} onChange={(e) => { setShowRuntime(e.target.checked) }} className={styles.checkbox}>
+        <Checkbox size='lg' isChecked={showRuntime} onChange={(e) => { vDispatch({ type: "SET_SHOW_RUNTIME", payload: e.target.checked}) }} className={styles.checkbox}>
+          Runtime
+        </Checkbox>
+        <Checkbox size='lg' isChecked={showPreserve} onChange={(e) => { vDispatch({ type: "SET_SHOW_PRESERVE", payload: e.target.checked}) }} className={styles.checkbox}>
           Runtime
         </Checkbox>
       </Flex>
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
         <DataTable data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
-      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {isOpen && <ConfirmModal title={title} isOpen={isOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>
   )
 }

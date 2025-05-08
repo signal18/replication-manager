@@ -1005,7 +1005,7 @@ type VariableState struct {
 	Config        *string `json:"cfgValue"`
 	Deployed      *string `json:"value"`
 	Runtime       *string `json:"runtimeValue"`
-	Preserve      bool    `json:"preserve"`
+	Preserve      *string `json:"preserveValue"`
 }
 
 type LastConfigUpdate struct {
@@ -1018,7 +1018,7 @@ func NewVariableState(varname string) *VariableState {
 		Variable_name: strings.ToLower(varname),
 		Config:        nil,
 		Deployed:      nil,
-		Preserve:      false,
+		Preserve:      nil,
 	}
 }
 
@@ -1236,8 +1236,7 @@ func (m *VariablesMap) GetVariables(differ bool) []VariableState {
 		val := v.(*VariableState)
 
 		if differ {
-			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || (val.Config != nil && val.Deployed != nil && *val.Config != *val.Deployed) {
-				// Add to the diff map if Config or Deployed is different (or nil)
+			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || (val.Config != nil && val.Deployed != nil && *val.Config != *val.Deployed) || (val.Config != nil && val.Preserve != nil && *val.Preserve != *val.Config) || (val.Deployed != nil && val.Preserve != nil && *val.Preserve != *val.Deployed) {
 				result = append(result, *val)
 			}
 		} else {

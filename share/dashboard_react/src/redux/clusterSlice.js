@@ -1055,11 +1055,7 @@ export const getDatabaseVariables = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL)
-      if (status === 200) {
         return { data, status }
-      }
-      
-      throw new Error(data)
     } catch (error) {
       handleError(error, thunkAPI)
     }
@@ -1520,7 +1516,7 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'status-innodb') {
             state.database.status.statusInnoDB = action.payload.data
           } else if (serviceName === 'variables') {
-            state.database.variables = action.payload.data || []
+            state.database.variables = (action.payload.status == 200) ? action.payload.data : []
           } else if (serviceName === 'service-opensvc') {
             state.database.serviceOpensvc = action.payload.data
           } else if (serviceName === 'meta-data-locks') {

@@ -461,16 +461,25 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		}
 	}
 
-	if deployed {
-		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ",")
-		for _, opt := range list {
-			if opt == "" {
-				continue
-			}
-			opt = strings.TrimSpace(opt)
-			if v, ok := server.VariablesMap.CheckAndGet(strings.ToUpper(opt)); ok {
-				v.Preserve = true
-			}
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, " ")
+	for _, opt := range list {
+		if opt == "" {
+			continue
+		}
+
+		value := ""
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 2 {
+			opt = parts[0]
+			value = parts[1]
+		}
+
+		key := strings.ToUpper(opt)
+		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+			v.Preserve = &value
+		} else if value != "" {
+			v = &config.VariableState{Variable_name: opt, Preserve: &value}
+			server.VariablesMap.Store(key, v)
 		}
 	}
 
@@ -479,6 +488,12 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 
 func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) error {
 	cluster := server.ClusterGroup
+
+	// Check if the source file exists
+	if _, err := os.Stat(srcpath); os.IsNotExist(err) {
+		return nil
+	}
+
 	destfile, err := os.OpenFile(destpath+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
@@ -499,14 +514,21 @@ func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) e
 
 	defer srcfile.Close()
 
-	list := strings.Split(strings.ToLower(cluster.Conf.ProvDBConfigPreserveVars), ",")
+	fixedlist := make([]string, 0)
+	dynamiclist := make([]string, 0)
 	remaining := make(map[string]bool)
-	for _, opt := range list {
+	for _, opt := range strings.Split(strings.ToLower(cluster.Conf.ProvDBConfigPreserveVars), " ") {
 		if opt == "" {
 			continue
 		}
-		opt = strings.TrimSpace(opt)
-		remaining[opt] = true
+
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 1 {
+			dynamiclist = append(dynamiclist, parts[0])
+			remaining[parts[0]] = true
+		} else {
+			fixedlist = append(fixedlist, opt)
+		}
 	}
 
 	errvarlist := make([]error, 0)
@@ -530,40 +552,45 @@ func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) e
 		parts := strings.SplitN(varname, "=", 2)
 		varname = strings.TrimSpace(parts[0])
 
-		if slices.Contains(list, varname) {
-			delete(remaining, varname)
+		if slices.Contains(dynamiclist, varname) {
 			// Write the line to the file
 			if _, err := destfile.WriteString(line + "\n"); err != nil {
-				return err
+				errvarlist = append(errvarlist, err)
 			}
-			break
 		}
 	}
 
-	for key := range remaining {
-		if key == "" {
+	// Write the remaining variables in runtime
+	for opt := range remaining {
+		if opt == "" {
 			continue
 		}
 
-		if v, ok := server.VariablesMap.CheckAndGet(strings.ToUpper(key)); ok {
-			if v.Deployed != nil {
-				// Write the line to the file
-				if _, err := destfile.WriteString(key + "=" + *v.Deployed + "\n"); err != nil {
-					return err
-				}
-			} else if v.Runtime != nil {
-				if *v.Runtime == "" && v.Config != nil && *v.Config != "" {
-					key = "loose_" + v.Variable_name
-				}
-				// Write the line to the file
-				if _, err := destfile.WriteString(key + "=" + *v.Runtime + "\n"); err != nil {
-					return err
+		key := strings.ToUpper(opt)
+		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+			if v.Runtime != nil {
+				// Use loose_ in case the variable is not in the config
+				if _, err := destfile.WriteString("loose_" + opt + "=" + *v.Runtime + "\n"); err != nil {
+					errvarlist = append(errvarlist, err)
 				}
 			}
 		}
 	}
 
-	// Write the preserved runtime variables
+	// Write the fixed variables
+	for _, opt := range fixedlist {
+		if opt == "" {
+			continue
+		}
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 2 {
+			opt = parts[0]
+			value := parts[1]
+			if _, err := destfile.WriteString("loose_" + opt + "=" + value + "\n"); err != nil {
+				errvarlist = append(errvarlist, err)
+			}
+		}
+	}
 
 	if err := scanner.Err(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)

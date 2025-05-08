@@ -2514,28 +2514,40 @@ func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
 	cluster.Conf.MonitorPFSInstruments = value
 }
 
-func (cluster *Cluster) PreserveVariableToAllNodes(variable string, preserve bool) {
+func (cluster *Cluster) SetPreserveFlagToAllNodes(variable string, value string) {
 	for _, srv := range cluster.Servers {
 		v, ok := srv.VariablesMap.CheckAndGet(variable)
 		if ok {
-			v.Preserve = preserve
+			v.Preserve = &value
 		}
 	}
 }
-func (cluster *Cluster) PreserveVariable(variable string, preserve bool) {
+
+func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
+	parts := strings.SplitN(variable, "=", 2)
+	value := ""
+	if len(parts) == 2 {
+		variable = strings.TrimSpace(parts[0])
+		value = strings.TrimSpace(parts[1])
+	}
+
 	varname := strings.ToUpper(variable)
 	if preserve {
-		list := strings.Split(strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars), ",")
+		// Add value to variable if not empty
+		if value != "" {
+			variable = variable + "=" + value
+		}
+		list := strings.Split(strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars), " ")
 		if cluster.Conf.ProvDBConfigPreserveVars == "" {
 			cluster.Conf.ProvDBConfigPreserveVars = variable
 		} else if !slices.Contains(list, varname) {
-			cluster.Conf.ProvDBConfigPreserveVars = cluster.Conf.ProvDBConfigPreserveVars + "," + variable
+			cluster.Conf.ProvDBConfigPreserveVars = cluster.Conf.ProvDBConfigPreserveVars + " " + variable
 		}
 
-		cluster.PreserveVariableToAllNodes(varname, preserve)
+		cluster.SetPreserveFlagToAllNodes(varname, value)
 	} else {
 		var found bool
-		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ",")
+		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, " ")
 		for i, v := range list {
 			if strings.ToUpper(v) == varname {
 				found = true
@@ -2544,9 +2556,11 @@ func (cluster *Cluster) PreserveVariable(variable string, preserve bool) {
 			}
 		}
 		if found {
-			cluster.Conf.ProvDBConfigPreserveVars = strings.Join(list, ",")
+			cluster.Conf.ProvDBConfigPreserveVars = strings.Join(list, " ")
 		}
 
-		cluster.PreserveVariableToAllNodes(varname, preserve)
+		cluster.SetPreserveFlagToAllNodes(varname, value)
 	}
+
+	return nil
 }

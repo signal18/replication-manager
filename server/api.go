@@ -275,7 +275,7 @@ func (repman *ReplicationManager) apiserver() {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
 	})
-
+	
 	router.Handle("/api/terminal/list", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
 	))
