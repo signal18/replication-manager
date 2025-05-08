@@ -101,7 +101,7 @@ function PreservedConfigs({ selectedCluster }) {
             return {
                 variableName: vname,
                 value: vval || '',
-                rowColor: variablesData.find((x) => x === item) ? '' : 'orange'
+                rowColor: variablesData.find((x) => x === vname) ? '' : 'orange'
             }
         })
     }, [preservedConfigs,variablesData])

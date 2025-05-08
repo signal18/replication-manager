@@ -214,10 +214,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       })]: []),
       columnHelper.accessor((row) => (
         <VStack align={"center"} justifyContent={"center"}>
-          { row?.preserve ? (
-              <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }}) }} />
+          { row.preserveValue == null ? (
+            <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }}) }} />
           ) : (
-              <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }}) }} />
+            <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }}) }} />
           )}
         </VStack>
       ), {
