@@ -283,6 +283,8 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/version", repman.handlerVersion)
+
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))
@@ -883,6 +885,20 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
+}
+
+// handlerVersion handles the HTTP request for the replication manager version.
+// @Summary Handles replication manager version requests
+// @Description This endpoint processes the replication manager version requests and returns the version in JSON format.
+// @Tags Public
+// @Accept  json
+// @Produce  json
+// @Success 200 {object} ReplicationManager "Successful response with replication manager version"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/version [get]
+func (repman *ReplicationManager) handlerVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write([]byte(repman.Fullversion))
 }
 
 // handlerMuxTerms handles HTTP requests for retrieving terms.

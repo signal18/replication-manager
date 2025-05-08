@@ -439,9 +439,17 @@ echo "" > $LOG_DIR/encrypt.txt
 ####################
 # Check if the configuration file has changed using repman client
 ####################
+if [ ! -f "$REPMAN_CLIENT" ]; then 
+    NEW_CLIENT=$(which replication-manager-cli)
+    if [ $? -eq 0 ]; then
+        REPMAN_CLIENT="$NEW_CLIENT"
+    fi
+fi
 
-ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-$REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY"
+if [ -f "$REPMANCLIENT" ]; then
+    ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" > $LOG_DIR/repman.out
+fi
 
 #####################
 # OTHER JOBS

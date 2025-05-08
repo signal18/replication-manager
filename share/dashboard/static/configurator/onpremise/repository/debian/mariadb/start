@@ -64,4 +64,30 @@ if [ $? -eq 0 ]; then
 	fi
 fi
 
+CURRENT_VERSION=$(cat version.txt)
+if [ $? -ne 0 ]; then
+	CURRENT_VERSION="0.0.0"
+fi
+
+get $REPLICATION_MANAGER_URL/api/version > mon-version.txt
+MONITOR_VERSION=$(cat mon-version.txt)
+
+# If the version is not the same or the file not exists, download the new version
+if [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -f /usr/bin/replication-manager-cli ]; then
+	echo $MONITOR_VERSION > mon-version.txt
+	
+	get $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > replication-manager-cli
+	if [ $? -eq 0 ]; then
+		cp replication-manager-cli /usr/bin/replication-manager-cli
+		chmod +x /usr/bin/replication-manager-cli
+	fi
+else
+	# If the file exists, copy it to the init directory
+	if [ -f replication-manager-cli ] && [ ! -f /usr/bin/replication-manager-cli ]; then
+		cp replication-manager-cli /usr/bin/replication-manager-cli
+		chmod +x /usr/bin/replication-manager-cli
+	fi
+fi
+
+
 systemctl start mariadb

@@ -33,8 +33,26 @@ if [ $? -eq 0 ]; then
 	chown -R 999:999 /bootstrap/data
 	chmod -R 0755 /bootstrap/init
 
-	get $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > /bootstrap/init/replication-manager-cli
+fi
+
+get $REPLICATION_MANAGER_URL/api/version > version
+mkdir -p /bootstrap
+MONITOR_VERSION=$(cat version)
+CURRENT_VERSION=$(cat /bootstrap/version)
+
+# If the version is not the same or the file not exists, download the new version
+if [ "$MONITOR_VERSION" != "$CURRENT_VERSION" ] || [ ! -f /bootstrap/replication-manager-cli ]; then
+	echo $MONITOR_VERSION > /bootstrap/version
+	
+	get $REPLICATION_MANAGER_URL/static/configurator/bin/replication-manager-cli > /bootstrap/replication-manager-cli
 	if [ $? -eq 0 ]; then
+		cp /bootstrap/replication-manager-cli /bootstrap/init/replication-manager-cli
+		chmod +x /bootstrap/init/replication-manager-cli
+	fi
+else
+	# If the file exists, copy it to the init directory
+	if [ -f /bootstrap/replication-manager-cli ] && [ ! -f /bootstrap/init/replication-manager-cli ]; then
+		cp /bootstrap/replication-manager-cli /bootstrap/init/replication-manager-cli
 		chmod +x /bootstrap/init/replication-manager-cli
 	fi
 fi
