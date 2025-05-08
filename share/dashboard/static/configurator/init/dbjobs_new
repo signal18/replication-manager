@@ -446,7 +446,7 @@ if [ ! -f "$REPMAN_CLIENT" ]; then
     fi
 fi
 
-if [ -f "$REPMANCLIENT" ]; then
+if [ -f "$REPMAN_CLIENT" ]; then
     ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
     $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" > $LOG_DIR/repman.out
 fi
