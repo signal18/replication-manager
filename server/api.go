@@ -856,25 +856,28 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	mycopy := repman
 	var cl []string
-
 	for _, cluster := range repman.Clusters {
-
 		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cl = append(cl, cluster.Name)
 		}
 	}
 
-	mycopy.ClusterList = cl
-
-	res, err := json.Marshal(mycopy)
+	res, err := json.Marshal(repman)
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
 
-	for crkey, _ := range mycopy.Conf.Secrets {
+	clres, err := json.Marshal(cl)
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	res, err = jsonparser.Set(res, clres, "clusters")
+
+	for crkey, _ := range repman.Conf.Secrets {
 		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
 	}
 
