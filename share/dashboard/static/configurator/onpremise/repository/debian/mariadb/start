@@ -50,7 +50,8 @@ function write_cnf(){
 }
 
 
-if [ "$REPLICATION_MANAGER_CFG_ACTION" != "KEEP" ]; then 
+get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/need-config-fetch > need-config-fetch
+if [ $? -eq 0 ]; then
 	get $REPLICATION_MANAGER_URL/api/clusters/$REPLICATION_MANAGER_CLUSTER_NAME/servers/$REPLICATION_MANAGER_HOST_NAME/$REPLICATION_MANAGER_HOST_PORT/config > config.tar.gz
 	if [ $? -eq 0 ]; then
 		mkdir /bootstrap

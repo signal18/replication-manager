@@ -5,11 +5,9 @@ import ConfirmModal from '../../../components/Modals/ConfirmModal'
 import Gauge from '../../../components/Gauge'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AddRemovePill from '../../../components/AddRemovePill'
-import { addProxyTag, dropProxyTag, generateAllConfig } from '../../../redux/configSlice'
+import { addProxyTag, dropProxyTag } from '../../../redux/configSlice'
 import { useDispatch } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
-import { HiRefresh } from 'react-icons/hi'
-import RMIconButton from '../../../components/RMIconButton'
 import { convertSize } from '../../../utility/common'
 
 function ProxyConfig({ selectedCluster, user }) {
@@ -62,68 +60,67 @@ function ProxyConfig({ selectedCluster, user }) {
   // },
 
   const dataObject = [
-    ...(user?.grants['proxy-config-flag']
-      ? [
-          {
-            key: 'Manage Tags',
-            value: (
-              <VStack className={styles.configTagContainer}>
-                <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
-                  <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
-                  <HStack className={styles.tags}>
-                    {availableTags.map((tag) => {
-                      const isAdded = usingTags.find((x) => x.name === tag.name)
-                      if (isAdded) {
-                        return null
-                      }
-                      return (
-                        <AddRemovePill
-                          text={tag.name}
-                          onAdd={(title) => {
-                            setConfirmTitle(title)
-                            setIsConfirmModalOpen(true)
-                            setConfirmHandler(
-                              () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
-                            )
-                          }}
-                        />
+    {
+      key: 'Manage Tags',
+      value: (
+        <VStack className={styles.configTagContainer}>
+          <VStack className={`${styles.availableTags} ${styles.proxyTags}`}>
+            <h4 className={styles.sectionTitle}>{'Available Tags'}</h4>
+            <HStack className={styles.tags}>
+              {availableTags.map((tag) => {
+                const isAdded = usingTags.find((x) => x.name === tag.name)
+                if (isAdded) {
+                  return null
+                }
+                return (
+                  <AddRemovePill
+                    isDisabled={user?.grants['proxy-config-flag'] == false}
+                    text={tag.name}
+                    onAdd={(title) => {
+                      setConfirmTitle(title)
+                      setIsConfirmModalOpen(true)
+                      setConfirmHandler(
+                        () => () => dispatch(addProxyTag({ clusterName: selectedCluster?.name, tag: tag.name }))
                       )
-                    })}
-                  </HStack>
-                </VStack>
-                <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
-                  <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
-                  <HStack className={`${styles.tags} `}>
-                    {usingTags.map((tag) => {
-                      return (
-                        <AddRemovePill
-                          text={tag}
-                          onRemove={(title) => {
-                            setConfirmTitle(title)
-                            setIsConfirmModalOpen(true)
-                            setConfirmHandler(
-                              () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
-                            )
-                          }}
-                          used={true}
-                        />
+                    }}
+                  />
+                )
+              })}
+            </HStack>
+          </VStack>
+          <VStack className={`${styles.addedTags} ${styles.proxyTags}`}>
+            <h4 className={styles.sectionTitle}>{'Using Tags'}</h4>
+            <HStack className={`${styles.tags} `}>
+              {usingTags.map((tag) => {
+                return (
+                  <AddRemovePill
+                    isDisabled={user?.grants['proxy-config-flag'] == false}
+                    text={tag}
+                    onRemove={(title) => {
+                      setConfirmTitle(title)
+                      setIsConfirmModalOpen(true)
+                      setConfirmHandler(
+                        () => () => dispatch(dropProxyTag({ clusterName: selectedCluster?.name, tag: tag }))
                       )
-                    })}
-                  </HStack>
-                </VStack>
-              </VStack>
-            )
-          }
-        ]
-      : []),
+                    }}
+                    used={true}
+                  />
+                )
+              })}
+            </HStack>
+          </VStack>
+        </VStack>
+      )
+    },
     {
       key: 'Resources',
       value: (
         <Flex className={styles.resources}>
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={25600}
-            value={convertSize(selectedCluster?.config?.provProxyMemory,"M","M")}
+            value={convertSize(selectedCluster?.config?.provProxyMemory, "M", "M")}
             text={'Memory'}
             width={220}
             height={150}
@@ -149,9 +146,10 @@ function ProxyConfig({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={10000}
-            value={convertSize(selectedCluster?.config?.provProxyDiskSize,"G","G")}
+            value={convertSize(selectedCluster?.config?.provProxyDiskSize, "G", "G")}
             text={'Disk size'}
             width={220}
             height={150}
@@ -177,6 +175,7 @@ function ProxyConfig({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={256}
             value={selectedCluster?.config?.provProxyCpuCores}
@@ -210,7 +209,6 @@ function ProxyConfig({ selectedCluster, user }) {
   return (
     <VStack>
       <TableType2 dataArray={dataObject} className={styles.table} />
-
       {isConfirmModalOpen && (
         <ConfirmModal
           isOpen={isConfirmModalOpen}

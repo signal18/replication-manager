@@ -92,8 +92,8 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStop)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigChange)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigFetch)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/need-config-refresh", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
@@ -2186,6 +2186,7 @@ func (repman *ReplicationManager) handlerMuxSetLongQueryTime(w http.ResponseWrit
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param cfgAction path string false "Config Action (KEEP or FETCH). Empty string means default action from cluster config."
 // @Success 200 {string} string "Server started successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
@@ -2202,17 +2203,25 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			// Override the default value if cfgAction is provided
+			// Check if cfgAction is provided
 			if strings.ToUpper(vars["cfgAction"]) == "KEEP" {
-				if node.HasNoPreserveCookie() {
-					node.DelNoPreserveCookie()
+				if !node.HasNoConfigFetchCookie() {
+					node.SetNoConfigFetchCookie()
 				}
 			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" {
-				if !node.HasNoPreserveCookie() {
-					node.SetNoPreserveCookie()
+				if node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie()
 				}
-			} else if vars["cfgAction"] != "" {
+			} else if vars["cfgAction"] == "" {
+				// Default action from cluster config
+				if mycluster.Conf.ProvDbStartFetchConfig && node.HasNoConfigFetchCookie() {
+					node.SetNoConfigFetchCookie()
+				} else if !mycluster.Conf.ProvDbStartFetchConfig && !node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie()
+				}
+			} else { // If cfgAction is not empty and not "KEEP" or "FETCH"
 				http.Error(w, "Invalid config action", http.StatusBadRequest)
+				return
 			}
 			mycluster.StartDatabaseService(node)
 		} else {
@@ -2599,18 +2608,18 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 	}
 }
 
-// handlerMuxServerNeedConfigChange handles the HTTP request to check if a server needs a config change.
-// @Summary Check if a server needs a config change
-// @Description Checks if a specified server within a cluster needs a config change.
+// handlerMuxServerNeedConfigFetch handles the HTTP request to check if a server needs a config fetch.
+// @Summary Check if a server needs a config fetch
+// @Description Checks if a specified server within a cluster needs a config fetch.
 // @Tags Database
 // @Produce text/plain
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
-// @Success 200 {string} string "200 -Need config change!"
-// @Failure 500 {string} string "500 -No config change needed!" or "500 -No valid server!" or "500 -No cluster!"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change [get]
-func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.ResponseWriter, r *http.Request) {
+// @Success 200 {string} string "200 -Need config fetch!"
+// @Failure 500 {string} string "500 -No config fetch needed!" or "500 -No valid server!" or "500 -No cluster!"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch [get]
+func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -2618,28 +2627,23 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.Respon
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			if node.HasConfigCookie() {
-				w.Write([]byte("200 -Need config change!"))
-				node.DelConfigCookie()
-				return
+			if node.HasNoConfigFetchCookie() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config change needed!"))
-
+			w.Write([]byte("200 -Need config fetch!"))
+			return
 		} else if proxy != nil {
-			if proxy.HasConfigCookie() {
-				w.Write([]byte("200 -Need config change!"))
-				proxy.DelWaitStartCookie()
-				return
+			if proxy.HasNoConfigFetchCookie() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config change needed!"))
-			//http.Error(w, "No start needed", 501)
+			w.Write([]byte("200 -Need config fetch!"))
+			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No valid server!"))
 		}
-
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("500 -No cluster!"))
@@ -2668,7 +2672,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 		if node != nil && !node.IsDown() {
 			if node.HasConfigRefreshCookie() {
 				w.Write([]byte("200 -Need config refresh!"))
-				node.DelConfigCookie()
+				node.DelConfigRefreshCookie()
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
@@ -2677,7 +2681,7 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.Respo
 		} else if proxy != nil && !proxy.IsDown() {
 			if proxy.HasConfigRefreshCookie() {
 				w.Write([]byte("200 -Need config refresh!"))
-				proxy.DelWaitStartCookie()
+				proxy.DelConfigRefreshCookie()
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)

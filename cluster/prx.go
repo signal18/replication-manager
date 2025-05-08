@@ -156,6 +156,7 @@ type DatabaseProxy interface {
 	HasWaitStopCookie() bool
 	HasConfigCookie() bool
 	HasConfigRefreshCookie() bool
+	HasNoConfigFetchCookie() bool
 	HasDNS() bool
 
 	DelProvisionCookie() error
@@ -166,6 +167,7 @@ type DatabaseProxy interface {
 	DelWaitStopCookie() error
 	DelConfigCookie() error
 	DelConfigRefreshCookie() error
+	DelNoConfigFetchCookie() error
 
 	RotateProxyPasswords(password string)
 }

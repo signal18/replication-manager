@@ -89,7 +89,7 @@ type Config struct {
 	MonitorProcessListLimit                   string                 `mapstructure:"monitoring-processlist-limit" toml:"monitoring-processlist-limit" json:"monitoringProcesslistLimit"`
 	MonitorProcessListInactive                bool                   `mapstructure:"monitoring-processlist-inactive" toml:"monitoring-processlist-inactive" json:"monitoringProcesslistInactive"`
 	MonitorProcessListTransactions            bool                   `mapstructure:"monitoring-processlist-transactions" toml:"monitoring-processlist-transactions" json:"monitoringProcesslistTransactions"`
-	MonitorProcessListInformationSchema				bool                   `mapstructure:"monitoring-processlist-information-schema" toml:"monitoring-processlist-information-schema" json:"monitoringProcesslistInformationSchema"`
+	MonitorProcessListInformationSchema       bool                   `mapstructure:"monitoring-processlist-information-schema" toml:"monitoring-processlist-information-schema" json:"monitoringProcesslistInformationSchema"`
 	MonitorQueries                            bool                   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorPFS                                bool                   `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
 	MonitorPFSInstruments                     bool                   `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`
@@ -610,7 +610,9 @@ type Config struct {
 	ProvDbCleanupScript                       string                 `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
 	ProvProxyCleanupScript                    string                 `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
 	ProvDbStartScript                         string                 `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
+	ProvDbStartFetchConfig                    bool                   `mapstructure:"prov-db-start-fetch-config" toml:"prov-db-start-fetch-config" json:"provDbStartFetchConfig"`
 	ProvProxyStartScript                      string                 `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
+	ProvProxyStartFetchConfig                 bool                   `mapstructure:"prov-proxy-start-fetch-config" toml:"prov-proxy-start-fetch-config" json:"provProxyStartFetchConfig"`
 	ProvDbStopScript                          string                 `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
 	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`

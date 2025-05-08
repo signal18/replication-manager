@@ -181,6 +181,10 @@ func (server *ServerMonitor) HasNoPreserveCookie() bool {
 	return server.hasCookie("cookie_nopreserve")
 }
 
+func (server *ServerMonitor) HasNoConfigFetchCookie() bool {
+	return server.hasCookie("cookie_configfetch")
+}
+
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:

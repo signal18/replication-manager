@@ -65,3 +65,7 @@ func (proxy *Proxy) DelConfigRefreshCookie() error {
 func (proxy *Proxy) DelNoPreserveCookie() error {
 	return proxy.delCookie("cookie_nopreserve")
 }
+
+func (proxy *Proxy) DelNoConfigFetchCookie() error {
+	return proxy.delCookie("cookie_configfetch")
+}

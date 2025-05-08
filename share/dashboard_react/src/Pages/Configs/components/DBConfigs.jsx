@@ -126,19 +126,19 @@ function DBConfigs({ selectedCluster, user }) {
   ])
 
   const dataObject = [
-    // {
-    //   key: 'Cluster DB Start Fetch Config',
-    //   value: (
-    //     <RMSwitch
-    //       isChecked={selectedCluster?.config?.provDbStartFetchConfig}
-    //       isDisabled={user?.grants['cluster-settings'] == false}
-    //       confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
-    //       onChange={() =>
-    //         dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
-    //       }
-    //     />
-    //   )
-    // },
+    {
+      key: 'Cluster DB Start Fetch Config',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provDbStartFetchConfig}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
+          }
+        />
+      )
+    },
     {
       key: 'Apply Dynamic Config',
       value: (
@@ -155,7 +155,7 @@ function DBConfigs({ selectedCluster, user }) {
     {
       key: 'Generate All DB Config Files',
       value: (
-        <RMIconButton icon={HiRefresh} onClick={() => { 
+        <RMIconButton isDisabled={user?.grants['proxy-config-flag'] == false} icon={HiRefresh} onClick={() => { 
           setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
           setIsConfirmModalOpen(true)
           setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
@@ -167,6 +167,7 @@ function DBConfigs({ selectedCluster, user }) {
       value: (
         <Flex className={styles.connections}>
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={200}
             maxValue={10000}
             value={selectedCluster?.config?.provDbMaxConnections}
@@ -194,6 +195,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={0}
             maxValue={90}
             value={selectedCluster?.config?.provDbExpireLogDays}
@@ -228,6 +230,7 @@ function DBConfigs({ selectedCluster, user }) {
       value: (
         <Flex className={styles.resources}>
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={25600}
             value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
@@ -256,6 +259,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={10000}
             value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
@@ -284,6 +288,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={100000}
             value={selectedCluster?.config?.provDbDiskIops}
@@ -311,6 +316,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={256}
             value={selectedCluster?.config?.provDbCpuCores}
@@ -371,6 +377,7 @@ function DBConfigs({ selectedCluster, user }) {
                         }
                         return (
                           <AddRemovePill
+                            isDisabled={user?.grants['proxy-config-flag'] == false}
                             key={tag.name}
                             text={tag.name}
                             onAdd={(title) => {

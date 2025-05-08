@@ -406,6 +406,10 @@ func (server *ServerMonitor) SetConfigRefreshCookie() error {
 	return server.createCookie("cookie_configrefresh")
 }
 
+func (server *ServerMonitor) SetNoConfigFetchCookie() error {
+	return server.createCookie("cookie_configfetch")
+}
+
 func (server *ServerMonitor) SetNoPreserveCookie() error {
 	return server.createCookie("cookie_nopreserve")
 }
