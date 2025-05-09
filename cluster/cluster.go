@@ -631,7 +631,6 @@ func (cluster *Cluster) Run() {
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
-			cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			go cluster.CheckDefaultUser(false)
@@ -748,7 +747,7 @@ func (cluster *Cluster) Run() {
 				cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
-
+				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.StateProcessing()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
