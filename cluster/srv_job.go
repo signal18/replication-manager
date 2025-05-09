@@ -3336,7 +3336,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
-		server.CheckDBConfigPath()
+		server.IsNeedPathCheck = true
 	}
 	return nil
 }

@@ -284,6 +284,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
+	server.IsNeedPathCheck = true
 
 	// Set source cluster name, set cluster name as source if not specified
 	// This is needed to make check more simple
@@ -419,7 +420,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
-
+  server.SetConfigRefreshCookie()
 	go server.FetchLastBackupMetadata()
 	return server, err
 }
@@ -769,9 +770,9 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
-
-		if server.IsNeedPathCheck && !server.IsDown() {
-			server.CheckDBConfigPath() // check if config path is different from runtime
+		
+		if server.IsNeedPathCheck {
+		  server.CheckDBConfigPath()
 		}
 
 		if !server.DBVersion.IsPostgreSQL() {
