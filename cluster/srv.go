@@ -770,7 +770,9 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 
-		server.CheckDBConfigPath() // check if config path is different from runtime
+		if server.IsNeedPathCheck && !server.IsDown() {
+			server.CheckDBConfigPath() // check if config path is different from runtime
+		}
 
 		if !server.DBVersion.IsPostgreSQL() {
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
