@@ -72,7 +72,11 @@ func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 				srv.GetDatabaseConfig()
 				_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(tag, cmd), ";"))
 				if needrestart {
-					srv.SetRestartCookie()
+					if tag == "nosplitpath" {
+						srv.SetConfigPathCookie()
+					} else {
+						srv.SetRestartCookie()
+					}
 				}
 			}
 		} else {

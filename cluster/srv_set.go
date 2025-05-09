@@ -402,6 +402,10 @@ func (server *ServerMonitor) SetConfigCookie() error {
 	return server.createCookie("cookie_config")
 }
 
+func (server *ServerMonitor) SetConfigPathCookie() error {
+	return server.createCookie("cookie_configpath")
+}
+
 func (server *ServerMonitor) SetConfigRefreshCookie() error {
 	return server.createCookie("cookie_configrefresh")
 }

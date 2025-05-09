@@ -59,14 +59,15 @@ func (cluster *Cluster) Bootstrap() error {
 }
 
 func (cluster *Cluster) ProvisionServices() error {
-
+	hasConfigPath := make(map[string]bool)
 	cluster.StateMachine.SetFailoverState()
 	// delete the cluster state here
 	path := cluster.WorkingDir + ".json"
 	os.Remove(path)
 	cluster.ResetCrashes()
 	for _, server := range cluster.Servers {
-
+		hasConfigPath[server.HostCnf] = server.HasConfigPathCookie()
+		server.DelConfigPathCookie() // remove the config path cookie since we are going to provision it
 		switch cluster.GetOrchestrator() {
 		case config.ConstOrchestratorOpenSVC:
 			go cluster.OpenSVCProvisionDatabaseService(server)
@@ -94,6 +95,10 @@ func (cluster *Cluster) ProvisionServices() error {
 		case err := <-cluster.errorChan:
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+
+				if hasConfigPath[server.HostCnf] {
+					server.SetConfigPathCookie() // revert the config path cookie since error occured
+				}
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
 				server.SetProvisionCookie()
@@ -274,6 +279,7 @@ func (cluster *Cluster) Unprovision() error {
 				server.DelProvisionCookie()
 				server.DelRestartCookie()
 				server.DelReprovisionCookie()
+				server.DelConfigPathCookie()
 			}
 		}
 	}

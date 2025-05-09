@@ -7,13 +7,10 @@
 package configurator
 
 import (
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
 )
 
@@ -78,22 +75,4 @@ func (configurator *Configurator) SetProxyMemorySize(value string) {
 
 func (configurator *Configurator) SetProxyDiskSize(value string) {
 	configurator.ClusterConfig.ProvProxDisk = value
-}
-
-func (configurator *Configurator) CopyPreservedVariables(dirpath string) error {
-	srcpath := filepath.Join(dirpath, "99_preserved.cnf")
-	destpath := filepath.Join(dirpath, "init/etc/mysql/custom.d/99_preserved.cnf")
-
-	// Check if the source file exists
-	if _, err := os.Stat(srcpath); os.IsNotExist(err) {
-		return nil
-	}
-
-	// Copy the file
-	err := misc.CopyFile(srcpath, destpath)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

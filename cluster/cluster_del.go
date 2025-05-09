@@ -86,7 +86,11 @@ func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 			srv.GetDatabaseConfig()
 			_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(dtag, cmd), ";"))
 			if needrestart {
-				srv.SetRestartCookie()
+				if dtag == "nosplitpath" {
+					srv.SetConfigPathCookie()
+				} else {
+					srv.SetRestartCookie()
+				}
 			}
 		}
 	}
@@ -94,7 +98,11 @@ func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 	changed := cluster.DropDBTagConfig(dtag)
 	if changed {
 		if !cluster.Conf.ProvDBApplyDynamicConfig {
-			cluster.SetDBRestartCookie()
+			if dtag == "nosplitpath" {
+				cluster.SetDBConfigPathCookie()
+			} else {
+				cluster.SetDBRestartCookie()
+			}
 		}
 
 		cluster.SetConfigChangeCookie()

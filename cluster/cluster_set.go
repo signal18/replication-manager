@@ -1318,6 +1318,11 @@ func (cluster *Cluster) SetDBReprovCookie() {
 		srv.SetReprovCookie()
 	}
 }
+func (cluster *Cluster) SetDBConfigPathCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigPathCookie()
+	}
+}
 
 func (cluster *Cluster) SetWaitDBACredCookie() {
 	for _, srv := range cluster.Servers {

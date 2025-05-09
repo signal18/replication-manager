@@ -173,6 +173,10 @@ func (server *ServerMonitor) HasConfigCookie() bool {
 	return server.hasCookie("cookie_config")
 }
 
+func (server *ServerMonitor) HasConfigPathCookie() bool {
+	return server.hasCookie("cookie_configpath")
+}
+
 func (server *ServerMonitor) HasConfigRefreshCookie() bool {
 	return server.hasCookie("cookie_configrefresh")
 }
