@@ -37,6 +37,10 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			server.SetConfigPathCookie()
 		}
 
+		if v.Runtime != nil && v.Config != nil && *v.Runtime != *v.Config {
+			server.SetConfigPathCookie()
+		}
+
 		if v.Runtime != nil && v.Config != nil {
 			server.IsNeedPathCheck = false
 		}
