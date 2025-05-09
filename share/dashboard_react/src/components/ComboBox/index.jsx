@@ -94,7 +94,6 @@ const ComboBox = ({
                             className={inputClassName}
                             value={inputValue}
                             onChange={handleInputChange}
-                            onFocus={(e) => { if (!isDisabled) { onOpen(e) }}}
                             isDisabled={isDisabled}
                         />
                     </PopoverTrigger>
