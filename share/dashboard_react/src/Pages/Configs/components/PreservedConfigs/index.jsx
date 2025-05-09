@@ -15,7 +15,7 @@ import RMSwitch from '../../../../components/RMSwitch'
 import { switchSetting } from '../../../../redux/settingsSlice'
 import TableType2 from '../../../../components/TableType2'
 
-function PreservedConfigs({ selectedCluster }) {
+function PreservedConfigs({ selectedCluster, user }) {
     const dispatch = useDispatch()
     const columnHelper = createColumnHelper()
 
@@ -120,13 +120,14 @@ function PreservedConfigs({ selectedCluster }) {
                 header: 'Value',
                 size: 100,
                 maxSize: 200,
-                cell: (info) => (<TextForm value={info.getValue()} confirmTitle={`Confirm set value to `} maxLength={1024} className={styles.textContainer} onSave={(value) => {dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: info.row.original.variableName + "=" + value }))}}/>)
+                cell: (info) => (<TextForm isDisabled={user?.grants['cluster-settings'] == false} value={info.getValue()} confirmTitle={`Confirm set value to `} maxLength={1024} className={styles.textContainer} onSave={(value) => {dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: info.row.original.variableName + "=" + value }))}}/>)
             }),
             columnHelper.display({
                 id: 'actions',
                 header: 'Actions',
                 cell: (info) => (
                     <RMIconButton
+                        isDisabled={user?.grants['cluster-settings'] == false}
                         tooltip="Preserve: False"
                         icon={TbTrash}
                         onClick={() => handleRemoveEntry(info.row.original.variableName)}

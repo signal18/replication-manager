@@ -5,7 +5,7 @@ import styles from './styles.module.scss'
 import RMIconButton from '../RMIconButton'
 import ConfirmModal from '../Modals/ConfirmModal'
 
-function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern }) {
+function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
 
@@ -36,6 +36,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
       <Flex w='100%' gap='2' align='center'>
         <Input
           id={id}
+          isDisabled={isDisabled}
           ref={inputRef}
           value={currentValue}
           maxLength={maxLength}
@@ -45,6 +46,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
         {isEditable ? (
           <>
             <RMIconButton
+              isDisabled={isDisabled}
               icon={HiX}
               tooltip='Cancel'
               colorScheme='red'
@@ -56,7 +58,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
             <RMIconButton
               icon={HiCheck}
               colorScheme='green'
-              isDisabled={!valid}
+              isDisabled={(isDisabled || !valid)}
               tooltip='Save'
               onClick={() => {
                 setIsConfirmModalOpen(true)
@@ -65,6 +67,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
           </>
         ) : (
           <RMIconButton
+            isDisabled={isDisabled}
             icon={HiPencilAlt}
             className={styles.btnEdit}
             tooltip='Edit'

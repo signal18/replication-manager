@@ -422,7 +422,7 @@ function DBConfigs({ selectedCluster, user }) {
                   className={styles.accordion}
                   headerClassName={styles.accordionHeader}
                   panelClassName={styles.accordionBody}
-                  body={<PreservedConfigs selectedCluster={selectedCluster}/>}
+                  body={<PreservedConfigs selectedCluster={selectedCluster} user={user}/>}
                 />
           </VStack>
         </HStack>
