@@ -153,10 +153,10 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
-      key: 'Generate All DB Config Files',
+      key: 'Refresh Variables and DB Config',
       value: (
         <RMIconButton isDisabled={user?.grants['proxy-config-flag'] == false} icon={HiRefresh} onClick={() => { 
-          setConfirmTitle('Confirm generate DB Config from configurator settings to monitor datadir?'); 
+          setConfirmTitle('Confirm refresh variables and db config?') 
           setIsConfirmModalOpen(true)
           setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
         }} />

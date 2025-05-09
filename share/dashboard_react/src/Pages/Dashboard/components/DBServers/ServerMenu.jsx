@@ -251,7 +251,7 @@ function ServerMenu({
               ...(user?.grants['db-config-create']
                 ? [
                     {
-                      name: 'Generate Database Config',
+                      name: 'Refresh Variables and Generate Config',
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(`Confirm generate db config for ${serverName}?`)
