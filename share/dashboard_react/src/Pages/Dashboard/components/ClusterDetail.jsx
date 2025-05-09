@@ -396,24 +396,15 @@ function ClusterDetail({ selectedCluster }) {
             <>
               {selectedCluster?.config?.testInjectTraffic && <TagPill type='success' text='PrxTraffic' />}
               {selectedCluster?.config?.testInjectTrafficStaging && <TagPill type='success' text='PrxTrafficStaging' />}
-              {selectedCluster?.config?.monitoringPause && (
-                <TagPill colorScheme='red' isBlinking={true} text='NotMonitored' />
-              )}
-              {selectedCluster?.isProvision ? (
-                <TagPill colorScheme='green' text='IsProvision' />
-              ) : (
-                <TagPill colorScheme='orange' text='NeedProvision' />
-              )}
-              {selectedCluster?.isNeedDatabasesRollingRestart && (
-                <TagPill colorScheme='orange' text='NeedRollingRestart' />
-              )}
-              {selectedCluster?.isNeedDatabasesRollingReprov && (
-                <TagPill colorScheme='orange' text='NeedRollingReprov' />
-              )}
+              {selectedCluster?.config?.monitoringPause && <TagPill colorScheme='red' isBlinking={true} text='NotMonitored' />}
+              {selectedCluster?.isProvision ? <TagPill colorScheme='green' text='IsProvision' /> : <TagPill colorScheme='orange' text='NeedProvision' />}
+              {selectedCluster?.isNeedDatabasesRollingRestart && <TagPill colorScheme='orange' text='NeedRollingRestart' />}
+              {selectedCluster?.isNeedDatabasesRollingReprov && <TagPill colorScheme='orange' text='NeedRollingReprov' />}
               {selectedCluster?.isNeedDatabasesRestart && <TagPill colorScheme='orange' text='NeedDabaseRestart' />}
               {selectedCluster?.isNeedDatabasesReprov && <TagPill colorScheme='orange' text='NeedDatabaseReprov' />}
               {selectedCluster?.isNeedProxiesRestart && <TagPill colorScheme='orange' text='NeedProxyRestart' />}
               {selectedCluster?.isNeedProxiesReprov && <TagPill colorScheme='orange' text='NeedProxyReprov' />}
+              {selectedCluster?.isConfigPathChange && <TagPill colorScheme='orange' text='DBConfigPathChanged' />}
               {selectedCluster?.isNotMonitoring && <TagPill colorScheme='orange' text='UnMonitored' />}
               {selectedCluster?.isCapturing && <TagPill colorScheme='orange' text='Capturing' />}
             </>

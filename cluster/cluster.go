@@ -118,6 +118,7 @@ type Cluster struct {
 	IsAlertDisable                bool                   `json:"isAlertDisable"`
 	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
 	IsNeedStagingChange           bool                   `json:"isNeedStagingChange"`
+	IsConfigPathChange            bool                   `json:"isConfigPathChange"`
 	Conf                          *config.Config         `json:"config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
@@ -630,6 +631,7 @@ func (cluster *Cluster) Run() {
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
+			cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			go cluster.CheckDefaultUser(false)

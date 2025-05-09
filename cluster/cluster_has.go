@@ -375,6 +375,17 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	return false
 }
 
+func (cluster *Cluster) HasConfigPathChanged() bool {
+	for _, srv := range cluster.Servers {
+		if srv != nil {
+			if srv.HasConfigPathCookie() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) IsInHostList(host string) bool {
 	for _, v := range cluster.hostList {
 		if v == host {
