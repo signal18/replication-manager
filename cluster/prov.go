@@ -452,6 +452,7 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	if err == nil {
 		server.DelRestartCookie()
 	}
+	server.SetConfigRefreshCookie()
 	return err
 }
 
