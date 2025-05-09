@@ -159,6 +159,7 @@ function PreservedConfigs({ selectedCluster, user }) {
             <TableType2 dataArray={dataObject} className={styles.table} />
             <Box w={'100%'}>
                 <ComboBox
+                    isDisabled={(selectedCluster?.config?.provDbConfigPreserve == false || user?.grants['cluster-settings'] == false)}
                     className={styles.comboBox}
                     placeholder="New Preserved Variable"
                     options={variablesData}
