@@ -125,3 +125,9 @@
 .textContainer {
   width: 100%;
 }
+
+.table {
+  align-items: center;
+  overflow: hidden;
+  grid-template-columns: auto !important;
+}

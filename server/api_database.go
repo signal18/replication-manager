@@ -2217,8 +2217,8 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 			* - FETCH: Fetch config changes but keep config path
 			* - OVERWRITE: Fetch config changes and overwrite config path
 			* - Empty: Default action from cluster config
-			*   - If ProvDbStartFetchConfig is true: fetch config changes
-			*   - If ProvDbStartFetchConfig is false: no config fetch
+			*   - If ProvDBStartFetchConfig is true: fetch config changes
+			*   - If ProvDBStartFetchConfig is false: no config fetch
 			*   If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE": return error
 			*
 			 */

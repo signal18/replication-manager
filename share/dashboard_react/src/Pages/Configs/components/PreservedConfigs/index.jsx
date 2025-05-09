@@ -143,11 +143,11 @@ function PreservedConfigs({ selectedCluster, user }) {
           key: 'Enable Preserve Variables',
           value: (
             <RMSwitch
-              isChecked={selectedCluster?.config?.provDbStartFetchConfig}
+              isChecked={selectedCluster?.config?.provDbConfigPreserve}
               isDisabled={user?.grants['cluster-settings'] == false}
-              confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
+              confirmTitle={'Confirm switch settings for prov-db-config-preserve?'}
               onChange={() =>
-                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-config-preserve' }))
               }
             />
           )
