@@ -445,7 +445,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	return nil
 }
 
-func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string, preserve bool) error {
+func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir string, TemplateEnv map[string]string, RepMgrVersion string) error {
 
 	os.RemoveAll(Datadir + "/init")
 	// Extract files

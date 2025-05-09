@@ -26,6 +26,7 @@ const ComboBox = ({
     caseSensitive = false,
     clearAfterConfirm = false,
     listMaxHeight = "200px",
+    isDisabled = false,
 }) => {
     const [inputValue, setInputValue] = useState("");
     const [filteredOptions, setFilteredOptions] = useState(options);
@@ -38,6 +39,8 @@ const ComboBox = ({
     }, [options]);
 
     const handleInputChange = (e) => {
+        if (isDisabled) return; // Prevent input when disabled
+
         const val = e.target.value;
         setInputValue(val);
 
@@ -91,7 +94,8 @@ const ComboBox = ({
                             className={inputClassName}
                             value={inputValue}
                             onChange={handleInputChange}
-                            onFocus={onOpen}
+                            onFocus={(e) => { if (!isDisabled) { onOpen(e) }}}
+                            isDisabled={isDisabled}
                         />
                     </PopoverTrigger>
                     <PopoverContent className={popoverClassName}>
@@ -128,6 +132,7 @@ const ComboBox = ({
                         alignSelf="flex-end"
                         size="sm"
                         title="Confirm input"
+                        isDisabled={isDisabled}
                     />
                     <IconButton
                         icon={<FaTimes />}
@@ -137,6 +142,7 @@ const ComboBox = ({
                         alignSelf="flex-end"
                         size="sm"
                         title="Cancel input"
+                        isDisabled={isDisabled}
                     />
                 </>)}
             </HStack>

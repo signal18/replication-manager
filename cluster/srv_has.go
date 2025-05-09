@@ -181,12 +181,8 @@ func (server *ServerMonitor) HasConfigRefreshCookie() bool {
 	return server.hasCookie("cookie_configrefresh")
 }
 
-func (server *ServerMonitor) HasNoPreserveCookie() bool {
-	return server.hasCookie("cookie_nopreserve")
-}
-
 func (server *ServerMonitor) HasNoConfigFetchCookie() bool {
-	return server.hasCookie("cookie_configfetch")
+	return server.hasCookie("cookie_noconfigfetch")
 }
 
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {

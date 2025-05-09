@@ -11,6 +11,9 @@ import ComboBox from '../../../../components/ComboBox'
 import { DataTable } from '../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
 import TextForm from '../../../../components/TextForm'
+import RMSwitch from '../../../../components/RMSwitch'
+import { switchSetting } from '../../../../redux/settingsSlice'
+import TableType2 from '../../../../components/TableType2'
 
 function PreservedConfigs({ selectedCluster }) {
     const dispatch = useDispatch()
@@ -134,9 +137,25 @@ function PreservedConfigs({ selectedCluster }) {
         [preservedConfigs]
     )
     
+    const dataObject = [
+        {
+          key: 'Enable Preserve Variables',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.provDbStartFetchConfig}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
+              }
+            />
+          )
+        }
+    ]
 
     return (
         <VStack className={styles.contentContainer}>
+            <TableType2 dataArray={dataObject} className={styles.table} />
             <Box w={'100%'}>
                 <ComboBox
                     className={styles.comboBox}

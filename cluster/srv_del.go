@@ -71,11 +71,7 @@ func (server *ServerMonitor) DelConfigRefreshCookie() error {
 }
 
 func (server *ServerMonitor) DelNoConfigFetchCookie() error {
-	return server.delCookie("cookie_configfetch")
-}
-
-func (server *ServerMonitor) DelNoPreserveCookie() error {
-	return server.delCookie("cookie_nopreserve")
+	return server.delCookie("cookie_noconfigfetch")
 }
 
 func (server *ServerMonitor) DelWaitBackupCookie() error {

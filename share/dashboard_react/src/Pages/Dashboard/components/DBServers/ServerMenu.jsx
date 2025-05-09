@@ -275,27 +275,31 @@ function ServerMenu({
               ...(user?.grants['db-start']
                 ? [
                     {
+                      name: 'Start DB Keep Config',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm start for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'keep' })))
+                      }
+                    },
+                    {
                       name: 'Start DB Fetch Config',
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(`Confirm start for ${serverName}?`)
                         setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'fetch' })))
                       }
-                    }
+                    },
+                    {
+                      name: 'Start DB Overwrite Path',
+                      onClick: () => {
+                        openConfirmModal()
+                        setConfirmTitle(`Confirm start for ${serverName}?`)
+                        setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'overwrite' })))
+                      }
+                    },
                   ]
                 : []),
-                ...(user?.grants['db-start']
-                  ? [
-                      {
-                        name: 'Start DB Keep Config',
-                        onClick: () => {
-                          openConfirmModal()
-                          setConfirmTitle(`Confirm start for ${serverName}?`)
-                          setConfirmHandler(() => () => dispatch(startDatabase({ clusterName, serverId: row.id, cfgAction: 'keep' })))
-                        }
-                      }
-                    ]
-                  : []),
               ...(user?.grants['prov-db-provision']
                 ? [
                     {

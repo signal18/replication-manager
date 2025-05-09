@@ -115,12 +115,8 @@ func (proxy *Proxy) SetConfigRefreshCookie() error {
 	return proxy.createCookie("cookie_configrefresh")
 }
 
-func (proxy *Proxy) SetNoPreserveCookie() error {
-	return proxy.createCookie("cookie_nopreserve")
-}
-
 func (proxy *Proxy) SetNoConfigFetchCookie() error {
-	return proxy.createCookie("cookie_configfetch")
+	return proxy.createCookie("cookie_noconfigfetch")
 }
 
 func (p *Proxy) SetPrevState(state string) {

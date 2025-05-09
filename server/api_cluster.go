@@ -2240,6 +2240,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
 		mycluster.SwitchProvNetCNI()
+	case "prov-db-config-preserve":
+		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
@@ -3260,6 +3262,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Test = isactive
 	case "prov-net-cni":
 		mycluster.Conf.ProvNetCNI = isactive
+	case "prov-db-config-preserve":
+		mycluster.Conf.ProvDBConfigPreserve = isactive
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
 	case "prov-docker-daemon-private":

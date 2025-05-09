@@ -411,11 +411,7 @@ func (server *ServerMonitor) SetConfigRefreshCookie() error {
 }
 
 func (server *ServerMonitor) SetNoConfigFetchCookie() error {
-	return server.createCookie("cookie_configfetch")
-}
-
-func (server *ServerMonitor) SetNoPreserveCookie() error {
-	return server.createCookie("cookie_nopreserve")
+	return server.createCookie("cookie_noconfigfetch")
 }
 
 func (server *ServerMonitor) SetWaitBackupCookie() error {

@@ -2203,23 +2203,48 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			// Check if cfgAction is provided
-			if strings.ToUpper(vars["cfgAction"]) == "KEEP" {
+			/*
+			* Disclaimer:
+			* - If prov-db-config-preserve is false, the preserved variables will not be used
+			* - If prov-db-config-preserve is true: For safety purpose all actions will not override the preserved variables listed in the cluster config
+			* - The preserved variables can be fixed values or empty strings
+			* - The preserved variables with empty strings will get the values from the current deployed config or variables in runtime
+			* - Each time you change configurator tags, it will regenerate the preserved values
+			* - The variables that are not set will be overridden by the configurator
+			*
+			* cfgAction:
+			* - KEEP: No config fetch
+			* - FETCH: Fetch config changes but keep config path
+			* - OVERWRITE: Fetch config changes and overwrite config path
+			* - Empty: Default action from cluster config
+			*   - If ProvDbStartFetchConfig is true: fetch config changes
+			*   - If ProvDbStartFetchConfig is false: no config fetch
+			*   If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE": return error
+			*
+			 */
+			if strings.ToUpper(vars["cfgAction"]) == "KEEP" { // No config fetch
 				if !node.HasNoConfigFetchCookie() {
 					node.SetNoConfigFetchCookie()
 				}
-			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" {
+			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" { // Fetch config changes but keep config path
 				if node.HasNoConfigFetchCookie() {
 					node.DelNoConfigFetchCookie()
+				}
+			} else if strings.ToUpper(vars["cfgAction"]) == "OVERWRITE" { // Fetch config changes and overwrite config path
+				if node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie() // Fetch config changes
+				}
+				if node.HasConfigPathCookie() {
+					node.DelConfigPathCookie() // Overwrite config path
 				}
 			} else if vars["cfgAction"] == "" {
 				// Default action from cluster config
 				if mycluster.Conf.ProvDbStartFetchConfig && node.HasNoConfigFetchCookie() {
-					node.SetNoConfigFetchCookie()
-				} else if !mycluster.Conf.ProvDbStartFetchConfig && !node.HasNoConfigFetchCookie() {
 					node.DelNoConfigFetchCookie()
+				} else if !mycluster.Conf.ProvDbStartFetchConfig && !node.HasNoConfigFetchCookie() {
+					node.SetNoConfigFetchCookie()
 				}
-			} else { // If cfgAction is not empty and not "KEEP" or "FETCH"
+			} else { // If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE"
 				http.Error(w, "Invalid config action", http.StatusBadRequest)
 				return
 			}

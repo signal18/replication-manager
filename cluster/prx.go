@@ -147,6 +147,7 @@ type DatabaseProxy interface {
 	SetWaitStopCookie() error
 	SetConfigCookie() error
 	SetConfigRefreshCookie() error
+	SetNoConfigFetchCookie() error
 
 	HasProvisionCookie() bool
 	HasUnprovisionCookie() bool
