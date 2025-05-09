@@ -117,7 +117,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       }
     })
     if (showRowPreserved) {
-      return searchedData.filter((x) => x.preserve === true)
+      return searchedData.filter((x) => x.preserveValue != null)
     }
     return searchedData
   }
@@ -261,7 +261,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
           Runtime
         </Checkbox>
         <Checkbox size='lg' isChecked={showPreserve} onChange={(e) => { vDispatch({ type: "SET_SHOW_PRESERVE", payload: e.target.checked}) }} className={styles.checkbox}>
-          Runtime
+          Preserve
         </Checkbox>
       </Flex>
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
