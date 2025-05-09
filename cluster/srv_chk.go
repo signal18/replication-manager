@@ -21,6 +21,28 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+func (server *ServerMonitor) CheckDBConfigPath() {
+	if !server.IsNeedPathCheck || server.IsDown() {
+		return
+	}
+
+	cluster := server.ClusterGroup
+	v, ok := server.VariablesMap.CheckAndGet("INNODB_DATA_HOME_DIR")
+	if ok {
+		if v.Runtime != nil && *v.Runtime == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
+			server.SetConfigPathCookie()
+		}
+
+		if v.Runtime != nil && *v.Runtime == "" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+			server.SetConfigPathCookie()
+		}
+
+		if v.Runtime != nil && v.Config != nil {
+			server.IsNeedPathCheck = false
+		}
+	}
+}
+
 // CheckMaxConnections Check 80% of max connection reach
 func (server *ServerMonitor) CheckMaxConnections() {
 	cluster := server.ClusterGroup

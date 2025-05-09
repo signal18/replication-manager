@@ -215,6 +215,7 @@ type ServerMonitor struct {
 	DBDataDir                   string
 	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
+	IsNeedPathCheck             bool
 }
 
 type ServerBackupMeta struct {
@@ -487,6 +488,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Declaring db master as failed %s", server.URL)
 					}
 					cluster.GetMaster().SetState(stateFailed)
+					server.IsNeedPathCheck = true
 					server.DelWaitStopCookie()
 					server.DelUnprovisionCookie()
 				} else {
@@ -500,6 +502,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					if server.FailCount == cluster.Conf.MaxFail {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Declaring replica %s as failed", server.URL)
 						server.SetState(stateFailed)
+						server.IsNeedPathCheck = true
 						server.DelWaitStopCookie()
 						server.DelUnprovisionCookie()
 
@@ -766,6 +769,8 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
+
+		server.CheckDBConfigPath() // check if config path is different from runtime
 
 		if !server.DBVersion.IsPostgreSQL() {
 			server.Strict = server.Variables.Get("GTID_STRICT_MODE")
