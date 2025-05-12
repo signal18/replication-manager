@@ -23,9 +23,13 @@ import (
 )
 
 func (server *ServerMonitor) CheckDBConfigPath() {
+	cluster := server.ClusterGroup
+	if cluster.IsInFailover() {
+		return
+	}
+
 	changed := false
 
-	cluster := server.ClusterGroup
 	v, ok := server.VariablesMap.CheckAndGet("INNODB_DATA_HOME_DIR")
 	if ok {
 		value := v.Deployed
