@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -27,14 +28,26 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 	v, ok := server.VariablesMap.CheckAndGet("INNODB_DATA_HOME_DIR")
 	if ok {
 		if v.Runtime != nil && *v.Runtime == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
 			server.SetConfigPathCookie()
 		}
 
 		if v.Runtime != nil && *v.Runtime == "" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
 			server.SetConfigPathCookie()
 		}
 
 		if v.Runtime != nil && v.Config != nil && *v.Runtime != *v.Config {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
 			server.SetConfigPathCookie()
 		}
 
