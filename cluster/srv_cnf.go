@@ -240,6 +240,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	}()
 
 	wg.Wait()
+
+	server.IsNeedPathCheck = true
 }
 
 func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {

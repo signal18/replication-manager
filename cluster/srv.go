@@ -284,7 +284,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
-	server.IsNeedPathCheck = true
 
 	// Set source cluster name, set cluster name as source if not specified
 	// This is needed to make check more simple
@@ -420,7 +419,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
-  server.SetConfigRefreshCookie()
+	server.SetConfigRefreshCookie()
 	go server.FetchLastBackupMetadata()
 	return server, err
 }
@@ -489,9 +488,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Declaring db master as failed %s", server.URL)
 					}
 					cluster.GetMaster().SetState(stateFailed)
-					server.IsNeedPathCheck = true
 					server.DelWaitStopCookie()
 					server.DelUnprovisionCookie()
+					server.SetConfigRefreshCookie()
 				} else {
 					cluster.GetMaster().SetState(stateSuspect)
 
@@ -503,9 +502,9 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					if server.FailCount == cluster.Conf.MaxFail {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Declaring replica %s as failed", server.URL)
 						server.SetState(stateFailed)
-						server.IsNeedPathCheck = true
 						server.DelWaitStopCookie()
 						server.DelUnprovisionCookie()
+						server.SetConfigRefreshCookie()
 
 						// if wsrep could enter here but still server is not a slave
 						// Remove from slave list if exists
@@ -770,9 +769,9 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
-		
+
 		if server.IsNeedPathCheck {
-		  server.CheckDBConfigPath()
+			server.CheckDBConfigPath()
 		}
 
 		if !server.DBVersion.IsPostgreSQL() {
