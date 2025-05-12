@@ -60,10 +60,29 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			changed = true
 		}
 
-		if value != nil && v.Config != nil {
-			if *value == *v.Config && !changed {
-				server.DelConfigPathCookie()
+		if !changed {
+			if value != nil && *value == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+				_, file, no, ok := runtime.Caller(1)
+				if ok {
+					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+				}
+				server.SetConfigPathCookie()
+				changed = true
 			}
+
+			if (value == nil || *value == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
+				_, file, no, ok := runtime.Caller(1)
+				if ok {
+					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+				}
+				server.SetConfigPathCookie()
+				changed = true
+			}
+
+			server.DelConfigPathCookie()
+		}
+
+		if value != nil && v.Config != nil {
 			server.IsNeedPathCheck = false
 		}
 
