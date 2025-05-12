@@ -23,6 +23,7 @@ import (
 )
 
 func (server *ServerMonitor) CheckDBConfigPath() {
+	changed := false
 
 	cluster := server.ClusterGroup
 	v, ok := server.VariablesMap.CheckAndGet("INNODB_DATA_HOME_DIR")
@@ -38,14 +39,16 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
 			}
 			server.SetConfigPathCookie()
+			changed = true
 		}
 
-		if value != nil && *value == "" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+		if (value == nil || *value == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
 			}
 			server.SetConfigPathCookie()
+			changed = true
 		}
 
 		if value != nil && v.Config != nil && *value != *v.Config {
@@ -54,8 +57,13 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
 			}
 			server.SetConfigPathCookie()
+			changed = true
 		}
+
 		if value != nil && v.Config != nil {
+			if *value == *v.Config && !changed {
+				server.DelConfigPathCookie()
+			}
 			server.IsNeedPathCheck = false
 		}
 
