@@ -1379,6 +1379,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	wg.Add(1)
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
+	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.StateMachine.RemoveFailoverState()
 
 }
