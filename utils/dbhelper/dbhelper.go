@@ -1993,7 +1993,7 @@ func GetStatusAsInt(db *sqlx.DB, myver *version.Version) (map[string]int64, stri
 	query := "SELECT /*replication-manager*/ UPPER(Variable_name) AS variable_name, UPPER(Variable_Value) AS value FROM " + source + ".global_status"
 	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, query, errors.New("Could not get status variables as integers")
+		return nil, query, err
 	}
 	defer rows.Close()
 	for rows.Next() {
