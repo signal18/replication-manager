@@ -216,6 +216,7 @@ type ServerMonitor struct {
 	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
+	HasConfigPathChanged        bool
 }
 
 type ServerBackupMeta struct {
@@ -678,6 +679,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 		}
 	}
+
+	server.HasConfigPathChanged = server.HasConfigPathCookie()
 }
 
 func (server *ServerMonitor) ProcessFailedSlave() {

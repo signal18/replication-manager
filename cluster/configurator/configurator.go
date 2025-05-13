@@ -604,7 +604,6 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 
 	// Copy the default_path.cnf file
 	// If preservepath is true, we copy the backup file to the default path
-	// If preservepath is false, we copy the current path file to the backup location
 	var srcpath, destpath string
 	if preservepath {
 		srcpath = filepath.Join(Datadir, "default_path.cnf")
