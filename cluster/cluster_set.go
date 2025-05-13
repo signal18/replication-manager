@@ -2559,7 +2559,11 @@ func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
 			if preserve {
 				list[i] = variable
 			} else {
-				list = append(list[:i], list[i+1:]...)
+				if strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars) == key {
+					list = make([]string, 0) // prevent unwanted spaces
+				} else {
+					list = append(list[:i], list[i+1:]...)
+				}
 			}
 			break
 		}
