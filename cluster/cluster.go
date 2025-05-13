@@ -370,6 +370,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 }
 
 func (cluster *Cluster) InitFromConf() {
+	defer cluster.LogPanicToFile("cluster")
+
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -1369,7 +1371,9 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()
