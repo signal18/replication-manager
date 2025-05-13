@@ -3188,6 +3188,8 @@ func GetTagsForLog(module int) string {
 		return "externalscript"
 	case ConstLogModStats:
 		return "stats"
+	case ConstLogModSQL:
+		return "sql"
 	}
 	return ""
 }

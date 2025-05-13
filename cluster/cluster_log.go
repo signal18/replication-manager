@@ -52,15 +52,14 @@ func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, 
 	logs = strings.ReplaceAll(logs, "%", "%%")
 
 	if err != nil && args != nil {
-		cluster.LogPrintf(level, format, args...)
+		cluster.LogModulePrintf(false, config.ConstLogModSQL, level, format, args...)
 	}
 	if logs != "" {
 		if err != nil {
 			cluster.LogSqlErrorPrintf(config.LvlInfo, url, err, from, logs, fmt.Sprintf(format, args...))
 		}
-		if from != "Monitor" {
-			cluster.LogSqlGeneralPrintf(config.LvlInfo, url, from, logs)
-		} else if cluster.Conf.LogSQLInMonitoring {
+
+		if cluster.Conf.IsEligibleForPrinting(config.ConstLogModSQL, level) {
 			cluster.LogSqlGeneralPrintf(config.LvlInfo, url, from, logs)
 		}
 	}
