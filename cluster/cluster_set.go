@@ -2000,6 +2000,14 @@ func (cluster *Cluster) SetLogHeartbeatLevel(value int) {
 		cluster.Conf.LogHeartbeat = false
 	}
 }
+func (cluster *Cluster) SetLogSQLLevel(value int) {
+	cluster.Conf.LogSQLLevel = value
+	if value > 0 {
+		cluster.Conf.LogSQLInMonitoring = true
+	} else {
+		cluster.Conf.LogSQLInMonitoring = false
+	}
+}
 func (cluster *Cluster) SetLogConfigLoadLevel(value int) {
 	cluster.Conf.LogConfigLoadLevel = value
 	if value > 0 {
@@ -2474,23 +2482,21 @@ func (cluster *Cluster) SetLogStatsLevel(value int) {
 	cluster.Conf.LogStatsLevel = value
 }
 
-
-
 func (cluster *Cluster) SetMonitorPFSMutex(value bool) {
 	cluster.Conf.MonitorPFSMutex = value
 	if value {
-		cluster.AddDBTag("logmutex",true)
-		} else	{
-		cluster.DropDBTag("logmutex",true)
+		cluster.AddDBTag("logmutex", true)
+	} else {
+		cluster.DropDBTag("logmutex", true)
 	}
 }
 
 func (cluster *Cluster) SetMonitorPFSLatch(value bool) {
 	cluster.Conf.MonitorPFSLatch = value
 	if value {
-		cluster.AddDBTag("loglatch",true)
-		} else	{
-		cluster.DropDBTag("loglatch",true)
+		cluster.AddDBTag("loglatch", true)
+	} else {
+		cluster.DropDBTag("loglatch", true)
 	}
 }
 
@@ -2498,7 +2504,6 @@ func (cluster *Cluster) SetMonitorPFSMemory(value bool) {
 	cluster.Conf.MonitorPFSMemory = value
 }
 
-
 func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
-   cluster.Conf.MonitorPFSInstruments = value
+	cluster.Conf.MonitorPFSInstruments = value
 }

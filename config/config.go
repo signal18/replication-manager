@@ -89,7 +89,7 @@ type Config struct {
 	MonitorProcessListLimit                   string                 `mapstructure:"monitoring-processlist-limit" toml:"monitoring-processlist-limit" json:"monitoringProcesslistLimit"`
 	MonitorProcessListInactive                bool                   `mapstructure:"monitoring-processlist-inactive" toml:"monitoring-processlist-inactive" json:"monitoringProcesslistInactive"`
 	MonitorProcessListTransactions            bool                   `mapstructure:"monitoring-processlist-transactions" toml:"monitoring-processlist-transactions" json:"monitoringProcesslistTransactions"`
-	MonitorProcessListInformationSchema				bool                   `mapstructure:"monitoring-processlist-information-schema" toml:"monitoring-processlist-information-schema" json:"monitoringProcesslistInformationSchema"`
+	MonitorProcessListInformationSchema       bool                   `mapstructure:"monitoring-processlist-information-schema" toml:"monitoring-processlist-information-schema" json:"monitoringProcesslistInformationSchema"`
 	MonitorQueries                            bool                   `mapstructure:"monitoring-queries" toml:"monitoring-queries" json:"monitoringQueries"`
 	MonitorPFS                                bool                   `mapstructure:"monitoring-performance-schema" toml:"monitoring-performance-schema" json:"monitoringPerformanceSchema"`
 	MonitorPFSInstruments                     bool                   `mapstructure:"monitoring-performance-schema-instruments" toml:"monitoring-performance-schema-instruments" json:"monitoringPerformanceSchemaInstruments"`
@@ -132,6 +132,7 @@ type Config struct {
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
+	LogSQLLevel                               int                    `mapstructure:"log-sql-level"  toml:"log-sql-level" json:"logSqlLevel"`
 	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
 	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `scope:"server" mapstructure:"log-git" toml:"log-git" json:"logGit"`
@@ -1183,6 +1184,7 @@ const (
 	ConstLogModSupport        = 20
 	ConstLogModExternalScript = 21
 	ConstLogModStats          = 22
+	ConstLogModSQL            = 23
 )
 
 /*
@@ -1210,6 +1212,7 @@ const (
 	ConstLogNameArchive        string = "log-archive"
 	ConstLogNameMailer         string = "log-mailer"
 	ConstLogNameExternalScript string = "log-external-script"
+	ConstLogNameLogSQL         string = "log-sql"
 )
 
 /*
@@ -3012,6 +3015,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogSupportLevel >= lvl
 		case module == ConstLogModStats:
 			return conf.LogStatsLevel >= lvl
+		case module == ConstLogModSQL:
+			return conf.LogSQLLevel >= lvl
 		}
 	}
 
