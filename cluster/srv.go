@@ -449,6 +449,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
+
+	// Make sure we always have the updated config path status
+	server.HasConfigPathChanged = server.HasConfigPathCookie()
+
 	// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
 	//server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
@@ -679,8 +683,6 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SendAlert()
 		}
 	}
-
-	server.HasConfigPathChanged = server.HasConfigPathCookie()
 }
 
 func (server *ServerMonitor) ProcessFailedSlave() {
