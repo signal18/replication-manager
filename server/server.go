@@ -368,7 +368,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023,WARN0100,WARN0115,WARN0116,WARN0139,WARN0140,WARN0141", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
-	flags.IntVar(&conf.LogSQLLevel, "log-sql-level", 1, "Log SQL Level")
+	flags.IntVar(&conf.LogSQLLevel, "log-sql-level", 2, "Log SQL Level")
 
 	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
 	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Heartbeat Level")
