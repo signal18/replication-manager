@@ -759,11 +759,11 @@ func (server *ServerMonitor) Refresh() error {
 		server.MonitorTime = time.Now().Unix()
 		logs := ""
 		server.DBVersion, logs, err = dbhelper.GetDBVersion(server.Conn)
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database version %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database version %s %s", server.URL, err)
 
 		vars, logs, err := dbhelper.GetVariables(server.Conn, server.DBVersion)
 		server.Variables = config.FromNormalStringMap(server.Variables, vars)
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database variables %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 		if err != nil {
 			return nil
 		}
@@ -1125,7 +1125,7 @@ func (server *ServerMonitor) freeze() bool {
 	if cluster.Conf.FailEventScheduler {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes from Event Scheduler on %s", server.URL)
 		logs, err := server.SetEventScheduler(false)
-		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not disable event scheduler on %s", server.URL)
+		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not disable event scheduler on %s", server.URL)
 	}
 	if cluster.Conf.FailEventStatus {
 		for _, v := range server.EventStatus {
@@ -1138,7 +1138,7 @@ func (server *ServerMonitor) freeze() bool {
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes stopping all slaves on %s", server.URL)
 	logs, err := server.StopAllSlaves()
-	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not stop replicas source on %s ", server.URL)
+	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not stop replicas source on %s ", server.URL)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes set read only on %s", server.URL)
 	logs, err = server.SetReadOnly()
 	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not set %s as read-only: %s", server.URL, err)
@@ -1148,11 +1148,11 @@ func (server *ServerMonitor) freeze() bool {
 	if cluster.Conf.SwitchLockUserOnFreeze {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes locking users %s", server.URL)
 		err = server.LockUsers()
-		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not lock all users %s : %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not lock all users %s : %s", server.URL, err)
 	}
 	for i := cluster.Conf.SwitchWaitKill; i > 0; i -= 500 {
 		threads, logs, err := dbhelper.CheckLongRunningWrites(server.Conn, 0)
-		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not check long running writes %s as read-only: %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not check long running writes %s as read-only: %s", server.URL, err)
 		if threads == 0 {
 			break
 		}
@@ -1162,30 +1162,30 @@ func (server *ServerMonitor) freeze() bool {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes saving max_connections on %s ", server.URL)
 
 	server.maxConn, logs, err = dbhelper.GetVariableByName(server.Conn, "MAX_CONNECTIONS", server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not save max_connections value on %s", server.URL)
+	cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not save max_connections value on %s", server.URL)
 	if err != nil {
 
 	} else {
 		if cluster.Conf.SwitchDecreaseMaxConn {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes decreasing max_connections to 1 on %s ", server.URL)
 			logs, err := dbhelper.SetMaxConnections(server.Conn, strconv.FormatInt(cluster.Conf.SwitchDecreaseMaxConnValue, 10), server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlErr, "Could not set max_connections to 1 on %s %s", server.URL, err)
+			cluster.LogSQL(logs, err, server.URL, "Freeze", config.LvlInfo, "Could not set max_connections to 1 on %s %s", server.URL, err)
 		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Freezing writes killing all other remaining threads on  %s", server.URL)
 	dbhelper.KillThreads(server.Conn, server.DBVersion)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Freezing writes rejecting writes via FTWRL on %s ", server.URL)
 	logs, err = dbhelper.FlushTablesWithReadLock(server.Conn, server.DBVersion)
-	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not lock tables on %s : %s", server.URL, err)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlInfo, "Could not lock tables on %s : %s", server.URL, err)
 
 	// https://github.com/signal18/replication-manager/issues/378
 	logs, err = dbhelper.FlushBinaryLogs(server.Conn)
-	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlErr, "Could not flush binary logs on %s", server.URL)
+	cluster.LogSQL(logs, err, server.URL, "MasterFailover", config.LvlInfo, "Could not flush binary logs on %s", server.URL)
 
 	if cluster.Conf.FailoverSemiSyncState {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Set semisync replica and disable semisync leader %s", server.URL)
 		logs, err := server.SetSemiSyncReplica()
-		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlInfo, "Failed Set semisync replica and disable semisync  %s, %s", server.URL, err)
 	}
 
 	return true
@@ -1196,7 +1196,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading all relay logs on %s", server.URL)
 	if server.DBVersion.IsMariaDB() && server.HaveMariaDBGTID {
 		ss, logs, err := dbhelper.GetMSlaveStatus(server.Conn, "", server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlErr, "Could not get slave status %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -1209,7 +1209,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
 			ss, logs, err = dbhelper.GetMSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlErr, "Could not get slave status %s %s", server.URL, err)
+			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 
 			if err != nil {
 				return err
@@ -1222,7 +1222,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		}
 	} else {
 		ss, logs, err := dbhelper.GetSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlErr, "Could not get slave status %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
 		if err != nil {
 			return err
 		}
@@ -1635,19 +1635,19 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 
 		var clsave Save
 		clsave.ProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, false, server.GetCluster().Conf.MonitorProcessListLimit, "")
-		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Processlist for server %s: %s ", server.URL, err)
 
 		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)
-		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed InnoDB Status for server %s: %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed InnoDB Status for server %s: %s ", server.URL, err)
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
-		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Status for server %s: %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Status for server %s: %s ", server.URL, err)
 
 		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		} else {
 			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
 		}
-		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Slave Status for server %s: %s ", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Slave Status for server %s: %s ", server.URL, err)
 
 		saveJSON, _ := json.MarshalIndent(clsave, "", "\t")
 		err = os.WriteFile(cluster.Conf.WorkingDir+"/"+cluster.Name+"/capture_"+server.Name+"_"+t.Format("20060102150405")+".json", saveJSON, 0644)

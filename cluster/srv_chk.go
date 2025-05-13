@@ -474,7 +474,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 	// }
 	if server.State != "" && !server.IsDown() && server.IsRelay == false {
 		myhost, logs, err := dbhelper.GetHostFromConnection(server.Conn, cluster.GetDbUser(), server.DBVersion)
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Check Privileges can't get hostname from server %s connection on %s: %s", server.State, server.URL, err)
 		myip, err := misc.GetIPSafe(misc.Unbracket(myhost))
 		// if cluster.Conf.LogLevel > 2 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Client connection found on server %s with IP %s for host %s", server.URL, myip, myhost)

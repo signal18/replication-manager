@@ -1614,7 +1614,7 @@ func (cluster *Cluster) MonitorSchema() {
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion)
-	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlErr, "Could not fetch master tables %s", err)
+	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
 	cmaster.Tables = tablelist
 
 	var tableCluster []string

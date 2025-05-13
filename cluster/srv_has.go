@@ -379,7 +379,7 @@ func (server *ServerMonitor) HasLogsInSystemTables() bool {
 
 func (server *ServerMonitor) HasLogPFSSlowQuery() bool {
 	ConsumerVariables, logs, err := dbhelper.GetPFSVariablesConsumer(server.Conn)
-	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get PFS consumer %s %s", server.URL, err)
+	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get PFS consumer %s %s", server.URL, err)
 	return ConsumerVariables["SLOW_QUERY_PFS"] == "ON"
 }
 

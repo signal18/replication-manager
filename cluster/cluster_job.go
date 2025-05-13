@@ -52,7 +52,7 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 
 		//	for _, s := range cluster.slaves {
 		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName)
-		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlErr, "Could not get database variables %s %s", server.URL, err)
+		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 
 		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Analyse table %s on %s", t, s.URL)
 		//	}
