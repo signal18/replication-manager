@@ -217,6 +217,25 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 	return nil
 }
 
+func (server *ServerMonitor) PreserveConfigPath() {
+	srcpath := filepath.Join(server.Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
+	destpath := filepath.Join(server.Datadir, "default_path.cnf")
+
+	// Check if the source file exists before copying
+	if _, err := os.Stat(srcpath); err == nil {
+		misc.CopyFile(srcpath, destpath)
+	}
+}
+
+func (server *ServerMonitor) RemovePreservedConfigPath() {
+	filename := filepath.Join(server.Datadir, "default_path.cnf")
+
+	// Check if the source file exists before copying
+	if _, err := os.Stat(filename); err == nil {
+		os.Remove(filename)
+	}
+}
+
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	cluster := server.ClusterGroup
 

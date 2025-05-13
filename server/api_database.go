@@ -111,6 +111,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersConfigPathPreserve)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
@@ -120,11 +126,11 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortRegenerateConfig)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
-	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigPathPreserve)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
@@ -4219,4 +4225,95 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 	}
 
 	repman.jsonResponse(resp, w)
+}
+
+// handlerMuxServersPortConfigPathPreserve handles the HTTP request to preserve or remove the configuration path for a specific server within a cluster.
+// @Summary Preserve or remove configuration path for a server
+// @Description Preserves or removes the configuration path for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param preserve path string true "Preserve or remove configuration path (true/false)"
+// @Success 200 {string} string "Configuration path preserved or removed successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Invalid value for preserve parameter"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxServersPortConfigPathPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			if strings.ToUpper(vars["preserve"]) == "TRUE" {
+				node.PreserveConfigPath()
+			} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+				node.RemovePreservedConfigPath()
+			} else {
+				http.Error(w, "Invalid value for preserve parameter", 400)
+				return
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersConfigPathPreserve handles the HTTP request to preserve or remove the configuration path for a specific server within a cluster.
+// @Summary Preserve or remove configuration path for a server
+// @Description Preserves or removes the configuration path for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param preserve path string true "Preserve or remove configuration path (true/false)"
+// @Success 200 {string} string "Configuration path preserved or removed successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Invalid value for preserve parameter"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxServersConfigPathPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			if strings.ToUpper(vars["preserve"]) == "TRUE" {
+				node.PreserveConfigPath()
+			} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+				node.RemovePreservedConfigPath()
+			} else {
+				http.Error(w, "Invalid value for preserve parameter", 400)
+				return
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
 }

@@ -6,7 +6,8 @@ export const configService = {
   addProxyTag,
   dropProxyTag,
   generateConfig,
-  generateAllConfigs
+  generateAllConfigs,
+  preserveConfigPath,
 }
 
 function addDBTag(clusterName, tag, baseURL) {
@@ -31,4 +32,8 @@ function generateConfig(clusterName, host, port, baseURL) {
 
 function generateAllConfigs(clusterName, type, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/generate-configs/${type}`)
+}
+
+function preserveConfigPath(clusterName, dbId, preserve, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/config-path-preserve/${preserve}`)
 }

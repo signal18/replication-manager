@@ -609,14 +609,11 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 	if preservepath {
 		srcpath = filepath.Join(Datadir, "default_path.cnf")
 		destpath = filepath.Join(Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
-	} else {
-		srcpath = filepath.Join(Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
-		destpath = filepath.Join(Datadir, "default_path.cnf")
-	}
 
-	// Check if the source file exists before copying
-	if _, err := os.Stat(srcpath); err == nil {
-		misc.CopyFile(srcpath, destpath)
+		// Check if the source file exists before copying
+		if _, err := os.Stat(srcpath); err == nil {
+			misc.CopyFile(srcpath, destpath)
+		}
 	}
 
 	// If you set the path as preserved variable with value, it will override the default_path.cnf
