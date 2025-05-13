@@ -23,19 +23,6 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
-      key: 'Log SQL in Monitoring',
-      value: (
-        <RMSwitch
-          confirmTitle={'Confirm switch settings for log-sql-in-monitoring?'}
-          onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-sql-in-monitoring' }))
-          }
-          isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.logSqlInMonitoring}
-        />
-      )
-    },
-    {
       key: 'Log to SysLog',
       value: (
         <RMSwitch
@@ -43,6 +30,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'log-syslog' }))}
           isDisabled={user?.grants['cluster-settings'] == false}
           isChecked={selectedCluster?.config?.logSyslog}
+        />
+      )
+    },
+     {
+      key: 'Log SQL in Monitoring',
+      value: (
+        <LogSlider
+          value={selectedCluster?.config?.logSqlLevel}
+          confirmTitle={`Confirm change 'log-sql-level' to: `}
+          onChange={(val) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'log-sql-level',
+                value: val
+              })
+            )
+          }
         />
       )
     },
