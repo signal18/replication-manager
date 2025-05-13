@@ -2790,6 +2790,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-heartbeat-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogHeartbeatLevel(val)
+	case "log-sql-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogSQLLevel(val)
 	case "log-config-load-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogConfigLoadLevel(val)
@@ -3369,7 +3372,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "force-binlog-slow-queries":
 		mycluster.Conf.ForceBinlogSlowqueries = isactive
 	case "log-sql-in-monitoring":
-		mycluster.Conf.LogSQLInMonitoring = isactive
+		if mycluster.Conf.LogSQLInMonitoring != isactive {
+			if isactive {
+				mycluster.Conf.LogSQLLevel = 1
+			} else {
+				mycluster.Conf.LogSQLLevel = 0
+			}
+			mycluster.Conf.LogSQLInMonitoring = isactive
+		}
 	case "log-writer-election":
 		if mycluster.Conf.LogWriterElection != isactive {
 			if isactive {

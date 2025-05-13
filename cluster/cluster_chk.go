@@ -216,14 +216,14 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 		if relaycheck != nil {
 			if relaycheck.IsRelay == false {
 				status, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
-				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "GetStatusAsInt")
+				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
 				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
 				// if cluster.Conf.LogLevel > 1 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
 				// }
 				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
 				status2, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
-				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "GetStatusAsInt")
+				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
 				// if cluster.Conf.LogLevel > 1 {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
 				// }

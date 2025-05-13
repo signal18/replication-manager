@@ -2018,6 +2018,14 @@ func (cluster *Cluster) SetLogHeartbeatLevel(value int) {
 		cluster.Conf.LogHeartbeat = false
 	}
 }
+func (cluster *Cluster) SetLogSQLLevel(value int) {
+	cluster.Conf.LogSQLLevel = value
+	if value > 0 {
+		cluster.Conf.LogSQLInMonitoring = true
+	} else {
+		cluster.Conf.LogSQLInMonitoring = false
+	}
+}
 func (cluster *Cluster) SetLogConfigLoadLevel(value int) {
 	cluster.Conf.LogConfigLoadLevel = value
 	if value > 0 {

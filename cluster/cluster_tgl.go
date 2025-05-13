@@ -331,20 +331,19 @@ func (cluster *Cluster) SwitchGraphiteBlacklist() {
 }
 
 func (cluster *Cluster) SwitchMonitorPFSMutex() {
-  cluster.SetMonitorPFSMutex(!cluster.Conf.MonitorPFSMutex)
+	cluster.SetMonitorPFSMutex(!cluster.Conf.MonitorPFSMutex)
 }
 
 func (cluster *Cluster) SwitchMonitorPFSLatch() {
-  cluster.SetMonitorPFSLatch(!cluster.Conf.MonitorPFSLatch)
+	cluster.SetMonitorPFSLatch(!cluster.Conf.MonitorPFSLatch)
 }
 
 func (cluster *Cluster) SwitchMonitorPFSMemory() {
-  cluster.SetMonitorPFSMemory(!cluster.Conf.MonitorPFSMemory)
+	cluster.SetMonitorPFSMemory(!cluster.Conf.MonitorPFSMemory)
 }
 
-
 func (cluster *Cluster) SwitchMonitorPFSInstruments() {
-   cluster.Conf.MonitorPFSInstruments= !cluster.Conf.MonitorPFSInstruments
+	cluster.Conf.MonitorPFSInstruments = !cluster.Conf.MonitorPFSInstruments
 }
 
 func (cluster *Cluster) SwitchFailoverLowerRelease() {
@@ -442,7 +441,7 @@ func (cluster *Cluster) SwitchMonitoringProcesslistTransactions() {
 }
 
 func (cluster *Cluster) SwitchMonitoringProcesslistInactive() {
-	cluster.Conf.MonitorProcessListInactive  = !cluster.Conf.MonitorProcessListInactive
+	cluster.Conf.MonitorProcessListInactive = !cluster.Conf.MonitorProcessListInactive
 }
 
 func (cluster *Cluster) SwitchMonitoringProcesslistInformationSchema() {
@@ -508,6 +507,11 @@ func (cluster *Cluster) SwitchFailoverCheckDelayStat() {
 }
 
 func (cluster *Cluster) SwitchLogSQLInMonitoring() {
+	if cluster.Conf.LogSQLInMonitoring {
+		cluster.Conf.LogSQLLevel = 0
+	} else {
+		cluster.Conf.LogSQLLevel = 1
+	}
 	cluster.Conf.LogSQLInMonitoring = !cluster.Conf.LogSQLInMonitoring
 }
 
