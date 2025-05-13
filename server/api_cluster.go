@@ -218,6 +218,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterApplyDynamicConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/generate-configs/{servertype}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterRegenerateConfigs)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterVariablesPreserve)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/add/{clusterShardingName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterShardingAdd)),
@@ -2232,6 +2240,10 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchTestMode()
 	case "prov-net-cni":
 		mycluster.SwitchProvNetCNI()
+	case "prov-db-config-preserve":
+		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
+	case "prov-db-start-fetch-config":
+		mycluster.Conf.ProvDbStartFetchConfig = !mycluster.Conf.ProvDbStartFetchConfig
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
@@ -3255,6 +3267,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Test = isactive
 	case "prov-net-cni":
 		mycluster.Conf.ProvNetCNI = isactive
+	case "prov-db-config-preserve":
+		mycluster.Conf.ProvDBConfigPreserve = isactive
+	case "prov-db-start-fetch-config":
+		mycluster.Conf.ProvDbStartFetchConfig = isactive
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
 	case "prov-docker-daemon-private":
@@ -6646,4 +6662,105 @@ func (repman *ReplicationManager) handlerMuxReseedFromParent(w http.ResponseWrit
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Reseed from parent queued"))
+}
+
+// handlerMuxServersPortRegenerateConfig handles the HTTP request to regenerate the configuration of a specific server port within a cluster.
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Configuration regenerated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/settings/actions/generate-configs/{servertype} [get]
+func (repman *ReplicationManager) handlerMuxClusterRegenerateConfigs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		vars["servertype"] = strings.ToLower(vars["servertype"])
+		if vars["servertype"] == "db" {
+			if len(mycluster.Servers) > 0 {
+				mycluster.SetConfigRefreshCookie()
+			} else {
+				http.Error(w, "No server", 500)
+				return
+			}
+		} else if vars["servertype"] == "proxy" {
+			if len(mycluster.Proxies) > 0 {
+				for _, prx := range mycluster.Proxies {
+					if prx != nil {
+						prx.GetProxyConfig()
+					} else {
+						http.Error(w, "No server", 500)
+						return
+					}
+				}
+			}
+		} else {
+			http.Error(w, "No valid type", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxClusterVariablesPreserve handles the HTTP request to preserve or unpreserve a variable for a given cluster.
+// @Summary Preserve or unpreserve a variable
+// @Description Preserves or unpreserves a variable for the specified cluster.
+// @Tags Database
+// @Accept json
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param variableName path string true "Variable Name"
+// @Param preserve path string true "Preserve or unpreserve" Enums(true, false)
+// @Success 200 {string} string "Variable preserved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if vars["variableName"] == "" {
+			http.Error(w, "Variable name can not be empty", 500)
+			return
+		} else if strings.HasPrefix(vars["variableName"], "optimizer_switch") {
+			http.Error(w, "Can not preserve 'optimizer_switch'. Use db-tags instead", 500)
+			return
+		}
+
+		var preserve bool
+		var response string
+		if strings.ToUpper(vars["preserve"]) == "TRUE" {
+			preserve = true
+			response = "Variable preserved successfully"
+		} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+			preserve = false
+			response = "Variable unpreserved successfully"
+		} else {
+			http.Error(w, "No valid preserve key", 500)
+			return
+		}
+
+		mycluster.PreserveVariable(vars["variableName"], preserve)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(response))
+
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }

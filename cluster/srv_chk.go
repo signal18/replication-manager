@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,77 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
+
+func (server *ServerMonitor) CheckDBConfigPath() {
+	cluster := server.ClusterGroup
+	if cluster.IsInFailover() {
+		return
+	}
+
+	changed := false
+
+	v, ok := server.VariablesMap.CheckAndGet("INNODB_DATA_HOME_DIR")
+	if ok {
+		value := v.Deployed
+		if !server.IsDown() {
+			value = v.Runtime
+		}
+
+		if value != nil && *value == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
+			server.SetConfigPathCookie()
+			changed = true
+		}
+
+		if (value == nil || *value == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
+			server.SetConfigPathCookie()
+			changed = true
+		}
+
+		if value != nil && v.Config != nil && *value != *v.Config {
+			_, file, no, ok := runtime.Caller(1)
+			if ok {
+				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+			}
+			server.SetConfigPathCookie()
+			changed = true
+		}
+
+		if !changed {
+			if value != nil && *value == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+				_, file, no, ok := runtime.Caller(1)
+				if ok {
+					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+				}
+				server.SetConfigPathCookie()
+				changed = true
+			}
+
+			if (value == nil || *value == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
+				_, file, no, ok := runtime.Caller(1)
+				if ok {
+					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
+				}
+				server.SetConfigPathCookie()
+				changed = true
+			}
+
+			server.DelConfigPathCookie()
+		}
+
+		if value != nil && v.Config != nil {
+			server.IsNeedPathCheck = false
+		}
+
+	}
+}
 
 // CheckMaxConnections Check 80% of max connection reach
 func (server *ServerMonitor) CheckMaxConnections() {

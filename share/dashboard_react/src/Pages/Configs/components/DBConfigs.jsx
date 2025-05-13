@@ -8,8 +8,12 @@ import { setSetting, switchSetting } from '../../../redux/settingsSlice'
 import AccordionComponent from '../../../components/AccordionComponent'
 import AddRemovePill from '../../../components/AddRemovePill'
 import ConfirmModal from '../../../components/Modals/ConfirmModal'
-import { addDBTag, dropDBTag } from '../../../redux/configSlice'
+import { addDBTag, dropDBTag, generateAllConfig } from '../../../redux/configSlice'
 import Gauge from '../../../components/Gauge'
+import RMIconButton from '../../../components/RMIconButton'
+import { HiRefresh } from 'react-icons/hi'
+import PreservedConfigs from './PreservedConfigs'
+import { convertSize } from '../../../utility/common'
 
 function DBConfigs({ selectedCluster, user }) {
   const [replicationTags, setReplicationTags] = useState([])
@@ -123,14 +127,14 @@ function DBConfigs({ selectedCluster, user }) {
 
   const dataObject = [
     {
-      key: 'Force Write Config Files',
+      key: 'Cluster DB Start Fetch Config',
       value: (
         <RMSwitch
-          isChecked={selectedCluster?.config?.provDBForceWriteConfig}
+          isChecked={selectedCluster?.config?.provDbStartFetchConfig}
           isDisabled={user?.grants['cluster-settings'] == false}
-          confirmTitle={'Confirm switch settings for prov-db-force-write-config?'}
+          confirmTitle={'Confirm switch settings for prov-db-start-fetch-config?'}
           onChange={() =>
-            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-force-write-config' }))
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-db-start-fetch-config' }))
           }
         />
       )
@@ -149,10 +153,21 @@ function DBConfigs({ selectedCluster, user }) {
       )
     },
     {
+      key: 'Refresh Variables and DB Config',
+      value: (
+        <RMIconButton isDisabled={user?.grants['proxy-config-flag'] == false} icon={HiRefresh} onClick={() => { 
+          setConfirmTitle('Confirm refresh variables and db config?') 
+          setIsConfirmModalOpen(true)
+          setConfirmHandler(() => () => dispatch(generateAllConfig({ clusterName: selectedCluster?.name, type: 'db'})))
+        }} />
+      )
+    },
+    {
       key: 'Connections',
       value: (
         <Flex className={styles.connections}>
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={200}
             maxValue={10000}
             value={selectedCluster?.config?.provDbMaxConnections}
@@ -180,6 +195,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={0}
             maxValue={90}
             value={selectedCluster?.config?.provDbExpireLogDays}
@@ -214,9 +230,10 @@ function DBConfigs({ selectedCluster, user }) {
       value: (
         <Flex className={styles.resources}>
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={25600}
-            value={selectedCluster?.config?.provDbMemory}
+            value={convertSize(selectedCluster?.config?.provDbMemory,"M","M")}
             text={'Memory'}
             width={220}
             height={150}
@@ -242,9 +259,10 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={10000}
-            value={selectedCluster?.config?.provDbDiskSize}
+            value={convertSize(selectedCluster?.config?.provDbDiskSize,"G","G")}
             text={'Disk size'}
             width={220}
             height={150}
@@ -270,6 +288,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={100000}
             value={selectedCluster?.config?.provDbDiskIops}
@@ -297,6 +316,7 @@ function DBConfigs({ selectedCluster, user }) {
             }}
           />
           <Gauge
+            isDisabled={user?.grants['proxy-config-flag'] == false}
             minValue={1}
             maxValue={256}
             value={selectedCluster?.config?.provDbCpuCores}
@@ -357,6 +377,7 @@ function DBConfigs({ selectedCluster, user }) {
                         }
                         return (
                           <AddRemovePill
+                            isDisabled={user?.grants['proxy-config-flag'] == false}
                             key={tag.name}
                             text={tag.name}
                             onAdd={(title) => {
@@ -396,6 +417,13 @@ function DBConfigs({ selectedCluster, user }) {
                   />
                 ))}
             </HStack>
+            <AccordionComponent
+                  heading={'Preserved Variables'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<PreservedConfigs selectedCluster={selectedCluster} user={user}/>}
+                />
           </VStack>
         </HStack>
       )}

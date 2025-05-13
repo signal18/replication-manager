@@ -942,6 +942,8 @@ definitions:
         type: integer
       source:
         type: string
+      splitUser:
+        type: boolean
       startTime:
         type: string
     type: object
@@ -1479,8 +1481,12 @@ definitions:
         type: string
       backupResticTimeout:
         type: integer
+      backupRestoreMysqlUser:
+        type: boolean
       backupSaveScript:
         type: string
+      backupSplitMysqlUser:
+        type: boolean
       backupStreaming:
         type: boolean
       backupStreamingBucket:
@@ -2274,6 +2280,8 @@ definitions:
         type: string
       provDbServiceType:
         type: string
+      provDbStartFetchConfig:
+        type: boolean
       provDbStartScript:
         type: string
       provDbStopScript:
@@ -2364,6 +2372,8 @@ definitions:
         type: string
       provServicePlanRegistry:
         type: string
+      provShardproxyStartFetchConfig:
+        type: boolean
       provSphinxAgents:
         type: string
       provSphinxCpuCores:
@@ -6345,6 +6355,42 @@ paths:
       summary: Get server port configuration
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen:
+    get:
+      description: Retrieves the configuration of a specified server port within a
+        cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Configuration regenerated successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Get server port configuration
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-failed:
     get:
       description: Checks if a specified server within a cluster is in a failed state.
@@ -7834,6 +7880,44 @@ paths:
       summary: Start the slave on a server
       tags:
       - DatabaseReplication
+  /api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction}:
+    get:
+      description: Starts a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Server started successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: Start a server
+      tags:
+      - DatabaseActions
   /api/clusters/{clusterName}/servers/{serverName}/actions/stop:
     get:
       description: Stops a specified server within a cluster.
@@ -9486,6 +9570,49 @@ paths:
       summary: Get variables of a server
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/variables/{diff}:
+    get:
+      description: Retrieves the variables of a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Show differences
+        in: path
+        name: diff
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variables retrieved successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Encoding error
+          schema:
+            type: string
+      summary: Get variables of a server
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/vtables:
     get:
       description: Retrieves the virtual tables of a specified server within a cluster.
@@ -9895,6 +10022,32 @@ paths:
       summary: Remove a proxy tag from a specific cluster
       tags:
       - ClusterTags
+  /api/clusters/{clusterName}/settings/actions/generate-configs/{servertype}:
+    get:
+      description: Retrieves the configuration of a specified server port within a
+        cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Configuration regenerated successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Get server port configuration
+      tags:
+      - Database
   /api/clusters/{clusterName}/settings/actions/reload:
     post:
       consumes:

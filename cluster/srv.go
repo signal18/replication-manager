@@ -160,13 +160,14 @@ type ServerMonitor struct {
 	FullProcessList             []dbhelper.Processlist     `json:"-"`
 	Variables                   *config.StringsMap         `json:"-"`
 	SensitiveVariables          *config.StringsMap         `json:"-"`
+	VariablesMap                *config.VariablesMap       `json:"-"`
 	EngineInnoDB                *config.StringsMap         `json:"engineInnodb"`
 	ErrorLog                    s18log.HttpLog             `json:"errorLog"`
 	SlowLog                     s18log.SlowLog             `json:"-"`
 	Status                      *config.StringsMap         `json:"-"`
 	PrevStatus                  *config.StringsMap         `json:"-"`
 	PFSQueries                  *config.PFSQueriesMap      `json:"-"` //PFS queries
-	PFSInstruments 				      *config.StringsMap         `json:"pfsInstruments"`
+	PFSInstruments              *config.StringsMap         `json:"pfsInstruments"`
 	SlowPFSQueries              *config.PFSQueriesMap      `json:"-"` //PFS queries from slow
 	DictTables                  *config.TablesMap          `json:"-"`
 	Tables                      []v3.Table                 `json:"-"`
@@ -212,8 +213,10 @@ type ServerMonitor struct {
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
-	LastBackupMeta              ServerBackupMeta `json:"lastBackupMeta"`
-
+	LastConfigUpdate            config.LastConfigUpdate `json:"lastConfigUpdate"`
+	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
+	IsNeedPathCheck             bool
+	HasConfigPathChanged        bool
 }
 
 type ServerBackupMeta struct {
@@ -318,6 +321,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	// Initiate sync.Map pointers
 	server.Variables = config.NewStringsMap()
 	server.SensitiveVariables = config.NewStringsMap()
+	server.VariablesMap = config.NewVariablesMap()
 	server.EngineInnoDB = config.NewStringsMap()
 	server.Status = config.NewStringsMap()
 	server.PrevStatus = config.NewStringsMap()
@@ -416,7 +420,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
-
+	server.SetConfigRefreshCookie()
 	go server.FetchLastBackupMetadata()
 	return server, err
 }
@@ -445,6 +449,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			err = fmt.Errorf("HTTP Response Code Error: %d", resp.StatusCode)
 		}
 	}
+
+	// Make sure we always have the updated config path status
+	server.HasConfigPathChanged = server.HasConfigPathCookie()
+
 	// manage IP based DNS may failed if backend server as changed IP  try to resolv it and recreate new DSN
 	//server.SetCredential(server.URL, server.User, server.Pass)
 	// Handle failure cases here
@@ -487,6 +495,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					cluster.GetMaster().SetState(stateFailed)
 					server.DelWaitStopCookie()
 					server.DelUnprovisionCookie()
+					server.SetConfigRefreshCookie()
 				} else {
 					cluster.GetMaster().SetState(stateSuspect)
 
@@ -500,6 +509,7 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 						server.SetState(stateFailed)
 						server.DelWaitStopCookie()
 						server.DelUnprovisionCookie()
+						server.SetConfigRefreshCookie()
 
 						// if wsrep could enter here but still server is not a slave
 						// Remove from slave list if exists
@@ -603,6 +613,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 					}
 				}
 			}
+
+			server.SetConfigRefreshCookie() // set cookie to refresh config
 
 			if cluster.Topology == config.TopoActivePassive {
 				server.SetState(stateMaster)
@@ -758,8 +770,13 @@ func (server *ServerMonitor) Refresh() error {
 
 		vars, _, err = dbhelper.GetVariablesCase(server.Conn, server.DBVersion, "LOWER")
 		server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, vars)
+		server.VariablesMap.SetRuntimeValues(vars)
 		if err != nil {
 			return nil
+		}
+
+		if server.IsNeedPathCheck {
+			server.CheckDBConfigPath()
 		}
 
 		if !server.DBVersion.IsPostgreSQL() {
@@ -896,7 +913,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		if cluster.Conf.MonitorProcessList {
 
-			server.FullProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion,server.GetCluster().Conf.MonitorProcessListInactive,server.GetCluster().Conf.MonitorProcessListTransactions,server.GetCluster().Conf.MonitorProcessListInformationSchema,server.GetCluster().Conf.MonitorProcessListLimit,"")
+			server.FullProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, server.GetCluster().Conf.MonitorProcessListInformationSchema, server.GetCluster().Conf.MonitorProcessListLimit, "")
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get process %s %s", server.URL, err)
 			if err != nil {
 				cluster.SetState("ERR00075", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00075"], err), ServerUrl: server.URL, ErrFrom: "MON"})
@@ -1018,8 +1035,8 @@ func (server *ServerMonitor) Refresh() error {
 		return nil
 	}
 	server.PrevStatus = config.FromStringSyncMap(server.PrevStatus, server.Status)
-	status, logs, err := dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(),server.HasLogPFSMemory())
-	if err !=nil {
+	status, logs, err := dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
+	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get status  %s %s", server.URL, err)
 	}
 	server.Status = config.FromNormalStringMap(server.Status, status)
@@ -1034,12 +1051,12 @@ func (server *ServerMonitor) Refresh() error {
 	server.IsWsrepPrimary = server.HasWsrepPrimary()
 	server.AddReplicationTag(server.IsWsrepPrimary && server.IsMariaDB(), "PRIMARY")
 	if server.HasLogMutex() || server.HasLogLatch() {
-	  pfsinstruments, logs , err:= dbhelper.GetPFSVariablesInstruments(server.Conn)
-		server.PFSInstruments =config.FromNormalStringMap(server.PFSInstruments,pfsinstruments)
-		if err !=nil {
+		pfsinstruments, logs, err := dbhelper.GetPFSVariablesInstruments(server.Conn)
+		server.PFSInstruments = config.FromNormalStringMap(server.PFSInstruments, pfsinstruments)
+		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get PFS insruments %s %s", server.URL, err)
 		}
-  }
+	}
 	server.ReplicationHealth = server.CheckReplication()
 
 	if server.IsSlave == true {
@@ -1592,6 +1609,7 @@ func (server *ServerMonitor) ReloadSaveInfosVariables() error {
 		server.SensitiveVariables = new(config.StringsMap)
 	}
 	server.SensitiveVariables = config.FromNormalStringMap(server.SensitiveVariables, clsave.Variables)
+	server.VariablesMap.SetRuntimeValues(clsave.Variables)
 	server.MaxSlowQueryTimestamp = clsave.MaxSlowQueryTimestamp
 	return nil
 }
@@ -1616,8 +1634,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 	for {
 
 		var clsave Save
-		clsave.ProcessList,
-			logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion,server.GetCluster().Conf.MonitorProcessListInactive,server.GetCluster().Conf.MonitorProcessListTransactions,false,server.GetCluster().Conf.MonitorProcessListLimit,"")
+		clsave.ProcessList, logs, err = dbhelper.GetProcesslistTable(server.Conn, server.DBVersion, server.GetCluster().Conf.MonitorProcessListInactive, server.GetCluster().Conf.MonitorProcessListTransactions, false, server.GetCluster().Conf.MonitorProcessListLimit, "")
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlErr, "Failed Processlist for server %s: %s ", server.URL, err)
 
 		clsave.InnoDBStatus, logs, err = dbhelper.GetEngineInnoDBStatus(server.Conn)

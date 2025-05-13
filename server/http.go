@@ -135,6 +135,8 @@ func (repman *ReplicationManager) httpserver() {
 
 	router.HandleFunc("/api/login", repman.loginHandler)
 
+	router.HandleFunc("/api/version", repman.handlerVersion)
+
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))

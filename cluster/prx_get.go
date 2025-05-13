@@ -76,14 +76,15 @@ func (proxy *Proxy) GetJanitorWeight() string {
 	return proxy.Weight
 }
 
-func (proxy *Proxy) GetProxyConfig() string {
+func (proxy *Proxy) GetProxyConfig() error {
 	cluster := proxy.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Proxy Config generation "+proxy.Datadir+"/config.tar.gz")
 	err := cluster.Configurator.GenerateProxyConfig(proxy.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, proxy.GetEnv(), cluster.RepMgrVersion)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, " "+proxy.Datadir+"/config.tar.gz error: %s", err)
+		return err
 	}
-	return ""
+	return nil
 }
 
 func (proxy *Proxy) GetInitContainer(collector opensvc.Collector) string {
@@ -110,8 +111,8 @@ func (proxy *Proxy) GetBindAddress() string {
 	if proxy.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return proxy.Host
 	}
-	if proxy.Type == config.ConstProxyHaproxy && proxy.ClusterGroup.Conf.HaproxyHostsIPV6!="" {
-			return  proxy.ClusterGroup.Conf.HaproxyHostsIPV6
+	if proxy.Type == config.ConstProxyHaproxy && proxy.ClusterGroup.Conf.HaproxyHostsIPV6 != "" {
+		return proxy.ClusterGroup.Conf.HaproxyHostsIPV6
 	}
 	return "0.0.0.0"
 }

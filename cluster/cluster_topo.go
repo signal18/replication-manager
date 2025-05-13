@@ -112,6 +112,8 @@ func (cluster *Cluster) AddChildServers() error {
 // Start of topology detection
 // Create a connection to each host and build list of slaves.
 func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
+	defer cluster.LogPanicToFile("cluster")
+
 	cluster.Lock()
 	defer cluster.Unlock()
 

@@ -1364,7 +1364,7 @@ func (collector *Collector) getMetaCount(body []byte) (int, error) {
 	return m.Meta.Count, nil
 }
 
-func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
+func (collector *Collector) deleteServiceTag(idSrv string, tag Tag) error {
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/tags/" + tag.Tag_id + "/services/" + idSrv
@@ -1397,7 +1397,7 @@ func (collector *Collector) deteteServiceTag(idSrv string, tag Tag) error {
 	return nil
 }
 
-func (collector *Collector) DeteteServiceTags(idSrv string) error {
+func (collector *Collector) DeleteServiceTags(idSrv string) error {
 	tags, err := collector.GetServiceTags(idSrv)
 	if err != nil {
 		return err
@@ -1406,7 +1406,7 @@ func (collector *Collector) DeteteServiceTags(idSrv string) error {
 		return nil
 	}
 	for _, tag := range tags {
-		err := collector.deteteServiceTag(idSrv, tag)
+		err := collector.deleteServiceTag(idSrv, tag)
 		if err != nil {
 			return err
 		}

@@ -84,6 +84,8 @@ export const clusterService = {
 
   // Database service APIs
   getDatabaseService,
+  getDatabaseVariables,
+  preserveVariable,
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
@@ -341,8 +343,8 @@ function stopDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/stop`)
 }
 
-function startDatabase(clusterName, serverId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start`)
+function startDatabase(clusterName, serverId, cfgAction, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start/${cfgAction}`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {
@@ -407,8 +409,8 @@ function unprovisionProxy(clusterName, proxyId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/unprovision`)
 }
 
-function startProxy(clusterName, proxyId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start`)
+function startProxy(clusterName, proxyId, cfgAction, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/proxies/${proxyId}/actions/start/${cfgAction}`)
 }
 
 function stopProxy(clusterName, proxyId, baseURL) {
@@ -423,6 +425,15 @@ function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
 //#region Database service APIs
 function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+}
+
+//#region Database service APIs
+function getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}/${diff}`)
+}
+
+function preserveVariable(clusterName, variableName, preserve, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/preserve-variable/${variableName}/${preserve}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {

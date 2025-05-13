@@ -40,7 +40,7 @@ func init() {
 		RepMan.InitUser()
 	}
 
-	RepMan.AddFlags(monitorCmd.Flags(), &conf)
+	RepMan.AddFlags(monitorCmd.Flags(), &conf, false)
 
 	initLogFlags(monitorCmd)
 	initLogFlags(configMergeCmd)

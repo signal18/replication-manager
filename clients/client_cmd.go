@@ -43,6 +43,7 @@ var (
 	cliHost                      string
 	cliPort                      string
 	cliCert                      string
+	cliEncryptSecret             string
 	cliNoCheckCert               bool
 	cliToken                     string
 	cliClusters                  []string
@@ -69,6 +70,8 @@ var (
 	cliPrefMaster                string
 	cliStatusErrors              bool
 	cliServerID                  string
+	cliServerHost                string
+	cliServerPort                string
 	cliServerSet                 string
 	cliServerGet                 string
 	cliServerAction              string
@@ -154,16 +157,25 @@ func cliInit(needcluster bool) {
 		cliSettings.Conf = new(config.Config)
 	}
 
-	cliToken, err = cliLogin()
-	if err != nil {
-		cliPassword = cliGetpasswd()
-
-		cliToken, err = cliLogin()
+	if cliEncryptSecret != "" && cfgGroup != "" {
+		cliToken, err = cliSecretLogin()
 		if err != nil {
 			fmt.Printf("\n'%s'\n", err)
 			os.Exit(14)
 		}
+	} else {
+		cliToken, err = cliLogin()
+		if err != nil {
+			cliPassword = cliGetpasswd()
+
+			cliToken, err = cliLogin()
+			if err != nil {
+				fmt.Printf("\n'%s'\n", err)
+				os.Exit(14)
+			}
+		}
 	}
+
 	cliClusters, err = cliGetClusters()
 	if err != nil {
 		log.WithError(err).Fatal()
@@ -220,45 +232,46 @@ func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
+	cmd.Flags().StringVar(&cliEncryptSecret, "enc-secret", "", "Encryption secret")
 	cmd.Flags().BoolVar(&cliNoCheckCert, "insecure", true, "Don't check certificate")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initBootstrapFlags(cmd *cobra.Command) {
-	initServerApiFlags(bootstrapCmd)
-	bootstrapCmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
-	bootstrapCmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
-	bootstrapCmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliBootstrapTopology, "topology", "master-slave", "master-slave|master-slave-no-gtid|maxscale-binlog|multi-master|multi-tier-slave|multi-master-ring,multi-master-wsrep")
+	cmd.Flags().BoolVar(&cliBootstrapCleanall, "clean-all", false, "Reset all slaves and binary logs before bootstrapping")
+	cmd.Flags().BoolVar(&cliBootstrapWithProvisioning, "with-provisioning", false, "Provision the culster for replication-manager-tst or Provision the culster for replication-manager-pro")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initFailoverFlags(cmd *cobra.Command) {
-	initServerApiFlags(failoverCmd)
+	initServerApiFlags(cmd)
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initRegTestFlags(cmd *cobra.Command) {
-	initServerApiFlags(regTestCmd)
-	regTestCmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
-	regTestCmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
-	regTestCmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
-	regTestCmd.Flags().BoolVar(&cliTestShowTests, "show-tests", false, "display tests list")
-	regTestCmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
-	regTestCmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
-	regTestCmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
-	regTestCmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliTTestRun, "run-tests", "", "tests list to be run ")
+	cmd.Flags().StringVar(&cliTestResultDBServer, "result-db-server", "", "MariaDB MySQL host to store result")
+	cmd.Flags().StringVar(&cliTestResultDBCredential, "result-db-credential", "", "MariaDB MySQL user:password to store result")
+	cmd.Flags().BoolVar(&cliTestShowTests, "show-tests", false, "display tests list")
+	cmd.Flags().BoolVar(&cliTeststartcluster, "test-provision-cluster", true, "start the cluster between tests")
+	cmd.Flags().BoolVar(&cliTeststopcluster, "test-unprovision-cluster", true, "stop the cluster between tests")
+	cmd.Flags().BoolVar(&cliTestConvert, "convert", false, "convert test result to html")
+	cmd.Flags().StringVar(&cliTestConvertFile, "file", "", "test result.json")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initShowFlags(cmd *cobra.Command) {
-	initServerApiFlags(showCmd)
-	showCmd.Flags().StringVar(&cliShowObjects, "get", "settings,clusters,servers,master,slaves,crashes,alerts", "get the following objects")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliShowObjects, "get", "settings,clusters,servers,master,slaves,crashes,alerts", "get the following objects")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initStatusFlags(cmd *cobra.Command) {
-	initServerApiFlags(statusCmd)
-	statusCmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
+	initServerApiFlags(cmd)
+	cmd.Flags().BoolVar(&cliStatusErrors, "with-errors", false, "Add json errors reporting")
 	viper.BindPFlags(cmd.Flags())
 }
 
@@ -266,32 +279,32 @@ func initConfiguratorFlags(cmd *cobra.Command) {
 	//	initServerApiFlags(configuratorCmd)
 	RepMan = new(server.ReplicationManager)
 	RepMan.InitUser()
-	RepMan.AddFlags(configuratorCmd.Flags(), &conf)
+	RepMan.AddFlags(cmd.Flags(), &conf, true)
 	v := viper.GetViper()
 	v.SetConfigType("toml")
-	viper.BindPFlags(configuratorCmd.Flags())
-	cmd.AddCommand(configuratorCmd)
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initSwitchoverFlags(cmd *cobra.Command) {
-	initServerApiFlags(switchoverCmd)
-	switchoverCmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliPrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initApiFlags(cmd *cobra.Command) {
-	initServerApiFlags(apiCmd)
-	apiCmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:10005/api/clusters", "Url to rest API")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliUrl, "url", "https://127.0.0.1:10005/api/clusters", "Url to rest API")
 	viper.BindPFlags(cmd.Flags())
 }
 
 func initServerFlags(cmd *cobra.Command) {
-	initServerApiFlags(serverCmd)
-	serverCmd.Flags().StringVar(&cliServerID, "id", "", "server id")
-	serverCmd.Flags().StringVar(&cliServerSet, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
-	serverCmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time")
-	serverCmd.Flags().StringVar(&cliServerAction, "action", "", "stop|start")
+	initServerApiFlags(cmd)
+	cmd.Flags().StringVar(&cliServerID, "id", "", "server id")
+	cmd.Flags().StringVar(&cliServerHost, "srv-host", "", "server host")
+	cmd.Flags().StringVar(&cliServerPort, "srv-port", "", "server host")
+	cmd.Flags().StringVar(&cliServerSet, "set", "", "maintenance=on|maintenance=off|maintenance=switch|ignored=switch|prefered=switch")
+	cmd.Flags().StringVar(&cliServerGet, "get", "", "processlist|slow-query|digest-statements-pfs|errors|status-delta|innodb-status|variables|meta-data-locks|query-response-time")
+	cmd.Flags().StringVar(&cliServerAction, "action", "", "stop|start")
 
 	viper.BindPFlags(cmd.Flags())
 }
@@ -299,6 +312,11 @@ func initServerFlags(cmd *cobra.Command) {
 func initClusterFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&cfgGroup, "cluster", "", "Cluster (default is none)")
 	viper.BindPFlags(cmd.Flags())
+}
+
+func initPrintDefaultsFlags(cmd *cobra.Command) {
+	initClusterFlags(cmd)
+	initServerFlags(cmd)
 }
 
 func init() {
@@ -343,10 +361,12 @@ func init() {
 	initClusterFlags(showCmd)
 
 	rootClientCmd.AddCommand(configuratorCmd)
-	initConfiguratorFlags(showCmd)
+	initConfiguratorFlags(configuratorCmd)
 
 	rootClientCmd.AddCommand(versionClientCmd)
 
+	rootClientCmd.AddCommand(printDefaultsCmd)
+	initPrintDefaultsFlags(printDefaultsCmd)
 }
 
 func cliGetClusters() ([]string, error) {
@@ -412,9 +432,48 @@ func cliPrintfTb(x, y int, fg, bg termbox.Attribute, format string, args ...inte
 }
 
 func cliLogin() (string, error) {
-
 	urlpost := "https://" + cliHost + ":" + cliPort + "/api/login"
 	var jsonStr = []byte(`{"username":"` + cliUser + `", "password":"` + cliPassword + `"}`)
+	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("ERROR ", err)
+		return "", err
+	}
+	if resp.StatusCode == http.StatusForbidden {
+		return "", errors.New("Wrong credentential")
+	}
+
+	type Result struct {
+		Token string `json:"token"`
+	}
+	var r Result
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		log.Println("ERROR in login", err)
+		return "", err
+	}
+	return r.Token, nil
+}
+
+func cliSecretLogin() (string, error) {
+	urlpost := "https://" + cliHost + ":" + cliPort + "/api/clusters/" + cfgGroup + "/servers/"
+	if cliServerID != "" {
+		urlpost += cliServerID + "/secret-login"
+	} else {
+		urlpost += cliServerHost + "/" + cliServerPort + "/secret-login"
+	}
+	var jsonStr = []byte(`{"data":"` + cliEncryptSecret + `"}`)
 	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonStr))
 	if err != nil {
 		return "", err

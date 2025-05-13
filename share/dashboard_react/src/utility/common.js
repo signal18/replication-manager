@@ -208,3 +208,38 @@ export const getColorFromServerStatus = (status) => {
   }
   return color
 }
+
+export const convertSize = (value, targetUnit = 'B', sourceUnit = 'B') => {
+  const unitMultipliers = {
+    B: 1,
+    K: 1024,
+    M: 1024 ** 2,
+    G: 1024 ** 3,
+    T: 1024 ** 4,
+    P: 1024 ** 5,
+  };
+
+  const toUnit = targetUnit.toUpperCase();
+  const defaultSourceUnit = sourceUnit.toUpperCase();
+
+  const regex = /^([\d.]+)\s*([KMGTPE]?)(B)?$/i;
+  const match = value.trim().match(regex);
+
+  if (!match) {
+    throw new Error(`Invalid size format: ${value}`);
+  }
+
+  const number = parseFloat(match[1]);
+  const parsedUnit = match[2] ? match[2].toUpperCase() : '';
+  const fromUnit = parsedUnit || defaultSourceUnit;
+
+  if (!unitMultipliers[fromUnit]) {
+    throw new Error(`Invalid source unit: ${fromUnit}`);
+  }
+  if (!unitMultipliers[toUnit]) {
+    throw new Error(`Invalid target unit: ${toUnit}`);
+  }
+
+  const bytes = number * unitMultipliers[fromUnit];
+  return bytes / unitMultipliers[toUnit];
+};

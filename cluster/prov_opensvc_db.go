@@ -69,7 +69,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 				return
 			}
 		}
-		err = svc.DeteteServiceTags(idsrv)
+		err = svc.DeleteServiceTags(idsrv)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
 			cluster.errorChan <- err
@@ -165,7 +165,7 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
 			return err
 		}
 	}

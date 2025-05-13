@@ -13,9 +13,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
+	jwt "github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
@@ -23,6 +25,12 @@ import (
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/secret-login", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.secretLoginHandler)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.secretLoginHandler)),
+	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/is-master", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersIsMasterStatus)),
@@ -84,8 +92,14 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-stop", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedStop)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change", negroni.New(
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigChange)),
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigFetch)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/need-config-refresh", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
 	))
 	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
@@ -94,14 +108,33 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/need-rolling-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingRestart)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersConfigPathPreserve)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{generate}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortRegenerateConfig)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigPathPreserve)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
 	))
-
 }
 
 func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router) {
@@ -120,6 +153,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -188,6 +225,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	))
 
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
 	))
@@ -2151,10 +2192,12 @@ func (repman *ReplicationManager) handlerMuxSetLongQueryTime(w http.ResponseWrit
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param cfgAction path string false "Config Action (KEEP or FETCH). Empty string means default action from cluster config."
 // @Success 200 {string} string "Server started successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/start [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction} [get]
 func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2166,6 +2209,51 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
+			/*
+			* Disclaimer:
+			* - If prov-db-config-preserve is false, the preserved variables will not be used
+			* - If prov-db-config-preserve is true: For safety purpose all actions will not override the preserved variables listed in the cluster config
+			* - The preserved variables can be fixed values or empty strings
+			* - The preserved variables with empty strings will get the values from the current deployed config or variables in runtime
+			* - Each time you change configurator tags, it will regenerate the preserved values
+			* - The variables that are not set will be overridden by the configurator
+			*
+			* cfgAction:
+			* - KEEP: No config fetch
+			* - FETCH: Fetch config changes but keep config path
+			* - OVERWRITE: Fetch config changes and overwrite config path
+			* - Empty: Default action from cluster config
+			*   - If ProvDBStartFetchConfig is true: fetch config changes
+			*   - If ProvDBStartFetchConfig is false: no config fetch
+			*   If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE": return error
+			*
+			 */
+			if strings.ToUpper(vars["cfgAction"]) == "KEEP" { // No config fetch
+				if !node.HasNoConfigFetchCookie() {
+					node.SetNoConfigFetchCookie()
+				}
+			} else if strings.ToUpper(vars["cfgAction"]) == "FETCH" { // Fetch config changes but keep config path
+				if node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie()
+				}
+			} else if strings.ToUpper(vars["cfgAction"]) == "OVERWRITE" { // Fetch config changes and overwrite config path
+				if node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie() // Fetch config changes
+				}
+				if node.HasConfigPathCookie() {
+					node.DelConfigPathCookie() // Overwrite config path
+				}
+			} else if vars["cfgAction"] == "" {
+				// Default action from cluster config
+				if mycluster.Conf.ProvDbStartFetchConfig && node.HasNoConfigFetchCookie() {
+					node.DelNoConfigFetchCookie()
+				} else if !mycluster.Conf.ProvDbStartFetchConfig && !node.HasNoConfigFetchCookie() {
+					node.SetNoConfigFetchCookie()
+				}
+			} else { // If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE"
+				http.Error(w, "Invalid config action", http.StatusBadRequest)
+				return
+			}
 			mycluster.StartDatabaseService(node)
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -2551,18 +2639,18 @@ func (repman *ReplicationManager) handlerMuxServerNeedStop(w http.ResponseWriter
 	}
 }
 
-// handlerMuxServerNeedConfigChange handles the HTTP request to check if a server needs a config change.
-// @Summary Check if a server needs a config change
-// @Description Checks if a specified server within a cluster needs a config change.
+// handlerMuxServerNeedConfigFetch handles the HTTP request to check if a server needs a config fetch.
+// @Summary Check if a server needs a config fetch
+// @Description Checks if a specified server within a cluster needs a config fetch.
 // @Tags Database
 // @Produce text/plain
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
-// @Success 200 {string} string "200 -Need config change!"
-// @Failure 500 {string} string "500 -No config change needed!" or "500 -No valid server!" or "500 -No cluster!"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change [get]
-func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.ResponseWriter, r *http.Request) {
+// @Success 200 {string} string "200 -Need config fetch!"
+// @Failure 500 {string} string "500 -No config fetch needed!" or "500 -No valid server!" or "500 -No cluster!"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch [get]
+func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -2570,22 +2658,65 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigChange(w http.Respon
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			if node.HasConfigCookie() {
-				w.Write([]byte("200 -Need config change!"))
-				node.DelConfigCookie()
-				return
+			if node.HasNoConfigFetchCookie() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
 			}
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config change needed!"))
-
+			w.Write([]byte("200 -Need config fetch!"))
+			return
 		} else if proxy != nil {
-			if proxy.HasConfigCookie() {
-				w.Write([]byte("200 -Need config change!"))
-				proxy.DelWaitStartCookie()
+			if proxy.HasNoConfigFetchCookie() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
+			}
+			w.Write([]byte("200 -Need config fetch!"))
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+		}
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
+		return
+	}
+}
+
+// handlerMuxServerNeedConfigRefresh handles the HTTP request to check if a server needs a config refresh.
+// @Summary Check if a server needs a config refresh
+// @Description Checks if a specified server within a cluster needs a config refresh.
+// @Tags Database
+// @Produce text/plain
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Success 200 {string} string "200 -Need config refresh!"
+// @Failure 500 {string} string "500 -No config refresh needed!" or "500 -No valid server!" or "500 -No cluster!"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh [get]
+func (repman *ReplicationManager) handlerMuxServerNeedConfigRefresh(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && !node.IsDown() {
+			if node.HasConfigRefreshCookie() {
+				w.Write([]byte("200 -Need config refresh!"))
+				node.DelConfigRefreshCookie()
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("500 -No config change needed!"))
+			w.Write([]byte("500 -No config refresh needed!"))
+
+		} else if proxy != nil && !proxy.IsDown() {
+			if proxy.HasConfigRefreshCookie() {
+				w.Write([]byte("200 -Need config refresh!"))
+				proxy.DelConfigRefreshCookie()
+				return
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No config refresh needed!"))
 			//http.Error(w, "No start needed", 501)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -2808,7 +2939,7 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 	}
 }
 
-// handlerMuxServersPortConfig handles the HTTP request to get the configuration of a specific server port within a cluster.
+// handlerMuxServersPortConfig handles the HTTP request to get the configuration of a specific server port within a cluster
 // @Summary Get server port configuration
 // @Description Retrieves the configuration of a specified server port within a cluster.
 // @Tags Database
@@ -2816,6 +2947,7 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
+// @Param generate path string false enum("skip","generate") default("generate") "Generate configuration file"
 // @Success 200 {file} file "Configuration file"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "File not found"
@@ -2824,6 +2956,7 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
+
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if mycluster.Conf.APISecureConfig {
@@ -2832,6 +2965,7 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 				return
 			}
 		}
+
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
@@ -2856,6 +2990,51 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 				return
 			}
 			w.Write(data)
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersPortRegenerateConfig handles the HTTP request to regenerate the configuration of a specific server port within a cluster.
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Success 200 {string} string "Configuration regenerated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen [get]
+func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			go func() {
+				defer mycluster.LogPanicToFile("printdefault")
+
+				err := node.GetDatabaseConfig()
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error regenerating config for %s:%s: %s", vars["serverName"], vars["serverPort"], err.Error())
+				}
+
+				node.SetConfigRefreshCookie()
+			}()
+		} else if proxy != nil {
+			proxy.GetProxyConfig() // Regenerate the config
 		} else {
 			http.Error(w, "No server", 500)
 		}
@@ -3242,10 +3421,12 @@ func (repman *ReplicationManager) handlerMuxServerPFSStatementsSlowLog(w http.Re
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param diff path string false "Show differences"
 // @Success 200 {object} map[string]interface{} "Variables retrieved successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/variables [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables/{diff} [get]
 func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -3256,10 +3437,13 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
+			node.ReadVariablesFromConfigs()
+
+			diff := vars["diff"] == "true"
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
-			l := node.GetVariables()
+			l := node.GetVariables(diff)
 			err := e.Encode(l)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)
@@ -3790,6 +3974,341 @@ func (repman *ReplicationManager) handlerMuxServersTaskCancel(w http.ResponseWri
 			err := node.JobsCancelTasks(true, vars["task"])
 			if err != nil {
 				http.Error(w, fmt.Sprintf("Error canceling %s task: %s", vars["task"], err.Error()), 500)
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServerConfig handles the HTTP request to get the configuration of a specific server port within a cluster
+// @Summary Get server port configuration
+// @Description Retrieves the configuration of a specified server port within a cluster.
+// @Tags Database
+// @Produce application/octet-stream
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {file} file "Configuration file"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "File not found"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config [get]
+func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		proxy := mycluster.GetProxyFromName(vars["serverName"])
+		if node != nil {
+			node.GetDatabaseConfig()
+			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong reading : " + string(node.Datadir+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+				return
+			}
+			w.Write(data)
+
+		} else if proxy != nil {
+			proxy.GetProxyConfig()
+			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
+			if err != nil {
+				r.URL.Path = r.URL.Path + ".tar.gz"
+				w.WriteHeader(404)
+				w.Write([]byte("404 Something went wrong reading : " + string(proxy.GetDatadir()+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
+
+				return
+			}
+			w.Write(data)
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersPortConfigReceiver handles the HTTP request to open receiver ports for configuration files on a specific server within a cluster. It will return the environment variables.
+// @Summary Open receiver ports for configuration files on a server
+// @Description Opens receiver ports for configuration files on a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With Port)"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "export <environment variables>; export <environment variables>; ..."
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error opening receiver ports"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-receiver [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver [get]
+func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		var node *cluster.ServerMonitor
+		if vars["serverPort"] == "" {
+			node = mycluster.GetServerFromName(vars["serverName"])
+		} else {
+			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		}
+		if node != nil {
+			node.DelConfigRefreshCookie()
+
+			env, err := node.JobReceiveConfigFiles()
+			if err != nil {
+				http.Error(w, "Error while opening receiver ports", 500)
+			}
+
+			jsonData, err := json.Marshal(env)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(jsonData)
+			return
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// secretLoginHandler handles the HTTP request for secret login.
+// @Summary Secret login
+// @Description Handles secret login for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param data body DecodedData true "Encoded data"
+// @Success 200 {string} string "Token"
+// @Failure 400 {string} string "Decode reading body" or "Decode body"
+// @Failure 401 {string} string "Invalid secret"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server" or "Error decrypting data" or "Error signing token"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/secret-login [post]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login [post]
+func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	var decodedData DecodedData
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	err = json.Unmarshal(body, &decodedData)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	var node *cluster.ServerMonitor
+	if vars["serverPort"] == "" {
+		node = mycluster.GetServerFromName(vars["serverName"])
+	} else {
+		node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	}
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+	// Decrypt the encrypted data
+	key := crypto.GetSHA256Hash(node.Pass)
+	iv := crypto.GetMD5Hash(node.Pass)
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Received login with encrypted secret %s", decodedData.Data)
+
+	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
+	if err != nil {
+		http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "decrypted string %s", decrypted)
+
+	if decrypted != mycluster.GetDbPass() {
+		http.Error(w, "Invalid secret", http.StatusUnauthorized)
+		return
+	}
+
+	user, ok := mycluster.APIUsers["system"]
+	if !ok {
+		newpasswd, err := mycluster.GeneratePassword()
+		if err != nil {
+			newpasswd, err = mycluster.GeneratePassword()
+			if err != nil {
+				http.Error(w, "Error generating password: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+
+		uform := cluster.UserForm{
+			Username: "system",
+			Grants:   "db proxy",
+			Password: newpasswd,
+		}
+
+		mycluster.AddUser(uform, "admin", true)
+		user = mycluster.APIUsers["system"]
+	}
+
+	userInfo := struct {
+		Name     string
+		Role     string
+		Password string
+	}{user.User, "Member", repman.Conf.GetEncryptedString(user.Password)}
+
+	signer := jwt.New(jwt.SigningMethodRS256)
+	claims := signer.Claims.(jwt.MapClaims)
+	//set claims
+	claims["iss"] = "https://api.replication-manager.signal18.io"
+	claims["iat"] = time.Now().Unix()
+	claims["exp"] = time.Now().Add(time.Hour * time.Duration(repman.Conf.TokenTimeout)).Unix()
+	claims["jti"] = "1"
+	claims["token"] = ""
+	claims["CustomUserInfo"] = userInfo
+	signer.Claims = claims
+	sk, _ := jwt.ParseRSAPrivateKeyFromPEM(signingKey)
+
+	tokenString, err := signer.SignedString(sk)
+	if err != nil {
+		fmt.Fprintln(w, "Error while signing the token")
+		http.Error(w, "Error signing token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	//create a token instance using the token string
+	specs := r.Header.Get("Accept")
+	//resp := token{tokenString}
+
+	resp := AuthToken{
+		Token: tokenString,
+	}
+
+	if strings.Contains(specs, "text/html") {
+		w.Write([]byte(tokenString))
+		return
+	}
+
+	repman.jsonResponse(resp, w)
+}
+
+// handlerMuxServersPortConfigPathPreserve handles the HTTP request to preserve or remove the configuration path for a specific server within a cluster.
+// @Summary Preserve or remove configuration path for a server
+// @Description Preserves or removes the configuration path for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param preserve path string true "Preserve or remove configuration path (true/false)"
+// @Success 200 {string} string "Configuration path preserved or removed successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Invalid value for preserve parameter"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxServersPortConfigPathPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			if strings.ToUpper(vars["preserve"]) == "TRUE" {
+				node.PreserveConfigPath()
+			} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+				node.RemovePreservedConfigPath()
+			} else {
+				http.Error(w, "Invalid value for preserve parameter", 400)
+				return
+			}
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServersConfigPathPreserve handles the HTTP request to preserve or remove the configuration path for a specific server within a cluster.
+// @Summary Preserve or remove configuration path for a server
+// @Description Preserves or removes the configuration path for a specified server within a cluster.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Param preserve path string true "Preserve or remove configuration path (true/false)"
+// @Success 200 {string} string "Configuration path preserved or removed successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Invalid value for preserve parameter"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve} [get]
+func (repman *ReplicationManager) handlerMuxServersConfigPathPreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("printdefault")
+
+		if mycluster.Conf.APISecureConfig {
+			if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+				http.Error(w, "No valid ACL", 403)
+				return
+			}
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			if strings.ToUpper(vars["preserve"]) == "TRUE" {
+				node.PreserveConfigPath()
+			} else if strings.ToUpper(vars["preserve"]) == "FALSE" {
+				node.RemovePreservedConfigPath()
+			} else {
+				http.Error(w, "Invalid value for preserve parameter", 400)
+				return
 			}
 		} else {
 			http.Error(w, "No server", 500)

@@ -2323,6 +2323,31 @@ func (server *ServerMonitor) copyLogs(r io.Reader, module int, level string) {
 	}
 }
 
+func (server *ServerMonitor) copyLogsPrefix(r io.Reader, module int, level string, prefix ...string) {
+	cluster := server.ClusterGroup
+	//	buf := make([]byte, 1024)
+	s := bufio.NewScanner(r)
+	for {
+		if !s.Scan() {
+			break
+		} else {
+			//Remove empty lines
+			found := false
+			for _, p := range prefix {
+				if strings.HasPrefix(s.Text(), p) {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, module, level, "[%s] %s", server.Name, strings.TrimPrefix(s.Text(), p))
+					found = true
+					break
+				}
+			}
+
+			if !found && strings.Contains(s.Text(), "bash:") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, module, config.LvlWarn, "[%s] %s", server.Name, s.Text()) // Warning for bash error
+			}
+		}
+	}
+}
+
 func (server *ServerMonitor) copyTaskDebugLogs(r io.Reader, module int, task string) {
 	cluster := server.ClusterGroup
 	//	buf := make([]byte, 1024)
@@ -3284,6 +3309,136 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.WriteBackupMetadata(config.BackupMethodPhysical)
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)
+	case "printdefault-current":
+		filename := filepath.Join(server.Datadir, "current.cnf")
+		os.Rename(filename, filename+".old")
+		os.Rename(filename+".tmp", filename)
+		err := server.ReadVariablesFromConfigFile(filename, true)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+			return err
+		}
+
+		// Write preserved variables
+		destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
+		err = server.WritePreservedVariables(filename, destpath)
+		if err == nil {
+			// Rename the old file to .old and the new file to the original name
+			// This is a workaround to avoid overwriting the original file when error occurs
+			os.Rename(destpath, destpath+".old")
+			os.Rename(destpath+".tmp", destpath)
+		}
+	case "printdefault-dummy":
+		filename := filepath.Join(server.Datadir, "dummy.cnf")
+		os.Rename(filename, filename+".old")
+		os.Rename(filename+".tmp", filename)
+		err := server.ReadVariablesFromConfigFile(filename, false)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
+		server.IsNeedPathCheck = true
 	}
 	return nil
+}
+
+type ConfigReceiverResponse struct {
+	MonitorAddress    string `json:"monitor_address"`
+	DummyConfigPort   string `json:"dummy_config_port"`
+	CurrentConfigPort string `json:"current_config_port"`
+	CurrentPIDFile    string `json:"current_pid_file"`
+	DefaultConfigPath string `json:"default_config_dir"`
+}
+
+func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, error) {
+	cluster := server.ClusterGroup
+	var rcv_port_pid, rcv_port, pid_file string
+
+	pid_file = server.SensitiveVariables.Get("PID_FILE")
+	// prepare the receiver for current.cnf
+	rcv_port_pid, err := cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "current.cnf.tmp"), ConstJobCreateFile, "printdefault-current")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
+		return nil, err
+	}
+
+	rcv_port_pid_int, _ := strconv.Atoi(rcv_port_pid)
+
+	// prepare the receiver for dummy.cnf
+	rcv_port, err = cluster.SSTRunReceiverToFile(server, filepath.Join(server.Datadir, "dummy.cnf.tmp"), ConstJobCreateFile, "printdefault-dummy")
+	if err != nil {
+		cluster.SSTCloseReceiver(rcv_port_pid_int)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "OnPremise print default config database via ssh failed : %s", err)
+		return nil, err
+	}
+
+	return &ConfigReceiverResponse{MonitorAddress: cluster.Conf.MonitorAddress, DummyConfigPort: rcv_port, CurrentConfigPort: rcv_port_pid, CurrentPIDFile: pid_file, DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf")}, nil
+}
+
+func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
+	cluster := server.ClusterGroup
+	eCmd := exec.Command("echo", encrypted)
+	// Create a pipe for the stdout of lsCmd
+	eStdout, err := eCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating stdout pipe for log message: %s", err.Error())
+		return "", err
+	}
+
+	dCmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", ""+key+"", "-iv", ""+iv+"")
+	dCmd.Stdin = eStdout
+	dStdout, err := dCmd.StdoutPipe()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error piping log message decryption: %s", err.Error())
+		return "", err
+	}
+	// Start the first command
+	if err := eCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message: %s", err.Error())
+		return "", err
+	}
+
+	// Start the second command
+	if err := dCmd.Start(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message decrypt: %s", err.Error())
+		return "", err
+	}
+
+	// Create a buffer to hold the decrypted output
+	var decryptedOutput bytes.Buffer
+
+	// Copy the decrypted output to the buffer
+	_, err = io.Copy(&decryptedOutput, dStdout)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading decrypted output: %s", err.Error())
+		return "", err
+	}
+
+	// Wait for the commands to complete
+	if err := eCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message done: %s", err.Error())
+		return "", err
+	}
+
+	if err := dCmd.Wait(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message decription: %s", err.Error())
+		return "", err
+	}
+
+	output := decryptedOutput.Bytes()
+	pos := bytes.LastIndex(output, []byte("}"))
+	if pos > 1 {
+		output = output[:pos+1]
+	}
+
+	var secretKey struct {
+		Secret string `json:"secret"`
+	}
+
+	err = json.Unmarshal(output, &secretKey)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
+		return "", err
+	}
+
+	return strings.TrimSpace(secretKey.Secret), nil
 }

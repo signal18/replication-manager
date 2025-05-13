@@ -94,7 +94,9 @@ func (cluster *Cluster) RollingRestart() error {
 	cluster.SetFailSync(false)
 	defer cluster.SetFailSync(saveFailoverMode)
 	for _, slave := range cluster.slaves {
-
+		if slave.SourceClusterName != cluster.Name {
+			continue
+		}
 		if !slave.IsDown() {
 			//slave.SetMaintenance()
 			//proxy.

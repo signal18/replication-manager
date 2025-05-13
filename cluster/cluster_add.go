@@ -58,12 +58,12 @@ func (cluster *Cluster) AddDBTagConfig(tag string) {
 	}
 }
 
-func (cluster *Cluster) AddDBTag(tag string,dynamic bool) {
+func (cluster *Cluster) AddDBTag(tag string, dynamic bool) {
 
 	if !cluster.Configurator.HaveDBTag(tag) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding database tag %s ", tag)
 		cluster.AddDBTagConfig(tag)
-		if (cluster.Conf.ProvDBApplyDynamicConfig || dynamic) {
+		if cluster.Conf.ProvDBApplyDynamicConfig || dynamic {
 			for _, srv := range cluster.Servers {
 				cmd := "mariadb_command"
 				if !srv.IsMariaDB() {
@@ -72,12 +72,18 @@ func (cluster *Cluster) AddDBTag(tag string,dynamic bool) {
 				srv.GetDatabaseConfig()
 				_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(tag, cmd), ";"))
 				if needrestart {
-					srv.SetRestartCookie()
+					if tag == "nosplitpath" {
+						srv.SetConfigPathCookie()
+					} else {
+						srv.SetRestartCookie()
+					}
 				}
 			}
 		} else {
 			cluster.SetDBRestartCookie()
 		}
+
+		cluster.SetConfigChangeCookie()
 	}
 
 }

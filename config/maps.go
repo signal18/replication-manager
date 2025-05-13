@@ -1,7 +1,9 @@
 package config
 
 import (
+	"strings"
 	"sync"
+	"time"
 
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -990,4 +992,258 @@ func FromVersionsMap(m *VersionsMap, c *VersionsMap) *VersionsMap {
 	}
 
 	return m
+}
+
+type VarStateSorter []VariableState
+
+func (a VarStateSorter) Len() int           { return len(a) }
+func (a VarStateSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a VarStateSorter) Less(i, j int) bool { return a[i].Variable_name < a[j].Variable_name }
+
+type VariableState struct {
+	Variable_name string  `json:"variableName"`
+	Config        *string `json:"cfgValue"`
+	Deployed      *string `json:"value"`
+	Runtime       *string `json:"runtimeValue"`
+	Preserve      *string `json:"preserveValue"`
+}
+
+type LastConfigUpdate struct {
+	Config   time.Time `json:"config"`
+	Deployed time.Time `json:"deployed"`
+}
+
+func NewVariableState(varname string) *VariableState {
+	return &VariableState{
+		Variable_name: strings.ToLower(varname),
+		Config:        nil,
+		Deployed:      nil,
+		Preserve:      nil,
+	}
+}
+
+func (v *VariableState) IsEqual() bool {
+	if v.Config == nil && v.Deployed == nil {
+		return true
+	}
+	if v.Config == nil || v.Deployed == nil {
+		return false
+	}
+	return *v.Config == *v.Deployed
+}
+
+func (v *VariableState) SetConfigValue(value string) {
+	if v.Config == nil {
+		v.Config = new(string)
+	}
+	*v.Config = value
+}
+
+func (v *VariableState) SetDeployedValue(value string) {
+	if v.Deployed == nil {
+		v.Deployed = new(string)
+	}
+	*v.Deployed = value
+}
+
+func (v *VariableState) SetRuntimeValue(value string) {
+	if v.Runtime == nil {
+		v.Runtime = new(string)
+	}
+	*v.Runtime = value
+}
+
+type VariablesMap struct {
+	*sync.Map
+}
+
+func NewVariablesMap() *VariablesMap {
+	s := new(sync.Map)
+	m := &VariablesMap{Map: s}
+	return m
+}
+
+func (m *VariablesMap) Get(key string) *VariableState {
+	if v, ok := m.Load(key); ok {
+		return v.(*VariableState)
+	}
+	return nil
+}
+
+func (m *VariablesMap) CheckAndGet(key string) (*VariableState, bool) {
+	v, ok := m.Load(key)
+	if ok {
+		return v.(*VariableState), true
+	}
+	return nil, false
+}
+
+func (m *VariablesMap) Set(key string, value *VariableState) {
+	m.Store(key, value)
+}
+
+func (m *VariablesMap) ToNormalMap(c map[string]*VariableState) {
+	// Clear the old values in the output map
+	for k := range c {
+		delete(c, k)
+	}
+
+	// Insert all values from the VariablesMap to the output map
+	m.Callback(func(key string, value *VariableState) bool {
+		c[key] = value
+		return true
+	})
+}
+
+func (m *VariablesMap) ToNewMap() map[string]*VariableState {
+	result := make(map[string]*VariableState)
+	m.Range(func(k, v any) bool {
+		result[k.(string)] = v.(*VariableState)
+		return true
+	})
+	return result
+}
+
+func (m *VariablesMap) Callback(f func(key string, value *VariableState) bool) {
+	m.Range(func(k, v any) bool {
+		return f(k.(string), v.(*VariableState))
+	})
+}
+
+func (m *VariablesMap) Clear() {
+	m.Range(func(key, value any) bool {
+		m.Delete(key.(string))
+		return true
+	})
+}
+
+func FromNormalVariablesMap(m *VariablesMap, c map[string]*VariableState) *VariablesMap {
+	if m == nil {
+		m = NewVariablesMap()
+	} else {
+		m.Clear()
+	}
+
+	for k, v := range c {
+		m.Set(k, v)
+	}
+
+	return m
+}
+
+func FromVariablesMap(m *VariablesMap, c *VariablesMap) *VariablesMap {
+	if m == nil {
+		m = NewVariablesMap()
+	} else {
+		m.Clear()
+	}
+
+	if c != nil {
+		c.Callback(func(key string, value *VariableState) bool {
+			m.Set(key, value)
+			return true
+		})
+	}
+
+	return m
+}
+
+func (m *VariablesMap) EmptyDeployedValues() {
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok {
+			state.Deployed = nil
+		}
+		return true
+	})
+}
+
+func (m *VariablesMap) EmptyConfigValues() {
+	m.Range(func(key, value any) bool {
+		if state, ok := value.(*VariableState); ok {
+			state.Config = nil
+		}
+		return true
+	})
+}
+
+func (m *VariablesMap) SetDeployedValues(strmap map[string]string) {
+	for k, v := range strmap {
+		if state, ok := m.Load(k); ok {
+			state.(*VariableState).SetDeployedValue(v)
+		} else {
+			state := NewVariableState(k)
+			state.SetDeployedValue(v)
+			m.Store(k, state)
+		}
+	}
+}
+
+func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
+	for k, v := range strmap {
+		if state, ok := m.Load(k); ok {
+			state.(*VariableState).SetRuntimeValue(v)
+		} else {
+			state := NewVariableState(k)
+			state.SetRuntimeValue(v)
+			m.Store(k, state)
+		}
+	}
+}
+
+func (m *VariablesMap) SetConfigValues(strmap map[string]string) {
+	for k, v := range strmap {
+		if state, ok := m.Load(k); ok {
+			state.(*VariableState).SetConfigValue(v)
+		} else {
+			state := NewVariableState(k)
+			state.SetConfigValue(v)
+			m.Store(k, state)
+		}
+	}
+}
+
+func (m *VariablesMap) ToNormalDeployedMap() map[string]string {
+	result := make(map[string]string)
+	m.Range(func(k, v any) bool {
+		val := v.(VariableState)
+		if val.Deployed == nil {
+			return true
+		}
+
+		result[k.(string)] = *val.Deployed
+		return true
+	})
+	return result
+}
+
+func (m *VariablesMap) ToNormalConfigMap() map[string]string {
+	result := make(map[string]string)
+	m.Range(func(k, v any) bool {
+		val := v.(VariableState)
+		if val.Deployed == nil {
+			return true
+		}
+
+		result[k.(string)] = *val.Deployed
+		return true
+	})
+	return result
+}
+
+func (m *VariablesMap) GetVariables(differ bool) []VariableState {
+	result := make([]VariableState, 0)
+	m.Range(func(k, v any) bool {
+		val := v.(*VariableState)
+
+		if differ {
+			if (val.Config == nil && val.Deployed != nil) || (val.Config != nil && val.Deployed == nil) || (val.Config != nil && val.Deployed != nil && *val.Config != *val.Deployed) || (val.Config != nil && val.Preserve != nil && *val.Preserve != *val.Config) || (val.Deployed != nil && val.Preserve != nil && *val.Preserve != *val.Deployed) {
+				result = append(result, *val)
+			}
+		} else {
+			result = append(result, *val)
+		}
+
+		return true
+	})
+	return result
 }

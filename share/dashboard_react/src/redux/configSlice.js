@@ -49,6 +49,42 @@ export const dropProxyTag = createAsyncThunk('configs/dropProxyTag', async ({ cl
   }
 })
 
+export const generateConfig = createAsyncThunk('configs/generateConfig', async ({ clusterName, host, port }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await configService.generateConfig(clusterName, host, port, baseURL)
+    showSuccessBanner(`Config generated successful!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Generating config failed!`, error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const generateAllConfig = createAsyncThunk('configs/generateAllConfig', async ({ clusterName, type }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await configService.generateAllConfigs(clusterName, type, baseURL)
+    showSuccessBanner(`All configs generated successful!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Generating configs failed!`, error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const preserveConfigPath = createAsyncThunk('configs/preserveConfigPath', async ({ clusterName, dbId, preserve }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await configService.preserveConfigPath(clusterName, dbId, preserve, baseURL)
+    showSuccessBanner(`All configs generated successful!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Generating configs failed!`, error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {}
 
 export const configsSlice = createSlice({

@@ -711,10 +711,10 @@ export const stopDatabase = createAsyncThunk('cluster/stopDatabase', async ({ cl
   }
 })
 
-export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId }, thunkAPI) => {
+export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId, cfgAction }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.startDatabase(clusterName, serverId, baseURL)
+    const { data, status } = await clusterService.startDatabase(clusterName, serverId, cfgAction, baseURL)
     showSuccessBanner('Database has started!', status, thunkAPI)
     return { data, status }
   } catch (error) {
@@ -1038,6 +1038,36 @@ export const getDatabaseService = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.getDatabaseService(clusterName, serviceName, dbId, baseURL)
+      if (status === 200) {
+        return { data, status }
+      }
+      
+      throw new Error(data)
+    } catch (error) {
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const getDatabaseVariables = createAsyncThunk(
+  'cluster/getDatabaseService',
+  async ({ clusterName, serviceName, dbId, diff }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL)
+        return { data, status }
+    } catch (error) {
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const preserveVariable = createAsyncThunk(
+  'cluster/getDatabaseService',
+  async ({ clusterName, variableName, preserve }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.preserveVariable(clusterName, variableName, preserve, baseURL)
       if (status === 200) {
         return { data, status }
       }
@@ -1429,6 +1459,7 @@ export const clusterSlice = createSlice({
         getClusterProxies.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
+        getDatabaseVariables.fulfilled,
         getTopProcess.fulfilled,
         getBackupSnapshot.fulfilled,
         getBackupStats.fulfilled,
@@ -1485,7 +1516,7 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'status-innodb') {
             state.database.status.statusInnoDB = action.payload.data
           } else if (serviceName === 'variables') {
-            state.database.variables = action.payload.data
+            state.database.variables = (action.payload.status == 200) ? action.payload.data : []
           } else if (serviceName === 'service-opensvc') {
             state.database.serviceOpensvc = action.payload.data
           } else if (serviceName === 'meta-data-locks') {
