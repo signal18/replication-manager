@@ -74,10 +74,10 @@ func (cluster *Cluster) CancelRollingReprov() error {
 	return nil
 }
 
-func (cluster *Cluster) DropDBTag(dtag string,dynamic bool) {
+func (cluster *Cluster) DropDBTag(dtag string, dynamic bool) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Dropping database tag %s ", dtag)
-	if (cluster.Conf.ProvDBApplyDynamicConfig || dynamic) {
+	if cluster.Conf.ProvDBApplyDynamicConfig || dynamic {
 		for _, srv := range cluster.Servers {
 			cmd := "mariadb_default"
 			if !srv.IsMariaDB() {
@@ -86,13 +86,26 @@ func (cluster *Cluster) DropDBTag(dtag string,dynamic bool) {
 			srv.GetDatabaseConfig()
 			_, needrestart := srv.ExecScriptSQL(strings.Split(srv.GetDatabaseDynamicConfig(dtag, cmd), ";"))
 			if needrestart {
-				srv.SetRestartCookie()
+				if dtag == "nosplitpath" {
+					srv.SetConfigPathCookie()
+				} else {
+					srv.SetRestartCookie()
+				}
 			}
 		}
 	}
+
 	changed := cluster.DropDBTagConfig(dtag)
-	if changed && !cluster.Conf.ProvDBApplyDynamicConfig {
-		cluster.SetDBRestartCookie()
+	if changed {
+		if !cluster.Conf.ProvDBApplyDynamicConfig {
+			if dtag == "nosplitpath" {
+				cluster.SetDBConfigPathCookie()
+			} else {
+				cluster.SetDBRestartCookie()
+			}
+		}
+
+		cluster.SetConfigChangeCookie()
 	}
 
 }
@@ -105,7 +118,6 @@ func (cluster *Cluster) DropDBTagConfig(dtag string) bool {
 }
 
 func (cluster *Cluster) DropProxyTag(dtag string) {
-
 	cluster.Configurator.DropProxyTag(dtag)
 	cluster.Conf.ProvProxTags = strings.Join(cluster.Configurator.GetProxyTags(), ",")
 	cluster.SetClusterCredentialsFromConfig()

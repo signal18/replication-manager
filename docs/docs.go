@@ -6001,6 +6001,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/start/{cfgAction}": {
+            "get": {
+                "description": "Starts a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Start a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Server started successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/stop": {
             "get": {
                 "description": "Stops a specified server within a cluster.",
@@ -8397,6 +8453,69 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}": {
+            "get": {
+                "description": "Retrieves the variables of a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get variables of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Show differences",
+                        "name": "diff",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variables retrieved successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/vtables": {
             "get": {
                 "description": "Retrieves the virtual tables of a specified server within a cluster.",
@@ -8565,6 +8684,58 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration regenerated successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
                         "schema": {
                             "type": "string"
                         }
@@ -9856,6 +10027,44 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/generate-configs/{servertype}": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration regenerated successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -15096,6 +15305,9 @@ const docTemplate = `{
                 "source": {
                     "type": "string"
                 },
+                "splitUser": {
+                    "type": "boolean"
+                },
                 "startTime": {
                     "type": "string"
                 }
@@ -15899,8 +16111,14 @@ const docTemplate = `{
                 "backupResticTimeout": {
                     "type": "integer"
                 },
+                "backupRestoreMysqlUser": {
+                    "type": "boolean"
+                },
                 "backupSaveScript": {
                     "type": "string"
+                },
+                "backupSplitMysqlUser": {
+                    "type": "boolean"
                 },
                 "backupStreaming": {
                     "type": "boolean"
@@ -17090,6 +17308,9 @@ const docTemplate = `{
                 "provDbServiceType": {
                     "type": "string"
                 },
+                "provDbStartFetchConfig": {
+                    "type": "boolean"
+                },
                 "provDbStartScript": {
                     "type": "string"
                 },
@@ -17224,6 +17445,9 @@ const docTemplate = `{
                 },
                 "provServicePlanRegistry": {
                     "type": "string"
+                },
+                "provShardproxyStartFetchConfig": {
+                    "type": "boolean"
                 },
                 "provSphinxAgents": {
                     "type": "string"

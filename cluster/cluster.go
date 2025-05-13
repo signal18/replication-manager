@@ -118,6 +118,7 @@ type Cluster struct {
 	IsAlertDisable                bool                   `json:"isAlertDisable"`
 	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
 	IsNeedStagingChange           bool                   `json:"isNeedStagingChange"`
+	IsConfigPathChange            bool                   `json:"isConfigPathChange"`
 	Conf                          *config.Config         `json:"config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
@@ -375,6 +376,8 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 }
 
 func (cluster *Cluster) InitFromConf() {
+	defer cluster.LogPanicToFile("cluster")
+
 	cluster.SqlErrorLog = logsql.New()
 	cluster.SqlGeneralLog = logsql.New()
 	cluster.crcTable = crc64.MakeTable(crc64.ECMA) // http://golang.org/pkg/hash/crc64/#pkg-constants
@@ -752,7 +755,7 @@ func (cluster *Cluster) Run() {
 				cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
-
+				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.StateProcessing()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
@@ -1374,7 +1377,9 @@ func (cluster *Cluster) InitAgent(conf config.Config) {
 }
 
 func (cluster *Cluster) ReloadConfig(conf config.Config) {
+	cluster.Lock()
 	*cluster.Conf = conf
+	cluster.Unlock()
 
 	cluster.StateMachine.SetFailoverState()
 	cluster.ResetStates()
@@ -1384,6 +1389,7 @@ func (cluster *Cluster) ReloadConfig(conf config.Config) {
 	wg.Add(1)
 	go cluster.TopologyDiscover(wg)
 	wg.Wait()
+	cluster.ServerIdList = cluster.GetDBServerIdList()
 	cluster.StateMachine.RemoveFailoverState()
 
 }

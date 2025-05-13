@@ -17,11 +17,13 @@ function Configs({ selectedCluster, user }) {
   const {
     cluster: { clusterCertificates }
   } = useSelector((state) => state)
+
   useEffect(() => {
     if (selectedCluster && clusterCertificates == null) {
       dispatch(getClusterCertificates({ clusterName: selectedCluster?.name }))
     }
-  }, [selectedCluster])
+  }, [selectedCluster, clusterCertificates])
+
   return (
     <VStack className={styles.configContainer}>
       <AccordionComponent

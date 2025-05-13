@@ -260,7 +260,7 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 
 }
 
-func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
+func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 
 	if WithDeprecate == "ON" {
@@ -269,7 +269,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	var usr string
 	var configPath string
 	//var pid string
-	flag.StringVar(&usr, "user", "", "help message")
+	if !isClient { // client should not use this
+		flag.StringVar(&usr, "user", "", "help message")
+	}
 	//flag.StringVar(&pid, "pidfile", "", "help message")
 	flag.StringVar(&configPath, "config", "", "help message")
 	flag.Parse()
@@ -847,9 +849,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvCores, "prov-db-cpu-cores", "1", "Number of cpu cores for the micro service VM")
 	flags.BoolVar(&conf.ProvDBApplyDynamicConfig, "prov-db-apply-dynamic-config", false, "Dynamic database config change")
 	flags.BoolVar(&conf.ProvDBForceWriteConfig, "prov-db-force-write-config", false, "Force write to config files without Signal18 header on provision")
+	flags.BoolVar(&conf.ProvDBConfigPreserve, "prov-db-config-preserve", true, "Preserve values in config files. If set to false, the 99_preserved.cnf will not be copied to the config.tar.gz")
+	flags.StringVar(&conf.ProvDBConfigPreserveVars, "prov-db-config-preserve-vars", "", "List of preserved options separated by semicolon (opt1;opt2=val2;opt3). Allow hard code by adding value e.g. innodb_data_home_dir=/var/lib/mysql")
 	flags.StringVar(&conf.ProvTags, "prov-db-tags", "semisync,row,innodb,noquerycache,threadpool,slow,pfs,docker,linux,readonly,diskmonitor,sqlerror,compressbinlog", "playbook configuration tags")
 	flags.StringVar(&conf.ProvDomain, "prov-db-domain", "0", "Config domain id for the cluster")
-	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256", "Memory in M for micro service VM")
+	flags.StringVar(&conf.ProvMem, "prov-db-memory", "256M", "Memory in M for micro service VM")
 	flags.StringVar(&conf.ProvMemSharedPct, "prov-db-memory-shared-pct", "threads:16,innodb:60,myisam:10,aria:10,rocksdb:1,tokudb:1,s3:1,archive:1,querycache:0", "% memory shared per buffer")
 	flags.StringVar(&conf.ProvMemThreadedPct, "prov-db-memory-threaded-pct", "tmp:70,join:20,sort:10", "% memory allocted per threads")
 	flags.StringVar(&conf.ProvDisk, "prov-db-disk-size", "20", "Disk in g for micro service VM")
@@ -858,7 +862,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvProxTags, "prov-proxy-tags", "masterslave,docker,linux,noreadwritesplit", "playbook configuration tags wsrep,multimaster,masterslave")
 	flags.StringVar(&conf.ProvProxDisk, "prov-proxy-disk-size", "20", "Disk in g for micro service VM")
 	flags.StringVar(&conf.ProvProxCores, "prov-proxy-cpu-cores", "1", "Cpu cores ")
-	flags.StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1", "Memory usage in giga bytes")
+	flags.StringVar(&conf.ProvProxMem, "prov-proxy-memory", "1G", "Memory usage in M bytes")
 	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "https://docs.google.com/spreadsheets/d/e/2PACX-1vQClXknRapJZ4bRSId_aa5zUrbFDZmmc6GiV3n7-tPyQJispqqnSJj6lMaJxoJv5pOC9Ktj8ywWdGX6/pub?gid=0&single=true&output=csv", "URL to csv service plan list")
 	//	flags.StringVar(&conf.ProvServicePlanRegistry, "prov-service-plan-registry", "http://gsx2json.com/api?id=130326CF_SPaz-flQzCRPE-w7FjzqU1NqbsM7MpIQ_oU&sheet=1&columns=false", "URL to json service plan list")
 	flags.StringVar(&conf.ProvServicePlan, "prov-service-plan", "", "Cluster plan")
@@ -901,6 +905,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvProxyStartScript, "prov-proxy-start-script", "", "Proxy start script")
 	flags.StringVar(&conf.ProvDbStopScript, "prov-db-stop-script", "", "Database stop script")
 	flags.StringVar(&conf.ProvProxyStopScript, "prov-proxy-stop-script", "", "Proxy stop script")
+	flags.BoolVar(&conf.ProvDbStartFetchConfig, "prov-db-start-fetch-config", true, "Fetch configuration from configurator on DB start")
+	flags.BoolVar(&conf.ProvProxyStartFetchConfig, "prov-proxy-start-fetch-config", true, "Fetch configuration from configurator on Proxy start")
 
 	flags.BoolVar(&conf.OnPremiseSSH, "onpremise-ssh", false, "Connect to host via SSH using user private key")
 	flags.StringVar(&conf.OnPremiseSSHPrivateKey, "onpremise-ssh-private-key", "", "Private key for ssh if none use the user HOME directory")

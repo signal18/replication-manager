@@ -43,7 +43,10 @@ type ProtectedSSTconnections struct {
 var SSTs = ProtectedSSTconnections{SSTconnections: make(map[int]*SST)}
 
 func (cluster *Cluster) SSTCloseReceiver(destinationPort int) {
-	SSTs.SSTconnections[destinationPort].in.(net.Conn).Close()
+	sstRcvr := SSTs.SSTconnections[destinationPort]
+	if sstRcvr != nil && sstRcvr.in != nil {
+		sstRcvr.in.(net.Conn).Close()
+	}
 }
 
 func (cluster *Cluster) SSTWatchRestic(r io.Reader) error {
@@ -255,9 +258,8 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 	}()
 
 	sst.in, err = sst.listener.Accept()
-
 	if err != nil {
-
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener : %v", err)
 		return
 	}
 

@@ -12,10 +12,13 @@ package cluster
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -588,11 +591,25 @@ func (cluster *Cluster) CopyLogs(r io.Reader, module int, level string, name str
 
 func (cluster *Cluster) LogPanicToFile(task string) {
 	if r := recover(); r != nil {
-		cluster.Logrus.WithFields(log.Fields{
+		fields := log.Fields{
 			"cluster":    cluster.Name,
 			"task":       task,
 			"panic":      r,
 			"stacktrace": string(debug.Stack()),
-		}).Error("Application terminated unexpectedly")
+		}
+
+		cluster.Logrus.WithFields(fields).Print("Application terminated unexpectedly")
+
+		// Convert to json
+		path := filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "panic.log")
+		content, err := json.MarshalIndent(fields, "", "\t")
+		if err != nil {
+			cluster.Logrus.Print("Unable to decode stacktrace")
+		}
+
+		if err = os.WriteFile(path, content, 0644); err != nil {
+			cluster.Logrus.Print("Unable to write stacktrace to panic.log")
+		}
+
 	}
 }

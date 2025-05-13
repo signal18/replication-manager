@@ -7,8 +7,14 @@
 package cluster
 
 import (
+	"bufio"
+	"os"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -194,18 +200,67 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 	return server.Variables.Get(variable)
 }
 
-func (server *ServerMonitor) GetDatabaseConfig() string {
+func (server *ServerMonitor) GetDatabaseConfig() error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion)
+
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, cluster.Conf.ProvDBConfigPreserve, server.HasConfigPathCookie())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
+		return err
 	}
+
 	server.IsConfigGen = true
-	return ""
+	return nil
+}
+
+func (server *ServerMonitor) PreserveConfigPath() {
+	srcpath := filepath.Join(server.Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
+	destpath := filepath.Join(server.Datadir, "default_path.cnf")
+
+	// Check if the source file exists before copying
+	if _, err := os.Stat(srcpath); err == nil {
+		misc.CopyFile(srcpath, destpath)
+	}
+}
+
+func (server *ServerMonitor) RemovePreservedConfigPath() {
+	filename := filepath.Join(server.Datadir, "default_path.cnf")
+
+	// Check if the source file exists before copying
+	if _, err := os.Stat(filename); err == nil {
+		os.Remove(filename)
+	}
+}
+
+func (server *ServerMonitor) ReadVariablesFromConfigs() {
+	cluster := server.ClusterGroup
+
+	var err error
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), false)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), true)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		}
+	}()
+
+	wg.Wait()
+
+	server.IsNeedPathCheck = true
 }
 
 func (server *ServerMonitor) GetDatabaseDynamicConfig(filter string, cmd string) string {
@@ -297,4 +352,278 @@ func (server *ServerMonitor) GetJobDatadir() string {
 	}
 
 	return server.GetDatabaseDatadir() + "/.system/jobs"
+}
+
+func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
+	// Create the directory if it doesn't exist
+	parent := filepath.Dir(cnf)
+	if _, err := os.Stat(parent); os.IsNotExist(err) {
+		if err = os.MkdirAll(parent, 0755); err != nil {
+			return err
+		}
+	}
+
+	// Create the dummy.cnf file
+	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
+}
+
+func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deployed bool) error {
+	cluster := server.ClusterGroup
+	var srcfile *os.File
+	var err error
+
+	var lastUpdate time.Time
+	if deployed {
+		lastUpdate = server.LastConfigUpdate.Deployed
+	} else {
+		lastUpdate = server.LastConfigUpdate.Config
+	}
+
+	finfo, err := os.Stat(srcpath)
+	if err != nil {
+		if deployed {
+			server.LastConfigUpdate.Deployed = time.Time{}
+		} else {
+			server.LastConfigUpdate.Config = time.Time{}
+		}
+		if os.IsNotExist(err) {
+			return nil
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error checking file %s: %s", srcpath, err)
+		return err
+	}
+
+	if !lastUpdate.Before(finfo.ModTime()) {
+		// No need to read the file if it hasn't changed
+		return nil
+	}
+
+	if deployed {
+		server.LastConfigUpdate.Deployed = finfo.ModTime()
+	} else {
+		server.LastConfigUpdate.Config = finfo.ModTime()
+	}
+
+	// Read the file
+	srcfile, err = os.Open(srcpath)
+	if err != nil {
+		server.LastConfigUpdate.Config = time.Time{}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
+
+	defer srcfile.Close()
+
+	// Clear all previous values
+	if deployed {
+		server.VariablesMap.EmptyDeployedValues()
+	} else {
+		server.VariablesMap.EmptyConfigValues()
+	}
+
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		if line == "" {
+			continue
+		}
+
+		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
+			key := strings.ToUpper(varname)
+			value := strings.TrimSpace(parts[1])
+			v, ok := server.VariablesMap.CheckAndGet(key)
+			if ok {
+				v.Variable_name = varname
+				if deployed {
+					if v.Deployed == nil {
+						v.Deployed = &value
+					} else if *v.Deployed != value {
+						// If the value contains "=" in the value, append else replace
+						if strings.Contains(value, "=") {
+							*v.Deployed += "\n" + value
+						} else {
+							*v.Deployed = value
+						}
+					}
+				} else {
+					if v.Config == nil {
+						v.Config = &value
+					} else if *v.Config != value {
+						// If the value contains "=" in the value, append else replace
+						if strings.Contains(value, "=") {
+							*v.Config += "\n" + value
+						} else {
+							*v.Config = value
+						}
+					}
+				}
+			} else {
+				v = &config.VariableState{Variable_name: varname}
+				if deployed {
+					v.Deployed = &value
+				} else {
+					v.Config = &value
+				}
+				server.VariablesMap.Store(key, v)
+			}
+		}
+	}
+
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+	for _, opt := range list {
+		opt = strings.TrimSpace(opt)
+		if opt == "" {
+			continue
+		}
+
+		value := ""
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 2 {
+			opt = parts[0]
+			value = parts[1]
+		}
+
+		key := strings.ToUpper(opt)
+		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+			v.Preserve = &value
+		} else if value != "" {
+			v = &config.VariableState{Variable_name: opt, Preserve: &value}
+			server.VariablesMap.Store(key, v)
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) error {
+	cluster := server.ClusterGroup
+
+	// Check if the source file exists
+	if _, err := os.Stat(srcpath); os.IsNotExist(err) {
+		return nil
+	}
+
+	destfile, err := os.OpenFile(destpath+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
+	}
+	defer destfile.Close()
+
+	if _, err := destfile.WriteString("[mysqld]" + "\n"); err != nil {
+		return err
+	}
+
+	// Read the file
+	srcfile, err := os.Open(srcpath)
+	if err != nil {
+		server.LastConfigUpdate.Config = time.Time{}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
+
+	defer srcfile.Close()
+
+	fixedlist := make([]string, 0)
+	dynamiclist := make([]string, 0)
+	remaining := make(map[string]bool)
+	for _, opt := range strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";") {
+		opt = strings.TrimSpace(opt)
+		if opt == "" {
+			continue
+		}
+
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 1 {
+			dynamiclist = append(dynamiclist, parts[0])
+			remaining[parts[0]] = true
+		} else {
+			fixedlist = append(fixedlist, opt)
+		}
+	}
+
+	errvarlist := make([]error, 0)
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		if line == "" {
+			continue
+		}
+
+		varname := strings.ToLower(strings.TrimPrefix(line, "loose_")) // handle --loose_option
+		parts := strings.SplitN(varname, "=", 2)
+		varname = strings.TrimSpace(parts[0])
+
+		if slices.Contains(dynamiclist, varname) {
+			// Write the line to the file
+			if _, err := destfile.WriteString(line + "\n"); err != nil {
+				errvarlist = append(errvarlist, err)
+			}
+		}
+	}
+
+	// Write the remaining variables in runtime
+	for opt := range remaining {
+		if opt == "" {
+			continue
+		}
+
+		key := strings.ToUpper(opt)
+		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+			if v.Runtime != nil {
+				if _, err := destfile.WriteString(opt + "=" + *v.Runtime + "\n"); err != nil {
+					errvarlist = append(errvarlist, err)
+				}
+			}
+		}
+	}
+
+	// Write the fixed variables
+	for _, opt := range fixedlist {
+		if opt == "" {
+			continue
+		}
+		parts := strings.SplitN(opt, "=", 2)
+		if len(parts) == 2 {
+			opt = parts[0]
+			value := parts[1]
+			if _, err := destfile.WriteString("loose_" + opt + "=" + value + "\n"); err != nil {
+				errvarlist = append(errvarlist, err)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
+
+	if len(errvarlist) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", destpath, errvarlist)
+		return err
+	}
+
+	return nil
+
 }

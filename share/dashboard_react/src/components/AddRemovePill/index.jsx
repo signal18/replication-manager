@@ -5,9 +5,10 @@ import CustomIcon from '../Icons/CustomIcon'
 import { HiMinus, HiPlus } from 'react-icons/hi'
 import { HStack, Text } from '@chakra-ui/react'
 
-function AddRemovePill({ text, used = false, onAdd, onRemove, category }) {
+function AddRemovePill({ text, used = false, onAdd, onRemove, category, isDisabled = false }) {
   return (
     <RMButton
+      isDisabled={isDisabled} 
       className={`${styles.addRemovePill} ${used ? styles.used : styles.unused}`}
       onClick={used ? () => onRemove(`Confirm drop tag ${text}?`) : () => onAdd(`Confirm add tag ${text}?`)}>
       {category && <Text className={styles.category}>{category}</Text>}

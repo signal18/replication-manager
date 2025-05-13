@@ -114,7 +114,7 @@ type DatabaseProxy interface {
 
 	IsFilterInTags(filter string) bool
 	IsDown() bool
-	GetProxyConfig() string
+	GetProxyConfig() error
 	GetJanitorWeight() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string
@@ -145,6 +145,9 @@ type DatabaseProxy interface {
 	SetRestartCookie() error
 	SetWaitStartCookie() error
 	SetWaitStopCookie() error
+	SetConfigCookie() error
+	SetConfigRefreshCookie() error
+	SetNoConfigFetchCookie() error
 
 	HasProvisionCookie() bool
 	HasUnprovisionCookie() bool
@@ -153,6 +156,8 @@ type DatabaseProxy interface {
 	HasWaitStartCookie() bool
 	HasWaitStopCookie() bool
 	HasConfigCookie() bool
+	HasConfigRefreshCookie() bool
+	HasNoConfigFetchCookie() bool
 	HasDNS() bool
 
 	DelProvisionCookie() error
@@ -161,6 +166,9 @@ type DatabaseProxy interface {
 	DelRestartCookie() error
 	DelWaitStartCookie() error
 	DelWaitStopCookie() error
+	DelConfigCookie() error
+	DelConfigRefreshCookie() error
+	DelNoConfigFetchCookie() error
 
 	RotateProxyPasswords(password string)
 }

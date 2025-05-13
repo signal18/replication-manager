@@ -1,0 +1,13 @@
+.list {
+  background-color: var(--secondary-gray-color);
+
+  li {
+    &:hover,
+    &:focus,
+    &:focus-visible,
+    &:focus-within {
+      background-color: var(--quaternary-color) !important;
+    }
+  }
+  
+}

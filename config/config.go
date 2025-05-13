@@ -514,6 +514,8 @@ type Config struct {
 	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
 	ProvDBApplyDynamicConfig                  bool                   `mapstructure:"prov-db-apply-dynamic-config" toml:"prov-db-apply-dynamic-config" json:"provDBApplyDynamicConfig"`
 	ProvDBForceWriteConfig                    bool                   `mapstructure:"prov-db-force-write-config" toml:"prov-db-force-write-config" json:"provDBForceWriteConfig"`
+	ProvDBConfigPreserve                      bool                   `mapstructure:"prov-db-config-preserve" toml:"prov-db-config-preserve" json:"provDbConfigPreserve"`
+	ProvDBConfigPreserveVars                  string                 `mapstructure:"prov-db-config-preserve-vars" toml:"prov-db-config-preserve-vars" json:"provDbConfigPreserveVars"`
 	ProvDBClientBasedir                       string                 `mapstructure:"prov-db-client-basedir" toml:"prov-db-client-basedir" json:"provDbClientBasedir"`
 	ProvDBBinaryBasedir                       string                 `mapstructure:"prov-db-binary-basedir" toml:"prov-db-binary-basedir" json:"provDbBinaryBasedir"`
 	ProvDBBinaryLogName                       string                 `mapstructure:"prov-db-binary-log-name" toml:"prov-db-binary-log-name" json:"provDbBinaryLogName"`
@@ -610,7 +612,9 @@ type Config struct {
 	ProvDbCleanupScript                       string                 `mapstructure:"prov-db-cleanup-script" toml:"prov-db-cleanup-script" json:"provDbCleanupScript"`
 	ProvProxyCleanupScript                    string                 `mapstructure:"prov-proxy-cleanup-script" toml:"prov-proxy-cleanup-script" json:"provProxyCleanupScript"`
 	ProvDbStartScript                         string                 `mapstructure:"prov-db-start-script" toml:"prov-db-start-script" json:"provDbStartScript"`
+	ProvDbStartFetchConfig                    bool                   `mapstructure:"prov-db-start-fetch-config" toml:"prov-db-start-fetch-config" json:"provDbStartFetchConfig"`
 	ProvProxyStartScript                      string                 `mapstructure:"prov-proxy-start-script" toml:"prov-proxy-start-script" json:"provProxyStartScript"`
+	ProvProxyStartFetchConfig                 bool                   `mapstructure:"prov-proxy-start-fetch-config" toml:"prov-proxy-start-fetch-config" json:"provProxyStartFetchConfig"`
 	ProvDbStopScript                          string                 `mapstructure:"prov-db-stop-script" toml:"prov-db-stop-script" json:"provDbStopScript"`
 	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`

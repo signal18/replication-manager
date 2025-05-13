@@ -18,7 +18,8 @@ function Gauge({
   hideMinMax = true,
   showStep = false,
   step = 0,
-  handleStepChange
+  handleStepChange,
+  isDisabled = false,
 }) {
   const svgRef = useRef(null)
   const updateGaugePosition = () => {
@@ -99,6 +100,7 @@ function Gauge({
       {showStep && (
         <HStack className={styles.stepButtons} gap={2} margin='auto'>
           <RMButton
+            isDisabled={isDisabled}
             variant='outline'
             className={styles.decreaseButton}
             onClick={() => {
@@ -109,6 +111,7 @@ function Gauge({
               handleStepChange(newValue)
             }}>{`-${step}`}</RMButton>
           <RMButton
+            isDisabled={isDisabled}
             variant='outline'
             className={styles.increaseButton}
             onClick={() => {

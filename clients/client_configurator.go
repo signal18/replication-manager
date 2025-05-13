@@ -28,8 +28,8 @@ import (
 	"github.com/spf13/viper"
 )
 
-var dbCurrrentTag string
-var dbCurrrentCategory string
+var dbCurrentTag string
+var dbCurrentCategory string
 var dbCategories map[string]string
 var dbCategoriesSortedKeys []string
 var dbResourceCategories = []string{"MEMORY", "DISK", "CPU", "NETWORK"}
@@ -94,7 +94,7 @@ var configuratorCmd = &cobra.Command{
 		//configurator := cluster.Configurator
 
 		for _, server := range cluster.Servers {
-			err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion)
+			err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true, true)
 			if err != nil {
 				log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 			}
@@ -151,7 +151,7 @@ var configuratorCmd = &cobra.Command{
 					if event.Key == termbox.KeyCtrlS {
 						cluster.Save()
 						for _, server := range cluster.Servers {
-							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion)
+							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true, true)
 							if err != nil {
 								log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 							}
@@ -266,12 +266,12 @@ var configuratorCmd = &cobra.Command{
 						case 0:
 							PanIndex = 1
 						case 1:
-							if addedTags[dbCurrrentTag] {
-								cluster.DropDBTag(dbCurrrentTag,false)
-								addedTags[dbCurrrentTag] = false
+							if addedTags[dbCurrentTag] {
+								cluster.DropDBTag(dbCurrentTag, false)
+								addedTags[dbCurrentTag] = false
 							} else {
-								cluster.AddDBTag(dbCurrrentTag,false)
-								addedTags[dbCurrrentTag] = true
+								cluster.AddDBTag(dbCurrentTag, false)
+								addedTags[dbCurrentTag] = true
 							}
 							cluster.SetTagsFromConfigurator()
 
@@ -459,10 +459,10 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	for i, cat := range dbCategoriesSortedKeys {
 		tag := dbCategories[cat]
 
-		if dbCurrrentCategory == "" || i == dbCategoryIndex {
-			dbCurrrentCategory = cat
-			if dbCurrrentTag == "" {
-				dbCurrrentTag = tag
+		if dbCurrentCategory == "" || i == dbCategoryIndex {
+			dbCurrentCategory = cat
+			if dbCurrentTag == "" {
+				dbCurrentTag = tag
 			}
 		}
 
@@ -470,7 +470,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 			curWitdh = 1
 			cliTlog.Line++
 		}
-		if dbCurrrentCategory != cat {
+		if dbCurrentCategory != cat {
 			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, strings.ToUpper(cat))
 		} else {
 			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorBlack, colorCell, strings.ToUpper(cat))
@@ -497,7 +497,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 	dbUsedTags = configurator.GetDBTags()
 
 	for _, tag := range tags {
-		if dbCurrrentCategory == tag.Category /*&& !configurator.HaveDBTag(tag.Name)*/ {
+		if dbCurrentCategory == tag.Category /*&& !configurator.HaveDBTag(tag.Name)*/ {
 			dbCurrentCategoryTags = append(dbCurrentCategoryTags, tag)
 		}
 	}
@@ -512,7 +512,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 		}
 		if i == dbTagIndex && PanIndex == 1 {
 			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorBlack, colorCell, tagDisplay)
-			dbCurrrentTag = tag.Name
+			dbCurrentTag = tag.Name
 		} else {
 			cliPrintTb(curWitdh, cliTlog.Line, termbox.ColorWhite, termbox.ColorBlack, tagDisplay)
 		}

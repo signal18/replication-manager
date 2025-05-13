@@ -375,21 +375,18 @@ func (cluster *Cluster) SetDBDiskSize(value string) {
 }
 
 func (cluster *Cluster) SetDBCores(value string) {
-
 	cluster.Configurator.SetDBCores(value)
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBMemorySize(value string) {
-
 	cluster.Configurator.SetDBMemory(value)
 	cluster.Conf.ProvMem = cluster.Configurator.GetConfigDBMemory()
 	cluster.SetDBReprovCookie()
 }
 
 func (cluster *Cluster) SetDBCoresFromConfigurator() {
-
 	cluster.Conf.ProvCores = cluster.Configurator.GetConfigDBCores()
 	cluster.SetDBRestartCookie()
 }
@@ -407,6 +404,7 @@ func (cluster *Cluster) SetDBIOPSFromConfigurator() {
 func (cluster *Cluster) SetTagsFromConfigurator() {
 	cluster.Conf.ProvTags = cluster.Configurator.GetConfigDBTags()
 	cluster.Conf.ProvProxTags = cluster.Configurator.GetConfigProxyTags()
+	cluster.SetConfigRefreshCookie() //Need to refresh the config
 }
 
 func (cluster *Cluster) SetDBDiskIOPS(value string) {
@@ -1295,6 +1293,21 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 	}
 }
 
+// Set Cookie for all servers that configuration has changed
+func (cluster *Cluster) SetConfigChangeCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigCookie()        // Persist until config deployed
+		srv.SetConfigRefreshCookie() // Until config refreshed
+	}
+}
+
+// Set Cookie for all servers that configuration variables need refresh
+func (cluster *Cluster) SetConfigRefreshCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigRefreshCookie()
+	}
+}
+
 func (cluster *Cluster) SetDBRestartCookie() {
 	for _, srv := range cluster.Servers {
 		srv.SetRestartCookie()
@@ -1303,6 +1316,11 @@ func (cluster *Cluster) SetDBRestartCookie() {
 func (cluster *Cluster) SetDBReprovCookie() {
 	for _, srv := range cluster.Servers {
 		srv.SetReprovCookie()
+	}
+}
+func (cluster *Cluster) SetDBConfigPathCookie() {
+	for _, srv := range cluster.Servers {
+		srv.SetConfigPathCookie()
 	}
 }
 
@@ -2506,4 +2524,74 @@ func (cluster *Cluster) SetMonitorPFSMemory(value bool) {
 
 func (cluster *Cluster) SetMonitorPFSInstruments(value bool) {
 	cluster.Conf.MonitorPFSInstruments = value
+}
+
+func (cluster *Cluster) SetPreserveFlagToAllNodes(variable string, value string) {
+	for _, srv := range cluster.Servers {
+		v, ok := srv.VariablesMap.CheckAndGet(variable)
+		if ok {
+			v.Preserve = &value
+		}
+	}
+}
+
+func (cluster *Cluster) DelPreserveFlagToAllNodes(variable string) {
+	for _, srv := range cluster.Servers {
+		v, ok := srv.VariablesMap.CheckAndGet(variable)
+		if ok {
+			v.Preserve = nil
+		}
+	}
+}
+
+func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
+	parts := strings.SplitN(variable, "=", 2)
+	key := ""
+	value := ""
+	if len(parts) == 2 {
+		variable = strings.TrimSpace(parts[0])
+		value = strings.TrimSpace(parts[1])
+
+		key = strings.ToUpper(variable)
+		if value != "" {
+			variable = variable + "=" + value
+		}
+	}
+
+	var found bool
+	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+	for i, v := range list {
+		parts = strings.SplitN(v, "=", 2)
+		if key == strings.ToUpper(parts[0]) {
+			found = true
+			if preserve {
+				list[i] = variable
+			} else {
+				if strings.ToUpper(cluster.Conf.ProvDBConfigPreserveVars) == key {
+					list = make([]string, 0) // prevent unwanted spaces
+				} else {
+					list = append(list[:i], list[i+1:]...)
+				}
+			}
+			break
+		}
+	}
+
+	if !found && preserve {
+		if cluster.Conf.ProvDBConfigPreserveVars == "" {
+			list = make([]string, 0) // prevent unwanted spaces
+		}
+
+		list = append(list, variable)
+	}
+
+	cluster.Conf.ProvDBConfigPreserveVars = strings.Join(list, ";")
+
+	if preserve {
+		cluster.SetPreserveFlagToAllNodes(key, value)
+	} else {
+		cluster.DelPreserveFlagToAllNodes(key)
+	}
+
+	return nil
 }

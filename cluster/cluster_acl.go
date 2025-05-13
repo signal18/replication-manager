@@ -417,6 +417,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/config") {
 			return true
 		}
+		if strings.Contains(URL, "/config-gen") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
 		if strings.Contains(URL, "/processlist") {
@@ -811,6 +814,12 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/add-proxy-tag") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/generate-configs") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/preserve-variable") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSettings] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload") {
@@ -879,6 +888,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterConfigGraphs] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/set-graphite-filterlist") {
 			return true

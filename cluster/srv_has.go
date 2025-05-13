@@ -173,6 +173,18 @@ func (server *ServerMonitor) HasConfigCookie() bool {
 	return server.hasCookie("cookie_config")
 }
 
+func (server *ServerMonitor) HasConfigPathCookie() bool {
+	return server.hasCookie("cookie_configpath")
+}
+
+func (server *ServerMonitor) HasConfigRefreshCookie() bool {
+	return server.hasCookie("cookie_configrefresh")
+}
+
+func (server *ServerMonitor) HasNoConfigFetchCookie() bool {
+	return server.hasCookie("cookie_noconfigfetch")
+}
+
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:
@@ -320,50 +332,46 @@ func (server *ServerMonitor) HasLogPFS() bool {
 }
 
 func (server *ServerMonitor) HasLogMutex() bool {
-   if !server.HasLogPFS()  {
-		 return false
-	 }
-	 if !( server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona() ) {
-		 return false
-	 }
-	 //if !server.GetCluster().Conf.MonitorPFSInstruments{
+	if !server.HasLogPFS() {
+		return false
+	}
+	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+		return false
+	}
+	//if !server.GetCluster().Conf.MonitorPFSInstruments{
 	//	 return false
 	// }
-	 if !server.GetCluster().Conf.MonitorPFSMutex{
-		 return false
-	 }
-	 return true
+	if !server.GetCluster().Conf.MonitorPFSMutex {
+		return false
+	}
+	return true
 }
 
 func (server *ServerMonitor) HasLogLatch() bool {
-   if !server.HasLogPFS()  {
-		 return false
-	 }
-	 if !( server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona() ) {
-		 return false
-	 }
-	 // if !server.GetCluster().Conf.MonitorPFSInstruments{
+	if !server.HasLogPFS() {
+		return false
+	}
+	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+		return false
+	}
+	// if !server.GetCluster().Conf.MonitorPFSInstruments{
 	//	 return false
 	// }
-	 if !server.GetCluster().Conf.MonitorPFSLatch{
-		 return false
-	 }
-	 if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.5") {
-   	 return true
-   }
-	 return false
+	if !server.GetCluster().Conf.MonitorPFSLatch {
+		return false
+	}
+	if server.IsMariaDB() && server.DBVersion.GreaterEqual("10.5") {
+		return true
+	}
+	return false
 }
 
-func (server *ServerMonitor)  HasLogPFSMemory() bool {
- if server.GetCluster().Conf.MonitorPFSMemory && server.HasLogPFS()  {
-	 return true
- }
- return false
+func (server *ServerMonitor) HasLogPFSMemory() bool {
+	if server.GetCluster().Conf.MonitorPFSMemory && server.HasLogPFS() {
+		return true
+	}
+	return false
 }
-
-
-
-
 
 func (server *ServerMonitor) HasLogsInSystemTables() bool {
 	return server.Variables.Get("LOG_OUTPUT") == "TABLE"

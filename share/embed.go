@@ -1,3 +1,6 @@
+//go:build !clients
+// +build !clients
+
 package share
 
 import (

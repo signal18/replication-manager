@@ -275,7 +275,7 @@ func (repman *ReplicationManager) apiserver() {
 			http.Redirect(w, r, "/", http.StatusFound)
 		}
 	})
-
+	
 	router.Handle("/api/terminal/list", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerGetTerminalSessionList)),
 	))
@@ -283,6 +283,8 @@ func (repman *ReplicationManager) apiserver() {
 	router.Handle("/api/terminal/connect", http.HandlerFunc(repman.handlerTerminal))
 
 	router.HandleFunc("/api/login", repman.loginHandler)
+	router.HandleFunc("/api/version", repman.handlerVersion)
+
 	router.Handle("/api/terms", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxTerms)),
 	))
@@ -854,25 +856,28 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	mycopy := repman
 	var cl []string
-
 	for _, cluster := range repman.Clusters {
-
 		if valid, _ := repman.IsValidClusterACL(r, cluster); valid {
 			cl = append(cl, cluster.Name)
 		}
 	}
 
-	mycopy.ClusterList = cl
-
-	res, err := json.Marshal(mycopy)
+	res, err := json.Marshal(repman)
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
 		return
 	}
 
-	for crkey, _ := range mycopy.Conf.Secrets {
+	clres, err := json.Marshal(cl)
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	res, err = jsonparser.Set(res, clres, "clusters")
+
+	for crkey, _ := range repman.Conf.Secrets {
 		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
 	}
 
@@ -883,6 +888,20 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(res)
+}
+
+// handlerVersion handles the HTTP request for the replication manager version.
+// @Summary Handles replication manager version requests
+// @Description This endpoint processes the replication manager version requests and returns the version in JSON format.
+// @Tags Public
+// @Accept  json
+// @Produce  json
+// @Success 200 {object} ReplicationManager "Successful response with replication manager version"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/version [get]
+func (repman *ReplicationManager) handlerVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Write([]byte(repman.Fullversion))
 }
 
 // handlerMuxTerms handles HTTP requests for retrieving terms.

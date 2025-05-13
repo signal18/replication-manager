@@ -345,6 +345,17 @@ func (configurator *Configurator) GetSshStartDBScript() string {
 	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/start"
 }
 
+func (configurator *Configurator) GetSshPrintDefaultDBScript() string {
+	dbtype := "mariadb"
+	if configurator.HaveDBTag("rpm") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/redhat/" + dbtype + "/printcfg"
+	}
+	if configurator.HaveDBTag("package") {
+		return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/package/linux/" + dbtype + "/printcfg"
+	}
+	return configurator.ClusterConfig.HttpRoot + "/static/configurator/onpremise/repository/debian/" + dbtype + "/printcfg"
+}
+
 func (configurator *Configurator) GetFileForWrite(path string, force bool) (*os.File, error) {
 	var firstLine string
 

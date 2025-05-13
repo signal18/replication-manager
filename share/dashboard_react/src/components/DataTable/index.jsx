@@ -105,7 +105,7 @@ export function DataTable({
           ) : (
             table.getRowModel().rows.map((row, index) => {
               //this logic is for db servers
-              let rowColor = getColorFromServerStatus(row.original.state)
+              let rowColor = row.original.state ? getColorFromServerStatus(row.original.state) : row.original.rowColor ? row.original.rowColor : ''
 
               //This logic is for process list
               if (row.original.command?.toLowerCase() === 'query') {
