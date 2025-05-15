@@ -21,7 +21,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (cluster *Cluster) GetAppFromName(name string) DatabaseApp {
+func (cluster *Cluster) GetAppFromName(name string) *App {
 	for _, pr := range cluster.Apps {
 		if pr.GetId() == name {
 			return pr
@@ -140,6 +140,7 @@ func (app *App) GetEnv() map[string]string {
 }
 
 func (app *App) GetBaseEnv() map[string]string {
+	appcnf := app.ClusterGroup.GetAppConfig(app.GetName())
 	return map[string]string{
 		"%%ENV:NODES_CPU_CORES%%":                      app.ClusterGroup.Conf.ProvCores,
 		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":               app.ClusterGroup.Conf.ProvCores,
@@ -162,9 +163,9 @@ func (app *App) GetBaseEnv() map[string]string {
 		"%%ENV:SERVERS_LIST%%":                         app.GetConfigAppModule("%%ENV:SERVERS_LIST%%"),
 		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":               "80",
 		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":               strconv.Itoa(app.ReadPort),
-		"%%ENV:SVC_CONF_ENV_BIND_R_LB%%":               app.ClusterGroup.Conf.AppReadBindIp,
+		"%%ENV:SVC_CONF_ENV_BIND_R_LB%%":               appcnf.AppReadBindIp,
 		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(app.WritePort),
-		"%%ENV:SVC_CONF_ENV_BIND_RW%%":                 app.ClusterGroup.Conf.AppWriteBindIp,
+		"%%ENV:SVC_CONF_ENV_BIND_RW%%":                 appcnf.AppWriteBindIp,
 		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":   strconv.Itoa(app.ClusterGroup.Conf.MxsMaxinfoPort),
 		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":           strconv.Itoa(app.ReadWritePort),
 		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":             strconv.Itoa(app.ClusterGroup.Conf.MxsBinlogPort),
@@ -215,6 +216,7 @@ resolvers dns
 }
 
 func (app *App) GetConfigAppModule(variable string) string {
+	appcnf := app.ClusterGroup.GetAppConfig(app.GetName())
 	confmaxscale := ""
 	confmaxscaleserverlist := ""
 	confappread := ""
@@ -241,7 +243,7 @@ protocol=MariaDBBackend
 		if app.HasDNS() {
 			DNS = " init-addr last,libc,none resolvers dns"
 		}
-		if app.ClusterGroup.Conf.AppMode == "runtimeapi" {
+		if appcnf.AppMode == "runtimeapi" {
 			confappread += `
     server ` + db.Id + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + ` weight 100 maxconn 2000 check inter 1000`
 			if db.IsMaster() {
@@ -265,7 +267,7 @@ protocol=MariaDBBackend
 		confmaxscaleserverlist += "server" + strconv.Itoa(i)
 
 	}
-	if confappwrite == "" && app.ClusterGroup.Conf.AppMode == "runtimeapi" {
+	if confappwrite == "" && appcnf.AppMode == "runtimeapi" {
 		confappwrite += `
 server leader none:3306 ` + DNS + ` weight 100 maxconn 2000 check inter 1000`
 	}
