@@ -82,6 +82,8 @@ type Cluster struct {
 	ServerIdList                  []string               `json:"dbServers"`
 	Crashes                       crashList              `json:"dbServersCrashes"` //This will be purged on all db node up
 	FailoverHistory               crashList              `json:"failoverHistory"`  //This will be used for PITR
+	Apps                          appList                `json:"-"`
+	AppIdList                     []string               `json:"appServers"`
 	Proxies                       proxyList              `json:"-"`
 	ProxyIdList                   []string               `json:"proxyServers"`
 	FailoverCtr                   int                    `json:"failoverCounter"`
@@ -1758,6 +1760,16 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
 	prx.SetState(stateSuspect)
 	c.Proxies = append(c.Proxies, prx)
+}
+
+func (c *Cluster) AddApp(app *App) {
+	app.SetCluster(c)
+	app.SetID()
+	app.SetDataDir()
+	app.SetServiceName(c.Name)
+	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
+	app.SetState(stateSuspect)
+	c.Apps = append(c.Apps, app)
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {

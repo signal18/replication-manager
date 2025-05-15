@@ -491,6 +491,7 @@ type Config struct {
 	SlapOSMaxscalePartitions                  string                 `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
 	SlapOSShardProxyPartitions                string                 `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
 	SlapOSSphinxPartitions                    string                 `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
+	SlapOSAppPartitions                       string                 `mapstructure:"slapos-app-partitions" toml:"slapos-app-partitions" json:"slaposAppPartitions"`
 	ProvHost                                  string                 `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	OnPremiseSSH                              bool                   `mapstructure:"onpremise-ssh" toml:"onpremise-ssh" json:"onpremiseSsh"`
 	OnPremiseSSHPort                          int                    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
@@ -619,6 +620,36 @@ type Config struct {
 	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
+	ProvAppType                               string                 `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppDiskType                           string                 `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppGateway                            string                 `mapstructure:"prov-app-net-gateway" toml:"prov-app-net-gateway" json:"provAppNetGateway"`
+	ProvAppNetmask                            string                 `mapstructure:"prov-app-net-mask" toml:"prov-app-net-mask" json:"provAppNetMask"`
+	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDockerImg                          string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppRouteAddr                          string                 `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort                          string                 `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask                          string                 `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppDiskPool                           string                 `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
+	ProvAppAgentsFailover                     string                 `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppDockerRunArgs                      string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
+	AppOn                                     bool                   `mapstructure:"app-on" toml:"app-on" json:"appOn"`
+	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
+	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppAPIPort                                int                    `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
+	AppReadPort                               int                    `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
+	AppWritePort                              int                    `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
+	AppStatPort                               int                    `mapstructure:"app-stat-port" toml:"app-stat-port" json:"appStatPort"`
+	AppStatHttp                               string                 `mapstructure:"app-stat-http" toml:"app-stat-http" json:"appStatHttp"`
+	AppUser                                   string                 `mapstructure:"app-user" toml:"app-user" json:"appUser"`
+	AppPassword                               string                 `mapstructure:"app-password" toml:"app-password" json:"appPassword"`
+	AppMode                                   string                 `mapstructure:"app-mode" toml:"app-mode" json:"appMode"`
+	AppDebug                                  bool                   `mapstructure:"app-debug" toml:"app-debug" json:"appDebug"`
+	AppBinaryPath                             string                 `mapstructure:"app-binary-path" toml:"app-binary-path" json:"appBinaryPath"`
+	AppReadBindIp                             string                 `mapstructure:"app-read-bind-ip" toml:"app-read-bind-ip" json:"appReadBindIp"`
+	AppWriteBindIp                            string                 `mapstructure:"app-write-bind-ip" toml:"app-write-bind-ip" json:"appWriteBindIp"`
+	AppAPIReadBackend                         string                 `mapstructure:"app-api-read-backend" toml:"app-api-read-backend" json:"appApiReadBackend"`
+	AppAPIWriteBackend                        string                 `mapstructure:"app-api-write-backend" toml:"app-api-write-backend" json:"appApiWriteBackend"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -1189,6 +1220,7 @@ const (
 	ConstLogModExternalScript = 21
 	ConstLogModStats          = 22
 	ConstLogModSQL            = 23
+	ConstLogModApp            = 23
 )
 
 /*
