@@ -2947,7 +2947,6 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
-// @Param generate path string false enum("skip","generate") default("generate") "Generate configuration file"
 // @Success 200 {file} file "Configuration file"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "File not found"
