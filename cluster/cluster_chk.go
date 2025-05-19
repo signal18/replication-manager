@@ -209,6 +209,10 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 	if cluster.Conf.CheckFalsePositiveHeartbeat == false {
 		return false
 	}
+	if !cluster.isMasterFailed() {
+		return false
+	}
+
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Slaves heartbeats")
 
 	for _, s := range cluster.slaves {

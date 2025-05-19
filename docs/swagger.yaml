@@ -227,6 +227,8 @@ definitions:
         type: boolean
       isClusterDown:
         type: boolean
+      isConfigPathChange:
+        type: boolean
       isDown:
         type: boolean
       isExportPush:
@@ -610,6 +612,8 @@ definitions:
         type: array
       gtidExecuted:
         type: string
+      hasConfigPathChanged:
+        type: boolean
       hashUUID:
         type: integer
       haveBinLogSync:
@@ -718,6 +722,8 @@ definitions:
         type: boolean
       isMaxscale:
         type: boolean
+      isNeedPathCheck:
+        type: boolean
       isRefreshingBinlog:
         type: boolean
       isRefreshingBinlogMeta:
@@ -740,6 +746,8 @@ definitions:
         $ref: '#/definitions/config.TasksMap'
       lastBackupMeta:
         $ref: '#/definitions/cluster.ServerBackupMeta'
+      lastConfigUpdate:
+        $ref: '#/definitions/config.LastConfigUpdate'
       lastSeenReplications:
         items:
           $ref: '#/definitions/dbhelper.SlaveStatus'
@@ -770,6 +778,8 @@ definitions:
         type: string
       needRefreshJobs:
         type: boolean
+      pfsInstruments:
+        $ref: '#/definitions/config.StringsMap'
       pointInTimeMeta:
         $ref: '#/definitions/config.PointInTimeMeta'
       port:
@@ -979,6 +989,13 @@ definitions:
       enable:
         type: boolean
       grant:
+        type: string
+    type: object
+  config.LastConfigUpdate:
+    properties:
+      config:
+        type: string
+      deployed:
         type: string
     type: object
   config.Partner:
@@ -1930,6 +1947,8 @@ definitions:
         type: integer
       logSqlInMonitoring:
         type: boolean
+      logSqlLevel:
+        type: integer
       logSst:
         description: internal replication-manager sst
         type: boolean
@@ -2072,9 +2091,25 @@ definitions:
         type: boolean
       monitoringPerformanceSchema:
         type: boolean
+      monitoringPerformanceSchemaInstruments:
+        type: boolean
+      monitoringPerformanceSchemaLatch:
+        type: boolean
+      monitoringPerformanceSchemaMemory:
+        type: boolean
+      monitoringPerformanceSchemaMutex:
+        type: boolean
       monitoringPlugins:
         type: boolean
       monitoringProcesslist:
+        type: boolean
+      monitoringProcesslistInactive:
+        type: boolean
+      monitoringProcesslistInformationSchema:
+        type: boolean
+      monitoringProcesslistLimit:
+        type: string
+      monitoringProcesslistTransactions:
         type: boolean
       monitoringQueries:
         type: boolean
@@ -2215,6 +2250,10 @@ definitions:
       provDbCleanupScript:
         type: string
       provDbClientBasedir:
+        type: string
+      provDbConfigPreserve:
+        type: boolean
+      provDbConfigPreserveVars:
         type: string
       provDbCpuCores:
         type: string
@@ -2358,6 +2397,8 @@ definitions:
         type: string
       provProxyServiceType:
         type: string
+      provProxyStartFetchConfig:
+        type: boolean
       provProxyStartScript:
         type: string
       provProxyStopScript:
@@ -2372,8 +2413,6 @@ definitions:
         type: string
       provServicePlanRegistry:
         type: string
-      provShardproxyStartFetchConfig:
-        type: boolean
       provSphinxAgents:
         type: string
       provSphinxCpuCores:
@@ -6391,6 +6430,101 @@ paths:
       summary: Get server port configuration
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}:
+    get:
+      description: Preserves or removes the configuration path for a specified server
+        within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      - description: Preserve or remove configuration path (true/false)
+        in: path
+        name: preserve
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Configuration path preserved or removed successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Invalid value
+            for preserve parameter
+          schema:
+            type: string
+      summary: Preserve or remove configuration path for a server
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver:
+    get:
+      description: Opens receiver ports for configuration files on a specified server
+        within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: export <environment variables>; export <environment variables>;
+            ...
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error opening
+            receiver ports
+          schema:
+            type: string
+      summary: Open receiver ports for configuration files on a server
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-failed:
     get:
       description: Checks if a specified server within a cluster is in a failed state.
@@ -6600,9 +6734,9 @@ paths:
       summary: Check if a server is in standalone state
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change:
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch:
     get:
-      description: Checks if a specified server within a cluster needs a config change.
+      description: Checks if a specified server within a cluster needs a config fetch.
       parameters:
       - description: Cluster Name
         in: path
@@ -6623,15 +6757,49 @@ paths:
       - text/plain
       responses:
         "200":
-          description: 200 -Need config change!
+          description: 200 -Need config fetch!
           schema:
             type: string
         "500":
-          description: 500 -No config change needed!" or "500 -No valid server!" or
+          description: 500 -No config fetch needed!" or "500 -No valid server!" or
             "500 -No cluster!
           schema:
             type: string
-      summary: Check if a server needs a config change
+      summary: Check if a server needs a config fetch
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh:
+    get:
+      description: Checks if a specified server within a cluster needs a config refresh.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      produces:
+      - text/plain
+      responses:
+        "200":
+          description: 200 -Need config refresh!
+          schema:
+            type: string
+        "500":
+          description: 500 -No config refresh needed!" or "500 -No valid server!"
+            or "500 -No cluster!
+          schema:
+            type: string
+      summary: Check if a server needs a config refresh
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-prov:
@@ -6848,6 +7016,57 @@ paths:
           schema:
             type: string
       summary: Check if a server needs unprovisioning
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login:
+    post:
+      description: Handles secret login for a specified server within a cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      - description: Encoded data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/server.DecodedData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token
+          schema:
+            type: string
+        "400":
+          description: Decode reading body" or "Decode body
+          schema:
+            type: string
+        "401":
+          description: Invalid secret
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server" or "Error decrypting data" or "Error
+            signing token
+          schema:
+            type: string
+      summary: Secret login
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}:
@@ -7900,6 +8119,11 @@ paths:
         name: serverName
         required: true
         type: string
+      - description: Config Action (KEEP or FETCH). Empty string means default action
+          from cluster config.
+        in: path
+        name: cfgAction
+        type: string
       produces:
       - application/json
       responses:
@@ -8532,6 +8756,134 @@ paths:
           schema:
             type: string
       summary: Get server details
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config:
+    get:
+      description: Retrieves the configuration of a specified server port within a
+        cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Configuration file
+          schema:
+            type: file
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: File not found
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Get server port configuration
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}:
+    get:
+      description: Preserves or removes the configuration path for a specified server
+        within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      - description: Preserve or remove configuration path (true/false)
+        in: path
+        name: preserve
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Configuration path preserved or removed successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Invalid value
+            for preserve parameter
+          schema:
+            type: string
+      summary: Preserve or remove configuration path for a server
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-receiver:
+    get:
+      description: Opens receiver ports for configuration files on a specified server
+        within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: export <environment variables>; export <environment variables>;
+            ...
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error opening
+            receiver ports
+          schema:
+            type: string
+      summary: Open receiver ports for configuration files on a server
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/digest-statements-pfs:
@@ -9297,6 +9649,53 @@ paths:
       summary: Get schemas of a server
       tags:
       - DatabaseSchema
+  /api/clusters/{clusterName}/servers/{serverName}/secret-login:
+    post:
+      description: Handles secret login for a specified server within a cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Encoded data
+        in: body
+        name: data
+        required: true
+        schema:
+          $ref: '#/definitions/server.DecodedData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Token
+          schema:
+            type: string
+        "400":
+          description: Decode reading body" or "Decode body
+          schema:
+            type: string
+        "401":
+          description: Invalid secret
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server" or "Error decrypting data" or "Error
+            signing token
+          schema:
+            type: string
+      summary: Secret login
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/service-opensvc:
     get:
       description: Retrieves the database service configuration of a specified server
@@ -10046,6 +10445,48 @@ paths:
           schema:
             type: string
       summary: Get server port configuration
+      tags:
+      - Database
+  /api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve}:
+    get:
+      consumes:
+      - application/json
+      description: Preserves or unpreserves a variable for the specified cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Variable Name
+        in: path
+        name: variableName
+        required: true
+        type: string
+      - description: Preserve or unpreserve
+        enum:
+        - "true"
+        - "false"
+        in: path
+        name: preserve
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable preserved successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Preserve or unpreserve a variable
       tags:
       - Database
   /api/clusters/{clusterName}/settings/actions/reload:
@@ -12182,6 +12623,26 @@ paths:
               type: string
             type: object
       summary: Check if the replication manager is running
+      tags:
+      - Public
+  /api/version:
+    get:
+      consumes:
+      - application/json
+      description: This endpoint processes the replication manager version requests
+        and returns the version in JSON format.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successful response with replication manager version
+          schema:
+            $ref: '#/definitions/server.ReplicationManager'
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Handles replication manager version requests
       tags:
       - Public
   /cluster/{clusterName}/actions/dropserver/{host}/{port}:

@@ -6033,6 +6033,12 @@ const docTemplate = `{
                         "name": "serverName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Config Action (KEEP or FETCH). Empty string means default action from cluster config.",
+                        "name": "cfgAction",
+                        "in": "path"
                     }
                 ],
                 "responses": {
@@ -6948,6 +6954,185 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster\" or \"Server Not Found\" or \"Attribute not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}": {
+            "get": {
+                "description": "Preserves or removes the configuration path for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Preserve or remove configuration path for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Preserve or remove configuration path (true/false)",
+                        "name": "preserve",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration path preserved or removed successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Invalid value for preserve parameter",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config-receiver": {
+            "get": {
+                "description": "Opens receiver ports for configuration files on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Open receiver ports for configuration files on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server ID \u003cdbxxx / pxxxx\u003e (Without Port) / Server Host (With Port)",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "export \u003cenvironment variables\u003e; export \u003cenvironment variables\u003e; ...",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
                         "schema": {
                             "type": "string"
                         }
@@ -8055,6 +8240,75 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/secret-login": {
+            "post": {
+                "description": "Handles secret login for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Secret login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Encoded data",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.DecodedData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Decode reading body\" or \"Decode body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid secret",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server\" or \"Error decrypting data\" or \"Error signing token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/service-opensvc": {
             "get": {
                 "description": "Retrieves the database service configuration of a specified server within a cluster.",
@@ -8749,6 +9003,137 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}": {
+            "get": {
+                "description": "Preserves or removes the configuration path for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Preserve or remove configuration path for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Preserve or remove configuration path (true/false)",
+                        "name": "preserve",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration path preserved or removed successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Invalid value for preserve parameter",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver": {
+            "get": {
+                "description": "Opens receiver ports for configuration files on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Open receiver ports for configuration files on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server ID \u003cdbxxx / pxxxx\u003e (Without Port) / Server Host (With Port)",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "export \u003cenvironment variables\u003e; export \u003cenvironment variables\u003e; ...",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-failed": {
             "get": {
                 "description": "Checks if a specified server within a cluster is in a failed state.",
@@ -9051,16 +9436,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-change": {
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-fetch": {
             "get": {
-                "description": "Checks if a specified server within a cluster needs a config change.",
+                "description": "Checks if a specified server within a cluster needs a config fetch.",
                 "produces": [
                     "text/plain"
                 ],
                 "tags": [
                     "Database"
                 ],
-                "summary": "Check if a server needs a config change",
+                "summary": "Check if a server needs a config fetch",
                 "parameters": [
                     {
                         "type": "string",
@@ -9086,13 +9471,62 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "200 -Need config change!",
+                        "description": "200 -Need config fetch!",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "500": {
-                        "description": "500 -No config change needed!\" or \"500 -No valid server!\" or \"500 -No cluster!",
+                        "description": "500 -No config fetch needed!\" or \"500 -No valid server!\" or \"500 -No cluster!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh": {
+            "get": {
+                "description": "Checks if a specified server within a cluster needs a config refresh.",
+                "produces": [
+                    "text/plain"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Check if a server needs a config refresh",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "200 -Need config refresh!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "500 -No config refresh needed!\" or \"500 -No valid server!\" or \"500 -No cluster!",
                         "schema": {
                             "type": "string"
                         }
@@ -9411,6 +9845,81 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "503 -No unprov needed!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login": {
+            "post": {
+                "description": "Handles secret login for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Secret login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    },
+                    {
+                        "description": "Encoded data",
+                        "name": "data",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.DecodedData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Decode reading body\" or \"Decode body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "401": {
+                        "description": "Invalid secret",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server\" or \"Error decrypting data\" or \"Error signing token",
                         "schema": {
                             "type": "string"
                         }
@@ -10065,6 +10574,68 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster\" or \"No server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/actions/preserve-variable/{variableName}/{preserve}": {
+            "get": {
+                "description": "Preserves or unpreserves a variable for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Preserve or unpreserve a variable",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "true",
+                            "false"
+                        ],
+                        "type": "string",
+                        "description": "Preserve or unpreserve",
+                        "name": "preserve",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable preserved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
                         "schema": {
                             "type": "string"
                         }
@@ -12774,6 +13345,35 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/version": {
+            "get": {
+                "description": "This endpoint processes the replication manager version requests and returns the version in JSON format.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Public"
+                ],
+                "summary": "Handles replication manager version requests",
+                "responses": {
+                    "200": {
+                        "description": "Successful response with replication manager version",
+                        "schema": {
+                            "$ref": "#/definitions/server.ReplicationManager"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/cluster/{clusterName}/actions/dropserver/{host}/{port}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
@@ -14241,6 +14841,9 @@ const docTemplate = `{
                 "isClusterDown": {
                     "type": "boolean"
                 },
+                "isConfigPathChange": {
+                    "type": "boolean"
+                },
                 "isDown": {
                     "type": "boolean"
                 },
@@ -14809,6 +15412,9 @@ const docTemplate = `{
                 "gtidExecuted": {
                     "type": "string"
                 },
+                "hasConfigPathChanged": {
+                    "type": "boolean"
+                },
                 "hashUUID": {
                     "type": "integer"
                 },
@@ -14970,6 +15576,9 @@ const docTemplate = `{
                 "isMaxscale": {
                     "type": "boolean"
                 },
+                "isNeedPathCheck": {
+                    "type": "boolean"
+                },
                 "isRefreshingBinlog": {
                     "type": "boolean"
                 },
@@ -15002,6 +15611,9 @@ const docTemplate = `{
                 },
                 "lastBackupMeta": {
                     "$ref": "#/definitions/cluster.ServerBackupMeta"
+                },
+                "lastConfigUpdate": {
+                    "$ref": "#/definitions/config.LastConfigUpdate"
                 },
                 "lastSeenReplications": {
                     "type": "array",
@@ -15046,6 +15658,9 @@ const docTemplate = `{
                 },
                 "needRefreshJobs": {
                     "type": "boolean"
+                },
+                "pfsInstruments": {
+                    "$ref": "#/definitions/config.StringsMap"
                 },
                 "pointInTimeMeta": {
                     "$ref": "#/definitions/config.PointInTimeMeta"
@@ -15362,6 +15977,17 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "grant": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.LastConfigUpdate": {
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "string"
+                },
+                "deployed": {
                     "type": "string"
                 }
             }
@@ -16784,6 +17410,9 @@ const docTemplate = `{
                 "logSqlInMonitoring": {
                     "type": "boolean"
                 },
+                "logSqlLevel": {
+                    "type": "integer"
+                },
                 "logSst": {
                     "description": "internal replication-manager sst",
                     "type": "boolean"
@@ -16996,10 +17625,34 @@ const docTemplate = `{
                 "monitoringPerformanceSchema": {
                     "type": "boolean"
                 },
+                "monitoringPerformanceSchemaInstruments": {
+                    "type": "boolean"
+                },
+                "monitoringPerformanceSchemaLatch": {
+                    "type": "boolean"
+                },
+                "monitoringPerformanceSchemaMemory": {
+                    "type": "boolean"
+                },
+                "monitoringPerformanceSchemaMutex": {
+                    "type": "boolean"
+                },
                 "monitoringPlugins": {
                     "type": "boolean"
                 },
                 "monitoringProcesslist": {
+                    "type": "boolean"
+                },
+                "monitoringProcesslistInactive": {
+                    "type": "boolean"
+                },
+                "monitoringProcesslistInformationSchema": {
+                    "type": "boolean"
+                },
+                "monitoringProcesslistLimit": {
+                    "type": "string"
+                },
+                "monitoringProcesslistTransactions": {
                     "type": "boolean"
                 },
                 "monitoringQueries": {
@@ -17210,6 +17863,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provDbClientBasedir": {
+                    "type": "string"
+                },
+                "provDbConfigPreserve": {
+                    "type": "boolean"
+                },
+                "provDbConfigPreserveVars": {
                     "type": "string"
                 },
                 "provDbCpuCores": {
@@ -17425,6 +18084,9 @@ const docTemplate = `{
                 "provProxyServiceType": {
                     "type": "string"
                 },
+                "provProxyStartFetchConfig": {
+                    "type": "boolean"
+                },
                 "provProxyStartScript": {
                     "type": "string"
                 },
@@ -17445,9 +18107,6 @@ const docTemplate = `{
                 },
                 "provServicePlanRegistry": {
                     "type": "string"
-                },
-                "provShardproxyStartFetchConfig": {
-                    "type": "boolean"
                 },
                 "provSphinxAgents": {
                     "type": "string"

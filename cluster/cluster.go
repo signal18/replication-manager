@@ -1563,6 +1563,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		"RELAY_LOG_INDEX":     true,
 		"LOG_SLOW_QUERY_FILE": true,
 		"PLUGIN_DIR":          true,
+		"SERVER_UID":          true,
 	}
 	variablesdiff := ""
 	var alldiff []VariableDiff
