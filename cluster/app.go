@@ -24,39 +24,39 @@ import (
 // App defines a app
 type App struct {
 	DatabaseApp
+	BackendsWrite   []Backend         `json:"backendsWrite"`
+	BackendsRead    []Backend         `json:"backendsRead"`
 	Id              string            `json:"id"`
 	Name            string            `json:"name"`
 	Type            string            `json:"type"`
 	Host            string            `json:"host"`
 	HostIPV6        string            `json:"hostIPV6"`
 	Port            string            `json:"port"`
-	TunnelPort      int               `json:"tunnelPort"`
-	TunnelWritePort int               `json:"tunnelWritePort"`
-	Tunnel          bool              `json:"tunnel"`
 	User            string            `json:"-"`
 	Pass            string            `json:"-"`
+	Version         string            `json:"version"`
+	Datadir         string            `json:"datadir"`
+	State           string            `json:"state"`
+	PrevState       string            `json:"prevState"`
+	SlapOSDatadir   string            `json:"slaposDatadir"`
+	ServiceName     string            `json:"serviceName"`
+	Agent           string            `json:"agent"`
+	Weight          string            `json:"weight"`
 	WritePort       int               `json:"writePort"`
 	ReadPort        int               `json:"readPort"`
 	ReadWritePort   int               `json:"readWritePort"`
 	ReaderHostgroup int               `json:"readerHostGroup"`
 	WriterHostgroup int               `json:"writerHostGroup"`
-	BackendsWrite   []Backend         `json:"backendsWrite"`
-	BackendsRead    []Backend         `json:"backendsRead"`
-	Version         string            `json:"version"`
+	FailCount       int               `json:"failCount"`
 	ShardApp        *ServerMonitor    `json:"shardApp"`
 	ClusterGroup    *Cluster          `json:"-"`
-	Datadir         string            `json:"datadir"`
-	State           string            `json:"state"`
-	PrevState       string            `json:"prevState"`
-	FailCount       int               `json:"failCount"`
-	SlapOSDatadir   string            `json:"slaposDatadir"`
 	Process         *os.Process       `json:"process"`
 	Variables       map[string]string `json:"-"`
-	ServiceName     string            `json:"serviceName"`
-	Agent           string            `json:"agent"`
-	Weight          string            `json:"weight"`
+	Lock            sync.Mutex        `json:"-"`
+	TunnelPort      int               `json:"tunnelPort"`
+	TunnelWritePort int               `json:"tunnelWritePort"`
+	Tunnel          bool              `json:"tunnel"`
 	IsStaging       bool              `json:"isStaging"`
-	Lock            sync.Mutex
 }
 
 type DatabaseApp interface {
@@ -103,7 +103,7 @@ type DatabaseApp interface {
 
 	IsFilterInTags(filter string) bool
 	IsDown() bool
-	GetAppConfig() error
+	GetAppConfig() config.AppConfig
 	GetJanitorWeight() string
 	// GetInitContainer(collector opensvc.Collector) string
 	GetBindAddress() string

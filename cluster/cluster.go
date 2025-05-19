@@ -507,6 +507,8 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
+	cluster.LoadAppConfigs()
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
@@ -550,6 +552,10 @@ func (cluster *Cluster) InitFromConf() {
 	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
+	}
+	err = cluster.newAppList()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set app list %s", err)
 	}
 	//Loading configuration compliances
 	err = cluster.Configurator.Init(*cluster.Conf, cluster.Logrus)

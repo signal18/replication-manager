@@ -30,6 +30,14 @@ func (cluster *Cluster) GetAppFromName(name string) *App {
 	return nil
 }
 
+func (app *App) GetAppConfig() config.AppConfig {
+	return app.ClusterGroup.GetAppConfig(app.GetName())
+}
+
+func (app *App) GetDeploymentConfig(deployid string) config.Deployment {
+	return app.ClusterGroup.GetAppConfig(app.GetName()).Deployments[deployid]
+}
+
 func (cluster *Cluster) GetClusterAppConn() (*sqlx.DB, error) {
 	if len(cluster.Apps) == 0 {
 		return nil, errors.New("No apps defined")
