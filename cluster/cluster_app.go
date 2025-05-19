@@ -125,35 +125,52 @@ func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *c
 	return nil
 }
 
-func (cluster *Cluster) SaveApp(app *App) error {
+func (cluster *Cluster) SaveAppConfigs() (bool, error) {
+	var has_changed bool
+	for _, app := range cluster.Apps {
+		changed, err := cluster.SaveApp(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error saving app %s: %s", app.Name, err)
+			// return err
+		}
+
+		if changed {
+			has_changed = true
+		}
+	}
+	return has_changed, nil
+}
+
+func (cluster *Cluster) SaveApp(app *App) (bool, error) {
+	var has_changed bool
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 
 	// Save the main configuration file
-	has_changed, err := cluster.SaveAppConfigFile(app)
+	changed, err := cluster.SaveAppConfigFile(app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
-		return err
+		return false, err
 	}
 
-	if has_changed {
-		cluster.IsNeedGitPush = true
+	if changed {
+		has_changed = true
 	}
 
 	// Save the deployment configuration file
-	has_changed, err = cluster.SaveAppDeploymentsFile(app)
+	changed, err = cluster.SaveAppDeploymentsFile(app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
-		return err
+		return has_changed, err
 	}
 
-	if has_changed {
-		cluster.IsNeedGitPush = true
+	if changed {
+		has_changed = true
 	}
 
-	return nil
+	return has_changed, nil
 }
 
 func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {

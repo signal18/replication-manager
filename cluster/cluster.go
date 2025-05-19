@@ -994,10 +994,14 @@ func (cluster *Cluster) Save() error {
 		cluster.CheckInjectConfig()
 
 		// Save the main configuration file
-		has_changed, err = cluster.SaveConfigFile()
+		changed, err := cluster.SaveConfigFile()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save cluster config: %s", err)
 			return err
+		}
+
+		if changed {
+			has_changed = true
 		}
 
 		// Checksum decrypted value to prevent unnecessary file
@@ -1044,6 +1048,11 @@ func (cluster *Cluster) Save() error {
 		_, err = cluster.Overwrite()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during Overwriting: %s", err)
+		}
+
+		changed, _ = cluster.SaveAppConfigs()
+		if changed {
+			has_changed = true
 		}
 	}
 
