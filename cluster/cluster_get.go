@@ -1540,7 +1540,7 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 	return terminalMgr
 }
 
-func (cluster *Cluster) GetAppConfig(appname string) config.AppConfig {
+func (cluster *Cluster) GetAppConfig(appname string) *config.AppConfig {
 	if cnf, ok := cluster.Conf.Apps[appname]; ok {
 		return cnf
 	}

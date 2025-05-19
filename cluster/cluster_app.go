@@ -26,7 +26,7 @@ func (cluster *Cluster) LoadAppConfigs() error {
 
 	// Set the new configuration
 	if cluster.Conf.Apps == nil {
-		cluster.Conf.Apps = make(map[string]config.AppConfig)
+		cluster.Conf.Apps = make(map[string]*config.AppConfig)
 	}
 
 	dirname := filepath.Join(cluster.WorkingDir, "apps")
@@ -81,7 +81,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 
 	cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
 
-	cluster.Conf.Apps[appname] = appcnf
+	cluster.Conf.Apps[appname] = &appcnf
 	// Add the app to the cluster if it does not exist
 	applist := strings.Split(cluster.Conf.AppHosts, ",")
 	if !strings.Contains(cluster.Conf.AppHosts, appname) {
@@ -248,7 +248,7 @@ func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
 	return true, nil
 }
 
-func (cluster *Cluster) SaveAppDeploymentValue(file *os.File, appname, deployId string, dep config.Deployment) (bool, error) {
+func (cluster *Cluster) SaveAppDeploymentValue(file *os.File, appname, deployId string, dep *config.Deployment) (bool, error) {
 
 	header := "[saved-" + appname + ".deployments." + deployId + "]\n"
 	// Write header

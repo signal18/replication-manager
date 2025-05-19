@@ -251,6 +251,7 @@ func (repman *ReplicationManager) httpserver() {
 		repman.apiClusterProtectedHandler(router)
 		repman.apiDatabaseProtectedHandler(router)
 		repman.apiProxyProtectedHandler(router)
+		repman.apiAppProtectedHandler(router)
 	}
 	// create mux router
 	router.HandleFunc("/repocomp/current", repman.handlerRepoComp)

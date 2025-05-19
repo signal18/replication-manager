@@ -30,12 +30,16 @@ func (cluster *Cluster) GetAppFromName(name string) *App {
 	return nil
 }
 
-func (app *App) GetAppConfig() config.AppConfig {
+func (app *App) GetAppConfig() *config.AppConfig {
 	return app.ClusterGroup.GetAppConfig(app.GetName())
 }
 
-func (app *App) GetDeploymentConfig(deployid string) config.Deployment {
+func (app *App) GetDeploymentConfig(deployid string) *config.Deployment {
 	return app.ClusterGroup.GetAppConfig(app.GetName()).Deployments[deployid]
+}
+
+func (app *App) GetDeploymentConfigs() map[string]*config.Deployment {
+	return app.ClusterGroup.GetAppConfig(app.GetName()).Deployments
 }
 
 func (cluster *Cluster) GetClusterAppConn() (*sqlx.DB, error) {

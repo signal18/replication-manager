@@ -139,7 +139,7 @@ func (p *App) SetCluster(c *Cluster) {
 	p.ClusterGroup = c
 }
 
-func (p *App) SetDeploymentConfig(deployid string, dep config.Deployment) error {
+func (p *App) SetDeploymentConfig(deployid string, dep *config.Deployment) error {
 	if _, ok := p.ClusterGroup.Conf.Apps[p.Name]; !ok {
 		return errors.New("app not found in cluster config")
 	}
