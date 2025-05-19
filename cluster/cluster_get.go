@@ -1545,5 +1545,10 @@ func (cluster *Cluster) GetAppConfig(appname string) *config.AppConfig {
 		return cnf
 	}
 
-	return cluster.Conf.Apps["default"]
+	cnf := new(config.AppConfig)
+	*cnf = *cluster.Conf.Apps["default"]
+
+	cluster.Conf.Apps[appname] = cnf
+
+	return cnf
 }

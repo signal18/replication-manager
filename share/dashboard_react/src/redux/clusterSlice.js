@@ -1377,9 +1377,128 @@ export const addClusterShard = createAsyncThunk('cluster/addClusterShard', async
   }
 })
 
+export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getClusterApps(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.apps) {
+        return false;
+      }
+    }
+  });
+
+  export const provisionApp = createAsyncThunk('cluster/provisionApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.provisionApp(clusterName, appId, baseURL)
+      showSuccessBanner('Provision app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Provision app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+  
+  export const unprovisionApp = createAsyncThunk(
+    'cluster/unprovisionApp',
+    async ({ clusterName, appId }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.unprovisionApp(clusterName, appId, baseURL)
+        showSuccessBanner('Unprovision app successful!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Unprovision app failed!', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+  
+  export const startApp = createAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.startApp(clusterName, appId, baseURL)
+      showSuccessBanner('Starting app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Starting app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+  
+  export const stopApp = createAsyncThunk('cluster/stopApp', async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.stopApp(clusterName, appId, baseURL)
+      showSuccessBanner('Stopping app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Stopping app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  })
+
+  export const getAppService = createAsyncThunk(
+    'cluster/getAppService',
+    async ({ clusterName, serviceName, appId }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.getAppService(clusterName, serviceName, appId, baseURL)
+        if (status === 200) {
+          return { data, status }
+        }
+        
+        throw new Error(data)
+      } catch (error) {
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+
+  export const addDeployment = createAsyncThunk(
+    'cluster/addDeployment',
+    async ({ clusterName, appId, deployment }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.addDeployment(clusterName, appId, deployment, baseURL)
+        showSuccessBanner('New deployment added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+  
+  export const dropDeployment = createAsyncThunk(
+    'cluster/dropDeployment',
+    async ({ clusterName, appId, deployName }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.dropDeployment(clusterName, appId, deployName, baseURL)
+        showSuccessBanner('Deployment dropped!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while dropping a deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+  
+
 const initialState = {
   loading: false,
   isFetching: {
+    apps: false,
     cluster: false,
     alerts: false,
     master: false,
@@ -1388,6 +1507,8 @@ const initialState = {
     certificates: false,
   },
   error: null,
+  clusterApps: null,
+  clusterAppStates: null,
   clusterData: null,
   clusterAlerts: null,
   clusterMaster: null,
@@ -1409,6 +1530,9 @@ const initialState = {
     switchOver: false,
     failOver: false,
     menuActions: false
+  },
+  app: {
+    deployments: null,
   },
   database: {
     processList: null,
@@ -1457,6 +1581,7 @@ export const clusterSlice = createSlice({
         getClusterMaster.fulfilled,
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
+        getClusterApps.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
         getDatabaseVariables.fulfilled,
@@ -1483,6 +1608,10 @@ export const clusterSlice = createSlice({
               state.clusterServers = action.payload.data
               state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
           }
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
+          state.clusterApps = action.payload?.data
+          state.clusterAppStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
           state.clusterProxies = action.payload?.data
@@ -1548,6 +1677,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = true
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = true
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = true
         }
       }
     )
@@ -1571,6 +1702,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = false
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
         }
       }
     )
@@ -1785,6 +1918,17 @@ export const clusterSlice = createSlice({
         } else {
           state.loadingStates.menuActions = false
         }
+      }
+    )
+    builder.addMatcher(
+      isAnyOf(
+        getAppService.fulfilled,
+      ),
+      (state, action) => {
+        const { serviceName } = action.meta.arg
+        if (serviceName === 'deployments') {
+          state.app.deployments = action.payload.data
+        } 
       }
     )
   }

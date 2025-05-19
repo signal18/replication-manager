@@ -381,7 +381,10 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			deployments := node.GetDeploymentConfigs()
+			deployments := make([]*config.Deployment, 0)
+			for _, dep := range node.GetDeploymentConfigs() {
+				deployments = append(deployments, dep)
+			}
 			depls, err := json.MarshalIndent(deployments, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
@@ -391,7 +394,12 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 			for idx, d := range deployments {
 				for gidx := range d.GitClones {
-					jsonparser.Set(depls, []byte("*****"), idx, "gitClones", strconv.Itoa(gidx), "pass")
+					depls, err = jsonparser.Set(depls, []byte("*****"), strconv.Itoa(idx), "gitClones", strconv.Itoa(gidx), "pass")
+					if err != nil {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+						http.Error(w, "Encoding error", 500)
+						return
+					}
 				}
 			}
 

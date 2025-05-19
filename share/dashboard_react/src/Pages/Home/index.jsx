@@ -21,7 +21,8 @@ import {
   setRefreshInterval,
   pauseAutoReload,
   getBackupStats,
-  clearCluster
+  clearCluster,
+  getClusterApps
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -180,6 +181,7 @@ function Home() {
         dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterApps({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Configs') {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))

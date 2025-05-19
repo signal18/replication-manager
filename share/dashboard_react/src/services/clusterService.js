@@ -114,6 +114,15 @@ export const clusterService = {
   endExternalRole,
 
   addClusterShard,
+
+  getClusterApps,
+  provisionApp,
+  unprovisionApp,
+  startApp,
+  stopApp,
+  getAppService,
+  addDeployment,
+  dropDeployment
 }
 
 //#region Cluster data APIs
@@ -531,3 +540,37 @@ function addClusterShard(clusterName, shardClusterName, formdata, baseURL) {
 }
 
 //#endregion User management APIs
+
+function getClusterApps(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/apps`)
+}
+
+//#region App management APIs
+function provisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/provision`)
+}
+
+function unprovisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/unprovision`)
+}
+
+function startApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
+}
+
+function stopApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+}
+
+function getAppService(clusterName, serviceName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/${serviceName}`)
+}
+
+function addDeployment(clusterName, appId, deployment, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/add`,deployment)
+}
+
+function dropDeployment(clusterName, appId , deployName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/drop/${deployName}`)
+}
+//#endregion App management APIs

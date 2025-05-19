@@ -24,9 +24,7 @@ import (
 
 // App defines a app
 type App struct {
-	DatabaseApp
-	BackendsWrite   []Backend         `json:"backendsWrite"`
-	BackendsRead    []Backend         `json:"backendsRead"`
+	DatabaseApp     `json:"-"`
 	Id              string            `json:"id"`
 	Name            string            `json:"name"`
 	Type            string            `json:"type"`
@@ -54,6 +52,7 @@ type App struct {
 	Process         *os.Process       `json:"process"`
 	Variables       map[string]string `json:"-"`
 	Lock            sync.Mutex        `json:"-"`
+	AppConfig       *config.AppConfig `json:"appConfig"`
 	TunnelPort      int               `json:"tunnelPort"`
 	TunnelWritePort int               `json:"tunnelWritePort"`
 	Tunnel          bool              `json:"tunnel"`
@@ -206,6 +205,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	appCnf := cluster.GetAppConfig(appHost)
 	app := new(App)
 	app.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
+	app.AppConfig = appCnf
 	app.Port = strconv.Itoa(appCnf.AppAPIPort)
 	app.ReadPort = appCnf.AppReadPort
 	app.WritePort = appCnf.AppWritePort
