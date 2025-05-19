@@ -133,6 +133,7 @@ type Config struct {
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogSQLLevel                               int                    `mapstructure:"log-sql-level"  toml:"log-sql-level" json:"logSqlLevel"`
+	LogAppLevel                               int                    `mapstructure:"log-app-level"  toml:"log-app-level" json:"logAppLevel"`
 	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
 	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `scope:"server" mapstructure:"log-git" toml:"log-git" json:"logGit"`
@@ -1258,7 +1259,7 @@ const (
 	ConstLogModExternalScript = 21
 	ConstLogModStats          = 22
 	ConstLogModSQL            = 23
-	ConstLogModApp            = 23
+	ConstLogModApp            = 24
 )
 
 /*
@@ -3091,6 +3092,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogStatsLevel >= lvl
 		case module == ConstLogModSQL:
 			return conf.LogSQLLevel >= lvl
+		case module == ConstLogModApp:
+			return conf.LogAppLevel >= lvl
 		}
 	}
 
@@ -3260,6 +3263,8 @@ func GetTagsForLog(module int) string {
 		return "stats"
 	case ConstLogModSQL:
 		return "sql"
+	case ConstLogModApp:
+		return "app"
 	}
 	return ""
 }

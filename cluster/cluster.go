@@ -649,6 +649,7 @@ func (cluster *Cluster) Run() {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
+			cluster.AppIdList = cluster.GetAppServerIdList()
 			go cluster.CheckDefaultUser(false)
 
 			if cluster.HasBadConfigMeasurement() {

@@ -876,6 +876,14 @@ func (cluster *Cluster) GetProxyServerIdList() []string {
 	return ret
 }
 
+func (cluster *Cluster) GetAppServerIdList() []string {
+	ret := make([]string, len(cluster.Apps))
+	for i, server := range cluster.Apps {
+		ret[i] = server.GetId()
+	}
+	return ret
+}
+
 func (cluster *Cluster) GetTopologyFromConf() string {
 
 	cluster.Conf.Topology = config.TopoUnknown
