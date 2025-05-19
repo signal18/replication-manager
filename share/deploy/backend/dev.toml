@@ -1,0 +1,40 @@
+name = "backend-service-dev"
+
+docker-img = "node:18"  # or your backend base image supporting dev tools
+docker-run-args = "-p 4000:4000 -p 9229:9229"  # expose debug port
+docker-run-cmd = "npm run dev"  # start dev server with hot reload
+
+ports = ["4000:4000", "9229:9229"]
+
+[[variables]]
+name = "DATABASE_URL"
+value = "postgres://user:pass@localhost:5432/devdb"
+type = "env"
+agents = ["backend"]
+
+[[variables]]
+name = "LOG_LEVEL"
+value = "debug"
+type = "env"
+agents = ["backend"]
+
+[[path]]
+volumedir = "var"
+from = "./backend/src"
+to = "/app/src"
+type = "direct"
+agents = ["backend"]
+
+[[path]]
+volumedir = "var"
+from = "./backend/package.json"
+to = "/app/package.json"
+type = "direct"
+agents = ["backend"]
+
+[[git-clones]]  # usually skip in dev, using local code, but kept for example
+repo = "https://github.com/example/backend.git"
+branch = "dev"
+dest = "app"
+user = "gituser"
+pass = "gitpass"
