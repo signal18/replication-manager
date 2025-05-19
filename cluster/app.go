@@ -13,6 +13,7 @@ package cluster
 import (
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
@@ -166,12 +167,8 @@ type appList []*App
 
 func (cluster *Cluster) newAppList() error {
 	cluster.Apps = make([]*App, 0)
-	for appname, appCnf := range cluster.Conf.Apps {
-		if appname == "default" {
-			continue
-		}
-
-		app := NewApp(appCnf.ProvAppAgentIndex, cluster, appCnf.AppHost)
+	for k, apphost := range strings.Split(cluster.Conf.AppHosts, ",") {
+		app := NewApp(k, cluster, apphost)
 		cluster.AddApp(app)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "New HA App created: %s %s", app.GetHost(), app.GetPort())
 	}
@@ -208,7 +205,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	conf := cluster.Conf
 	appCnf := cluster.GetAppConfig(appHost)
 	app := new(App)
-	app.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSAppPartitions, appCnf.AppHostIPV6)
+	app.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.Port = strconv.Itoa(appCnf.AppAPIPort)
 	app.ReadPort = appCnf.AppReadPort
 	app.WritePort = appCnf.AppWritePort
@@ -229,7 +226,6 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.BoolVar(&conf.AppDebug, "app-debug", true, "Extra info on monitoring backend")
 	flags.StringVar(&conf.AppUser, "app-user", "admin", "App API user")
 	flags.StringVar(&conf.AppPassword, "app-password", "admin", "App API password")
-	flags.StringVar(&conf.AppHost, "app-server", "127.0.0.1", "App hosts")
 	flags.IntVar(&conf.AppAPIPort, "app-api-port", 1999, "App runtime api port")
 	flags.IntVar(&conf.AppWritePort, "app-write-port", 3306, "App read-write port to leader")
 	flags.IntVar(&conf.AppReadPort, "app-read-port", 3307, "App load balancer read port to all nodes")
@@ -239,7 +235,6 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppWriteBindIp, "app-ip-write-bind", "0.0.0.0", "App input bind address for write")
 	flags.StringVar(&conf.AppAPIReadBackend, "app-api-read-backend", "service_read", "App API backend name used for read")
 	flags.StringVar(&conf.AppAPIWriteBackend, "app-api-write-backend", "service_write", "App API backend name used for write")
-	flags.StringVar(&conf.AppHostIPV6, "app-server-ipv6", "", "App IPv6 bind address ")
 }
 
 func (app *App) Init() {

@@ -1,10 +1,12 @@
 package cluster
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
@@ -27,8 +29,10 @@ func (cluster *Cluster) LoadAppConfigs() error {
 		cluster.Conf.Apps = make(map[string]config.AppConfig)
 	}
 
+	dirname := filepath.Join(cluster.WorkingDir, "apps")
+
 	// Walk through the directory and load all the configuration files
-	return filepath.WalkDir(cluster.WorkingDir+"/apps", func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -36,9 +40,8 @@ func (cluster *Cluster) LoadAppConfigs() error {
 			return nil
 		}
 		if filepath.Ext(path) == ".toml" {
-			appname := filepath.Base(path)
-			appname = appname[:len(appname)-4]
-			_ = cluster.LoadAppConfig(cluster.WorkingDir+"/apps", appname)
+			appname := strings.TrimSuffix(filepath.Base(path), ".toml")
+			_ = cluster.LoadAppConfig(dirname, appname)
 		}
 		return nil
 	})
@@ -79,6 +82,12 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
 
 	cluster.Conf.Apps[appname] = appcnf
+	// Add the app to the cluster if it does not exist
+	applist := strings.Split(cluster.Conf.AppHosts, ",")
+	if !strings.Contains(cluster.Conf.AppHosts, appname) {
+		applist = append(applist, appname)
+		cluster.Conf.AppHosts = strings.Join(applist, ",")
+	}
 
 	return nil
 }
@@ -266,4 +275,29 @@ func (cluster *Cluster) SaveAppDeploymentValue(file *os.File, appname, deployId 
 	}
 
 	return true, nil
+}
+
+func (cluster *Cluster) AddSeededApp(srv string) error {
+	if strings.Contains(cluster.Conf.AppHosts, srv) {
+		return errors.New("App already exists")
+	}
+
+	hosts := strings.Split(cluster.Conf.AppHosts, ",")
+
+	//Remove empty slices
+	n := 0
+	for i := range hosts {
+		if hosts[i] != "" {
+			hosts[n] = hosts[i]
+			n++
+		}
+	}
+	hosts = hosts[:n]
+	hosts = append(hosts, srv)
+
+	cluster.Conf.AppHosts = strings.Join(hosts, ",")
+	cluster.Lock()
+	cluster.newAppList()
+	cluster.Unlock()
+	return nil
 }

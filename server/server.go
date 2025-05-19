@@ -1059,6 +1059,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
+	flags.StringVar(&conf.AppHosts, "app-hosts", "127.0.0.1", "App hosts")
+	flags.StringVar(&conf.AppHostsIPV6, "app-hosts-ipv6", "", "App IPv6 bind address ")
+
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")

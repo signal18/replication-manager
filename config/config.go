@@ -621,6 +621,8 @@ type Config struct {
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	AppOn                                     bool                   `mapstructure:"app-on" toml:"app-on" json:"appOn"`
+	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
+	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -829,8 +831,6 @@ type AppConfig struct {
 	ProvAppDiskPool       string                `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
 	ProvAppAgentsFailover string                `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppDockerRunArgs  string                `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
-	AppHost               string                `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
-	AppHostIPV6           string                `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppAPIPort            int                   `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
 	AppReadPort           int                   `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
 	AppWritePort          int                   `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
