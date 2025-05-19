@@ -23,7 +23,7 @@ import (
 
 func (p *App) SetID() {
 	cluster := p.ClusterGroup
-	p.Id = "px" + strconv.FormatUint(
+	p.Id = "ap" + strconv.FormatUint(
 		crc64.Checksum([]byte(cluster.Name+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
 		10)
 }
