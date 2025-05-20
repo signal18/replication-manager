@@ -1170,19 +1170,25 @@ const (
 	GrantClusterStaging            string = "cluster-staging"
 	GrantClusterAlert              string = "cluster-alert"
 
-	GrantProxyConfigCreate      string = "proxy-config-create"
-	GrantProxyConfigGet         string = "proxy-config-get"
-	GrantProxyConfigRessource   string = "proxy-config-ressource"
-	GrantProxyConfigFlag        string = "proxy-config-flag"
-	GrantProxyStart             string = "proxy-start"
-	GrantProxyStop              string = "proxy-stop"
-	GrantProxyTerminal          string = "proxy-terminal"
+	GrantProxyConfigCreate    string = "proxy-config-create"
+	GrantProxyConfigGet       string = "proxy-config-get"
+	GrantProxyConfigRessource string = "proxy-config-ressource"
+	GrantProxyConfigFlag      string = "proxy-config-flag"
+	GrantProxyStart           string = "proxy-start"
+	GrantProxyStop            string = "proxy-stop"
+	GrantProxyTerminal        string = "proxy-terminal"
+
+	GrantAppStart string = "app-start"
+	GrantAppStop  string = "app-stop"
+
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
 	GrantProvProxyProvision     string = "prov-proxy-provision"
 	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
 	GrantProvDBProvision        string = "prov-db-provision"
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
+	GrantProvAppProvision       string = "prov-app-provision"
+	GrantProvAppUnprovision     string = "prov-app-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
 
@@ -2398,6 +2404,22 @@ func HasAllProvisionGrants(grants map[string]bool) bool {
 	return true
 }
 
+func GetGrantApp() []string {
+	return []string{
+		GrantAppStart,
+		GrantAppStop,
+	}
+}
+
+func HasAllAppGrants(grants map[string]bool) bool {
+	for _, grant := range GetGrantApp() {
+		if !grants[grant] {
+			return false
+		}
+	}
+	return true
+}
+
 func GetGrantGlobal() []string {
 	return []string{
 		GrantGlobalGrant,
@@ -2539,6 +2561,27 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		}
 	}
 
+	// App
+	tmp = make([]string, 0)
+	counter = 0
+	if HasAllProvisionGrants(grants) {
+		compactGrants = append(compactGrants, "app")
+	} else {
+		for _, grant := range GetGrantProvision() {
+			if grants[grant] {
+				compactGrants = append(compactGrants, grant)
+				counter++
+			} else {
+				tmp = append(tmp, grant)
+			}
+		}
+		if counter == 0 {
+			compactDiscardGrants = append(compactDiscardGrants, "app")
+		} else {
+			compactDiscardGrants = append(compactDiscardGrants, tmp...)
+		}
+	}
+
 	// Global
 	tmp = make([]string, 0)
 	counter = 0
@@ -2656,7 +2699,7 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
-		return "db show proxy grant extrole sales-unsubscribe", ""
+		return "db show proxy grant extrole sales-unsubscribe app", ""
 	case RoleExtDBOps:
 		return "db show proxy grant", "extrole"
 	default:

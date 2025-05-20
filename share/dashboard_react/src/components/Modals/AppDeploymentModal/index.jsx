@@ -109,7 +109,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size={"3xl"}>
+    <Modal isOpen={isOpen} onClose={onClose} size={"3xl"} closeOnOverlayClick={false}>
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>Deployment Form</ModalHeader>
