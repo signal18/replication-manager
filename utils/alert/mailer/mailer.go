@@ -31,10 +31,10 @@ type Mailer struct {
 	Auth          smtp.Auth   `json:"-"`
 	TLS           *TLSConfig  `json:"-"`
 	From          string      `json:"from"`
-	TLSSkipVerify bool        `json:"tls_skip_verify"`
-	UsePool       bool        `json:"use_pool"`
+	TLSSkipVerify bool        `json:"tlsSkipVerify"`
+	UsePool       bool        `json:"usePool"`
 	Pool          *email.Pool `json:"pool"`
-	MaxConn       int         `json:"max_conn"`
+	MaxConn       int         `json:"maxConn"`
 	Timeout       int         `json:"timeout"`
 }
 
