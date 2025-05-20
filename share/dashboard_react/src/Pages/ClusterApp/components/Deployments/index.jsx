@@ -44,15 +44,15 @@ const Deployments = ({ clusterName, selectedApp }) => {
                 cell: (info) => info.getValue(),
                 header: 'Docker Image'
             }),
-            columnHelper.accessor((row) => (row.ports.map((port, idx) => (<Tag key={idx} colorScheme="blue">{`${port}`}</Tag>))), {
+            columnHelper.accessor((row) => (row.ports?.map((port, idx) => (<Tag key={idx} colorScheme="blue">{`${port}`}</Tag>))), {
                     cell: (info) => info.getValue(),
                     header: 'Ports'
             }),
-            columnHelper.accessor((row) => (row.gitClones.map((git, idx) => (<Tag key={idx} colorScheme="green">{`${git.repo} (${git.branch}) → ${git.dest}`}</Tag>))), {
+            columnHelper.accessor((row) => (row.gitClones?.map((git, idx) => (<Tag key={idx} colorScheme="green">{`${git.repo} (${git.branch}) → ${git.dest}`}</Tag>))), {
                     cell: (info) => info.getValue(),
                     header: 'Git Clones'
             }),
-            columnHelper.accessor((row) => (<><RMIconButton icon={TbEdit} tooltip="Edit" onClick={() => { setInitValues(row); openModal() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => {}} /></>), {
+            columnHelper.accessor((row) => (<HStack gap={2}><RMIconButton icon={TbEdit} tooltip="Edit" onClick={() => { setInitValues(row); openModal() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => {}} /></HStack>), {
                 cell: (info) => info.getValue(),
                 header: 'Actions'
             }),

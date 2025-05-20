@@ -8,8 +8,8 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
@@ -73,7 +73,7 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 // @Tags Apps
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {object} config.AppInterface "Server details retrieved successfully"
+// @Success 200 {object} cluster.App "Server details retrieved successfully"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/apps/{appName} [get]
 func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.Request) {
@@ -364,7 +364,7 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Success 200 {object} config.Deployments "Deployments retrieved successfully"
+// @Success 200 {array} config.Deployment "Server details retrieved successfully"
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/apps/{appName}/deployments [get]
 func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter, r *http.Request) {
@@ -394,7 +394,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 			for idx, d := range deployments {
 				for gidx := range d.GitClones {
-					depls, err = jsonparser.Set(depls, []byte("*****"), strconv.Itoa(idx), "gitClones", strconv.Itoa(gidx), "pass")
+					depls, err = jsonparser.Set(depls, []byte(`"*****"`), fmt.Sprintf("[%d]", idx), "gitClones", fmt.Sprintf("[%d]", gidx), "pass")
 					if err != nil {
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 						http.Error(w, "Encoding error", 500)
@@ -423,6 +423,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
+// @Param deployment body config.Deployment true "Deployment object"
 // @Success 200 {string} string "Deployment added"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
@@ -442,11 +443,19 @@ func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter,
 			deployment := config.Deployment{}
 			err := json.NewDecoder(r.Body).Decode(&deployment)
 			if err != nil {
-				http.Error(w, "Error decoding JSON", 500)
+				http.Error(w, "Error decoding JSON:"+err.Error(), 500)
 				return
 			}
 
 			appcnf := node.GetAppConfig()
+			if appcnf.Deployments == nil {
+				appcnf.Deployments = make(map[string]*config.Deployment)
+			}
+
+			if deployment.GitClones == nil {
+				deployment.GitClones = make([]config.GitClone, 0)
+			}
+
 			appcnf.Deployments[deployment.Name] = &deployment
 			w.Write([]byte("Deployment added"))
 		} else {

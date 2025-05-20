@@ -216,6 +216,8 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 
 	// Write header
 	file.WriteString(header)
+
+	t.Delete("deployments")
 	t.WriteTo(file)
 
 	return true, nil
@@ -250,7 +252,7 @@ func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
 
 func (cluster *Cluster) SaveAppDeploymentValue(file *os.File, appname, deployId string, dep *config.Deployment) (bool, error) {
 
-	header := "[saved-" + appname + ".deployments." + deployId + "]\n"
+	header := "[\"saved-" + appname + "\".deployments.\"" + deployId + "\"]\n"
 	// Write header
 	file.WriteString(header)
 

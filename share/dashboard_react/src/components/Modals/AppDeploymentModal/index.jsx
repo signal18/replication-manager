@@ -36,7 +36,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
     if (initialValues) {
       setFormData(initialValues)
     }
-  },[initialValues])
+  }, [initialValues])
 
   const [errors, setErrors] = useState({});
 
@@ -55,8 +55,13 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
     });
 
     formData.ports.forEach((p, index) => {
-      if (!p || isNaN(p) || p < 1 || p > 65535) {
-        newErrors[`ports[${index}].containerPort`] = "Valid port number (1-65535) is required";
+      const ports = p.split(":");
+      for (let i = 0; i < ports.length; i++) {
+        const port = Number(ports[i]);
+        if (!ports[i] || isNaN(port) || port < 1 || port > 65535) {
+          newErrors[`ports[${index}]`] = "Valid port number (1–65535) is required";
+          break;
+        }
       }
     });
 
@@ -118,6 +123,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             <FormControl isInvalid={errors.name}>
               <FormLabel>Name</FormLabel>
               <Input
+                name="name"
                 value={formData.name}
                 onChange={(e) => handleInputChange("name", e.target.value)}
               />
@@ -127,6 +133,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             <FormControl isInvalid={errors.dockerImg}>
               <FormLabel>Docker Image</FormLabel>
               <Input
+                name="dockerImg"
                 value={formData.dockerImg}
                 onChange={(e) => handleInputChange("dockerImg", e.target.value)}
               />
@@ -136,6 +143,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             <FormControl>
               <FormLabel>Docker Run Args</FormLabel>
               <Input
+                name="dockerRunArgs"
                 value={formData.dockerRunArgs}
                 onChange={(e) => handleInputChange("dockerRunArgs", e.target.value)}
               />
@@ -144,6 +152,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             <FormControl>
               <FormLabel>Docker Run Cmd</FormLabel>
               <Input
+                name="dockerRunCmd"
                 value={formData.dockerRunCmd}
                 onChange={(e) => handleInputChange("dockerRunCmd", e.target.value)}
               />
@@ -154,6 +163,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             {formData.variables.map((v, index) => (
               <HStack key={index}>
                 <Input
+                  name={`variables[${index}].name`}
                   placeholder="Name"
                   value={v.name}
                   onChange={(e) =>
@@ -171,6 +181,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                 </Select>
                 {v.type === "secret" ? (
                   <Input
+                    name={`variables[${index}].secret`}
                     type="password"
                     placeholder="Secret"
                     value={v.value}
@@ -180,6 +191,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   />
                 ) : (
                   <Input
+                    name={`variables[${index}].env`}
                     placeholder="Env"
                     value={v.value}
                     onChange={(e) =>
@@ -214,6 +226,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   <option value="var">var</option>
                 </Select>
                 <Input
+                  name={`path[${index}].from`}
                   placeholder="From"
                   value={p.from}
                   onChange={(e) =>
@@ -221,6 +234,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   }
                 />
                 <Input
+                  name={`path[${index}].to`}
                   placeholder="To"
                   value={p.to}
                   onChange={(e) =>
@@ -239,23 +253,24 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             {formData.ports.map((p, index) => (
               <HStack key={index}>
                 <Input
-                  type="number"
+                  pattern="^[0-9]{1,5}(:[0-9]{1,5})?$"
                   placeholder="Container Port"
                   value={p}
                   onChange={(e) =>
-                    handleArrayChange("ports", index, null, Number(e.target.value))
+                    handleArrayChange("ports", index, null, e.target.value)
                   }
                 />
                 <RMIconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
               </HStack>
             ))}
-            <RMButton onClick={() => handleAddItem("ports", { containerPort: 0 })}>Add Port</RMButton>
+            <RMButton onClick={() => handleAddItem("ports", "")}>Add Port</RMButton>
 
             {/* Git Clone */}
             <FormLabel>Git Clones</FormLabel>
             {formData.gitClones.map((gc, index) => (
               <HStack key={index}>
                 <Input
+                  name={`gitClones[${index}].repo`}
                   placeholder="Repo URL"
                   value={gc.repo}
                   onChange={(e) =>
@@ -263,6 +278,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   }
                 />
                 <Input
+                  name={`gitClones[${index}].branch`}
                   placeholder="Branch"
                   value={gc.branch}
                   onChange={(e) =>
@@ -270,6 +286,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   }
                 />
                 <Input
+                  name={`gitClones[${index}].dest`}
                   placeholder="Destination"
                   value={gc.dest}
                   onChange={(e) =>
@@ -277,6 +294,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   }
                 />
                 <Input
+                  name={`gitClones[${index}].user`}
                   placeholder="Git User"
                   value={gc.user}
                   onChange={(e) =>
@@ -284,6 +302,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
                   }
                 />
                 <Input
+                  name={`gitClones[${index}].pass`}
                   type="password"
                   placeholder="Secret"
                   value={gc.pass}

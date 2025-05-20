@@ -113,6 +113,63 @@ definitions:
           $ref: '#/definitions/state.StateHttp'
         type: array
     type: object
+  cluster.App:
+    properties:
+      agent:
+        type: string
+      appConfig:
+        $ref: '#/definitions/config.AppConfig'
+      datadir:
+        type: string
+      failCount:
+        type: integer
+      host:
+        type: string
+      hostIPV6:
+        type: string
+      id:
+        type: string
+      isStaging:
+        type: boolean
+      name:
+        type: string
+      port:
+        type: string
+      prevState:
+        type: string
+      process:
+        $ref: '#/definitions/os.Process'
+      readPort:
+        type: integer
+      readWritePort:
+        type: integer
+      readerHostGroup:
+        type: integer
+      serviceName:
+        type: string
+      shardApp:
+        $ref: '#/definitions/cluster.ServerMonitor'
+      slaposDatadir:
+        type: string
+      state:
+        type: string
+      tunnel:
+        type: boolean
+      tunnelPort:
+        type: integer
+      tunnelWritePort:
+        type: integer
+      type:
+        type: string
+      version:
+        type: string
+      weight:
+        type: string
+      writePort:
+        type: integer
+      writerHostGroup:
+        type: integer
+    type: object
   cluster.Backend:
     properties:
       host:
@@ -150,6 +207,10 @@ definitions:
         additionalProperties:
           $ref: '#/definitions/cluster.APIUser'
         type: object
+      appServers:
+        items:
+          type: string
+        type: array
       backupList:
         $ref: '#/definitions/config.BackupMetaMap'
       backupStat:
@@ -910,6 +971,65 @@ definitions:
       variableName:
         type: string
     type: object
+  config.AppConfig:
+    properties:
+      appApiPort:
+        type: integer
+      appApiReadBackend:
+        type: string
+      appApiWriteBackend:
+        type: string
+      appBinaryPath:
+        type: string
+      appDebug:
+        type: boolean
+      appMode:
+        type: string
+      appPassword:
+        type: string
+      appReadBindIp:
+        type: string
+      appReadPort:
+        type: integer
+      appStatHttp:
+        type: string
+      appStatPort:
+        type: integer
+      appUser:
+        type: string
+      appWriteBindIp:
+        type: string
+      appWritePort:
+        type: integer
+      deployments:
+        additionalProperties:
+          $ref: '#/definitions/config.Deployment'
+        type: object
+      provAppAgentIndex:
+        type: integer
+      provAppAgentsFailover:
+        type: string
+      provAppDiskPool:
+        type: string
+      provAppDiskSize:
+        type: string
+      provAppDiskType:
+        type: string
+      provAppDockerImg:
+        type: string
+      provAppDockerRunArgs:
+        type: string
+      provAppRouteAddr:
+        type: string
+      provAppRouteMask:
+        type: string
+      provAppRoutePort:
+        type: string
+      provAppServiceType:
+        type: string
+      provAppVolumeData:
+        type: string
+    type: object
   config.BackupMetaMap:
     type: object
   config.BackupMetadata:
@@ -968,6 +1088,33 @@ definitions:
       name:
         type: string
     type: object
+  config.Deployment:
+    properties:
+      dockerImg:
+        type: string
+      dockerRunArgs:
+        type: string
+      dockerRunCmd:
+        type: string
+      gitClones:
+        items:
+          $ref: '#/definitions/config.GitClone'
+        type: array
+      name:
+        type: string
+      path:
+        items:
+          $ref: '#/definitions/config.PathMapping'
+        type: array
+      ports:
+        items:
+          type: string
+        type: array
+      variables:
+        items:
+          $ref: '#/definitions/config.VariableMapping'
+        type: array
+    type: object
   config.DockerRepo:
     properties:
       image:
@@ -983,6 +1130,19 @@ definitions:
         items:
           $ref: '#/definitions/config.TagResult'
         type: array
+    type: object
+  config.GitClone:
+    properties:
+      branch:
+        type: string
+      dest:
+        type: string
+      pass:
+        type: string
+      repo:
+        type: string
+      user:
+        type: string
     type: object
   config.Grant:
     properties:
@@ -1013,6 +1173,25 @@ definitions:
       stars:
         type: integer
       sysopsEmail:
+        type: string
+    type: object
+  config.PathMapping:
+    properties:
+      agents:
+        example:
+        - all
+        items:
+          type: string
+        type: array
+      from:
+        type: string
+      to:
+        type: string
+      type:
+        type: string
+      volumedir:
+        description: 'This will be used to create the volume mount path. It will be
+          {deployname}/{volumedir} e.g. {volume}/deploy01/etc/{from} : {to}'
         type: string
     type: object
   config.PointInTimeMeta:
@@ -1142,6 +1321,21 @@ definitions:
         type: string
     type: object
   config.TasksMap:
+    type: object
+  config.VariableMapping:
+    properties:
+      agents:
+        example:
+        - all
+        items:
+          type: string
+        type: array
+      name:
+        type: string
+      type:
+        type: string
+      value:
+        type: string
     type: object
   config.VersionsMap:
     type: object
@@ -1364,6 +1558,16 @@ definitions:
         type: boolean
       apiTokenTimeout:
         type: integer
+      appHosts:
+        type: string
+      appHostsIpv6:
+        type: string
+      appOn:
+        type: boolean
+      apps:
+        additionalProperties:
+          $ref: '#/definitions/config.AppConfig'
+        type: object
       arbitrationExternal:
         type: boolean
       arbitrationExternalHosts:
@@ -1895,6 +2099,8 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logAppLevel:
+        type: integer
       logArchiveLevel:
         type: integer
       logBackupStream:
@@ -2652,6 +2858,8 @@ definitions:
       shardproxyServers-ipv6:
         type: string
       shardproxyUniversalTables:
+        type: string
+      slaposAppPartitions:
         type: string
       slaposConfig:
         type: string
@@ -4677,6 +4885,408 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/apps/{appName}:
+    get:
+      description: Shows the apps for that specific named cluster
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Server details retrieved successfully
+          schema:
+            $ref: '#/definitions/cluster.App'
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Shows the apps for that specific named cluster
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/need-reprov:
+    get:
+      consumes:
+      - application/json
+      description: Check if the app service for a given cluster and app needs reprovisioning
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Need reprov!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+        "503":
+          description: No reprov needed!" "Not a Valid Server!
+          schema:
+            type: string
+      summary: Check if App Needs Reprovision
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/need-restart:
+    get:
+      consumes:
+      - application/json
+      description: Check if the app service for a given cluster and app needs a restart
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Need restart!
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+        "503":
+          description: No restart needed!" "Not a Valid Server!
+          schema:
+            type: string
+      summary: Check if App Needs Restart
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/provision:
+    post:
+      consumes:
+      - application/json
+      description: Provision the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Provisioned
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Provision App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/start:
+    post:
+      consumes:
+      - application/json
+      description: Start the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Started
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Start App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/stop:
+    post:
+      consumes:
+      - application/json
+      description: Stop the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Stopped
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Stop App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/unprovision:
+    post:
+      consumes:
+      - application/json
+      description: Unprovision the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Unprovisioned
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Unprovision App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/deployments:
+    get:
+      description: Shows the deployments for that specific named app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      responses:
+        "200":
+          description: Server details retrieved successfully
+          schema:
+            items:
+              $ref: '#/definitions/config.Deployment'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Shows the deployments for that specific named app
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/deployments/add:
+    post:
+      consumes:
+      - application/json
+      description: Add a deployment for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Deployment object
+        in: body
+        name: deployment
+        required: true
+        schema:
+          $ref: '#/definitions/config.Deployment'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deployment added
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error decoding JSON" "Server Not Found" "Deployment not found"
+            "No cluster
+          schema:
+            type: string
+      summary: Add Deployment
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName}:
+    post:
+      consumes:
+      - application/json
+      description: Drop a deployment for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Deployment Name
+        in: path
+        name: deployName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deployment dropped
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error decoding JSON" "Server Not Found" "Deployment not found"
+            "No cluster
+          schema:
+            type: string
+      summary: Drop Deployment
+      tags:
+      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.

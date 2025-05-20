@@ -853,7 +853,7 @@ type VariableMapping struct {
 	Name   string   `toml:"name" json:"name"`
 	Value  string   `toml:"value" json:"value"`
 	Type   string   `toml:"type" json:"type" options:"secret|env"`
-	Agents []string `toml:"agents" json:"agents" default:"all"`
+	Agents []string `toml:"agents" json:"agents" example:"all"`
 }
 
 type PathMapping struct {
@@ -861,18 +861,18 @@ type PathMapping struct {
 	From      string   `toml:"from" json:"from"`
 	To        string   `toml:"to" json:"to"`
 	Type      string   `toml:"type" json:"type" options:"shm|direct"`
-	Agents    []string `toml:"agents" json:"agents" default:"all"`
+	Agents    []string `toml:"agents" json:"agents" example:"all"`
 }
 
 type Deployment struct {
-	Name          string            `toml:"name" json:"name"`
-	Variables     []VariableMapping `toml:"variables" json:"variables"`
-	Path          []PathMapping     `toml:"path" json:"path"`
-	Ports         []string          `toml:"ports" json:"ports"`
-	DockerImg     string            `toml:"docker-img" json:"dockerImg"`
-	DockerRunArgs string            `toml:"docker-run-args" json:"dockerRunArgs"`
-	DockerRunCmd  string            `toml:"docker-run-cmd" json:"dockerRunCmd"`
-	GitClones     []GitClone        `toml:"git-clones" json:"gitClones"`
+	Name          string            `mapstructure:"name"  toml:"name" json:"name"`
+	Variables     []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
+	Path          []PathMapping     `mapstructure:"path"  toml:"path" json:"path"`
+	Ports         []string          `mapstructure:"ports"  toml:"ports" json:"ports"`
+	DockerImg     string            `mapstructure:"docker-img"  toml:"docker-img" json:"dockerImg"`
+	DockerRunArgs string            `mapstructure:"docker-run-args"  toml:"docker-run-args" json:"dockerRunArgs"`
+	DockerRunCmd  string            `mapstructure:"docker-run-cmd"  toml:"docker-run-cmd" json:"dockerRunCmd"`
+	GitClones     []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
 }
 
 type GitClone struct {
@@ -2266,6 +2266,10 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantProvAppProvision:          GrantProvAppProvision,
+		GrantProvAppUnprovision:        GrantProvAppUnprovision,
+		GrantAppStart:                  GrantAppStart,
+		GrantAppStop:                   GrantAppStop,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
 		GrantGlobalTerminal:            GrantGlobalTerminal,
