@@ -30,9 +30,12 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 			server.RejoinLoop()
 		}
 	}
-	server.IsMaintenance = !server.IsMaintenance
-	cluster.failoverProxies()
 
+	server.IsMaintenance = !server.IsMaintenance
+	if !server.IsMaster() && server.IsMaintenance {
+		server.SetState(stateMaintenance)
+	}
+	cluster.failoverProxies()
 	return nil
 }
 
