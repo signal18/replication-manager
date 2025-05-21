@@ -588,6 +588,14 @@ func (cluster *Cluster) CheckAllTableChecksum() {
 	}
 }
 
+func (cluster *Cluster) CheckAllTableChecksumSchema(name string) {
+	for _, t := range cluster.master.Tables {
+		if t.TableSchema == name {
+			cluster.CheckTableChecksum(t.TableSchema, t.TableName)
+		}
+	}
+}
+
 func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Checksum master table %s.%s %s", schema, table, cluster.master.URL)

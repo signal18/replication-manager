@@ -140,7 +140,7 @@ function ProxyTable({ proxies = [], isDesktop, clusterName, showGridView, user, 
 
   return (
     <Box className={styles.tableContainer}>
-      <DataTable data={tableData} columns={columns} />
+      <DataTable key="proxy" data={tableData} columns={columns} />
     </Box>
   )
 }

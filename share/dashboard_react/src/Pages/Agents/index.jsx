@@ -55,7 +55,7 @@ function Agents({ selectedCluster, user }) {
       allowToggle={false}
       className={styles.accordion}
       panelSX={{ overflowX: 'auto', p: 0 }}
-      body={<DataTable data={data} columns={columns} className={styles.table} />}
+      body={<DataTable key="hipervisors" data={data} columns={columns} className={styles.table} />}
     />
   )
 }

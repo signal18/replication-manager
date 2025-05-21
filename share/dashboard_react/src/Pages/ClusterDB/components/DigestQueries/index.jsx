@@ -162,7 +162,7 @@ function DigestQueries({ clusterName, dbId, selectedDBServer, digestMode, toggle
         />
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable data={data} columns={columns} className={styles.table} />
+        <DataTable key="digest" data={data} columns={columns} className={styles.table} />
       </Box>
     </VStack>
   )

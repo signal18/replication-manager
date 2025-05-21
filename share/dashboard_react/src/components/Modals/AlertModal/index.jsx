@@ -70,6 +70,7 @@ function AlertModal({ type, isOpen, closeModal }) {
             <NotFound text={`No ${type} alerts found`} />
           ) : (
             <DataTable
+              key="Alerts"
               className={`${styles.table}  ${type === 'error' ? styles.red : styles.orange}`}
               columns={columns}
               data={data}
