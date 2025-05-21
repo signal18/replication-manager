@@ -2393,6 +2393,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		}
 	case "topology-staging":
 		mycluster.SwitchTopologyStaging()
+	case "analyze-use-persistent":
+		mycluster.SwitchAnalyzeUsePersistent()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -3550,6 +3552,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Cloud18OpenSysops = isactive
 	case "topology-staging":
 		mycluster.Conf.TopologyStaging = isactive
+	case "analyze-use-persistent":
+		mycluster.Conf.AnalyzeUsePersistent = isactive
 	default:
 		return errors.New("Setting not found")
 	}

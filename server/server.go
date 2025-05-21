@@ -843,6 +843,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.BoolVar(&conf.OptimizeUseSQL, "optimize-use-sql", true, "Orchetrate optimize table via SQL not via database job using mysqlcheck")
 	flags.BoolVar(&conf.AnalyzeUseSQL, "analyze-use-sql", true, "Orchetrate analyze table via SQL not via database job using mysqlcheck")
+	flags.BoolVar(&conf.AnalyzeUsePersistent, "analyze-use-persistent", true, "Use 'PERSISTENT FOR' for analyze table")
 
 	flags.StringVar(&conf.ProvIops, "prov-db-disk-iops", "300", "Rnd IO/s in for micro service VM")
 	flags.StringVar(&conf.ProvIopsLatency, "prov-db-disk-iops-latency", "0.002", "IO latency in s")

@@ -469,6 +469,10 @@ func (cluster *Cluster) SwitchMonitoringScheduler() {
 	}
 }
 
+func (cluster *Cluster) SwitchAnalyzeUsePersistent() {
+	cluster.Conf.AnalyzeUsePersistent = !cluster.Conf.AnalyzeUsePersistent
+}
+
 func (cluster *Cluster) SwitchMonitoringQueries() {
 	cluster.Conf.MonitorQueries = !cluster.Conf.MonitorQueries
 }
