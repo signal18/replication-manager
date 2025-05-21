@@ -16470,6 +16470,9 @@ const docTemplate = `{
                 "alertTeamsUrl": {
                     "type": "string"
                 },
+                "analyzeUsePersistent": {
+                    "type": "boolean"
+                },
                 "analyzeUseSql": {
                     "type": "boolean"
                 },
