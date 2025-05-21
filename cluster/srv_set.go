@@ -188,9 +188,7 @@ func (server *ServerMonitor) SetReadWrite() error {
 
 func (server *ServerMonitor) SetMaintenance() {
 	server.IsMaintenance = true
-	if !server.IsMaster() && server.IsMaintenance {
-		server.SetState(stateMaintenance)
-	}
+	server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 

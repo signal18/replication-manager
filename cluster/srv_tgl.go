@@ -19,7 +19,7 @@ import (
 func (server *ServerMonitor) SwitchMaintenance() error {
 	cluster := server.ClusterGroup
 	if cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterRing {
-		if server.IsVirtualMaster && server.IsMaintenance == false {
+		if server.IsVirtualMaster && !server.IsMaintenance {
 			cluster.SwitchOver()
 		}
 	}
@@ -32,8 +32,8 @@ func (server *ServerMonitor) SwitchMaintenance() error {
 	}
 
 	server.IsMaintenance = !server.IsMaintenance
-	if !server.IsMaster() && server.IsMaintenance {
-		server.SetState(stateMaintenance)
+	if server.IsMaintenance {
+		server.ClusterGroup.BashScriptDbServersChangeState(server, stateMaintenance, server.State)
 	}
 	cluster.failoverProxies()
 	return nil
