@@ -847,6 +847,12 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterAnalyze] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/analyze-all-tables") {
+			return true
+		}
+	}
+
 	if cluster.APIUsers[strUser].Grants[config.GrantProvCluster] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/provision") {
 			return true

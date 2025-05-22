@@ -1080,6 +1080,7 @@ const (
 	GrantClusterRolling            string = "cluster-rolling"
 	GrantClusterSettings           string = "cluster-settings"
 	GrantClusterGrant              string = "cluster-grant"
+	GrantClusterAnalyze            string = "cluster-analyze"
 	GrantClusterChecksum           string = "cluster-checksum"
 	GrantClusterSharding           string = "cluster-sharding"
 	GrantClusterReplication        string = "cluster-replication"
@@ -2156,6 +2157,7 @@ func GetGrantType() map[string]string {
 		GrantClusterSettings:           GrantClusterSettings,
 		GrantClusterGrant:              GrantClusterGrant,
 		GrantClusterReplication:        GrantClusterReplication,
+		GrantClusterAnalyze:            GrantClusterAnalyze,
 		GrantClusterChecksum:           GrantClusterChecksum,
 		GrantClusterSharding:           GrantClusterSharding,
 		GrantClusterCertificatesRotate: GrantClusterCertificatesRotate,
@@ -2254,6 +2256,7 @@ func GetGrantCluster() []string {
 		GrantClusterSettings,
 		GrantClusterGrant,
 		GrantClusterReplication,
+		GrantClusterAnalyze,
 		GrantClusterChecksum,
 		GrantClusterSharding,
 		GrantClusterCertificatesRotate,

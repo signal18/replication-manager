@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from '../../styles.module.scss'
-import { Flex, HStack, Input, Box, VStack, Checkbox } from '@chakra-ui/react'
+import { Flex, HStack, Input, Box, VStack, Checkbox, Text } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
 import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
@@ -143,6 +143,7 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
       />, {
         id: 'id',
         header: '#',
+        width: "30px",
         cell: (info) => {
           return (info.getValue())
         }
@@ -192,12 +193,9 @@ function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize 
         header: '',
         meta: {
           renderGroupHeader: (row) => {
-            return (
-              <Flex alignItems="center" gap={2}>
-                <strong>{row.original.table_schema}</strong>
-              </Flex>
-            )
+            return (<Text fontWeight={"bold"}>{row.original.table_schema}</Text>)
           },
+          groupHeaderMenuColumnRef: 'id',
           renderGroupHeaderMenu: (row) => (<MenuOptions key={row.id} placement={placement} subMenuPlacement={subMenuPlacement}
             options={[
               {

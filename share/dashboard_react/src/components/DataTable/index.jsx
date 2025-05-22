@@ -197,15 +197,16 @@ export const DataTable = React.memo(function DataTable({
  */
 function GroupHeaderRow({ row, table, colSpan, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
   const groupHeaderCol = table.getAllColumns().find(col => col.id === 'groupHeader');
-  const renderFn = groupHeaderCol?.columnDef?.meta?.renderGroupHeader;
-  const renderMenuFn = groupHeaderCol?.columnDef?.meta?.renderGroupHeaderMenu;
+  const meta = groupHeaderCol?.columnDef?.meta
+  const renderFn = meta?.renderGroupHeader;
+  const renderMenuFn = meta?.renderGroupHeaderMenu;
   const newColSpan = renderMenuFn ? colSpan - 1 : colSpan;
-
+  const menuCellRef = renderMenuFn && meta?.groupHeaderMenuColumnRef ? table.getAllColumns().find(col => col.id === meta?.groupHeaderMenuColumnRef) : row.subRows?.[0]?.getVisibleCells?.()?.[0]?.column
   return (
     <>
-      <Tr key={row.id} className={`${styles.tableColumn}`} >
-        { renderMenuFn && (<Td>{renderMenuFn(row)}</Td>) }
-        <Td colSpan={newColSpan} onClick={row.getToggleExpandedHandler()} style={{ cursor: 'pointer' }}>
+      <Tr key={row.id} >
+        { renderMenuFn && (<Td className={`${styles.tableColumn}`} maxWidth={menuCellRef?.columnDef?.maxWidth} width={menuCellRef?.columnDef?.width} minWidth={menuCellRef?.columnDef?.minWidth}>{renderMenuFn(row)}</Td>) }
+        <Td className={`${styles.tableColumn}`} colSpan={newColSpan} onClick={row.getToggleExpandedHandler()} style={{ cursor: 'pointer' }}>
           {renderFn
             ? renderFn(row)
             : <>{row.original.groupName}</>}
