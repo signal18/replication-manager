@@ -650,6 +650,7 @@ type Config struct {
 	SchedulerAlertDisableTime                 int                    `mapstructure:"scheduler-alert-disable-time" toml:"scheduler-alert-disable-time" json:"schedulerAlertDisableTime"`
 	OptimizeUseSQL                            bool                   `mapstructure:"optimize-use-sql" toml:"optimize-use-sql" json:"optimizeUseSql"`
 	AnalyzeUseSQL                             bool                   `mapstructure:"analyze-use-sql" toml:"analyze-use-sql" json:"analyzeUseSql"`
+	AnalyzeUsePersistent                      bool                   `mapstructure:"analyze-use-persistent" toml:"analyze-use-persistent" json:"analyzeUsePersistent"`
 	BackupLogicalCron                         string                 `mapstructure:"scheduler-db-servers-logical-backup-cron" toml:"scheduler-db-servers-logical-backup-cron" json:"schedulerDbServersLogicalBackupCron"`
 	BackupPhysicalCron                        string                 `mapstructure:"scheduler-db-servers-physical-backup-cron" toml:"scheduler-db-servers-physical-backup-cron" json:"schedulerDbServersPhysicalBackupCron"`
 	BackupDatabaseLogCron                     string                 `mapstructure:"scheduler-db-servers-logs-cron" toml:"scheduler-db-servers-logs-cron" json:"schedulerDbServersLogsCron"`

@@ -49,6 +49,19 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
+    {
+      key: 'Analyze Tables Use PERSISTENT',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for analyze-use-persistent?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'analyze-use-persistent' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.analyzeUsePersistent}
+        />
+      )
+    },
     ...(selectedCluster?.config?.monitoringScheduler
       ? [
           {

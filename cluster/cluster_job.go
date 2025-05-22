@@ -48,10 +48,12 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 	defer func() {
 		cluster.inAnalyzeTables = false
 	}()
-	for _, t := range cluster.master.Tables {
 
+	// Preserve the old behavior of analyze tables, which is writing to the binlog
+	local := false
+	for _, t := range cluster.master.Tables {
 		//	for _, s := range cluster.slaves {
-		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName)
+		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName, local, cluster.Conf.AnalyzeUsePersistent, "ALL", "")
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 
 		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Analyse table %s on %s", t, s.URL)
