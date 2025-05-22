@@ -168,7 +168,7 @@ function PreservedConfigs({ selectedCluster, user }) {
                 />
             </Box>
             <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
-                <DataTable data={tableData} columns={columns} className={styles.table} enablePagination={true} />
+                <DataTable key="preserved" data={tableData} columns={columns} className={styles.table} enablePagination={true} />
             </Box>
             {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
         </VStack>

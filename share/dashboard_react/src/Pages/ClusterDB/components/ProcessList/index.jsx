@@ -149,7 +149,7 @@ function ProcessList({ clusterName, dbId, user }) {
         <DropdownSysbench clusterName={clusterName} />
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable data={data} columns={columns} className={styles.table} enableSorting={true} />
+        <DataTable key="process" data={data} columns={columns} className={styles.table} enableSorting={true} />
       </Box>
     </VStack>
   )

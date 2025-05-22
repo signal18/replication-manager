@@ -103,7 +103,7 @@ function Shards({ selectedCluster }) {
       <RMButton className={`${styles.btnChecksumAll}`} onClick={handleChecksumAll}>
         Checksum All Tables
       </RMButton>
-      <DataTable data={data} columns={columns} className={styles.table} />
+      <DataTable key="shards" data={data} columns={columns} className={styles.table} />
       <AccordionComponent
         className={styles.accordion}
         heading={'Cluster Logs'}

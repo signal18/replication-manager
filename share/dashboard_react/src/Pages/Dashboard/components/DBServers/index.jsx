@@ -256,7 +256,7 @@ function DBServers({ selectedCluster, user }) {
   return clusterServers?.length > 0 ? (
     <>
       {viewType === 'table' ? (
-        <DataTable data={data} columns={columns} />
+        <DataTable key="dbservers" data={data} columns={columns} />
       ) : (
         <DBServerGrid
           allDBServers={data}

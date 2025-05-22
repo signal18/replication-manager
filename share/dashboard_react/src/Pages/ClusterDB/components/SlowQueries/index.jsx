@@ -107,6 +107,7 @@ function SlowQueries({ clusterName, dbId, selectedDBServer }) {
       </Flex>
       <Box className={styles.tableContainer}>
         <DataTable
+          key='slowQueries'
           data={data}
           columns={columns}
           className={styles.table}

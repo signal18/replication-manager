@@ -23,7 +23,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 )
 
-func (cluster *Cluster) JobAnalyzeSQL() error {
+func (cluster *Cluster) JobAnalyzeSQL(persistent bool) error {
 	var err error
 	var logs string
 	server := cluster.master
@@ -53,11 +53,48 @@ func (cluster *Cluster) JobAnalyzeSQL() error {
 	local := false
 	for _, t := range cluster.master.Tables {
 		//	for _, s := range cluster.slaves {
-		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName, local, cluster.Conf.AnalyzeUsePersistent, "ALL", "")
+		logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName, local, persistent, "ALL", "")
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
 
 		//	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Analyse table %s on %s", t, s.URL)
 		//	}
+	}
+	return err
+}
+
+func (cluster *Cluster) JobAnalyzeSchema(schema, tablename string, persistent bool) error {
+	var err error
+	var logs string
+	server := cluster.master
+
+	if server == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel as no leader ")
+		return errors.New("Analyze tables cancel as no leader")
+	}
+	if !cluster.Conf.MonitorSchemaChange {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel no schema monitor in config")
+		return errors.New("Analyze tables cancel no schema monitor in config")
+	}
+	if cluster.inAnalyzeTables {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel already running")
+		return errors.New("Analyze tables cancel already running")
+	}
+	if cluster.master.Tables == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Analyze tables cancel no table list")
+		return errors.New("Analyze tables cancel no table list")
+	}
+	cluster.inAnalyzeTables = true
+	defer func() {
+		cluster.inAnalyzeTables = false
+	}()
+
+	// Preserve the old behavior of analyze tables, which is writing to the binlog
+	local := false
+	for _, t := range cluster.master.Tables {
+		if t.TableSchema == schema && (tablename == "" || t.TableName == tablename) {
+			logs, err = dbhelper.AnalyzeTable(server.Conn, server.DBVersion, t.TableSchema+"."+t.TableName, local, persistent, "ALL", "")
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database variables %s %s", server.URL, err)
+		}
 	}
 	return err
 }

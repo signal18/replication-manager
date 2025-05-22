@@ -265,7 +265,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         </Checkbox>
       </Flex>
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
-        <DataTable data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
+        <DataTable key="variables" data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
       {isOpen && <ConfirmModal title={title} isOpen={isOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>
