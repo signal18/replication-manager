@@ -19,6 +19,8 @@ const initialState = {
   gitClones: [],
 }
 
+const defaultConfirmText = "Are you sure you want to change this field to: ";
+
 function DeploymentDetail({ clusterName, appId, row, deployId }) {
   const dispatch = useDispatch()
   const [formData, setFormData] = useState(initialState)
@@ -89,30 +91,30 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
     <VStack spacing={4} align="stretch">
       <FormControl>
         <FormLabel>Name</FormLabel>
-        <TextForm isDisabled={true} name="name" value={row.name} onSave={(value) => handleInputChange("name", value)} />
+        <TextForm confirmTitle={defaultConfirmText} isDisabled={true} name="name" value={row.name} onSave={(value) => handleInputChange("name", value)} />
       </FormControl>
 
       <FormControl>
         <FormLabel>Docker Image</FormLabel>
-        <TextForm name="dockerImg" value={row.dockerImg} onSave={(value) => handleInputChange("dockerImg", value)}
+        <TextForm confirmTitle={defaultConfirmText} name="dockerImg" value={row.dockerImg} onSave={(value) => handleInputChange("dockerImg", value)}
         />
       </FormControl>
 
       <FormControl>
         <FormLabel>Docker Run Cmd</FormLabel>
-        <TextForm name="dockerRunCmd" value={row.dockerRunCmd} onSave={(value) => handleInputChange("dockerRunCmd", value)} />
+        <TextForm confirmTitle={defaultConfirmText} name="dockerRunCmd" value={row.dockerRunCmd} onSave={(value) => handleInputChange("dockerRunCmd", value)} />
       </FormControl>
 
       {/* Variables */}
       <FormLabel>Variables</FormLabel>
       {row.variables.map((v, index) => (
         <HStack key={index}>
-          <TextForm name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => handleSaveArrayChange("variables", index, "name", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => handleSaveArrayChange("variables", index, "name", value)} />
           <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => handleSaveArrayChange("variables", index, "type", e.target.value)} options={variableTypes} />
           {v.type === "secret" ? (
-            <TextForm name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => handleSaveArrayChange("variables", index, "value", value)} />
+            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => handleSaveArrayChange("variables", index, "value", value)} />
           ) : (
-            <TextForm name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => handleSaveArrayChange("variables", index, "value", value)} />
+            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => handleSaveArrayChange("variables", index, "value", value)} />
           )}
           <RMIconButton icon={HiTrash} aria-label="Delete Variable" onClick={() => handleDropIndex("variables", index)} />
         </HStack>
@@ -149,8 +151,8 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
       {row.path.map((p, index) => (
         <HStack key={index}>
           <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={p.volumedir} onChange={(value) => handleSaveArrayChange("path", index, "volumedir", value)} options={volumeDirs} />
-          <TextForm name={`path[${index}].from`} placeholder="From" value={p.from} onSave={(value) => handleSaveArrayChange("path", index, "from", value)} />
-          <TextForm name={`path[${index}].to`} placeholder="To" value={p.to} onSave={(value) => handleSaveArrayChange("path", index, "to", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`path[${index}].from`} placeholder="From" value={p.from} onSave={(value) => handleSaveArrayChange("path", index, "from", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`path[${index}].to`} placeholder="To" value={p.to} onSave={(value) => handleSaveArrayChange("path", index, "to", value)} />
           <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleDropIndex("path", index)} />
         </HStack>
       ))}
@@ -181,7 +183,7 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
       <FormLabel>Ports</FormLabel>
       {row.ports.map((p, index) => (
         <HStack key={index}>
-          <TextForm pattern="^[0-9]{1,5}(:[0-9]{1,5})?$" placeholder="Container Port" value={p} onSave={(value) => handleSaveArrayChange("ports", index, null, value)} />
+          <TextForm confirmTitle={defaultConfirmText} pattern="^[0-9]{1,5}(:[0-9]{1,5})?$" placeholder="Container Port" value={p} onSave={(value) => handleSaveArrayChange("ports", index, null, value)} />
           <RMIconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleDropIndex("ports", index)} />
         </HStack>
       ))}
@@ -206,11 +208,11 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
       <FormLabel>Git Clones</FormLabel>
       {row.gitClones.map((gc, index) => (
         <HStack key={index}>
-          <TextForm name={`gitClones[${index}].repo`} placeholder="Repo URL" value={gc.repo} onSave={(value) => handleSaveArrayChange("gitClones", index, "repo", value)} />
-          <TextForm name={`gitClones[${index}].branch`} placeholder="Branch" value={gc.branch} onSave={(value) => handleSaveArrayChange("gitClones", index, "branch", value)} />
-          <TextForm name={`gitClones[${index}].dest`} placeholder="Destination" value={gc.dest} onSave={(value) => handleSaveArrayChange("gitClones", index, "dest", value)} />
-          <TextForm name={`gitClones[${index}].user`} placeholder="Git User" value={gc.user} onSave={(value) => handleSaveArrayChange("gitClones", index, "user", value)} />
-          <TextForm name={`gitClones[${index}].pass`} type="password" placeholder="Secret" value={gc.pass} onSave={(value) => handleSaveArrayChange("gitClones", index, "pass", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`gitClones[${index}].repo`} placeholder="Repo URL" value={gc.repo} onSave={(value) => handleSaveArrayChange("gitClones", index, "repo", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`gitClones[${index}].branch`} placeholder="Branch" value={gc.branch} onSave={(value) => handleSaveArrayChange("gitClones", index, "branch", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`gitClones[${index}].dest`} placeholder="Destination" value={gc.dest} onSave={(value) => handleSaveArrayChange("gitClones", index, "dest", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`gitClones[${index}].user`} placeholder="Git User" value={gc.user} onSave={(value) => handleSaveArrayChange("gitClones", index, "user", value)} />
+          <TextForm confirmTitle={defaultConfirmText} name={`gitClones[${index}].pass`} type="password" placeholder="Secret" value={gc.pass} onSave={(value) => handleSaveArrayChange("gitClones", index, "pass", value)} />
           <RMIconButton
             icon={HiTrash}
             aria-label="Delete Git Clones"

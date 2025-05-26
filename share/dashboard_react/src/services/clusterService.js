@@ -599,7 +599,7 @@ function dropDeployment(clusterName, appId, deployName, baseURL) {
 }
 
 function deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, value)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, {value})
 }
 function deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add`, value)
