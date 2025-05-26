@@ -1,46 +1,49 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from '../../styles.module.scss'
-import { Flex, HStack, Input, Box, VStack } from '@chakra-ui/react'
+import { Flex, HStack, Input, Box, VStack, Checkbox, Text } from '@chakra-ui/react'
 import { createColumnHelper } from '@tanstack/react-table'
-import { useDispatch, useSelector } from 'react-redux'
+import { shallowEqual, useDispatch, useSelector } from 'react-redux'
 import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
-import { checksumTable, getDatabaseService } from '../../../../redux/clusterSlice'
+import { analyzeAllTables, analyzeSchema, analyzeTable, checksumAllTables, checksumSchema, checksumTable, getDatabaseService } from '../../../../redux/clusterSlice'
 import { getTablePct } from '../../../../utility/common'
-import RMButton from '../../../../components/RMButton'
 import Gauge from '../../../../components/Gauge'
+import MenuOptions from '../../../../components/MenuOptions'
+import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import RMIconButton from '../../../../components/RMIconButton'
+import { HiChartBar, HiShieldCheck } from 'react-icons/hi'
+import { use } from 'react'
 
-function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
+const selectTables = (state) => ({ tables: state.cluster.database.tables, isDesktop: state.common.isDesktop })
+
+const columnHelper = createColumnHelper()
+
+function Tables({ clusterName, dbId, selectedDBServer, usePersistent, tableSize }) {
   const dispatch = useDispatch()
+  const { tables, isDesktop } = useSelector(selectTables, shallowEqual)
   const [search, setSearch] = useState('')
+  const [persistent, setPersistent] = useState(usePersistent || false)
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState('')
+  const [confirmHandler, setConfirmHandler] = useState(() => () => { })
 
-  const {
-    cluster: {
-      database: { tables }
-    }
-  } = useSelector((state) => state)
+  const groupColumns = ['table_schema']
   const [data, setData] = useState(tables || [])
   const [allData, setAllData] = useState(tables || [])
   const prevTables = useRef(tables)
 
-  useEffect(() => {
-    dispatch(getDatabaseService({ clusterName, serviceName: 'tables', dbId }))
-  }, [])
+  const placement = 'right-end'
+  const subMenuPlacement = isDesktop ? placement : 'bottom'
 
-  useEffect(() => {
-    if (tables?.length > 0) {
-      if (!isEqual(tables, prevTables.current)) {
-        setAllData(tables)
-        setData(searchData(tables))
+  const openConfirmModal = () => {
+    setIsConfirmModalOpen(true)
+  }
 
-        prevTables.current = tables
-      }
-    }
-  }, [tables])
-
-  useEffect(() => {
-    setData(searchData(allData))
-  }, [search])
+  const closeConfirmModal = () => {
+    setIsConfirmModalOpen(false)
+    setConfirmTitle('')
+    setConfirmHandler(() => () => { })
+  }
 
   const searchData = (serverData) => {
     const searchedData = serverData?.filter((x) => {
@@ -56,6 +59,24 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
     return searchedData
   }
 
+  useEffect(() => {
+    dispatch(getDatabaseService({ clusterName, serviceName: 'tables', dbId }))
+  }, [])
+
+  useEffect(() => {
+    if (tables?.length > 0) {
+      if (!isEqual(tables, prevTables.current)) {
+        setAllData(tables)
+        setData(searchData(tables))
+        prevTables.current = tables
+      }
+    }
+  }, [tables])
+
+  useEffect(() => {
+    setData(searchData(allData))
+  }, [search])
+
   const handleSearch = (e) => {
     setSearch(e.target.value)
   }
@@ -63,23 +84,76 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
   const handleChecksum = (schema, table) => {
     dispatch(checksumTable({ clusterName, schema, table }))
   }
+  
+  const handleChecksumSchema = (schema) => {
+    dispatch(checksumSchema({ clusterName, schema }))
+  }
 
-  const columnHelper = createColumnHelper()
+  const handleChecksumAll = () => {
+    dispatch(checksumAllTables({ clusterName }))
+  }
+
+  const handleAnalyze = (schema, table, persistent) => {
+    dispatch(analyzeTable({ clusterName, schema, table, persistent }))
+  }
+
+  const handleAnalyzeSchema = (schema, persistent) => {
+    dispatch(analyzeSchema({ clusterName, schema, persistent }))
+  }
+
+  const handleAnalyzeAll = (persistent) => {
+    dispatch(analyzeAllTables({ clusterName, persistent }))
+  }
+
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor((row) => <MenuOptions key={row.id} placement={placement} subMenuPlacement={subMenuPlacement}
+        options={[
+          {
+            name: 'Checksum',
+            onClick: () => {
+              openConfirmModal()
+              setConfirmTitle(`Confirm run checksum for ${row.table_schema}.${row.table_name}?`)
+              setConfirmHandler(() => () => handleChecksum(row.table_schema, row.table_name))
+            }
+          },
+          {
+            name: 'Analyze',
+            subMenu: [
+              {
+                name: 'Persistent',
+                onClick: () => {
+                  setConfirmTitle(`Confirm run analyze for ${row.table_schema}.${row.table_name}?`)
+                  setConfirmHandler(() => () => handleAnalyze(row.table_schema, row.table_name, true))
+                  openConfirmModal()
+                }
+              },
+              {
+                name: 'Non-Persistent',
+                onClick: () => {
+                  setConfirmTitle(`Confirm run analyze for ${row.table_schema}.${row.table_name}?`)
+                  setConfirmHandler(() => () => handleAnalyze(row.table_schema, row.table_name, false))
+                  openConfirmModal()
+                }
+              }
+            ]
+          }
+        ]}
+      />, {
+        id: 'id',
+        header: '#',
+        width: "30px",
+        cell: (info) => {
+          return (info.getValue())
+        }
+      }),
       columnHelper.accessor((row) => row.table_schema, {
+        id: 'table_schema',
         header: 'Schema',
-        cell: (info) => (
-          <Flex className={styles.tablesSchemaCol}>
-            <RMButton
-              className={styles.btnChecksum}
-              onClick={() => handleChecksum(info.row.original.table_schema, info.row.original.table_name)}>
-              CHECKSUM
-            </RMButton>
-            <span>{info.getValue()}</span>
-          </Flex>
-        )
+        enableGrouping: true,
+        enableHiding: true,
+        cell: () => null,
       }),
       columnHelper.accessor((row) => row.table_name, {
         header: 'Name'
@@ -113,7 +187,51 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
             />
           )
         }
-      })
+      }),
+      {
+        id: 'groupHeader',
+        header: '',
+        meta: {
+          renderGroupHeader: (row) => {
+            return (<Text fontWeight={"bold"}>{row.original.table_schema}</Text>)
+          },
+          groupHeaderMenuColumnRef: 'id',
+          renderGroupHeaderMenu: (row) => (<MenuOptions key={row.id} placement={placement} subMenuPlacement={subMenuPlacement}
+            options={[
+              {
+                name: 'Checksum',
+                onClick: () => {
+                  openConfirmModal()
+                  setConfirmTitle(`Confirm run checksum for ${row.original.table_schema}?`)
+                  setConfirmHandler(() => () => handleChecksumSchema(row.table_schema))
+                }
+              },
+              {
+                name: 'Analyze',
+                subMenu: [
+                  {
+                    name: 'Persistent',
+                    onClick: () => {
+                      setConfirmTitle(`Confirm run analyze for ${row.table_schema}?`)
+                      setConfirmHandler(() => () => handleAnalyzeSchema(row.table_schema, true))
+                      openConfirmModal()
+                    }
+                  },
+                  {
+                    name: 'Non-Persistent',
+                    onClick: () => {
+                      setConfirmTitle(`Confirm run analyze for ${row.table_schema}?`)
+                      setConfirmHandler(() => () => handleAnalyzeSchema(row.table_schema, false))
+                      openConfirmModal()
+                    }
+                  }
+                ]
+              }
+            ]}
+          />)
+        },
+        cell: () => null,
+      }
     ],
     []
   )
@@ -125,11 +243,40 @@ function Tables({ clusterName, dbId, selectedDBServer, tableSize }) {
           <HStack className={styles.search}>
             <label htmlFor='search'>Search</label>
             <Input id='search' type='search' onChange={handleSearch} />
+            <Box className={styles.divider} />
+            <label htmlFor='search'>Checksum</label>
+            <RMIconButton icon={HiShieldCheck} tooltip={"Checksum All Tables"} onClick={() => {
+              setConfirmTitle(`Confirm run checksum for all schemas and tables?`)
+              setConfirmHandler(() => () => handleChecksumAll())
+              openConfirmModal()
+            }} />
+            <Box className={styles.divider} />
+            <label htmlFor='search'>Analyze</label>
+            <RMIconButton icon={HiChartBar} tooltip={"Analyze All Tables"} onClick={() => {
+              let title = persistent ? 'with PERSISTENT FOR ALL' : ''
+              setConfirmTitle(`Confirm run checksum for all schemas and tables ${title}?`)
+              setConfirmHandler(() => () => handleAnalyzeAll(persistent))
+              openConfirmModal()
+            }} />
+            <Checkbox size='lg' isChecked={persistent} onChange={(e) => { setPersistent(e.target.checked) }} className={styles.checkbox}>
+              Persistent
+            </Checkbox>
           </HStack>
         </HStack>
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable data={data} columns={columns} className={styles.table} />
+        <DataTable key="tables" data={data} columns={columns} className={styles.table} initialGrouping={groupColumns} enableGrouping={true} enableExpanding={true} columnVisibility={{ "table_schema": false, groupHeader: false }} />
+        {isConfirmModalOpen && (
+          <ConfirmModal
+            isOpen={isConfirmModalOpen}
+            closeModal={closeConfirmModal}
+            title={confirmTitle}
+            onConfirmClick={() => {
+              confirmHandler()
+              closeConfirmModal()
+            }}
+          />
+        )}
       </Box>
     </VStack>
   )

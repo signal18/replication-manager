@@ -224,7 +224,7 @@ func (cluster *Cluster) SetSchedulerAnalyze() {
 		var err error
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database analyze at: %s", cluster.Conf.BackupDatabaseAnalyzeCron)
 		cluster.idSchedulerAnalyze, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseAnalyzeCron, func() {
-			cluster.JobAnalyzeSQL()
+			cluster.JobAnalyzeSQL(cluster.Conf.AnalyzeUsePersistent)
 		})
 		if err == nil {
 			cluster.Schedule["analyze"] = cluster.scheduler.Entry(cluster.idSchedulerAnalyze)

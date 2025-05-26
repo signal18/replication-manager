@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
+import { isEqual } from 'lodash';
 
 export const getClusterData = createAsyncThunk('cluster/getClusterData', async ({ clusterName }, thunkAPI) => {
   try {
@@ -14,8 +15,8 @@ export const getClusterData = createAsyncThunk('cluster/getClusterData', async (
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.cluster) {
+      const { cluster } = getState();
+      if (cluster.isFetching.cluster) {
         return false;
       }
     }
@@ -43,8 +44,8 @@ export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', asy
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.master) {
+      const { cluster } = getState();
+      if (cluster.isFetching.master) {
         return false;
       }
     }
@@ -62,8 +63,8 @@ export const getClusterServers = createAsyncThunk('cluster/getClusterServers', a
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.servers) {
+      const { cluster } = getState();
+      if (cluster.isFetching.servers) {
         return false;
       }
     }
@@ -81,8 +82,8 @@ export const getClusterProxies = createAsyncThunk('cluster/getClusterProxies', a
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.proxies) {
+      const { cluster } = getState();
+      if (cluster.isFetching.proxies) {
         return false;
       }
     }
@@ -1109,6 +1110,21 @@ export const checksumTable = createAsyncThunk(
   }
 )
 
+export const checksumSchema = createAsyncThunk(
+  'cluster/checksumSchema',
+  async ({ clusterName, schema, Schema }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.checksumSchema(clusterName, schema, baseURL)
+      showSuccessBanner(`Checksum done for schema ${schema}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum failed for schema ${schema}!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const toggleDatabaseActions = createAsyncThunk(
   'cluster/toggleDatabaseActions',
   async ({ clusterName, dbId, serviceName }, thunkAPI) => {
@@ -1119,6 +1135,51 @@ export const toggleDatabaseActions = createAsyncThunk(
       return { data, status }
     } catch (error) {
       showErrorBanner(`Toggle ${serviceName} failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const analyzeAllTables = createAsyncThunk(
+  'cluster/analyzeAllTables',
+  async ({ clusterName, persistent }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.analyzeAllTables(clusterName, persistent, baseURL)
+      showSuccessBanner(`Checksum done for all schema!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum failed for all schema!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const analyzeSchema = createAsyncThunk(
+  'cluster/analyzeSchema',
+  async ({ clusterName, schema, persistent }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.analyzeSchema(clusterName, schema, persistent, baseURL)
+      showSuccessBanner(`Checksum done for schema ${schema}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum failed for schema ${schema}!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const analyzeTable = createAsyncThunk(
+  'cluster/analyzeTable',
+  async ({ clusterName, schema, table, persistent }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.analyzeTable(clusterName, schema, table, persistent, baseURL)
+      showSuccessBanner(`Checksum done for schema ${schema} and table ${table}!`, status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Checksum failed for schema ${schema} and table ${table}!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -1639,7 +1700,9 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
           } else if (serviceName === 'tables') {
-            state.database.tables = action.payload.data
+            if(!isEqual(state.database.tables, action.payload?.data)) {
+              state.database.tables = action.payload?.data
+            }
           } else if (serviceName === 'status-delta') {
             state.database.status.statusDelta = action.payload.data
           } else if (serviceName === 'status-innodb') {

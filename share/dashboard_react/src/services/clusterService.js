@@ -17,6 +17,7 @@ export const clusterService = {
 
   // Cluster management APIs
   checksumAllTables,
+  analyzeAllTables,
   switchOverCluster,
   failOverCluster,
   resetFailOverCounter,
@@ -89,6 +90,9 @@ export const clusterService = {
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
+  checksumSchema,
+  analyzeTable,
+  analyzeSchema,
   killThread,
   killQuery,
 
@@ -178,6 +182,10 @@ function getQueryRules(clusterName, baseURL) {
 //#region Cluster management APIs
 function checksumAllTables(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/checksum-all-tables`)
+}
+
+function analyzeAllTables(clusterName, persistent, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/analyze-all-tables/${persistent}`)
 }
 
 function switchOverCluster(clusterName, baseURL) {
@@ -463,6 +471,18 @@ function killQuery(clusterName, dbId, queryDigest, baseURL) {
 
 function checksumTable(clusterName, schema, table, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/checksum-table`)
+}
+
+function checksumSchema(clusterName, schema, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/all/actions/checksum-schema`)
+}
+
+function analyzeTable(clusterName, schema, table, persistent, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/${table}/actions/analyze-table/${persistent}`)
+}
+
+function analyzeSchema(clusterName, schema, persistent, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/all/actions/analyze-schema/${persistent}`)
 }
 
 //#endregion Database service APIs

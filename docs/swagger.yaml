@@ -1514,6 +1514,8 @@ definitions:
         type: string
       alertTeamsUrl:
         type: string
+      analyzeUsePersistent:
+        type: boolean
       analyzeUseSql:
         type: boolean
       apiBind:
@@ -3985,6 +3987,42 @@ paths:
       summary: Add a server to a specific cluster
       tags:
       - ClusterMonitor
+  /api/clusters/{clusterName}/actions/analyze-all-tables:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the analyze calculation for all tables in
+        the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered analyze calculation for all tables
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Calculate analyze for all tables in a specific cluster
+      tags:
+      - ClusterSchema
   /api/clusters/{clusterName}/actions/cancel-rolling-reprov:
     post:
       consumes:
@@ -6610,6 +6648,52 @@ paths:
       summary: Retrieve schema information for a specific cluster
       tags:
       - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the analyze calculation for a specific table
+        in the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      - description: Table Name
+        in: path
+        name: tableName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered analyze calculation for the table
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Calculate analyze for a specific table in a specific cluster
+      tags:
+      - ClusterSchema
   /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/checksum-table:
     post:
       consumes:
@@ -6846,6 +6930,88 @@ paths:
           schema:
             type: string
       summary: Set a universal table for a specific cluster
+      tags:
+      - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the analyze calculation for all tables in
+        a schema in the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered analyze calculation for the schema
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Calculate analyze for a specific schema in a specific cluster
+      tags:
+      - ClusterSchema
+  /api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the checksum calculation for all tables
+        in a schema in the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Schema Name
+        in: path
+        name: schemaName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered checksum calculation for the schema
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Calculate checksum for a specific schema in a specific cluster
       tags:
       - ClusterSchema
   /api/clusters/{clusterName}/send-vault-token:

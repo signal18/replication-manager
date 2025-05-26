@@ -25,16 +25,17 @@ func (t TLSConfig) ToTLSConfig() *tls.Config {
 
 // Write all to json for debugging
 type Mailer struct {
-	Address  string      `json:"address"`
-	Username string      `json:"username"`
-	Password string      `json:"-"`
-	Auth     smtp.Auth   `json:"-"`
-	TLS      *TLSConfig  `json:"-"`
-	From     string      `json:"from"`
-	UsePool  bool        `json:"use_pool"`
-	Pool     *email.Pool `json:"pool"`
-	MaxConn  int         `json:"max_conn"`
-	Timeout  int         `json:"timeout"`
+	Address       string      `json:"address"`
+	Username      string      `json:"username"`
+	Password      string      `json:"-"`
+	Auth          smtp.Auth   `json:"-"`
+	TLS           *TLSConfig  `json:"-"`
+	From          string      `json:"from"`
+	TLSSkipVerify bool        `json:"tlsSkipVerify"`
+	UsePool       bool        `json:"usePool"`
+	Pool          *email.Pool `json:"pool"`
+	MaxConn       int         `json:"maxConn"`
+	Timeout       int         `json:"timeout"`
 }
 
 type Email struct {
@@ -47,11 +48,12 @@ type Email struct {
 
 func NewMailer(smtpAddr, mailFrom, smtpUser, smtpPassword string, tlsSkipVerify bool, timeout int, maxPool int) (*Mailer, error) {
 	m := &Mailer{
-		Username: smtpUser,
-		Password: smtpPassword,
-		Address:  smtpAddr,
-		From:     mailFrom,
-		Timeout:  timeout,
+		Username:      smtpUser,
+		Password:      smtpPassword,
+		Address:       smtpAddr,
+		From:          mailFrom,
+		Timeout:       timeout,
+		TLSSkipVerify: tlsSkipVerify,
 	}
 
 	host, _, err := net.SplitHostPort(smtpAddr)
@@ -97,7 +99,7 @@ func (m *Mailer) ReinitPool() error {
 		return nil
 	}
 
-	useTLS, useStartTLS, err := CheckSMTP(m.Address, time.Duration(m.Timeout)*time.Second, m.TLS.InsecureSkipVerify)
+	useTLS, useStartTLS, err := CheckSMTP(m.Address, time.Duration(m.Timeout)*time.Second, m.TLSSkipVerify)
 	if useTLS || useStartTLS {
 		pool, err = email.NewPool(m.Address, m.MaxConn, m.Auth, m.TLS.ToTLSConfig())
 		if err == nil {
@@ -153,6 +155,8 @@ func (m *Mailer) SetFrom(mailFrom string) {
 }
 
 func (m *Mailer) UpdateTLSConfig(tlsSkipVerify bool) error {
+	m.TLSSkipVerify = tlsSkipVerify
+
 	host, _, err := net.SplitHostPort(m.Address)
 	if err != nil {
 		return err
@@ -236,7 +240,7 @@ func (m *Mailer) Send(e *email.Email) error {
 		}
 	}
 
-	useTLS, useStartTLS, err := CheckSMTP(m.Address, time.Duration(m.Timeout)*time.Second, m.TLS.InsecureSkipVerify)
+	useTLS, useStartTLS, err := CheckSMTP(m.Address, time.Duration(m.Timeout)*time.Second, m.TLSSkipVerify)
 	if err != nil {
 		return err
 	} else {

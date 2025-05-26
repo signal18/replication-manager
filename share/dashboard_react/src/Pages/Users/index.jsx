@@ -191,7 +191,7 @@ function Users({ selectedCluster, user }) {
         allowToggle={false}
         className={styles.accordion}
         panelSX={{ overflowX: 'auto', p: 0 }}
-        body={<DataTable data={data} columns={columns} className={styles.table} />}
+        body={<DataTable key="users" data={data} columns={columns} className={styles.table} />}
       />
       {isUserGrantModalOpen && <UserGrantModal clusterName={selectedCluster.name} selectedUser={selectedUser} isOpen={isUserGrantModalOpen} closeModal={closeUserGrantModal} />}
       {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}

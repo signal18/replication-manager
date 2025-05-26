@@ -387,10 +387,25 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumTable)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table/{persistent}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaAnalyzeTable)),
+	))
+	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema/{persistent}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterAnalyzeSchema)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/analyze-all-tables/{persistent}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaAnalyzeAllTables)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/schema", negroni.New(
@@ -2397,6 +2412,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		}
 	case "topology-staging":
 		mycluster.SwitchTopologyStaging()
+	case "analyze-use-persistent":
+		mycluster.SwitchAnalyzeUsePersistent()
 	default:
 		return errors.New("Setting not found")
 	}
@@ -3554,6 +3571,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Cloud18OpenSysops = isactive
 	case "topology-staging":
 		mycluster.Conf.TopologyStaging = isactive
+	case "analyze-use-persistent":
+		mycluster.Conf.AnalyzeUsePersistent = isactive
 	default:
 		return errors.New("Setting not found")
 	}
@@ -4839,6 +4858,38 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 
 }
 
+// handlerMuxClusterChecksumSchema handles the checksum calculation for a specific table in a given cluster.
+// @Summary Calculate checksum for a specific schema in a specific cluster
+// @Description This endpoint triggers the checksum calculation for all tables in a schema in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param schemaName path string true "Schema Name"
+// @Success 200 {string} string "Successfully triggered checksum calculation for the schema"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema [post]
+func (repman *ReplicationManager) handlerMuxClusterChecksumSchema(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.CheckAllTableChecksumSchema(vars["schemaName"])
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
 // handlerMuxClusterSchemaChecksumTable handles the checksum calculation for a specific table in a given cluster.
 // @Summary Calculate checksum for a specific table in a specific cluster
 // @Description This endpoint triggers the checksum calculation for a specific table in the specified cluster.
@@ -4864,6 +4915,138 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 			return
 		}
 		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+// handlerMuxClusterSchemaAnalyzeAllTables handles the analyze calculation for all tables in a given cluster.
+// @Summary Calculate analyze for all tables in a specific cluster
+// @Description This endpoint triggers the analyze calculation for all tables in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully triggered analyze calculation for all tables"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/analyze-all-tables/{persistent} [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeAllTables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		persistent := mycluster.Conf.AnalyzeUsePersistent
+		if strings.ToUpper(vars["persistent"]) == "TRUE" {
+			persistent = true
+		} else if strings.ToUpper(vars["persistent"]) == "FALSE" {
+			persistent = false
+		}
+
+		go mycluster.JobAnalyzeSQL(persistent)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+// handlerMuxClusterAnalyzeSchema handles the analyze calculation for a specific table in a given cluster.
+// @Summary Calculate analyze for a specific schema in a specific cluster
+// @Description This endpoint triggers the analyze calculation for all tables in a schema in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param schemaName path string true "Schema Name"
+// @Success 200 {string} string "Successfully triggered analyze calculation for the schema"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema/{persistent} [post]
+func (repman *ReplicationManager) handlerMuxClusterAnalyzeSchema(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		persistent := mycluster.Conf.AnalyzeUsePersistent
+		if strings.ToUpper(vars["persistent"]) == "TRUE" {
+			persistent = true
+		} else if strings.ToUpper(vars["persistent"]) == "FALSE" {
+			persistent = false
+		}
+		if vars["schemaName"] == "" {
+			http.Error(w, "No schema name provided", 400)
+			return
+		}
+		go mycluster.JobAnalyzeSchema(vars["schemaName"], "", persistent)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
+// handlerMuxClusterSchemaAnalyzeTable handles the analyze calculation for a specific table in a given cluster.
+// @Summary Calculate analyze for a specific table in a specific cluster
+// @Description This endpoint triggers the analyze calculation for a specific table in the specified cluster.
+// @Tags ClusterSchema
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param schemaName path string true "Schema Name"
+// @Param tableName path string true "Table Name"
+// @Success 200 {string} string "Successfully triggered analyze calculation for the table"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table/{persistent} [post]
+func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeTable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if vars["schemaName"] == "" {
+			http.Error(w, "No schema name provided", 400)
+			return
+		}
+
+		if vars["tableName"] == "" {
+			http.Error(w, "No table name provided", 400)
+			return
+		}
+
+		persistent := mycluster.Conf.AnalyzeUsePersistent
+		if strings.ToUpper(vars["persistent"]) == "TRUE" {
+			persistent = true
+		} else if strings.ToUpper(vars["persistent"]) == "FALSE" {
+			persistent = false
+		}
+		go mycluster.JobAnalyzeSchema(vars["schemaName"], vars["tableName"], persistent)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

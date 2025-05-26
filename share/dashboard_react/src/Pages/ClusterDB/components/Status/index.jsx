@@ -54,9 +54,9 @@ function Status({ clusterName, dbId }) {
     setStatusDeltaData(searchData(statusDeltaAllData, searchStatusDelta))
   }, [searchStatusDelta])
 
-  const searchData = (data, search = '') => {
-    const searchedData = data.filter((x) => {
-      const searchValue = search.toLowerCase()
+  const searchData = (data = [], search = '') => {
+    const searchedData = data?.filter((x) => {
+      const searchValue = search?.toLowerCase()
       if (x.variableName.toLowerCase().includes(searchValue)) {
         return x
       }
@@ -98,7 +98,7 @@ function Status({ clusterName, dbId }) {
             allowToggle={false}
             heading={'Status Delta'}
             className={styles.accordion}
-            body={<DataTable data={statusDeltaData} columns={columns} className={styles.table} />}
+            body={<DataTable key="delta" data={statusDeltaData} columns={columns} className={styles.table} />}
           />
         </VStack>
         <VStack className={styles.statusInnerContainer}>
@@ -106,7 +106,7 @@ function Status({ clusterName, dbId }) {
             heading={'Status InnoDB'}
             className={styles.accordion}
             allowToggle={false}
-            body={<DataTable data={statusInnoDBData} columns={columns} className={styles.table} />}
+            body={<DataTable key="innodb" data={statusInnoDBData} columns={columns} className={styles.table} />}
           />
         </VStack>
       </Flex>

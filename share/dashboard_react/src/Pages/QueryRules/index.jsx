@@ -58,7 +58,7 @@ function QueryRules({ selectedCluster }) {
   useEffect(() => {
     dispatch(getQueryRules({ clusterName: selectedCluster?.name }))
   }, [])
-  return <DataTable data={data} columns={columns} className={styles.table} />
+  return <DataTable key="qrules" data={data} columns={columns} className={styles.table} />
 }
 
 export default QueryRules

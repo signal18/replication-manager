@@ -82,7 +82,7 @@ function ResponseTime({ clusterName, dbId, selectedDBServer }) {
         <Toolbar clusterName={clusterName} tab='responseTime' dbId={dbId} selectedDBServer={selectedDBServer} />
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable data={data} columns={columns} className={styles.table} />
+        <DataTable key="response" data={data} columns={columns} className={styles.table} />
       </Box>
     </VStack>
   )

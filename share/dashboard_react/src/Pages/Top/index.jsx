@@ -192,7 +192,7 @@ function Top({ selectedCluster }) {
                         return <BarGraph data={graphData} graphName={graph.name} className={styles.graph} />
                       })}
                   </Flex>
-                  <DataTable data={topP.processlist} columns={columns} className={styles.table} />
+                  <DataTable key="top" data={topP.processlist} columns={columns} className={styles.table} />
                 </>
               }
             />

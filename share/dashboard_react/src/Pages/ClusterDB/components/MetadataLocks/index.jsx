@@ -103,7 +103,7 @@ function MetadataLocks({ clusterName, dbId, selectedDBServer }) {
         <Toolbar clusterName={clusterName} tab='metadataLocks' dbId={dbId} selectedDBServer={selectedDBServer} />
       </Flex>
       <Box className={styles.tableContainer}>
-        <DataTable data={data} columns={columns} className={styles.table} />
+        <DataTable key="metadata" data={data} columns={columns} className={styles.table} />
       </Box>
     </VStack>
   )

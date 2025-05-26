@@ -687,6 +687,9 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 }
 
 func (server *ServerMonitor) GetTables() []v3.Table {
+	if server.Tables == nil {
+		server.Tables = make([]v3.Table, 0)
+	}
 	return server.Tables
 }
 

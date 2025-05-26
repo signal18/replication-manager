@@ -118,7 +118,7 @@ function DatabaseJobs({ clusterName }) {
                   <ServerStatus state={serverStatus} isVirtualMaster={dbServer?.isVirtualMaster} isBlinking={true} />
                 </HStack>
               }
-              body={<DataTable data={updatedTasks} columns={columns} className={styles.table} />}
+              body={<DataTable key="jobs" data={updatedTasks} columns={columns} className={styles.table} />}
             />
           )
         })}

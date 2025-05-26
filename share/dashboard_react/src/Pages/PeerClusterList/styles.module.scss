@@ -1,7 +1,42 @@
+.contentWrapper {
+  display: flex;
+  width: 100%;
+  position: relative;
+/*
+  // Light mode background
+  background-color: #f7fafc; // gray.50
+
+  // Dark mode background
+  [data-theme="dark"] &,
+  .chakra-ui-dark & {
+    background-color: #1a202c; // gray.800
+  }
+  */
+}
+
+// Filter panel styles
+.filterPanel {
+  z-index: 10;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  min-height: calc(100vh - 80px); // Adjust as needed based on your layout
+  transition: width 0.3s ease;
+  border: none;
+
+  // Light mode background
+  /*background-color: #f7fafc; // gray.50
+
+  // Dark mode background
+  [data-theme="dark"] &,
+  .chakra-ui-dark & {
+    background-color: #1a202c; // gray.800
+  }*/
+}
+
+// Cluster list styles
 .clusterList {
-  height: 100%;
   flex-wrap: wrap;
-  gap: rem(16);
+  gap: 20px;
+  margin-top: 10px;
 }
 
 .cardWrapper {
@@ -10,52 +45,70 @@
 
   .table {
     margin-top: 0;
-
     .rowLabel,
     .rowValue {
       padding-top: rem(8) !important;
       padding-bottom: rem(8) !important;
       padding-left: rem(8) !important;
     }
-
     .rowLabel {
       background-color: var(--quaternary-color);
     }
   }
 }
+/*.cardWrapper {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  &:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+}*/
 
 .card {
-  width: rem(400);
-
-  .btnHeading {
-    padding: rem(4) 0;
-    width: 100%;
-    font-weight: bold;
-  }
-
-  .btnAddUser {
-    margin-left: auto;
-  }
-
-  .cloud18Tag {
-    font-size: rem(12);
-    border-radius: $border-radius-xs;
-    padding: rem(4);
-    background-color: var(--gray-color);
-  }
+  height: 100%;
+  border: none;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
 }
 
-.filterWrapper {
-  display: flex;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  margin-bottom: rem(16);
+.btnHeading {
+  width: 100%;
+  padding: 10px;
+  //transition: background-color 0.2s ease;
+  border-bottom: none;
+  /*&:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }*/
 }
 
+.cardHeaderText {
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// Filter component styles
 .dropdownButton {
-  width: rem(200) !important;
+  width: 100%;
+  margin-bottom: 10px;
 }
 
 .searchBox {
-  width: rem(250) !important
+  width: 100%;
+  margin-bottom: 10px;
+}
+
+// Main content area
+.mainContent {
+  transition: all 0.3s ease;
+  width: 100%;
+}
+
+// Responsive styles
+@media (max-width: 1200px) {
+  .filterPanel {
+    position: fixed;
+    height: 100vh;
+    overflow-y: auto;
+  }
 }

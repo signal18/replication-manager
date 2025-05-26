@@ -243,7 +243,7 @@ function Maintenance({ selectedCluster, user }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<DataTable data={data} columns={columns} className={styles.table} />}
+        body={<DataTable key="backups" data={data} columns={columns} className={styles.table} />}
       />
       <AccordionComponent
         heading={'Backup Snapshots'}
@@ -255,7 +255,7 @@ function Maintenance({ selectedCluster, user }) {
         body={
           <VStack className={styles.snapshotContainer}>
             <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
-            <DataTable data={snapshotData} columns={snapshotColumns} className={styles.table} />
+            <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
           </VStack>
         }
       />

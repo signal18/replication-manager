@@ -3050,10 +3050,20 @@ func BenchCleanup(db *sqlx.DB) error {
 	return nil
 }
 
-func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string) (string, error) {
-	query := "ANALYZE TABLE " + table
-	if myver.Greater("10.4.0") && myver.IsMariaDB() {
-		query += " PERSISTENT FOR ALL"
+// AnalyzeTable analyzes a table and optionally persists the analysis for all columns or specific columns and indexes.
+// The function returns the executed query and any error encountered.
+func AnalyzeTable(db *sqlx.DB, myver *version.Version, table string, nobinlog, persistent bool, columns string, indexes string) (string, error) {
+	query := "ANALYZE "
+	if nobinlog {
+		query += "LOCAL "
+	}
+	query += "TABLE " + table
+	if myver.Greater("10.4.0") && myver.IsMariaDB() && persistent {
+		if columns == "ALL" {
+			query += " PERSISTENT FOR ALL"
+		} else {
+			query += " PERSISTENT FOR COLUMNS (" + columns + ") INDEXES (" + indexes + ")"
+		}
 	}
 	_, err := db.Exec(query)
 	if err != nil {
