@@ -1576,24 +1576,24 @@ export const deploymentFieldIndexAdd = createAsyncThunk(
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
         const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL)
-        showSuccessBanner('New deployment added!', status, thunkAPI)
+        showSuccessBanner('New deployment field row added!', status, thunkAPI)
         return { data, status }
       } catch (error) {
-        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        showErrorBanner('Error while adding a new deployment field row', error, thunkAPI)
         handleError(error, thunkAPI)
       }
     }
   )
 export const deploymentFieldIndexDrop = createAsyncThunk(
     'cluster/deploymentFieldIndexDrop',
-    async ({ clusterName, appId, deployId, field, value }, thunkAPI) => {
+    async ({ clusterName, appId, deployId, field, index }, thunkAPI) => {
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
         const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL)
-        showSuccessBanner('New deployment added!', status, thunkAPI)
+        showSuccessBanner('Deployment field row dropped!', status, thunkAPI)
         return { data, status }
       } catch (error) {
-        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        showErrorBanner('Error while dropping a deployment field row', error, thunkAPI)
         handleError(error, thunkAPI)
       }
     }

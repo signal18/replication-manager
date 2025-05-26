@@ -21,6 +21,17 @@ const Deployments = ({ clusterName, selectedApp }) => {
         cluster: { app },
     } = useSelector((state) => state)
 
+    useEffect(() => {
+        if (app.deployments && app.deployments.length > 0) {
+            if (initValues !== null) {
+                const foundDeployment = app.deployments.find(deployment => deployment.name === initValues.name);
+                if (foundDeployment) {
+                    setInitValues(foundDeployment);
+                } 
+            }
+        }
+    }, [app.deployments]);
+
     const openDetails = () => {
         setIsDetailsOpen(true)
     }
@@ -38,9 +49,7 @@ const Deployments = ({ clusterName, selectedApp }) => {
     }
 
     const handleSubmit = (deployment) => {
-        if (initValues === null) {
-            dispatch(addDeployment({ clusterName: clusterName, appId: selectedApp.id, deployment }))
-        } 
+        dispatch(addDeployment({ clusterName: clusterName, appId: selectedApp.id, deployment }))
     }
 
     const columnHelper = createColumnHelper()
@@ -55,14 +64,14 @@ const Deployments = ({ clusterName, selectedApp }) => {
                 header: 'Docker Image'
             }),
             columnHelper.accessor((row) => (row.ports?.map((port, idx) => (<Tag key={idx} colorScheme="blue">{`${port}`}</Tag>))), {
-                    cell: (info) => info.getValue(),
-                    header: 'Ports'
+                cell: (info) => info.getValue(),
+                header: 'Ports'
             }),
             columnHelper.accessor((row) => (row.gitClones?.map((git, idx) => (<Tag key={idx} colorScheme="green">{`${git.repo} (${git.branch}) → ${git.dest}`}</Tag>))), {
-                    cell: (info) => info.getValue(),
-                    header: 'Git Clones'
+                cell: (info) => info.getValue(),
+                header: 'Git Clones'
             }),
-            columnHelper.accessor((row) => (<HStack gap={2}><RMIconButton icon={TbEye} tooltip="Details" onClick={() => { setInitValues(row); openDetails() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => {}} /></HStack>), {
+            columnHelper.accessor((row) => (<HStack gap={2}><RMIconButton icon={TbEye} tooltip="Details" onClick={() => { setInitValues(row); openDetails() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => { }} /></HStack>), {
                 cell: (info) => info.getValue(),
                 header: 'Actions'
             }),
@@ -72,21 +81,21 @@ const Deployments = ({ clusterName, selectedApp }) => {
 
     return (
         <>
-            { !isDetailsOpen ? (
-            <VStack className={styles.contentContainer}>
-                <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployments Overview</Heading><RMButton ml={"auto"} onClick={openModal}>Add</RMButton></HStack>
-                <Flex className={styles.tableContainer}>
+            {!isDetailsOpen ? (
+                <VStack className={styles.contentContainer}>
+                    <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployments Overview</Heading><RMButton ml={"auto"} onClick={openModal}>Add</RMButton></HStack>
+                    <Flex className={styles.tableContainer}>
                         <DataTable data={app.deployments || []} columns={columns} />
-                </Flex>
-            </VStack>
+                    </Flex>
+                </VStack>
             ) : (
-            <VStack className={styles.contentContainer} >
-                <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployment Details: {initValues.name}</Heading><RMButton ml={"auto"} onClick={closeDetails}>Back</RMButton></HStack>
-                <Flex className={styles.tableContainer}>
-                    <DeploymentDetail clusterName={clusterName} row={initValues} appId={app.name} deployId={initValues.name} />
-                </Flex>
-            </VStack>
-            ) }
+                <VStack className={styles.contentContainer} >
+                    <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployment Details: {initValues.name}</Heading><RMButton ml={"auto"} onClick={closeDetails}>Back</RMButton></HStack>
+                    <Flex className={styles.tableContainer}>
+                        <DeploymentDetail clusterName={clusterName} row={initValues} appId={selectedApp.id} deployId={initValues.name} />
+                    </Flex>
+                </VStack>
+            )}
             {isFormOpen && <DeploymentFormModal isOpen={isFormOpen} onClose={closeModal} onSubmit={handleSubmit} />}
         </>
     );

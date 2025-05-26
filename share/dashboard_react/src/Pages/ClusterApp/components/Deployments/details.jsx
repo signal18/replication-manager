@@ -1,11 +1,12 @@
 import { useDispatch } from 'react-redux'
 import { useState } from 'react'
-import { FormControl, FormLabel, HStack, VStack } from '@chakra-ui/react'
+import { FormControl, FormLabel, HStack, Input, Select, VStack } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm'
 import Dropdown from '../../../../components/Dropdown'
 import RMIconButton from '../../../../components/RMIconButton'
 import { HiTrash } from 'react-icons/hi'
 import RMButton from '../../../../components/RMButton'
+import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop } from '../../../../redux/clusterSlice'
 
 const initialState = {
   name: "",
@@ -42,7 +43,13 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
   };
 
   const handleSaveAddItem = (field, value) => {
-    dispatch(deploymentFieldIndexAdd({ clusterName, appId, deployId, field, value }))
+    dispatch(deploymentFieldIndexAdd({ clusterName, appId, deployId, field, value })).then(() => {
+      // Reset the form data for the field after saving
+      setFormData(prevState => ({
+        ...prevState,
+        [field]: initialState[field]
+      }))
+    });
   }
 
   const handleDropIndex = (field, index) => {
@@ -175,7 +182,7 @@ function DeploymentDetail({ clusterName, appId, row, deployId }) {
       {row.ports.map((p, index) => (
         <HStack key={index}>
           <TextForm pattern="^[0-9]{1,5}(:[0-9]{1,5})?$" placeholder="Container Port" value={p} onSave={(value) => handleSaveArrayChange("ports", index, null, value)} />
-          <RMIconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleRemoveItem("ports", index)} />
+          <RMIconButton icon={HiTrash} aria-label="Delete Port" onClick={() => handleDropIndex("ports", index)} />
         </HStack>
       ))}
       {formData.ports.map((p, index) => (

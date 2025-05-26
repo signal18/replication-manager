@@ -1180,8 +1180,10 @@ const (
 	GrantProxyStop            string = "proxy-stop"
 	GrantProxyTerminal        string = "proxy-terminal"
 
-	GrantAppStart string = "app-start"
-	GrantAppStop  string = "app-stop"
+	GrantAppConfig     string = "app-config"
+	GrantAppDeployment string = "app-deployment"
+	GrantAppStart      string = "app-start"
+	GrantAppStop       string = "app-stop"
 
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
@@ -2271,6 +2273,8 @@ func GetGrantType() map[string]string {
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
 		GrantProvAppProvision:          GrantProvAppProvision,
 		GrantProvAppUnprovision:        GrantProvAppUnprovision,
+		GrantAppConfig:                 GrantAppConfig,
+		GrantAppDeployment:             GrantAppDeployment,
 		GrantAppStart:                  GrantAppStart,
 		GrantAppStop:                   GrantAppStop,
 		GrantGlobalGrant:               GrantGlobalGrant,
@@ -2416,6 +2420,8 @@ func GetGrantApp() []string {
 	return []string{
 		GrantAppStart,
 		GrantAppStop,
+		GrantAppConfig,
+		GrantAppDeployment,
 	}
 }
 

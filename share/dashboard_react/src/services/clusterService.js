@@ -602,7 +602,7 @@ function deploymentFieldChange(clusterName, appId, deployId, field, index, key, 
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, value)
 }
 function deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add-index`, value)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add`, value)
 }
 function deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/drop`)

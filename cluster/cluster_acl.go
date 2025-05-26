@@ -993,17 +993,14 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/provision") {
 			return true
 		}
-
-		if strings.Contains(URL, "/deployments/add") {
-			return true
-		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantProvAppUnprovision] {
 		if strings.Contains(URL, "/actions/unprovision") {
 			return true
 		}
-
-		if strings.Contains(URL, "/deployments/drop") {
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
+		if strings.Contains(URL, "/deployments/") {
 			return true
 		}
 	}
