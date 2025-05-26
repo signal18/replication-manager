@@ -141,15 +141,6 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             </FormControl>
 
             <FormControl>
-              <FormLabel>Docker Run Args</FormLabel>
-              <Input
-                name="dockerRunArgs"
-                value={formData.dockerRunArgs}
-                onChange={(e) => handleInputChange("dockerRunArgs", e.target.value)}
-              />
-            </FormControl>
-
-            <FormControl>
               <FormLabel>Docker Run Cmd</FormLabel>
               <Input
                 name="dockerRunCmd"
