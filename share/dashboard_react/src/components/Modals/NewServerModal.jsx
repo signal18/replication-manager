@@ -51,7 +51,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const fillVersionDropdown = (selectedType) => {
     setMonitorType(selectedType)
     setTag('')
-    
+
     let repolist = selectedType
     if (repolist === 'shardproxy') {
       repolist = 'mariadb'
@@ -113,7 +113,8 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   { name: 'ShardProxy', value: 'shardproxy' },
                   { name: 'MaxScale', value: 'maxscale' },
                   { name: 'SphinxProxy', value: 'sphinx' },
-                  { name: 'VIP', value: 'extvip' }
+                  { name: 'VIP', value: 'extvip' },
+                  { name: 'Application', value: 'app' },
                 ]}
               />
             </FormControl>
