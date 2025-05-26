@@ -858,7 +858,7 @@ type VariableMapping struct {
 }
 
 type PathMapping struct {
-	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var"` // This will be used to create the volume mount path. It will be {deployname}/{volumedir} e.g. {volume}/deploy01/etc/{from} : {to}
+	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var"` // This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}
 	From      string   `toml:"from" json:"from"`
 	To        string   `toml:"to" json:"to"`
 	Type      string   `toml:"type" json:"type" options:"shm|direct"`
@@ -877,11 +877,11 @@ type Deployment struct {
 }
 
 type GitClone struct {
-	GitRepo   string `toml:"repo" json:"repo"`
-	GitBranch string `toml:"branch" json:"branch"`
-	Dest      string `toml:"dest" json:"dest" options:"config|data"`
-	GitUser   string `toml:"user" json:"user"`
-	GitPass   string `toml:"pass" json:"pass"`
+	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo"`
+	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch"`
+	Dest      string `mapstructure:"dest" toml:"dest" json:"dest" options:"config|data"`
+	GitUser   string `mapstructure:"user" toml:"user" json:"user"`
+	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass"`
 }
 
 type WorkLoad struct {

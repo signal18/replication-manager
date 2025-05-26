@@ -14,8 +14,10 @@ import (
 )
 
 func (cluster *Cluster) LoadAppConfigs() error {
+	dirname := filepath.Join(cluster.WorkingDir, "apps")
+
 	// Check if the directory exists
-	_, err := os.Stat(cluster.WorkingDir + "/apps")
+	_, err := os.Stat(dirname)
 	if os.IsNotExist(err) {
 		// Create the directory if it does not exist
 		err = os.MkdirAll(cluster.WorkingDir+"/apps", os.ModePerm)
@@ -28,8 +30,6 @@ func (cluster *Cluster) LoadAppConfigs() error {
 	if cluster.Conf.Apps == nil {
 		cluster.Conf.Apps = make(map[string]*config.AppConfig)
 	}
-
-	dirname := filepath.Join(cluster.WorkingDir, "apps")
 
 	// Walk through the directory and load all the configuration files
 	return filepath.WalkDir(dirname, func(path string, d fs.DirEntry, err error) error {
@@ -98,7 +98,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *config.AppConfig) error {
 
 	// Create a new configuration struct
-	var result config.AppConfig
+	var result map[string]*config.Deployment
 	dirname := filepath.Join(dirpath, appname)
 	if _, err := os.Stat(dirname); os.IsNotExist(err) {
 		os.MkdirAll(dirname, os.ModePerm)
@@ -129,7 +129,7 @@ func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *c
 	}
 
 	// Set the new configuration
-	appcnf.Deployments = result.Deployments
+	appcnf.Deployments = result
 
 	return nil
 }
@@ -184,7 +184,6 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 
 func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 	filePath := cluster.WorkingDir + "/apps/" + app.Name + ".toml"
-	header := "[saved-" + app.Name + "]\ntitle = \"" + app.Name + "\" \n"
 
 	appcnf := app.GetAppConfig()
 
@@ -214,9 +213,6 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 	}
 	defer file.Close()
 
-	// Write header
-	file.WriteString(header)
-
 	t.Delete("deployments")
 	t.WriteTo(file)
 
@@ -239,25 +235,8 @@ func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
 	}
 	defer file.Close()
 
-	for id, dep := range app.GetAppConfig().Deployments {
-		// Save each deployment
-		has_changed, _ := cluster.SaveAppDeploymentValue(file, app.Name, id, dep)
-		if has_changed {
-			cluster.IsNeedGitPush = true
-		}
-	}
-
-	return true, nil
-}
-
-func (cluster *Cluster) SaveAppDeploymentValue(file *os.File, appname, deployId string, dep *config.Deployment) (bool, error) {
-
-	header := "[\"saved-" + appname + "\".deployments.\"" + deployId + "\"]\n"
-	// Write header
-	file.WriteString(header)
-
 	// Marshal and write TOML configuration
-	readconf, err := toml.Marshal(dep)
+	readconf, err := toml.Marshal(app.GetAppConfig().Deployments)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
 		return false, err
