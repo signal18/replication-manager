@@ -7,17 +7,27 @@ import styles from "./styles.module.scss";
 import { addDeployment } from "../../../../redux/clusterSlice";
 import { createColumnHelper } from "@tanstack/react-table";
 import RMIconButton from "../../../../components/RMIconButton";
-import { TbEdit, TbTrash } from "react-icons/tb";
+import { TbEye, TbTrash } from "react-icons/tb";
 import { DataTable } from "../../../../components/DataTable";
+import DeploymentDetail from "./details";
 
 const Deployments = ({ clusterName, selectedApp }) => {
     const dispatch = useDispatch()
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [initValues, setInitValues] = useState(null)
 
     const {
         cluster: { app },
     } = useSelector((state) => state)
+
+    const openDetails = () => {
+        setIsDetailsOpen(true)
+    }
+
+    const closeDetails = () => {
+        setIsDetailsOpen(false)
+    }
 
     const openModal = () => {
         setIsFormOpen(true)
@@ -52,7 +62,7 @@ const Deployments = ({ clusterName, selectedApp }) => {
                     cell: (info) => info.getValue(),
                     header: 'Git Clones'
             }),
-            columnHelper.accessor((row) => (<HStack gap={2}><RMIconButton icon={TbEdit} tooltip="Edit" onClick={() => { setInitValues(row); openModal() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => {}} /></HStack>), {
+            columnHelper.accessor((row) => (<HStack gap={2}><RMIconButton icon={TbEye} tooltip="Details" onClick={() => { setInitValues(row); openDetails() }} /><RMIconButton icon={TbTrash} tooltip="Delete" onClick={() => {}} /></HStack>), {
                 cell: (info) => info.getValue(),
                 header: 'Actions'
             }),
@@ -62,13 +72,22 @@ const Deployments = ({ clusterName, selectedApp }) => {
 
     return (
         <>
+            { !isDetailsOpen ? (
             <VStack className={styles.contentContainer}>
-                <HStack className={styles.actions} alignContent={"space-between"}><Heading mb={4}>Deployments Overview</Heading><RMButton onClick={openModal}>Add Deployment</RMButton></HStack>
+                <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployments Overview</Heading><RMButton ml={"auto"} onClick={openModal}>Add</RMButton></HStack>
                 <Flex className={styles.tableContainer}>
                         <DataTable data={app.deployments || []} columns={columns} />
                 </Flex>
             </VStack>
-            {isFormOpen && <DeploymentFormModal initialValues={initValues} isOpen={isFormOpen} onClose={closeModal} onSubmit={handleSubmit} />}
+            ) : (
+            <VStack className={styles.contentContainer} >
+                <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployment Details: {initValues.name}</Heading><RMButton ml={"auto"} onClick={closeDetails}>Back</RMButton></HStack>
+                <Flex className={styles.tableContainer}>
+                    <DeploymentDetail clusterName={clusterName} row={initValues} appId={app.name} deployId={initValues.name} />
+                </Flex>
+            </VStack>
+            ) }
+            {isFormOpen && <DeploymentFormModal isOpen={isFormOpen} onClose={closeModal} onSubmit={handleSubmit} />}
         </>
     );
 };

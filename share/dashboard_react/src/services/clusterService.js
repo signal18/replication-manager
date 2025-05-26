@@ -1,3 +1,4 @@
+import { get } from 'lodash'
 import { getApi } from './apiHelper'
 
 export const clusterService = {
@@ -126,7 +127,10 @@ export const clusterService = {
   stopApp,
   getAppService,
   addDeployment,
-  dropDeployment
+  dropDeployment,
+  deploymentFieldChange,
+  deploymentFieldIndexAdd,
+  deploymentFieldIndexDrop
 }
 
 //#region Cluster data APIs
@@ -587,10 +591,20 @@ function getAppService(clusterName, serviceName, appId, baseURL) {
 }
 
 function addDeployment(clusterName, appId, deployment, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/add`,deployment)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/add`, deployment)
 }
 
-function dropDeployment(clusterName, appId , deployName, baseURL) {
+function dropDeployment(clusterName, appId, deployName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/drop/${deployName}`)
+}
+
+function deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, value)
+}
+function deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add-index`, value)
+}
+function deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/drop`)
 }
 //#endregion App management APIs

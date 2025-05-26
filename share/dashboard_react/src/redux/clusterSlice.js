@@ -1554,6 +1554,50 @@ export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async (
       }
     }
   )
+
+export const deploymentFieldChange = createAsyncThunk(
+    'cluster/deploymentFieldChange',
+    async ({ clusterName, appId, deployId, field, index, key, value }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL)
+        showSuccessBanner('New deployment added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+
+export const deploymentFieldIndexAdd = createAsyncThunk(
+    'cluster/deploymentFieldIndexAdd',
+    async ({ clusterName, appId, deployId, field, value }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL)
+        showSuccessBanner('New deployment added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+export const deploymentFieldIndexDrop = createAsyncThunk(
+    'cluster/deploymentFieldIndexDrop',
+    async ({ clusterName, appId, deployId, field, value }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL)
+        showSuccessBanner('New deployment added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
   
 
 const initialState = {
