@@ -109,13 +109,13 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
     setVariablesData(searchData(variablesAllData))
   }, [search, showRowPreserved])
 
-  const searchData = (data) => {
-    const searchedData = data.filter((x) => {
+  const searchData = (data = []) => {
+    const searchedData = data?.filter((x) => {
       const searchValue = search.toLowerCase()
       if (x.variableName.toLowerCase().includes(searchValue) || (showCfg && x.cnfValue?.toLowerCase().includes(searchValue)) || (showDeployed && x.value?.toLowerCase().includes(searchValue)) || (showRuntime && x.runtimeValue?.toLowerCase().includes(searchValue))) {
         return x
       }
-    })
+    }) || []
     if (showRowPreserved) {
       return searchedData.filter((x) => x.preserveValue != null)
     }

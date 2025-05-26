@@ -54,9 +54,9 @@ function Status({ clusterName, dbId }) {
     setStatusDeltaData(searchData(statusDeltaAllData, searchStatusDelta))
   }, [searchStatusDelta])
 
-  const searchData = (data, search = '') => {
-    const searchedData = data.filter((x) => {
-      const searchValue = search.toLowerCase()
+  const searchData = (data = [], search = '') => {
+    const searchedData = data?.filter((x) => {
+      const searchValue = search?.toLowerCase()
       if (x.variableName.toLowerCase().includes(searchValue)) {
         return x
       }

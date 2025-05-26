@@ -108,7 +108,7 @@ func CreateMeetUserClient(userName string, password string, isLogSupport bool) (
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	tokenChan := make(chan string, 1)

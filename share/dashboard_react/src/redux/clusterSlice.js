@@ -15,8 +15,8 @@ export const getClusterData = createAsyncThunk('cluster/getClusterData', async (
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.cluster) {
+      const { cluster } = getState();
+      if (cluster.isFetching.cluster) {
         return false;
       }
     }
@@ -44,8 +44,8 @@ export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', asy
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.master) {
+      const { cluster } = getState();
+      if (cluster.isFetching.master) {
         return false;
       }
     }
@@ -63,8 +63,8 @@ export const getClusterServers = createAsyncThunk('cluster/getClusterServers', a
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.servers) {
+      const { cluster } = getState();
+      if (cluster.isFetching.servers) {
         return false;
       }
     }
@@ -82,8 +82,8 @@ export const getClusterProxies = createAsyncThunk('cluster/getClusterProxies', a
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.proxies) {
+      const { cluster } = getState();
+      if (cluster.isFetching.proxies) {
         return false;
       }
     }
