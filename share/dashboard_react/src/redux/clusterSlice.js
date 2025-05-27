@@ -238,10 +238,10 @@ export const toggleTrafficStaging = createAsyncThunk('cluster/toggleTrafficStagi
 
 export const addServer = createAsyncThunk(
   'cluster/addServer',
-  async ({ clusterName, host, port, monitorType, tag, deployId, dockerRegistry }, thunkAPI) => {
+  async ({ clusterName, host, port, monitorType, tag, dockerRegistry }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.addServer(clusterName, host, port, monitorType, tag, deployId, dockerRegistry, baseURL)
+      const { data, status } = await clusterService.addServer(clusterName, host, port, monitorType, tag, dockerRegistry, baseURL)
       showSuccessBanner('New server added!', status, thunkAPI)
       return { data, status }
     } catch (error) {

@@ -218,12 +218,9 @@ function toggleTrafficStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
-function addServer(clusterName, host, port, monitorType, tag, deployId, dockerRegistry = {}, baseURL) {
+function addServer(clusterName, host, port, monitorType, tag,  dockerRegistry = {}, baseURL) {
   if (monitorType === 'app') {
-    if (!deployId) {
-      deployId = "undefined"
-    }
-    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}/${deployId}`, { ...dockerRegistry })
+    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, { ...dockerRegistry })
   } else if (!monitorType) {
     return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}`)
   } else if (!tag) {
