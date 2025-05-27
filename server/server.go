@@ -1060,6 +1060,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
+
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
 	flags.StringVar(&conf.AppHosts, "app-hosts", "127.0.0.1", "App hosts")
 	flags.StringVar(&conf.AppHostsIPV6, "app-hosts-ipv6", "", "App IPv6 bind address ")

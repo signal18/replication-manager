@@ -1600,6 +1600,21 @@ export const deploymentFieldIndexDrop = createAsyncThunk(
   )
   
 
+  export const connectDockerRegistry = createAsyncThunk(
+  'cluster/connectDockerRegistry',
+  async ({ clusterName, dockerRegistry }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.connectDockerRegistry(clusterName, dockerRegistry, baseURL)
+      showSuccessBanner('New server added!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while adding a new server', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   isFetching: {

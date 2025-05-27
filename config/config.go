@@ -621,6 +621,7 @@ type Config struct {
 	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
+	ProvDockerRegistryCredentials             string                 `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
 	AppOn                                     bool                   `mapstructure:"app-on" toml:"app-on" json:"appOn"`
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
@@ -832,7 +833,6 @@ type AppConfig struct {
 	ProvAppRouteMask      string                 `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
 	ProvAppDiskPool       string                 `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
 	ProvAppAgentsFailover string                 `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppDockerRunArgs  string                 `mapstructure:"prov-app-docker-run-args" toml:"prov-app-docker-run-args" json:"provAppDockerRunArgs"`
 	AppAPIPort            int                    `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
 	AppReadPort           int                    `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
 	AppWritePort          int                    `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
@@ -866,14 +866,13 @@ type PathMapping struct {
 }
 
 type Deployment struct {
-	Name          string            `mapstructure:"name"  toml:"name" json:"name"`
-	Variables     []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
-	Path          []PathMapping     `mapstructure:"path"  toml:"path" json:"path"`
-	Ports         []string          `mapstructure:"ports"  toml:"ports" json:"ports"`
-	DockerImg     string            `mapstructure:"docker-img"  toml:"docker-img" json:"dockerImg"`
-	DockerRunArgs string            `mapstructure:"docker-run-args"  toml:"docker-run-args" json:"dockerRunArgs"`
-	DockerRunCmd  string            `mapstructure:"docker-run-cmd"  toml:"docker-run-cmd" json:"dockerRunCmd"`
-	GitClones     []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
+	Name         string            `mapstructure:"name"  toml:"name" json:"name"`
+	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
+	Path         []PathMapping     `mapstructure:"path"  toml:"path" json:"path"`
+	Ports        []string          `mapstructure:"ports"  toml:"ports" json:"ports"`
+	DockerImg    string            `mapstructure:"docker-img"  toml:"docker-img" json:"dockerImg"`
+	DockerRunCmd string            `mapstructure:"docker-run-cmd"  toml:"docker-run-cmd" json:"dockerRunCmd"`
+	GitClones    []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
 }
 
 type GitClone struct {

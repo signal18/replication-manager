@@ -7,6 +7,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -365,6 +366,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/actions/send-alert/{hooktype}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/docker-registry-connect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
@@ -4301,6 +4306,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
 		if vars["type"] == "" {
 			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+		} else if vars["type"] == "app" {
+			// Add app monitor
+			err = mycluster.AddSeededApp(vars["host"])
 		} else {
 			repopath = repman.GetDockerRepoPath(vars["type"])
 
@@ -6968,6 +6976,95 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		}
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+type DockerRegistryLoginForm struct {
+	AuthType string `json:"authType"` // "password" or "token"
+	URL      string `json:"url"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.
+// @Summary Docker Registry Login
+// @Description Logs in to a Docker registry using the provided credentials.
+// @Tags DockerRegistry
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body DockerRegistryLoginForm true "Docker Registry Login Form"
+// @Success 200 {string} string "Docker registry login successful"
+// @Failure 400 {string} string "Error decoding request body"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating request" or "Error making request to Docker registry" or "Docker registry login failed"
+// @Router /api/clusters/{clusterName}/actions/docker-registry-connect [post]
+func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		// URL parse registry get host and port
+		var body DockerRegistryLoginForm
+		err := json.NewDecoder(r.Body).Decode(&body)
+		if err != nil {
+			http.Error(w, "Error decoding request body: "+err.Error(), 400)
+			return
+		}
+
+		if body.AuthType != "password" && body.AuthType != "token" {
+			http.Error(w, "Invalid auth type, must be 'password' or 'token'", 400)
+			return
+		}
+
+		if body.URL == "" || body.Username == "" {
+			http.Error(w, "URL and Username must be provided", 400)
+			return
+		}
+
+		req, err := http.NewRequest("GET", body.URL, nil)
+		if err != nil {
+			http.Error(w, "Error creating request: "+err.Error(), 500)
+			return
+		}
+
+		if body.AuthType == "password" {
+			req.SetBasicAuth(body.Username, body.Password)
+		} else if body.AuthType == "token" {
+			req.Header.Set("Authorization", "Bearer "+body.Password)
+		}
+
+		client := &http.Client{Transport: &http.Transport{
+			// Allow insecure connections for testing purposes
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "Error making request to Docker registry: "+err.Error(), 500)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			http.Error(w, fmt.Sprintf("Docker registry login failed: %s - %s", resp.Status, string(bodyBytes)), resp.StatusCode)
+			return
+		}
+
+		// If we reach here, the login was successful
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Docker registry login successful for %s", body.URL)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Docker registry login successful"))
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}

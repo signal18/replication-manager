@@ -130,7 +130,9 @@ export const clusterService = {
   dropDeployment,
   deploymentFieldChange,
   deploymentFieldIndexAdd,
-  deploymentFieldIndexDrop
+  deploymentFieldIndexDrop,
+
+  connectDockerRegistry
 }
 
 //#region Cluster data APIs
@@ -608,3 +610,7 @@ function deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, ba
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/drop`)
 }
 //#endregion App management APIs
+
+function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/docker-registry/connect`, { ...dockerRegistry })
+}
