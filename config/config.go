@@ -877,6 +877,17 @@ type Deployment struct {
 	isDeployed   bool
 }
 
+func NewDeploymentConfig(name, image, port string) *Deployment {
+	return &Deployment{
+		Name:      name,
+		Ports:     []string{port},
+		GitClones: []GitClone{},
+		Variables: []VariableMapping{},
+		Path:      []PathMapping{},
+		DockerImg: image,
+	}
+}
+
 type GitClone struct {
 	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo"`
 	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch"`

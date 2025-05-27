@@ -132,6 +132,21 @@ func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *c
 	// Set the new configuration
 	appcnf.Deployments = result
 
+	for _, dep := range appcnf.Deployments {
+		if dep.Variables == nil {
+			dep.Variables = make([]config.VariableMapping, 0)
+		}
+		if dep.Path == nil {
+			dep.Path = make([]config.PathMapping, 0)
+		}
+		if dep.Ports == nil {
+			dep.Ports = make([]string, 0)
+		}
+		if dep.GitClones == nil {
+			dep.GitClones = make([]config.GitClone, 0)
+		}
+	}
+
 	return nil
 }
 
@@ -283,11 +298,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 		appcnf.Deployments = make(map[string]*config.Deployment)
 	}
 
-	appcnf.Deployments["default"] = &config.Deployment{
-		Name:      "default",
-		Ports:     []string{port},
-		DockerImg: dockerImg,
-	}
+	appcnf.Deployments["default"] = config.NewDeploymentConfig("default", dockerImg, port)
 
 	cluster.Lock()
 	cluster.newAppList()
