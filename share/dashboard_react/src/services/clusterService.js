@@ -612,5 +612,5 @@ function deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, ba
 //#endregion App management APIs
 
 function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/docker-registry/connect`, { ...dockerRegistry })
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/docker-registry/connect`, { ...dockerRegistry })
 }

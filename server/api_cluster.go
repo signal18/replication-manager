@@ -367,7 +367,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/docker-registry-connect", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/docker-registry/connect", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
 	))
@@ -7001,7 +7001,7 @@ type DockerRegistryLoginForm struct {
 // @Failure 400 {string} string "Error decoding request body"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error creating request" or "Error making request to Docker registry" or "Docker registry login failed"
-// @Router /api/clusters/{clusterName}/actions/docker-registry-connect [post]
+// @Router /api/clusters/{clusterName}/actions/docker-registry/connect [post]
 func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
