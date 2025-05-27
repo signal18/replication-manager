@@ -15,6 +15,7 @@ import {
   HStack,
   Text,
   IconButton,
+  ModalCloseButton,
 } from "@chakra-ui/react";
 import { HiTrash } from "react-icons/hi";
 import RMIconButton from "../../RMIconButton";
@@ -118,6 +119,7 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
       <ModalOverlay />
       <ModalContent>
         <ModalHeader>Deployment Form</ModalHeader>
+        <ModalCloseButton />
         <ModalBody>
           <VStack spacing={4} align="stretch">
             <FormControl isInvalid={errors.name}>
@@ -313,7 +315,10 @@ const DeploymentFormModal = ({ initialValues, isOpen, onClose, onSubmit }) => {
             </RMButton>
           </VStack>
         </ModalBody>
-        <ModalFooter>
+        <ModalFooter gap={3} margin='auto'>
+          <RMButton colorScheme='blue' size='medium' variant='outline' onClick={() => { if (onClose) onClose() }}>
+            Cancel
+          </RMButton>
           <RMButton colorScheme="blue" onClick={handleSubmit}>
             Submit
           </RMButton>
