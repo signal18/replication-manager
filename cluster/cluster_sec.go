@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"net"
 	"net/smtp"
 	"strings"
 
@@ -463,6 +464,86 @@ func (cluster *Cluster) RevokeUserDBGrants(user_pass, host string) error {
 
 	logs, err = dbhelper.RevokeUserGrants(conn, cluster.master.DBVersion, host, user)
 	cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Set user grants : %s", err)
+
+	return nil
+}
+
+func (cluster *Cluster) AddDockerPrivateRegistryCredentials(registry, user, password string, update bool) error {
+	// parse the registry URL and get the host and optional port
+	if !strings.Contains(registry, ":") {
+		registry += ":443" // default to port 443 if no port is specified
+	}
+	host, port, err := net.SplitHostPort(registry)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Invalid registry URL: %s", err)
+		return err
+	}
+
+	creds := strings.Split(cluster.Conf.ProvDockerRegistryCredentials, ",")
+	for k, cred := range creds {
+		parts := strings.SplitN(cred, ":", 4)
+		// Check if the registry already exists
+		if parts[0] == host && parts[1] == port && parts[2] == user {
+			if update {
+				// Update existing credentials
+				parts[3] = password
+				creds[k] = strings.Join(parts, ":")
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Registry credentials for %s already exist", registry)
+				return fmt.Errorf("Registry credentials for %s already exist", registry)
+			}
+		}
+	}
+	// If the registry does not exist, add new credentials
+	creds = append(creds, fmt.Sprintf("%s:%s:%s:%s", host, port, user, password))
+	cluster.Conf.ProvDockerRegistryCredentials = strings.Join(creds, ",")
+
+	var new_secret config.Secret
+	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
+	cluster.Conf.Secrets["prov-docker-registry-credentials"] = new_secret
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
+
+	return nil
+}
+
+func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user string) error {
+	// parse the registry URL and get the host and optional port
+	if !strings.Contains(registry, ":") {
+		registry += ":443" // default to port 443 if no port is specified
+	}
+	host, port, err := net.SplitHostPort(registry)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Invalid registry URL: %s", err)
+		return err
+	}
+
+	creds := strings.Split(cluster.Conf.ProvDockerRegistryCredentials, ",")
+	for k, cred := range creds {
+		parts := strings.SplitN(cred, ":", 4)
+		// Check if the registry already exists
+		if parts[0] == host && parts[1] == port && parts[2] == user {
+			// Remove existing credentials
+			if len(creds) == 1 {
+				// If this is the only credential, clear the list
+				creds = []string{}
+			} else {
+				creds = append(creds[:k], creds[k+1:]...)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials for %s removed", registry)
+			}
+			break
+		}
+	}
+
+	cluster.Conf.ProvDockerRegistryCredentials = strings.Join(creds, ",")
+
+	var new_secret config.Secret
+	new_secret.Value = cluster.Conf.ProvDockerRegistryCredentials
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("prov-docker-registry-credentials")
+	cluster.Conf.Secrets["prov-docker-registry-credentials"] = new_secret
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 
 	return nil
 }

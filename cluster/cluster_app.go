@@ -258,7 +258,7 @@ func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
 	return true, nil
 }
 
-func (cluster *Cluster) AddSeededApp(srv string) error {
+func (cluster *Cluster) AddSeededApp(srv, dockerImg string) error {
 	if strings.Contains(cluster.Conf.AppHosts, srv) {
 		return errors.New("App already exists")
 	}
@@ -277,6 +277,9 @@ func (cluster *Cluster) AddSeededApp(srv string) error {
 	hosts = append(hosts, srv)
 
 	cluster.Conf.AppHosts = strings.Join(hosts, ",")
+	appcnf := cluster.GetAppConfig(srv) // Get or initiate app config
+	appcnf.ProvAppDockerImg = dockerImg
+
 	cluster.Lock()
 	cluster.newAppList()
 	cluster.Unlock()

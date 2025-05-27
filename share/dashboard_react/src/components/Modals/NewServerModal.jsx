@@ -156,7 +156,37 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       return
     }
 
-    dispatch(addServer({ clusterName, host, port, monitorType, tag, dockerRegistry }))
+    if (monitorType === 'app' && (!dockerImage || dockerImage.length === 0)) {
+      formDispatch({ type: 'SET_ERRORS', payload: { dockerImage: 'Docker image is required' } })
+      return
+    }
+
+    if (monitorType === 'app' && isPrivateRegistry && (!url || url.length === 0)) {
+      formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Registry URL is required' } })
+      return
+    }
+
+    if (monitorType === 'app' && isPrivateRegistry && (!username || username.length === 0)) {
+      formDispatch({ type: 'SET_ERRORS', payload: { dockerUser: 'Username is required' } })
+      return
+    }
+
+    if (monitorType === 'app' && isPrivateRegistry && (!password || password.length === 0)) {
+      formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Password is required' } })
+      return
+    }
+
+    let finalTag = tag
+    if (monitorType === 'app' && dockerImage && dockerImage.length > 0) {
+      const imageParts = dockerImage.split(':')
+      if (imageParts.length > 1) {
+        finalTag = dockerImage
+      } else if (tag && tag.length > 0) {
+        finalTag = tag
+      }
+    }
+
+    dispatch(addServer({ clusterName, host, port, monitorType, tag: finalTag, dockerRegistry }))
     closeModal()
   }
 
@@ -298,10 +328,10 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
 
         <ModalFooter gap={3} margin='auto'>
           <RMButton colorScheme='blue' size='medium' variant='outline' onClick={closeModal}>
-            No
+            Cancel
           </RMButton>
           <RMButton onClick={handleCreateNewServer} size='medium'>
-            Yes
+            Add Monitor
           </RMButton>
         </ModalFooter>
       </ModalContent>

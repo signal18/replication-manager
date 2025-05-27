@@ -4308,7 +4308,25 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else if vars["type"] == "app" {
 			// Add app monitor
-			err = mycluster.AddSeededApp(vars["host"])
+			var registry DockerRegistryLoginForm
+			if r.Body != nil {
+				decoder := json.NewDecoder(r.Body)
+				err = decoder.Decode(&registry)
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error decoding JSON: %s", err.Error())
+					w.WriteHeader(400)
+					w.Write([]byte(`{"msg":"Error decoding JSON: ` + err.Error() + `"}`))
+					return
+				}
+
+				err := mycluster.AddDockerPrivateRegistryCredentials(registry.URL, registry.Username, registry.Password, registry.Update)
+				if err != nil {
+					// Only warn don't exit if error is not nil
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error adding Docker private registry credentials: %s", err.Error())
+				}
+			}
+
+			err = mycluster.AddSeededApp(vars["host"]+":"+vars["port"], vars["tag"])
 		} else {
 			repopath = repman.GetDockerRepoPath(vars["type"])
 
@@ -6982,10 +7000,12 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 }
 
 type DockerRegistryLoginForm struct {
-	AuthType string `json:"authType"` // "password" or "token"
-	URL      string `json:"url"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	IsPrivate bool   `json:"private"`  // true if private registry, false if public
+	Update    bool   `json:"update"`   // true if updating existing credentials, false if new credentials
+	AuthType  string `json:"authType"` // "password" or "token"
+	URL       string `json:"url"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
 }
 
 // handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.
@@ -7067,5 +7087,37 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+func RegistryImageTagExists(registry, image, tag, username, password string) (bool, error) {
+	url := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registry, image, tag)
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return false, err
+	}
+
+	// Docker v2 registry requires this header for manifest checks
+	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
+
+	if username != "" && password != "" {
+		auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+		req.Header.Set("Authorization", "Basic "+auth)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, nil
+	case http.StatusNotFound:
+		return false, nil
+	default:
+		return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 }

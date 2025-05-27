@@ -12,13 +12,13 @@ package cluster
 
 import (
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/graphite"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/spf13/pflag"
 )
 
@@ -202,16 +202,15 @@ func (app *App) SendStats() error {
 
 func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	conf := cluster.Conf
-	appCnf := cluster.GetAppConfig(appHost)
 	app := new(App)
+	app.Name = appHost
+	appCnf := cluster.GetAppConfig(app.Name)
+	app.Host, app.Port = misc.SplitHostPort(appHost)
 	app.SetPlacement(placement, conf.ProvProxAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.AppConfig = appCnf
-	app.Port = strconv.Itoa(appCnf.AppAPIPort)
 	app.ReadPort = appCnf.AppReadPort
 	app.WritePort = appCnf.AppWritePort
 	app.ReadWritePort = appCnf.AppWritePort
-	app.Name = appHost
-	app.Host = appHost
 	if conf.ProvNetCNI {
 		app.Host = app.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 	}
