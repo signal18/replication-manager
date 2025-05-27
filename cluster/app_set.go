@@ -58,7 +58,7 @@ func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string
 
 func (app *App) SetDataDir() {
 	if app.Host != "" {
-		app.Datadir = app.ClusterGroup.Conf.WorkingDir + "/" + app.ClusterGroup.Name + "/apps/" + app.Name
+		app.Datadir = app.ClusterGroup.Conf.WorkingDir + "/" + app.ClusterGroup.Name + "/apps/" + app.Host
 		if _, err := os.Stat(app.Datadir); os.IsNotExist(err) {
 			os.MkdirAll(app.Datadir, os.ModePerm)
 			os.MkdirAll(app.Datadir+"/log", os.ModePerm)

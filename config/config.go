@@ -866,6 +866,7 @@ type PathMapping struct {
 }
 
 type Deployment struct {
+	Order        int               `mapstructure:"order"  toml:"order" json:"order"`
 	Name         string            `mapstructure:"name"  toml:"name" json:"name"`
 	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
 	Path         []PathMapping     `mapstructure:"path"  toml:"path" json:"path"`
@@ -873,6 +874,7 @@ type Deployment struct {
 	DockerImg    string            `mapstructure:"docker-img"  toml:"docker-img" json:"dockerImg"`
 	DockerRunCmd string            `mapstructure:"docker-run-cmd"  toml:"docker-run-cmd" json:"dockerRunCmd"`
 	GitClones    []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
+	isDeployed   bool
 }
 
 type GitClone struct {
@@ -882,6 +884,12 @@ type GitClone struct {
 	GitUser   string `mapstructure:"user" toml:"user" json:"user"`
 	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass"`
 }
+
+type DeploymentSorter []*Deployment
+
+func (a DeploymentSorter) Len() int           { return len(a) }
+func (a DeploymentSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a DeploymentSorter) Less(i, j int) bool { return a[i].Order < a[j].Order }
 
 type WorkLoad struct {
 	DBTableSize   int64   `json:"dbTableSize"`

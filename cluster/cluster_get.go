@@ -1546,7 +1546,9 @@ func (cluster *Cluster) GetAppConfig(appname string) *config.AppConfig {
 	}
 
 	cnf := new(config.AppConfig)
-	*cnf = *cluster.Conf.Apps["default"]
+	if cnf, ok := cluster.Conf.Apps["default"]; ok {
+		*cnf = *cluster.Conf.Apps["default"]
+	}
 
 	cluster.Conf.Apps[appname] = cnf
 

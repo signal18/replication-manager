@@ -4290,6 +4290,8 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type} [post]
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port} [post]
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
+	defer repman.LogPanicToFile()
+
 	var err error
 	var updateImg bool
 	var repopath, repoimg string
@@ -4308,10 +4310,10 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
 		} else if vars["type"] == "app" {
 			// Add app monitor
-			var registry DockerRegistryLoginForm
+			var formData DockerRegistryLoginForm
 			if r.Body != nil {
 				decoder := json.NewDecoder(r.Body)
-				err = decoder.Decode(&registry)
+				err = decoder.Decode(&formData)
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error decoding JSON: %s", err.Error())
 					w.WriteHeader(400)
@@ -4319,14 +4321,21 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 					return
 				}
 
-				err := mycluster.AddDockerPrivateRegistryCredentials(registry.URL, registry.Username, registry.Password, registry.Update)
-				if err != nil {
-					// Only warn don't exit if error is not nil
-					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error adding Docker private registry credentials: %s", err.Error())
+				if formData.IsPrivate {
+					err := mycluster.AddDockerPrivateRegistryCredentials(formData.URL, formData.Username, formData.Password, formData.Update)
+					if err != nil {
+						// Only warn don't exit if error is not nil
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error adding Docker private registry credentials: %s", err.Error())
+					}
 				}
 			}
 
-			err = mycluster.AddSeededApp(vars["host"]+":"+vars["port"], vars["tag"])
+			if vars["tag"] == "" {
+				http.Error(w, "Docker image is required for app monitor", 400)
+				return
+			}
+
+			err = mycluster.AddSeededApp(vars["host"], vars["port"], vars["tag"])
 		} else {
 			repopath = repman.GetDockerRepoPath(vars["type"])
 

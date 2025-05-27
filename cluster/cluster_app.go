@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml"
@@ -183,7 +184,7 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 }
 
 func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
-	filePath := cluster.WorkingDir + "/apps/" + app.Name + ".toml"
+	filePath := cluster.WorkingDir + "/apps/" + app.Host + ".toml"
 
 	appcnf := app.GetAppConfig()
 
@@ -220,7 +221,6 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 }
 
 func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
-
 	filePath := app.Datadir + "/deployments.toml"
 
 	// Write sorted values to file
@@ -258,12 +258,11 @@ func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
 	return true, nil
 }
 
-func (cluster *Cluster) AddSeededApp(srv, dockerImg string) error {
-	if strings.Contains(cluster.Conf.AppHosts, srv) {
-		return errors.New("App already exists")
-	}
-
+func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	hosts := strings.Split(cluster.Conf.AppHosts, ",")
+	if slices.Contains(hosts, srv) {
+		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
+	}
 
 	//Remove empty slices
 	n := 0
@@ -279,6 +278,16 @@ func (cluster *Cluster) AddSeededApp(srv, dockerImg string) error {
 	cluster.Conf.AppHosts = strings.Join(hosts, ",")
 	appcnf := cluster.GetAppConfig(srv) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg
+	if appcnf.Deployments == nil {
+		// Initialize deployments if not already done
+		appcnf.Deployments = make(map[string]*config.Deployment)
+	}
+
+	appcnf.Deployments["default"] = &config.Deployment{
+		Name:      "default",
+		Ports:     []string{port},
+		DockerImg: dockerImg,
+	}
 
 	cluster.Lock()
 	cluster.newAppList()

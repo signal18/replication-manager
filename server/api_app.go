@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -399,6 +400,9 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			for _, dep := range node.GetDeploymentConfigs() {
 				deployments = append(deployments, dep)
 			}
+
+			sort.Sort(config.DeploymentSorter(deployments))
+
 			depls, err := json.MarshalIndent(deployments, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
@@ -469,6 +473,8 @@ func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter,
 			if deployment.GitClones == nil {
 				deployment.GitClones = make([]config.GitClone, 0)
 			}
+
+			deployment.Order = len(appcnf.Deployments) + 1 // Set order based on current deployments count
 
 			appcnf.Deployments[deployment.Name] = &deployment
 			w.Write([]byte("Deployment added"))

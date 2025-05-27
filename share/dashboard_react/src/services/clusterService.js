@@ -218,13 +218,18 @@ function toggleTrafficStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
-function addServer(clusterName, host, port, monitorType, tag, dockerRegistry = {}, baseURL) {
-  if (!monitorType) {
-    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}`, { ...dockerRegistry })
+function addServer(clusterName, host, port, monitorType, tag, deployId, dockerRegistry = {}, baseURL) {
+  if (monitorType === 'app') {
+    if (!deployId) {
+      deployId = "undefined"
+    }
+    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}/${deployId}`, { ...dockerRegistry })
+  } else if (!monitorType) {
+    return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}`)
   } else if (!tag) {
-    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}`, { ...dockerRegistry })
+    return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}`)
   } else {
-    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, { ...dockerRegistry })
+    return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`)
   }
 }
 
@@ -601,7 +606,7 @@ function dropDeployment(clusterName, appId, deployName, baseURL) {
 }
 
 function deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, {value})
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, { value })
 }
 function deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add`, value)

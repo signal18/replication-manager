@@ -128,7 +128,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const { theme } = useTheme()
   const { globalClusters: { monitor } } = useSelector((state) => state)
   const [formState, formDispatch] = useReducer(formReducer, initialState)
-  const { formData, serviceRepos, tagOptions, errors } = formState
+  const { formData, tagOptions, errors } = formState
   const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
   const { private: isPrivateRegistry, url, username, password, authType } = dockerRegistry
 
