@@ -10,6 +10,7 @@ import RMIconButton from "../../../../components/RMIconButton";
 import { TbEye, TbTrash } from "react-icons/tb";
 import { DataTable } from "../../../../components/DataTable";
 import DeploymentDetail from "./details";
+import TagPill from "../../../../components/TagPill";
 
 const Deployments = ({ clusterName, selectedApp }) => {
     const dispatch = useDispatch()
@@ -63,11 +64,11 @@ const Deployments = ({ clusterName, selectedApp }) => {
                 cell: (info) => info.getValue(),
                 header: 'Docker Image'
             }),
-            columnHelper.accessor((row) => (row.ports?.map((port, idx) => (<Tag key={idx} colorScheme="blue">{`${port}`}</Tag>))), {
+            columnHelper.accessor((row) => (row.ports?.map((port, idx) => (<TagPill key={idx} colorScheme="blue" text={`${port}`} />))), {
                 cell: (info) => info.getValue(),
                 header: 'Ports'
             }),
-            columnHelper.accessor((row) => (row.gitClones?.map((git, idx) => (<Tag key={idx} colorScheme="green">{`${git.repo} (${git.branch}) → ${git.dest}`}</Tag>))), {
+            columnHelper.accessor((row) => (row.gitClones?.map((git, idx) => (<TagPill key={idx} colorScheme="green" text={`${git.repo} (${git.branch}) → ${git.dest}`} />))), {
                 cell: (info) => info.getValue(),
                 header: 'Git Clones'
             }),
