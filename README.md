@@ -30,6 +30,7 @@ The main features are:
  * Stagging Multi source cluster
  * WebTTY
  * Restic backup snapshots and PITR
+ * Modular leveling logs 
       
 
 ### [Documentation](https://docs.signal18.io)
