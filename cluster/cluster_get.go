@@ -1542,12 +1542,37 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 
 func (cluster *Cluster) GetAppConfig(appname string) *config.AppConfig {
 	if cnf, ok := cluster.Conf.Apps[appname]; ok {
+		if cnf.Deployment.Variables == nil {
+			cnf.Deployment.Variables = make([]config.VariableMapping, 0)
+		}
+		if cnf.Deployment.Paths == nil {
+			cnf.Deployment.Paths = make([]config.PathMapping, 0)
+		}
+		if cnf.Deployment.Routes == nil {
+			cnf.Deployment.Routes = make([]config.Route, 0)
+		}
+		if cnf.Deployment.GitClones == nil {
+			cnf.Deployment.GitClones = make([]config.GitClone, 0)
+		}
 		return cnf
 	}
 
 	cnf := new(config.AppConfig)
 	if cnf, ok := cluster.Conf.Apps["default"]; ok {
 		*cnf = *cluster.Conf.Apps["default"]
+	}
+
+	if cnf.Deployment.Variables == nil {
+		cnf.Deployment.Variables = make([]config.VariableMapping, 0)
+	}
+	if cnf.Deployment.Paths == nil {
+		cnf.Deployment.Paths = make([]config.PathMapping, 0)
+	}
+	if cnf.Deployment.Routes == nil {
+		cnf.Deployment.Routes = make([]config.Route, 0)
+	}
+	if cnf.Deployment.GitClones == nil {
+		cnf.Deployment.GitClones = make([]config.GitClone, 0)
 	}
 
 	cluster.Conf.Apps[appname] = cnf

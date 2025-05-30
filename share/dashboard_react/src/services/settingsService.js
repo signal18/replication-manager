@@ -6,7 +6,10 @@ export const settingsService = {
   setSetting,
   clearSetting,
   updateGraphiteWhiteList,
-  updateGraphiteBlackList
+  updateGraphiteBlackList,
+  setAppSetting,
+  switchAppSettings,
+  clearAppSetting
 }
 
 function switchSettings(clusterName, setting, baseURL) {
@@ -41,4 +44,16 @@ function updateGraphiteBlackList(clusterName, blackListValue, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/set-graphite-filterlist/blacklist`, {
     blacklist: blackListValue
   })
+}
+
+function setAppSetting(clusterName, appId, setting, value, baseURL) {
+    return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/set/${setting}/${encodeURIComponent(value)}`)
+}
+
+function switchAppSettings(clusterName, setting, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/switch/${setting}`)
+}
+
+function clearAppSetting(clusterName, appId, setting, baseURL) {
+    return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/clear/${setting}`)
 }

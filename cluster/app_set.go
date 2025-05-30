@@ -139,12 +139,22 @@ func (p *App) SetCluster(c *Cluster) {
 	p.ClusterGroup = c
 }
 
-func (p *App) SetDeploymentConfig(deployid string, dep *config.Deployment) error {
-	if _, ok := p.ClusterGroup.Conf.Apps[p.Name]; !ok {
-		return errors.New("app not found in cluster config")
+func (p *App) SetSetting(key, value string) error {
+	switch key {
+	case "prov-app-docker-img":
+		p.AppConfig.ProvAppDockerImg = value
+	default:
+		return errors.New("unknown setting: " + key)
 	}
 
-	p.ClusterGroup.Conf.Apps[p.Name].Deployments[deployid] = dep
+	return nil
+}
+
+func (p *App) SwitchSetting(key string) error {
+	switch key {
+	default:
+		return errors.New("unknown setting: " + key)
+	}
 
 	return nil
 }

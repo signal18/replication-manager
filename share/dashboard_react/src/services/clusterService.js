@@ -595,21 +595,21 @@ function getAppService(clusterName, serviceName, appId, baseURL) {
 }
 
 function addDeployment(clusterName, appId, deployment, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/add`, deployment)
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/add`, deployment)
 }
 
 function dropDeployment(clusterName, appId, deployName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/drop/${deployName}`)
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployment/drop/${deployName}`)
 }
 
-function deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/${key}/modify`, { value })
+function deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/${key}/modify`, { value })
 }
-function deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/add`, value)
+function deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/add`, value)
 }
-function deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployments/${deployId}/field/${field}/index/${index}/drop`)
+function deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/drop`)
 }
 //#endregion App management APIs
 

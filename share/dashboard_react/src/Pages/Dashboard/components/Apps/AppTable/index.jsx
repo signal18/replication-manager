@@ -1,13 +1,11 @@
 import React, { useMemo, useEffect, useState } from 'react'
 import { DataTable } from '../../../../../components/DataTable'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box } from '@chakra-ui/react'
+import { Box, VStack } from '@chakra-ui/react'
 import AppMenu from '../AppMenu'
-import { HiViewGrid } from 'react-icons/hi'
-import RMIconButton from '../../../../../components/RMIconButton'
 import styles from './styles.module.scss'
-import ServerName from '../../../../../components/ServerName'
 import { Link } from 'react-router-dom'
+import ServerName from '../../../../../components/ServerName'
 
 function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
   const [tableData, setTableData] = useState([])
@@ -26,30 +24,26 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
         {
           cell: (info) => info.getValue(),
           id: 'options',
-          header: () => {
-            return <RMIconButton onClick={showGridView} icon={HiViewGrid} tooltip='Show grid view' />
-          },
+          header: '',
           width: '40px'
         }
       ),
-      columnHelper.accessor((row) => (
-          <Link to={`/clusters/${clusterName}/app/${row?.id}`}>
-            <ServerName name={`${row.host}:${row.port}`} />
-          </Link>
-        ), {
+      columnHelper.accessor((row) => (<Link to={`/clusters/${clusterName}/app/${row?.id}`}>
+        <ServerName name={`${row.host}`} />
+      </Link>), {
         cell: (info) => info.getValue(),
-        header: 'App Id',
-        id: 'appId',
-        enableHiding: true
+        header: 'Apps'
       }),
-      columnHelper.accessor((row) => row.status, {
+      columnHelper.accessor((row) => row.config?.provAppDockerImg, {
         cell: (info) => info.getValue(),
-        header: 'Status'
+        header: 'Docker Image'
       }),
-      columnHelper.accessor((row) => row.idGroup, {
+      columnHelper.accessor((row) => (<VStack>
+        {row.config?.deployment?.routes?.map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={`${route.cname}) → ${route.port}`} />))}
+      </VStack>), {
         cell: (info) => info.getValue(),
-        header: 'ID Group'
-      })
+        header: 'Routes'
+      }),
     ],
     []
   )

@@ -822,32 +822,32 @@ type Config struct {
 }
 
 type AppConfig struct {
-	ProvAppAgentIndex     int                    `mapstructure:"prov-app-agent-index" toml:"prov-app-agent-index" json:"provAppAgentIndex"`
-	ProvAppType           string                 `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
-	ProvAppDiskType       string                 `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
-	ProvAppVolumeData     string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDisk           string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppDockerImg      string                 `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppRouteAddr      string                 `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
-	ProvAppRoutePort      string                 `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
-	ProvAppRouteMask      string                 `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppDiskPool       string                 `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
-	ProvAppAgentsFailover string                 `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	AppAPIPort            int                    `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
-	AppReadPort           int                    `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
-	AppWritePort          int                    `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
-	AppStatPort           int                    `mapstructure:"app-stat-port" toml:"app-stat-port" json:"appStatPort"`
-	AppStatHttp           string                 `mapstructure:"app-stat-http" toml:"app-stat-http" json:"appStatHttp"`
-	AppUser               string                 `mapstructure:"app-user" toml:"app-user" json:"appUser"`
-	AppPassword           string                 `mapstructure:"app-password" toml:"app-password" json:"appPassword"`
-	AppMode               string                 `mapstructure:"app-mode" toml:"app-mode" json:"appMode"`
-	AppDebug              bool                   `mapstructure:"app-debug" toml:"app-debug" json:"appDebug"`
-	AppBinaryPath         string                 `mapstructure:"app-binary-path" toml:"app-binary-path" json:"appBinaryPath"`
-	AppReadBindIp         string                 `mapstructure:"app-read-bind-ip" toml:"app-read-bind-ip" json:"appReadBindIp"`
-	AppWriteBindIp        string                 `mapstructure:"app-write-bind-ip" toml:"app-write-bind-ip" json:"appWriteBindIp"`
-	AppAPIReadBackend     string                 `mapstructure:"app-api-read-backend" toml:"app-api-read-backend" json:"appApiReadBackend"`
-	AppAPIWriteBackend    string                 `mapstructure:"app-api-write-backend" toml:"app-api-write-backend" json:"appApiWriteBackend"`
-	Deployments           map[string]*Deployment `mapstructure:"deployments" toml:"deployments" json:"deployments"`
+	ProvAppAgentIndex     int        `mapstructure:"prov-app-agent-index" toml:"prov-app-agent-index" json:"provAppAgentIndex"`
+	ProvAppType           string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppDiskType       string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppVolumeData     string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppDisk           string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDockerImg      string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppDiskPool       string     `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
+	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	AppAPIPort            int        `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
+	AppReadPort           int        `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
+	AppWritePort          int        `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
+	AppStatPort           int        `mapstructure:"app-stat-port" toml:"app-stat-port" json:"appStatPort"`
+	AppStatHttp           string     `mapstructure:"app-stat-http" toml:"app-stat-http" json:"appStatHttp"`
+	AppUser               string     `mapstructure:"app-user" toml:"app-user" json:"appUser"`
+	AppPassword           string     `mapstructure:"app-password" toml:"app-password" json:"appPassword"`
+	AppMode               string     `mapstructure:"app-mode" toml:"app-mode" json:"appMode"`
+	AppDebug              bool       `mapstructure:"app-debug" toml:"app-debug" json:"appDebug"`
+	AppBinaryPath         string     `mapstructure:"app-binary-path" toml:"app-binary-path" json:"appBinaryPath"`
+	AppReadBindIp         string     `mapstructure:"app-read-bind-ip" toml:"app-read-bind-ip" json:"appReadBindIp"`
+	AppWriteBindIp        string     `mapstructure:"app-write-bind-ip" toml:"app-write-bind-ip" json:"appWriteBindIp"`
+	AppAPIReadBackend     string     `mapstructure:"app-api-read-backend" toml:"app-api-read-backend" json:"appApiReadBackend"`
+	AppAPIWriteBackend    string     `mapstructure:"app-api-write-backend" toml:"app-api-write-backend" json:"appApiWriteBackend"`
+	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment"`
 }
 
 type VariableMapping struct {
@@ -865,42 +865,35 @@ type PathMapping struct {
 	Agents    []string `toml:"agents" json:"agents" example:"all"`
 }
 
-type Deployment struct {
-	Order        int               `mapstructure:"order"  toml:"order" json:"order"`
-	Name         string            `mapstructure:"name"  toml:"name" json:"name"`
-	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
-	Path         []PathMapping     `mapstructure:"path"  toml:"path" json:"path"`
-	Ports        []string          `mapstructure:"ports"  toml:"ports" json:"ports"`
-	DockerImg    string            `mapstructure:"docker-img"  toml:"docker-img" json:"dockerImg"`
-	DockerRunCmd string            `mapstructure:"docker-run-cmd"  toml:"docker-run-cmd" json:"dockerRunCmd"`
-	GitClones    []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
-	isDeployed   bool
-}
-
-func NewDeploymentConfig(name, image, port string) *Deployment {
-	return &Deployment{
-		Name:      name,
-		Ports:     []string{port},
-		GitClones: []GitClone{},
-		Variables: []VariableMapping{},
-		Path:      []PathMapping{},
-		DockerImg: image,
-	}
-}
-
 type GitClone struct {
 	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo"`
 	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch"`
-	Dest      string `mapstructure:"dest" toml:"dest" json:"dest" options:"config|data"`
+	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"config|data"`
+	Dest      string `mapstructure:"dest" toml:"dest" json:"dest"`
 	GitUser   string `mapstructure:"user" toml:"user" json:"user"`
 	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass"`
 }
 
-type DeploymentSorter []*Deployment
+type Route struct {
+	CName string `mapstructure:"cname"  toml:"cname" json:"cname"`
+	Port  string `mapstructure:"port"  toml:"port" json:"port"`
+}
 
-func (a DeploymentSorter) Len() int           { return len(a) }
-func (a DeploymentSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a DeploymentSorter) Less(i, j int) bool { return a[i].Order < a[j].Order }
+type Deployment struct {
+	Variables []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
+	Paths     []PathMapping     `mapstructure:"paths"  toml:"paths" json:"paths"`
+	Routes    []Route           `mapstructure:"routes"  toml:"routes" json:"routes"`
+	GitClones []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
+}
+
+func NewDeploymentConfig() *Deployment {
+	return &Deployment{
+		Routes:    []Route{},
+		GitClones: []GitClone{},
+		Variables: []VariableMapping{},
+		Paths:     []PathMapping{},
+	}
+}
 
 type WorkLoad struct {
 	DBTableSize   int64   `json:"dbTableSize"`

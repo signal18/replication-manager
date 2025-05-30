@@ -1525,42 +1525,12 @@ export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async (
     }
   )
 
-  export const addDeployment = createAsyncThunk(
-    'cluster/addDeployment',
-    async ({ clusterName, appId, deployment }, thunkAPI) => {
-      try {
-        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-        const { data, status } = await clusterService.addDeployment(clusterName, appId, deployment, baseURL)
-        showSuccessBanner('New deployment added!', status, thunkAPI)
-        return { data, status }
-      } catch (error) {
-        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
-        handleError(error, thunkAPI)
-      }
-    }
-  )
-  
-  export const dropDeployment = createAsyncThunk(
-    'cluster/dropDeployment',
-    async ({ clusterName, appId, deployName }, thunkAPI) => {
-      try {
-        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-        const { data, status } = await clusterService.dropDeployment(clusterName, appId, deployName, baseURL)
-        showSuccessBanner('Deployment dropped!', status, thunkAPI)
-        return { data, status }
-      } catch (error) {
-        showErrorBanner('Error while dropping a deployment', error, thunkAPI)
-        handleError(error, thunkAPI)
-      }
-    }
-  )
-
 export const deploymentFieldChange = createAsyncThunk(
     'cluster/deploymentFieldChange',
-    async ({ clusterName, appId, deployId, field, index, key, value }, thunkAPI) => {
+    async ({ clusterName, appId, field, index, key, value }, thunkAPI) => {
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-        const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, deployId, field, index, key, value, baseURL)
+        const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL)
         showSuccessBanner('New deployment added!', status, thunkAPI)
         return { data, status }
       } catch (error) {
@@ -1572,10 +1542,10 @@ export const deploymentFieldChange = createAsyncThunk(
 
 export const deploymentFieldIndexAdd = createAsyncThunk(
     'cluster/deploymentFieldIndexAdd',
-    async ({ clusterName, appId, deployId, field, value }, thunkAPI) => {
+    async ({ clusterName, appId, field, value }, thunkAPI) => {
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-        const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, deployId, field, value, baseURL)
+        const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL)
         showSuccessBanner('New deployment field row added!', status, thunkAPI)
         return { data, status }
       } catch (error) {
@@ -1586,10 +1556,10 @@ export const deploymentFieldIndexAdd = createAsyncThunk(
   )
 export const deploymentFieldIndexDrop = createAsyncThunk(
     'cluster/deploymentFieldIndexDrop',
-    async ({ clusterName, appId, deployId, field, index }, thunkAPI) => {
+    async ({ clusterName, appId, field, index }, thunkAPI) => {
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-        const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, deployId, field, index, baseURL)
+        const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL)
         showSuccessBanner('Deployment field row dropped!', status, thunkAPI)
         return { data, status }
       } catch (error) {
@@ -1652,7 +1622,7 @@ const initialState = {
     menuActions: false
   },
   app: {
-    deployments: null,
+    deployment: null,
   },
   database: {
     processList: null,
@@ -2048,8 +2018,10 @@ export const clusterSlice = createSlice({
       ),
       (state, action) => {
         const { serviceName } = action.meta.arg
-        if (serviceName === 'deployments') {
-          state.app.deployments = action.payload.data
+        if (serviceName === 'deployment') {
+          if (!state.app.deployment || !isEqual(state.app.deployment, action.payload.data)) {
+            state.app.deployment = action.payload.data
+          }
         } 
       }
     )

@@ -80,7 +80,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
+	// cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
 
 	cluster.Conf.Apps[appname] = &appcnf
 	// Add the app to the cluster if it does not exist
@@ -93,62 +93,62 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	return nil
 }
 
-// LoadConfig loads the configuration from a file to the configuration struct.
-// If the file does not exist, it will return an error.
-// If the file exists but cannot be read, it will return the old configuration and the error.
-func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *config.AppConfig) error {
+// // LoadConfig loads the configuration from a file to the configuration struct.
+// // If the file does not exist, it will return an error.
+// // If the file exists but cannot be read, it will return the old configuration and the error.
+// func (cluster *Cluster) LoadDeploymentsConfig(dirpath, appname string, appcnf *config.AppConfig) error {
 
-	// Create a new configuration struct
-	var result map[string]*config.Deployment
-	dirname := filepath.Join(dirpath, appname)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, os.ModePerm)
-	}
+// 	// Create a new configuration struct
+// 	var result config.Deployment
+// 	dirname := filepath.Join(dirpath, appname)
+// 	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+// 		os.MkdirAll(dirname, os.ModePerm)
+// 	}
 
-	filename := filepath.Join(dirpath, appname, "deployments.toml")
+// 	filename := filepath.Join(dirpath, appname, "deployments.toml")
 
-	// Load the configuration file
-	_, err := os.Stat(filename)
-	if err != nil {
-		return err
-	}
+// 	// Load the configuration file
+// 	_, err := os.Stat(filename)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// Open TOML file
-	appViper := viper.New()
-	appViper.SetConfigFile(filename)
-	err = appViper.ReadInConfig()
-	if err != nil {
-		// If there is an error reading the TOML file don't change the configuration
-		return err
-	}
+// 	// Open TOML file
+// 	appViper := viper.New()
+// 	appViper.SetConfigFile(filename)
+// 	err = appViper.ReadInConfig()
+// 	if err != nil {
+// 		// If there is an error reading the TOML file don't change the configuration
+// 		return err
+// 	}
 
-	// Decode TOML file into the configuration struct
-	err = appViper.Unmarshal(&result)
-	if err != nil {
-		// If there is an error decoding the TOML file don't change the configuration
-		return err
-	}
+// 	// Decode TOML file into the configuration struct
+// 	err = appViper.Unmarshal(&result)
+// 	if err != nil {
+// 		// If there is an error decoding the TOML file don't change the configuration
+// 		return err
+// 	}
 
-	// Set the new configuration
-	appcnf.Deployments = result
+// 	// Set the new configuration
+// 	appcnf.Deployments = result
 
-	for _, dep := range appcnf.Deployments {
-		if dep.Variables == nil {
-			dep.Variables = make([]config.VariableMapping, 0)
-		}
-		if dep.Path == nil {
-			dep.Path = make([]config.PathMapping, 0)
-		}
-		if dep.Ports == nil {
-			dep.Ports = make([]string, 0)
-		}
-		if dep.GitClones == nil {
-			dep.GitClones = make([]config.GitClone, 0)
-		}
-	}
+// 	for _, dep := range appcnf.Deployments {
+// 		if dep.Variables == nil {
+// 			dep.Variables = make([]config.VariableMapping, 0)
+// 		}
+// 		if dep.Path == nil {
+// 			dep.Path = make([]config.PathMapping, 0)
+// 		}
+// 		if dep.Routes == nil {
+// 			dep.Routes = make([]config.Route, 0)
+// 		}
+// 		if dep.GitClones == nil {
+// 			dep.GitClones = make([]config.GitClone, 0)
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (cluster *Cluster) SaveAppConfigs() (bool, error) {
 	var has_changed bool
@@ -184,12 +184,12 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 		has_changed = true
 	}
 
-	// Save the deployment configuration file
-	changed, err = cluster.SaveAppDeploymentsFile(app)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
-		return has_changed, err
-	}
+	// // Save the deployment configuration file
+	// changed, err = cluster.SaveAppDeploymentsFile(app)
+	// if err != nil {
+	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
+	// 	return has_changed, err
+	// }
 
 	if changed {
 		has_changed = true
@@ -229,49 +229,49 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 	}
 	defer file.Close()
 
-	t.Delete("deployments")
+	// t.Delete("deployments")
 	t.WriteTo(file)
 
 	return true, nil
 }
 
-func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
-	filePath := app.Datadir + "/deployments.toml"
+// func (cluster *Cluster) SaveAppDeploymentsFile(app *App) (bool, error) {
+// 	filePath := app.Datadir + "/deployments.toml"
 
-	// Write sorted values to file
-	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
-	if err != nil {
-		if os.IsPermission(err) {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
-		}
-		return false, err
-	}
-	defer file.Close()
+// 	// Write sorted values to file
+// 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+// 	if err != nil {
+// 		if os.IsPermission(err) {
+// 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", filePath)
+// 		} else {
+// 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+// 		}
+// 		return false, err
+// 	}
+// 	defer file.Close()
 
-	// Marshal and write TOML configuration
-	readconf, err := toml.Marshal(app.GetAppConfig().Deployments)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
-		return false, err
-	}
+// 	// Marshal and write TOML configuration
+// 	readconf, err := toml.Marshal(app.GetAppConfig().Deployments)
+// 	if err != nil {
+// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
+// 		return false, err
+// 	}
 
-	// Load TOML and sort keys
-	t, err := toml.LoadBytes(readconf)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error loading toml: %s", err)
-		return false, err
-	}
+// 	// Load TOML and sort keys
+// 	t, err := toml.LoadBytes(readconf)
+// 	if err != nil {
+// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error loading toml: %s", err)
+// 		return false, err
+// 	}
 
-	_, err = t.WriteTo(file)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing toml: %s", err)
-		return false, err
-	}
+// 	_, err = t.WriteTo(file)
+// 	if err != nil {
+// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error writing toml: %s", err)
+// 		return false, err
+// 	}
 
-	return true, nil
-}
+// 	return true, nil
+// }
 
 func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	hosts := strings.Split(cluster.Conf.AppHosts, ",")
@@ -293,12 +293,6 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	cluster.Conf.AppHosts = strings.Join(hosts, ",")
 	appcnf := cluster.GetAppConfig(srv) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg
-	if appcnf.Deployments == nil {
-		// Initialize deployments if not already done
-		appcnf.Deployments = make(map[string]*config.Deployment)
-	}
-
-	appcnf.Deployments["default"] = config.NewDeploymentConfig("default", dockerImg, port)
 
 	cluster.Lock()
 	cluster.newAppList()

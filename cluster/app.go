@@ -52,7 +52,7 @@ type App struct {
 	Process         *os.Process       `json:"process"`
 	Variables       map[string]string `json:"-"`
 	Lock            sync.Mutex        `json:"-"`
-	AppConfig       *config.AppConfig `json:"appConfig"`
+	AppConfig       *config.AppConfig `json:"config"`
 	TunnelPort      int               `json:"tunnelPort"`
 	TunnelWritePort int               `json:"tunnelWritePort"`
 	Tunnel          bool              `json:"tunnel"`

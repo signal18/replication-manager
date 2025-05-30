@@ -6993,12 +6993,23 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.Apps)
+		apps, err := json.MarshalIndent(mycluster.Apps, "", "\t")
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 			http.Error(w, "Encoding error", 500)
+			return
+		}
+
+		for idx := range mycluster.Apps {
+			apps = jsonparser.Delete(apps, fmt.Sprintf("[%d]", idx), "config", "deployment")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(apps)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response", 500)
 			return
 		}
 	} else {

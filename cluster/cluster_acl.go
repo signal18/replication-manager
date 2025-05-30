@@ -1000,7 +1000,7 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
-		if strings.Contains(URL, "/deployments/") {
+		if strings.Contains(URL, "/deployment/") {
 			return true
 		}
 	}
@@ -1014,6 +1014,12 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 			return true
 		}
 	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppConfig] {
+		if strings.Contains(URL, "/settings/actions/") {
+			return true
+		}
+	}
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app check failed for user %s : %s ", strUser, URL)
 
 	return false

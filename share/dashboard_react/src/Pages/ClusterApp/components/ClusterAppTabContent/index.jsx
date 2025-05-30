@@ -4,7 +4,7 @@ import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AppMenu from '../../../Dashboard/components/Apps/AppMenu'
 import AppStatus from '../../../Dashboard/components/Apps/AppStatus'
 import ServerName from '../../../../components/ServerName'
-import Deployments from '../Deployments'
+import Deployment from '../Deployment'
 
 function ClusterAppTabContent({ tab, clusterName, user, selectedApp }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -31,7 +31,7 @@ function ClusterAppTabContent({ tab, clusterName, user, selectedApp }) {
         </HStack>
       </Flex>
       {currentTab === "overview" ? (
-        <Deployments clusterName={clusterName} selectedApp={selectedApp}/>
+        <Deployment clusterName={clusterName} appId={selectedApp?.id} config={selectedApp?.config}/>
       ) : null}
     </VStack>
   )

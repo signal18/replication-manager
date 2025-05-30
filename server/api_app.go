@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -27,27 +26,19 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApp)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDeployments)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/add", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddDeployment)),
-	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropDeployment)),
-	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/index/{index}/{key}/modify", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/{key}/modify", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyDeploymentField)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/add", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/add", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddDeploymentFieldRow)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/index/{index}/drop", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropDeploymentFieldRow)),
 	))
@@ -75,12 +66,18 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppNeedReprov)),
 	))
-	// router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}", negroni.New(
-	// 	negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
-	// ))
-	// router.Handle("/api/terminal/connect/clusters/{clusterName}/apps/{serverName}/{command}", negroni.New(
-	// 	negroni.Wrap(http.HandlerFunc(repman.handlerTerminal)),
-	// ))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/set/{setting}/{value}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSetSetting)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/switch/{setting}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSwitchSetting)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppClearSetting)),
+	))
 }
 
 // @Summary Shows the apps for that specific named cluster
@@ -381,7 +378,7 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 // @Param appName path string true "App Name"
 // @Success 200 {array} config.Deployment "Server details retrieved successfully"
 // @Failure 500 {string} string "Internal Server Error"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments [get]
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployment [get]
 func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	//marshal unmarchal for ofuscation deep copy of struc
@@ -396,23 +393,17 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			deployments := make([]*config.Deployment, 0)
-			for _, dep := range node.GetDeploymentConfigs() {
-				deployments = append(deployments, dep)
-			}
-
-			sort.Sort(config.DeploymentSorter(deployments))
-
-			depls, err := json.MarshalIndent(deployments, "", "\t")
+			appcnf := node.GetAppConfig()
+			dep, err := json.MarshalIndent(appcnf.Deployment, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
 
-			for idx, d := range deployments {
-				for gidx := range d.GitClones {
-					depls, err = jsonparser.Set(depls, []byte(`"*****"`), fmt.Sprintf("[%d]", idx), "gitClones", fmt.Sprintf("[%d]", gidx), "pass")
+			for gidx, v := range appcnf.Deployment.Variables {
+				if v.Type == "secret" {
+					dep, err = jsonparser.Set(dep, []byte(`"*****"`), "variables", fmt.Sprintf("[%d]", gidx), "value")
 					if err != nil {
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 						http.Error(w, "Encoding error", 500)
@@ -421,104 +412,16 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			w.Write(depls)
-			return
-		} else {
-			http.Error(w, "Server Not Found", 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-}
-
-// @Summary Add Deployment
-// @Description Add a deployment for a given cluster and app
-// @Tags Apps
-// @Accept json
-// @Produce json
-// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string true "Cluster Name"
-// @Param appName path string true "App Name"
-// @Param deployment body config.Deployment true "Deployment object"
-// @Success 200 {string} string "Deployment added"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/add [post]
-func (repman *ReplicationManager) handlerMuxAddDeployment(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil {
-			deployment := config.Deployment{}
-			err := json.NewDecoder(r.Body).Decode(&deployment)
-			if err != nil {
-				http.Error(w, "Error decoding JSON:"+err.Error(), 500)
-				return
+			for gidx := range appcnf.Deployment.GitClones {
+				dep, err = jsonparser.Set(dep, []byte(`"*****"`), "gitClones", fmt.Sprintf("[%d]", gidx), "pass")
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+					http.Error(w, "Encoding error", 500)
+					return
+				}
 			}
 
-			appcnf := node.GetAppConfig()
-			if appcnf.Deployments == nil {
-				appcnf.Deployments = make(map[string]*config.Deployment)
-			}
-
-			if deployment.GitClones == nil {
-				deployment.GitClones = make([]config.GitClone, 0)
-			}
-
-			deployment.Order = len(appcnf.Deployments) + 1 // Set order based on current deployments count
-
-			appcnf.Deployments[deployment.Name] = &deployment
-			w.Write([]byte("Deployment added"))
-		} else {
-			http.Error(w, "Server Not Found", 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-}
-
-// @Summary Drop Deployment
-// @Description Drop a deployment for a given cluster and app
-// @Tags Apps
-// @Accept json
-// @Produce json
-// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string true "Cluster Name"
-// @Param appName path string true "App Name"
-// @Param deployName path string true "Deployment Name"
-// @Success 200 {string} string "Deployment dropped"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName} [post]
-func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil {
-			appcnf := node.GetAppConfig()
-			if _, ok := appcnf.Deployments[vars["deployName"]]; !ok {
-				http.Error(w, "Deployment not found", 500)
-				return
-			}
-			delete(appcnf.Deployments, vars["deployName"])
+			w.Write(dep)
 			return
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -538,7 +441,6 @@ func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param deployName path string true "Deployment Name"
 // @Param field path string true "Field to modify"
 // @Param index path string true "Index of the field to modify"
 // @Param key path string true "Key of the field to modify"
@@ -546,7 +448,7 @@ func (repman *ReplicationManager) handlerMuxDropDeployment(w http.ResponseWriter
 // @Success 200 {string} string "Deployment field modified"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/index/{index}/{key}/modify [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/{key}/modify [post]
 func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -560,11 +462,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
 			appcnf := node.GetAppConfig()
-			dep, ok := appcnf.Deployments[vars["deployName"]]
-			if !ok {
-				http.Error(w, "Deployment not found", 500)
-				return
-			}
 
 			type FieldValue struct {
 				Value string `json:"value"`
@@ -578,132 +475,111 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 			newValue := body.Value
 
+			if vars["index"] == "" || vars["index"] == "undefined" {
+				http.Error(w, "Index not provided", 500)
+				return
+			}
+
+			index, err := strconv.ParseInt(vars["index"], 10, 64)
+			if err != nil {
+				http.Error(w, "Error parsing index: "+err.Error(), 500)
+				return
+			}
+
+			if index < 0 {
+				http.Error(w, "Index cannot be negative", 500)
+				return
+			}
+
+			if vars["key"] == "" || vars["key"] == "undefined" {
+				// For gitClones, variables, and path, key is required
+				http.Error(w, "Key not provided", 500)
+				return
+			}
+
 			switch vars["field"] {
 			// fields which are arrays of objects
-			case "gitClones", "variables", "path", "ports":
-				if vars["index"] == "undefined" {
-					http.Error(w, "Index not provided", 500)
+			case "routes":
+				if index >= int64(len(appcnf.Deployment.Routes)) {
+					http.Error(w, "Index out of range for routes", 500)
 					return
 				}
 
-				if vars["key"] == "undefined" && vars["field"] != "ports" {
-					// For gitClones, variables, and path, key is required
-					http.Error(w, "Key not provided", 500)
-					return
-				}
-
-				index, err := strconv.ParseInt(vars["index"], 10, 64)
-				if err != nil {
-					http.Error(w, "Error parsing index: "+err.Error(), 500)
-					return
-				}
-
-				if index < 0 {
-					http.Error(w, "Index cannot be negative", 500)
-					return
-				}
-
-				if vars["field"] == "ports" {
-					if index >= int64(len(dep.Ports)) {
-						http.Error(w, "Index out of range for ports", 500)
-						return
-					}
-
-					// check if the port is a valid port number [[0-65535] or the port is in the format "hostPort:containerPort"
-					parts := strings.Split(newValue, ":")
-					if len(parts) > 2 {
-						http.Error(w, "Invalid port format, expected hostPort:containerPort", 500)
-						return
-					}
-
-					for _, part := range parts {
-						port, err := strconv.Atoi(part)
-						if err != nil || port < 0 || port > 65535 {
-							http.Error(w, "Invalid port number: "+part, 500)
-							return
-						}
-					}
-
-					// Modify field based on key
-					dep.Ports[index] = newValue
-				} else if vars["field"] == "gitClones" {
-					if index >= int64(len(dep.GitClones)) {
-						http.Error(w, "Index out of range for gitClones", 500)
-						return
-					}
-
-					// Modify field based on key
-					switch vars["key"] {
-					case "repo":
-						dep.GitClones[index].GitRepo = newValue
-					case "branch":
-						dep.GitClones[index].GitBranch = newValue
-					case "dest":
-						dep.GitClones[index].Dest = newValue
-					case "pass":
-						dep.GitClones[index].GitPass = newValue
-					case "user":
-						dep.GitClones[index].GitUser = newValue
-					default:
-						http.Error(w, "Invalid key for gitClones", 500)
-						return
-					}
-				} else if vars["field"] == "variables" {
-					if index >= int64(len(dep.Variables)) {
-						http.Error(w, "Index out of range for variables", 500)
-						return
-					}
-
-					// Modify field based on key
-					switch vars["key"] {
-					case "name":
-						dep.Variables[index].Name = newValue
-					case "value":
-						dep.Variables[index].Value = newValue
-					case "type":
-						dep.Variables[index].Type = newValue
-					default:
-						http.Error(w, "Invalid key for variables", 500)
-						return
-					}
-				} else if vars["field"] == "path" {
-					if index >= int64(len(dep.Path)) {
-						http.Error(w, "Index out of range for path", 500)
-						return
-					}
-
-					// Modify field based on key
-					switch vars["key"] {
-					case "volumedir":
-						dep.Path[index].VolumeDir = newValue
-					case "from":
-						dep.Path[index].From = newValue
-					case "to":
-						dep.Path[index].To = newValue
-					case "type":
-						dep.Path[index].Type = newValue
-
-					default:
-						http.Error(w, "Invalid key for path", 500)
-						return
-					}
-				} else {
-					http.Error(w, "Invalid field", 500)
-					return
-				}
-			default:
-				// fields which are simple strings
-				switch vars["field"] {
-				case "name":
-					dep.Name = newValue
-				case "dockerImg":
-					dep.DockerImg = newValue
-				case "dockerRunCmd":
-					dep.DockerRunCmd = newValue
+				// Modify field based on key
+				switch vars["key"] {
+				case "cname":
+					appcnf.Deployment.Routes[index].CName = newValue
+				case "port":
+					appcnf.Deployment.Routes[index].Port = newValue
 				default:
-					http.Error(w, "Invalid field", 500)
+					http.Error(w, "Invalid key for routes", 500)
 					return
 				}
+			case "gitClones":
+				if index >= int64(len(appcnf.Deployment.GitClones)) {
+					http.Error(w, "Index out of range for gitClones", 500)
+					return
+				}
+
+				// Modify field based on key
+				switch vars["key"] {
+				case "repo":
+					appcnf.Deployment.GitClones[index].GitRepo = newValue
+				case "branch":
+					appcnf.Deployment.GitClones[index].GitBranch = newValue
+				case "dest":
+					appcnf.Deployment.GitClones[index].Dest = newValue
+				case "pass":
+					appcnf.Deployment.GitClones[index].GitPass = newValue
+				case "user":
+					appcnf.Deployment.GitClones[index].GitUser = newValue
+				default:
+					http.Error(w, "Invalid key for gitClones", 500)
+					return
+				}
+			case "variables":
+				if index >= int64(len(appcnf.Deployment.Variables)) {
+					http.Error(w, "Index out of range for variables", 500)
+					return
+				}
+
+				// Modify field based on key
+				switch vars["key"] {
+				case "name":
+					appcnf.Deployment.Variables[index].Name = newValue
+				case "value":
+					appcnf.Deployment.Variables[index].Value = newValue
+				case "type":
+					appcnf.Deployment.Variables[index].Type = newValue
+				default:
+					http.Error(w, "Invalid key for variables", 500)
+					return
+				}
+			case "path":
+				if index >= int64(len(appcnf.Deployment.Paths)) {
+					http.Error(w, "Index out of range for path", 500)
+					return
+				}
+
+				// Modify field based on key
+				switch vars["key"] {
+				case "volumedir":
+					appcnf.Deployment.Paths[index].VolumeDir = newValue
+				case "from":
+					appcnf.Deployment.Paths[index].From = newValue
+				case "to":
+					appcnf.Deployment.Paths[index].To = newValue
+				case "type":
+					appcnf.Deployment.Paths[index].Type = newValue
+
+				default:
+					http.Error(w, "Invalid key for path", 500)
+					return
+				}
+
+			default:
+				http.Error(w, "Invalid field", 500)
+				return
 			}
 
 			w.Write([]byte("Deployment field modified"))
@@ -725,18 +601,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param deployName path string true "Deployment Name"
-// @Param field path string true "Field to add a row to (ports, gitClones, variables, path)"
-// @Param body body any true "Array of objects depending on field:
-//   - ports: []string
-//   - gitClones: []GitClone
-//   - variables: []VariableMapping
-//   - path: []PathMapping"
-//
+// @Param field path string true "Field to add a row to (routes, gitClones, variables, path)"
+// @Param body body any true "Array of objects depending on field: - routes: []config.Route - gitClones: []config.GitClone - variables: []config.VariableMapping - path: []config.PathMapping"
 // @Success 200 {string} string "Deployment field row added"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/add [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployment/{field}/add [post]
 func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -759,31 +629,23 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	}
 
 	appcnf := node.GetAppConfig()
-	dep, ok := appcnf.Deployments[vars["deployName"]]
-	if !ok {
-		http.Error(w, "Deployment not found", http.StatusInternalServerError)
-		return
-	}
-
 	field := vars["field"]
 	var affected bool
 
 	switch field {
-	case "ports":
-		var body []string
-		if err := decodeBody(r, &body, "port", w); err != nil {
+	case "routes":
+		var body []config.Route
+		if err := decodeBody(r, &body, "routes", w); err != nil {
+			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		for _, row := range body {
-			if row == "" {
-				continue
-			}
-			if !isValidPortFormat(row) {
+			if !isValidPortFormat(row.Port) {
 				http.Error(w, "Invalid port format. Expected hostPort[:containerPort] with valid port numbers", http.StatusInternalServerError)
 				return
 			}
-			dep.Ports = append(dep.Ports, row)
+			appcnf.Deployment.Routes = append(appcnf.Deployment.Routes, row)
 			affected = true
 		}
 
@@ -792,7 +654,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "git clone", w); err != nil {
 			return
 		}
-		dep.GitClones = append(dep.GitClones, body...)
+		appcnf.Deployment.GitClones = append(appcnf.Deployment.GitClones, body...)
 		affected = true
 
 	case "variables":
@@ -800,7 +662,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "variable", w); err != nil {
 			return
 		}
-		dep.Variables = append(dep.Variables, body...)
+		appcnf.Deployment.Variables = append(appcnf.Deployment.Variables, body...)
 		affected = true
 
 	case "path":
@@ -808,7 +670,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "path", w); err != nil {
 			return
 		}
-		dep.Path = append(dep.Path, body...)
+		appcnf.Deployment.Paths = append(appcnf.Deployment.Paths, body...)
 		affected = true
 
 	default:
@@ -859,13 +721,12 @@ func isValidPortFormat(value string) bool {
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param deployName path string true "Deployment Name"
-// @Param field path string true "Field to drop a row from (ports, gitClones, variables, path)"
+// @Param field path string true "Field to drop a row from (routes, gitClones, variables, path)"
 // @Param index path string true "Index of the row to drop"
 // @Success 200 {string} string "Deployment field row removed"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "Index out of range" "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/deployments/{deployName}/field/{field}/row/{index}/drop [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/drop [post]
 func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -888,15 +749,10 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 	}
 
 	appcnf := node.GetAppConfig()
-	dep, ok := appcnf.Deployments[vars["deployName"]]
-	if !ok {
-		http.Error(w, "Deployment not found", http.StatusInternalServerError)
-		return
-	}
 
 	field := vars["field"]
 	indexStr := vars["index"]
-	if indexStr == "undefined" {
+	if indexStr == "" || indexStr == "undefined" {
 		http.Error(w, "Index not provided", http.StatusInternalServerError)
 		return
 	}
@@ -908,34 +764,180 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 	}
 
 	switch field {
-	case "ports":
-		if index >= len(dep.Ports) {
-			http.Error(w, "Index out of range for ports", http.StatusInternalServerError)
+	case "routes":
+		if index >= len(appcnf.Deployment.Routes) {
+			http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 			return
 		}
-		dep.Ports = append(dep.Ports[:index], dep.Ports[index+1:]...)
+		appcnf.Deployment.Routes = append(appcnf.Deployment.Routes[:index], appcnf.Deployment.Routes[index+1:]...)
 	case "gitClones":
-		if index >= len(dep.GitClones) {
+		if index >= len(appcnf.Deployment.GitClones) {
 			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 			return
 		}
-		dep.GitClones = append(dep.GitClones[:index], dep.GitClones[index+1:]...)
+		appcnf.Deployment.GitClones = append(appcnf.Deployment.GitClones[:index], appcnf.Deployment.GitClones[index+1:]...)
 	case "variables":
-		if index >= len(dep.Variables) {
+		if index >= len(appcnf.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
 			return
 		}
-		dep.Variables = append(dep.Variables[:index], dep.Variables[index+1:]...)
+		appcnf.Deployment.Variables = append(appcnf.Deployment.Variables[:index], appcnf.Deployment.Variables[index+1:]...)
 	case "path":
-		if index >= len(dep.Path) {
+		if index >= len(appcnf.Deployment.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return
 		}
-		dep.Path = append(dep.Path[:index], dep.Path[index+1:]...)
+		appcnf.Deployment.Paths = append(appcnf.Deployment.Paths[:index], appcnf.Deployment.Paths[index+1:]...)
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
 	}
 	// If we reach here, the row was successfully removed
 	w.Write([]byte("Deployment field row removed"))
+}
+
+// @Summary Set App Setting
+// @Description Set a specific setting for a given app in a cluster
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Param setting path string true "Setting to set"
+// @Param value path string true "Value to set for the setting"
+// @Success 200 {string} string "Setting updated successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appId}/settings/actions/set/{setting}/{value} [post]
+func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appId"])
+		if node != nil {
+			// Validate setting and value
+			if vars["setting"] == "" || vars["value"] == "" {
+				http.Error(w, "Setting and value must be provided", 400)
+				return
+			}
+
+			setting := vars["setting"]
+			value := vars["value"]
+			err := node.SetSetting(setting, value)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error setting %s: %s", setting, err.Error()), 500)
+				return
+			}
+			w.Write([]byte("Setting updated successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Switch App Setting
+// @Description Switch a specific setting for a given app in a cluster
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Param setting path string true "Setting to switch"
+// @Success 200 {string} string "Setting switched successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appId}/settings/actions/switch/{setting} [post]
+func (repman *ReplicationManager) handlerMuxAppSwitchSetting(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appId"])
+		if node != nil {
+			// Validate setting and value
+			if vars["setting"] == "" {
+				http.Error(w, "Setting must be provided", 400)
+				return
+			}
+
+			setting := vars["setting"]
+			err := node.SwitchSetting(setting)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error switch setting %s: %s", setting, err.Error()), 500)
+				return
+			}
+			w.Write([]byte("Setting switched successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Clear App Setting
+// @Description Clear a specific setting for a given app in a cluster
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Param setting path string true "Setting to clear"
+// @Success 200 {string} string "Setting cleared successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting} [post]
+func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appId"])
+		if node != nil {
+			// Validate setting
+			if vars["setting"] == "" {
+				http.Error(w, "Setting must be provided", 400)
+				return
+			}
+
+			setting := vars["setting"]
+			err := node.SetSetting(setting, "")
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error clearing setting %s: %s", setting, err.Error()), 500)
+				return
+			}
+			w.Write([]byte("Setting cleared successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
 }

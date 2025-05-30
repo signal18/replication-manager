@@ -5,7 +5,7 @@ import styles from './styles.module.scss'
 import RMIconButton from '../RMIconButton'
 import ConfirmModal from '../Modals/ConfirmModal'
 
-function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled }) {
+function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled, ...others }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
 
@@ -42,6 +42,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
           maxLength={maxLength}
           readOnly={!isEditable}
           onChange={handleChange}
+          {...others}
         />
         {isEditable ? (
           <>

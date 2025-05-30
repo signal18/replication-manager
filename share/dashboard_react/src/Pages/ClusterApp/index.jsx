@@ -72,7 +72,7 @@ function ClusterApp(props) {
     dispatch(getClusterApps({ clusterName }))
     dispatch(getClusterData({ clusterName }))
     if (tabs.current[selectedTabRef.current] === 'App Overview') {
-      dispatch(getAppService({ clusterName, serviceName: 'deployments', appId }))
+      dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
     }
   }
 

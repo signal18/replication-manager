@@ -853,7 +853,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/actions/analyze-all-tables": {
+        "/api/clusters/{clusterName}/actions/analyze-all-tables/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for all tables in the specified cluster.",
                 "consumes": [
@@ -1100,6 +1100,73 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/actions/docker-registry/connect": {
+            "post": {
+                "description": "Logs in to a Docker registry using the provided credentials.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DockerRegistry"
+                ],
+                "summary": "Docker Registry Login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Docker Registry Login Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.DockerRegistryLoginForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Docker registry login successful",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Error decoding request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating request\" or \"Error making request to Docker registry\" or \"Docker registry login failed",
                         "schema": {
                             "type": "string"
                         }
@@ -2229,6 +2296,211 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting}": {
+            "post": {
+                "description": "Clear a specific setting for a given app in a cluster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Clear App Setting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Setting to clear",
+                        "name": "setting",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Setting cleared successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appId}/settings/actions/set/{setting}/{value}": {
+            "post": {
+                "description": "Set a specific setting for a given app in a cluster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Set App Setting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Setting to set",
+                        "name": "setting",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Value to set for the setting",
+                        "name": "value",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Setting updated successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appId}/settings/actions/switch/{setting}": {
+            "post": {
+                "description": "Switch a specific setting for a given app in a cluster",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Switch App Setting",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Setting to switch",
+                        "name": "setting",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Setting switched successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}": {
             "get": {
                 "description": "Shows the apps for that specific named cluster",
@@ -2635,7 +2907,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/{appName}/deployments": {
+        "/api/clusters/{clusterName}/apps/{appName}/deployment": {
             "get": {
                 "description": "Shows the deployments for that specific named app",
                 "tags": [
@@ -2685,9 +2957,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/{appName}/deployments/add": {
+        "/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/add": {
             "post": {
-                "description": "Add a deployment for a given cluster and app",
+                "description": "Add a new row to a specific field in a deployment for a given cluster and app",
                 "consumes": [
                     "application/json"
                 ],
@@ -2697,7 +2969,7 @@ const docTemplate = `{
                 "tags": [
                     "Apps"
                 ],
-                "summary": "Add Deployment",
+                "summary": "Add Deployment Field Row",
                 "parameters": [
                     {
                         "type": "string",
@@ -2722,18 +2994,23 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Deployment object",
-                        "name": "deployment",
+                        "type": "string",
+                        "description": "Field to add a row to (routes, gitClones, variables, path)",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of objects depending on field: - routes: []config.Route - gitClones: []config.GitClone - variables: []config.VariableMapping - path: []config.PathMapping",
+                        "name": "body",
                         "in": "body",
                         "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/config.Deployment"
-                        }
+                        "schema": {}
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Deployment added",
+                        "description": "Deployment field row added",
                         "schema": {
                             "type": "string"
                         }
@@ -2753,9 +3030,9 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/{appName}/deployments/drop/{deployName}": {
+        "/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/drop": {
             "post": {
-                "description": "Drop a deployment for a given cluster and app",
+                "description": "Drop a specific row from a field in a deployment for a given cluster and app",
                 "consumes": [
                     "application/json"
                 ],
@@ -2765,7 +3042,7 @@ const docTemplate = `{
                 "tags": [
                     "Apps"
                 ],
-                "summary": "Drop Deployment",
+                "summary": "Drop Deployment Field Row",
                 "parameters": [
                     {
                         "type": "string",
@@ -2791,15 +3068,116 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Deployment Name",
-                        "name": "deployName",
+                        "description": "Field to drop a row from (routes, gitClones, variables, path)",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index of the row to drop",
+                        "name": "index",
                         "in": "path",
                         "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Deployment dropped",
+                        "description": "Deployment field row removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error decoding JSON\" \"Server Not Found\" \"Deployment not found\" \"Index out of range\" \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/deployment/{field}/index/{index}/{key}/modify": {
+            "post": {
+                "description": "Modify a specific field in a deployment for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Modify Deployment Field",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to modify",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index of the field to modify",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Key of the field to modify",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New value for the field",
+                        "name": "value",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deployment field modified",
                         "schema": {
                             "type": "string"
                         }
@@ -4770,7 +5148,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema": {
+        "/api/clusters/{clusterName}/schema/{schemaName}/all/actions/analyze-schema/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for all tables in a schema in the specified cluster.",
                 "consumes": [
@@ -4888,7 +5266,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table": {
+        "/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/analyze-table/{persistent}": {
             "post": {
                 "description": "This endpoint triggers the analyze calculation for a specific table in the specified cluster.",
                 "consumes": [
@@ -15503,7 +15881,7 @@ const docTemplate = `{
                 "agent": {
                     "type": "string"
                 },
-                "appConfig": {
+                "config": {
                     "$ref": "#/definitions/config.AppConfig"
                 },
                 "datadir": {
@@ -16820,11 +17198,8 @@ const docTemplate = `{
                 "appWritePort": {
                     "type": "integer"
                 },
-                "deployments": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/config.Deployment"
-                    }
+                "deployment": {
+                    "$ref": "#/definitions/config.Deployment"
                 },
                 "provAppAgentIndex": {
                     "type": "integer"
@@ -16842,9 +17217,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppDockerImg": {
-                    "type": "string"
-                },
-                "provAppDockerRunArgs": {
                     "type": "string"
                 },
                 "provAppRouteAddr": {
@@ -16955,34 +17327,22 @@ const docTemplate = `{
         "config.Deployment": {
             "type": "object",
             "properties": {
-                "dockerImg": {
-                    "type": "string"
-                },
-                "dockerRunArgs": {
-                    "type": "string"
-                },
-                "dockerRunCmd": {
-                    "type": "string"
-                },
                 "gitClones": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.GitClone"
                     }
                 },
-                "name": {
-                    "type": "string"
-                },
-                "path": {
+                "paths": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.PathMapping"
                     }
                 },
-                "ports": {
+                "routes": {
                     "type": "array",
                     "items": {
-                        "type": "string"
+                        "$ref": "#/definitions/config.Route"
                     }
                 },
                 "variables": {
@@ -17034,6 +17394,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "user": {
+                    "type": "string"
+                },
+                "volumedir": {
                     "type": "string"
                 }
             }
@@ -17108,7 +17471,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "volumedir": {
-                    "description": "This will be used to create the volume mount path. It will be {deployname}/{volumedir} e.g. {volume}/deploy01/etc/{from} : {to}",
+                    "description": "This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}",
                     "type": "string"
                 }
             }
@@ -17137,6 +17500,17 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "role": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Route": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "type": "string"
+                },
+                "port": {
                     "type": "string"
                 }
             }
@@ -19127,6 +19501,9 @@ const docTemplate = `{
                 "provDockerDaemonPrivate": {
                     "type": "boolean"
                 },
+                "provDockerRegistryCredentials": {
+                    "type": "string"
+                },
                 "provNetCni": {
                     "type": "boolean"
                 },
@@ -20489,6 +20866,32 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "data": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.DockerRegistryLoginForm": {
+            "type": "object",
+            "properties": {
+                "authType": {
+                    "description": "\"password\" or \"token\"",
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "private": {
+                    "description": "true if private registry, false if public",
+                    "type": "boolean"
+                },
+                "update": {
+                    "description": "true if updating existing credentials, false if new credentials",
+                    "type": "boolean"
+                },
+                "url": {
+                    "type": "string"
+                },
+                "username": {
                     "type": "string"
                 }
             }
