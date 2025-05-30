@@ -2,7 +2,7 @@
 
 ![replication-manager](https://github.com/signal18/replication-manager/raw/2.0/dashboard/static/img/logo.png)
 
-__replication-manager__ is an high availability solution to manage MariaDB, MySQL, Percona Server replication topologies.  
+__replication-manager__ is an high availability orchestrator to manage MariaDB, MySQL, Percona Server replication topologies.  
 
 The main features are:
  * Replication monitoring (gtid, multi source, delayed)
