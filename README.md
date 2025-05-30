@@ -27,6 +27,9 @@ The main features are:
  * Capture on high load
  * SLA tracking
  * Replication and monitoring user/password rotation or Vault usage
+ * Stagging Multi source cluster
+ * WebTTY
+ * Restic backup snapshots and PITR
       
 
 ### [Documentation](https://docs.signal18.io)
