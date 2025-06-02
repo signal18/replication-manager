@@ -68,9 +68,8 @@ func (cluster *Cluster) CheckFailed() {
 		cluster.failoverCond.Send <- true
 	}
 	if cluster.FalsePositiveChecks["MasterFailed"] && cluster.FalsePositiveChecks["AutomaticFailover"] {
-		cluster.SetState("ERR000978", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00097"], cluster.FalsePositiveChecks), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00097", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00097"], cluster.FalsePositiveChecks), ErrFrom: "CHECK"})
 	}
-
 }
 
 func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcingLog bool) bool {
