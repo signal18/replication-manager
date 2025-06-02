@@ -1,5 +1,6 @@
 name: replication-manager-client
 version: ${version}
+epoch: ${epoch}
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - client package"
 license: "GPLv3"
