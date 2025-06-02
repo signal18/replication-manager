@@ -21,6 +21,8 @@ contents:
   - src: share/
     dst: /usr/share/replication-manager
     type: tree
+dependencies:
+  - replication-manager-client
 
 scripts:
   postinstall: ./scripts/post_install.sh
