@@ -12,13 +12,14 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"hash/crc64"
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
 	"time"
-	"errors"
+
 	"github.com/signal18/replication-manager/config"
 
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
@@ -54,7 +55,7 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 }
 
-func (collector *Collector) GetGottyServer(srv string, rid string) (string,string, error) {
+func (collector *Collector) GetGottyServer(srv string, rid string) (string, string, error) {
 	client := collector.GetHttpClient()
 	//jsondata := `{"path": "` + srv + `", "rid":"` + rid + `", "timeout": "10s"}`
 
@@ -65,7 +66,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string,strin
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
 		}
-		return "","", err
+		return "", "", err
 	}
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
@@ -76,7 +77,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string,strin
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: Srv:" + srv + " Rid:" + rid + " Err:" + err.Error())
 
 		}
-		return "","", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
@@ -99,19 +100,19 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string,strin
 		Nodes  NodesMap `json:"nodes"`
 		Status int      `json:"status"`
 	}
-	var r Response 
+	var r Response
 
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
 		}
-		return "","", err
+		return "", "", err
 	}
 	for nodeName, node := range r.Nodes {
-		return node.Data.URL,nodeName,  nil
+		return node.Data.URL, nodeName, nil
 	}
-	return "","", errors.New("Not found")
+	return "", "", errors.New("Not found")
 }
 
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
@@ -120,6 +121,38 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 	jsondata := `{"path": "` + srv + `", "action": "start", "options": {}}`
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	return nil
+}
+
+func (collector *Collector) RunTaskV2(cluster string, srv string, node string, task string, parameter string) error {
+	// osvccurl -o /tmp/physical.dbdump.log -X POST -H "o-node: $NODE" --data '{"path": "namespace/svc/haproxy", "action": "run", "sync": true, "options": {"rid": "task#addcert"}, "env": "DOMAIN=www.acme.com"}' ${APIURL}/object_action
+	client := collector.GetHttpClient()
+	jsondata := `{"path": "` + srv + `", "action": "run", "sync": true, "options": {"rid": "` + task + `"}, "env":"` + parameter + `"}`
+	b := bytes.NewBuffer([]byte(jsondata))
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+	}
+
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
