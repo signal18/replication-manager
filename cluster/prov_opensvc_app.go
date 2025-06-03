@@ -187,7 +187,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(backend string, app *App) (strin
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = app.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app.Name)
+	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(app.GetPort())
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
@@ -202,10 +202,10 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(backend string, app *App) (strin
 
 }
 
-func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(appname string) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
-	svcvol["pool"] = cluster.GetAppConfig(appname).ProvAppVolumeData
+	svcvol["pool"] = app.AppConfig.ProvAppVolumeData
 	svcvol["size"] = "{env.size}"
 	return svcvol
 }
@@ -235,7 +235,7 @@ func (cluster *Cluster) FoundAppAgent(app *App) (opensvc.Host, error) {
 }
 
 func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
-	appcnf := cluster.GetAppConfig(app.GetName())
+	appcnf := app.AppConfig
 
 	svcenv := make(map[string]string)
 	svcenv["nodes"] = app.GetAgent()
@@ -247,7 +247,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["port_http"] = "80"
 	svcenv["port_telnet"] = app.GetPort()
 	svcenv["port_admin"] = app.GetPort()
-	svcenv["user_admin"] = app.GetUser()
+	svcenv["user_admin"] = app.User
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
@@ -282,16 +282,10 @@ size = ` + collector.ProvAppDisk + `
 ` + ipPods + `
 ` + portPods + `
 app_img = ` + collector.ProvAppDockerImg + `
-port_rw = ` + strconv.Itoa(app.GetWritePort()) + `
-port_rw_split =  ` + strconv.Itoa(app.GetReadWritePort()) + `
-port_r_lb =  ` + strconv.Itoa(app.GetReadPort()) + `
-port_http = 80
+port_http = ` + app.Port + `
 base_dir = /srv/{namespace}-{svcname}
-port_binlog = ` + strconv.Itoa(cluster.Conf.MxsBinlogPort) + `
-port_telnet = ` + app.GetPort() + `
-port_admin = ` + app.GetPort() + `
-user_admin = ` + app.GetUser() + `
-password_admin = ` + app.GetPass() + `
+port_telnet = ` + app.Port + `
+port_admin = ` + app.Port + `
 mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
 mrm_cluster_name = ` + cluster.GetClusterName() + `
 `
@@ -301,9 +295,20 @@ mrm_cluster_name = ` + cluster.GetClusterName() + `
 
 func (app *App) OpenSVCGetAppDefaultSection() map[string]string {
 	cluster := app.ClusterGroup
-	appcnf := cluster.GetAppConfig(app.GetName())
+	appcnf := app.AppConfig
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = app.Agent
+
+	/* Get these:
+		orchestrate = ha
+	flex_primary = s18-fr-4
+	topology = flex
+	flex_target = 2
+	rollback = false
+	id = 9054ca64-2807-4152-818f-550d3e6c9517
+	nodes = s18-fr-4 s18-fr-5
+	*/
+
 	if appcnf.ProvAppDiskPool == "zpool" && appcnf.ProvAppAgentsFailover != "" {
 		svcdefault["nodes"] = app.Agent + "," + appcnf.ProvAppAgentsFailover
 		svcdefault["cluster_type"] = "failover"
@@ -339,13 +344,13 @@ func (app *App) OpenSVCGetAppDefaultSection() map[string]string {
 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]string {
 	svccontainer := make(map[string]string)
-	if cluster.GetAppConfig(app.GetName()).ProvAppType == "docker" || cluster.GetAppConfig(app.GetName()).ProvAppType == "podman" || cluster.GetAppConfig(app.GetName()).ProvAppType == "oci" {
+	if app.AppConfig.ProvAppType == "docker" || app.AppConfig.ProvAppType == "podman" || app.AppConfig.ProvAppType == "oci" {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
 		svccontainer["image"] = "{env.app_img}"
 		svccontainer["rm"] = "true"
 		svccontainer["type"] = cluster.Conf.ProvType
-		if cluster.GetAppConfig(app.GetName()).ProvAppDiskType != "volume" {
+		if app.AppConfig.ProvAppDiskType != "volume" {
 			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/app:/usr/local/etc/app:rw `
 		} else {
 			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"

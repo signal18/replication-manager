@@ -393,15 +393,14 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			appcnf := node.GetAppConfig()
-			dep, err := json.MarshalIndent(appcnf.Deployment, "", "\t")
+			dep, err := json.MarshalIndent(node.AppConfig.Deployment, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
 				http.Error(w, "Encoding error", 500)
 				return
 			}
 
-			for gidx, v := range appcnf.Deployment.Variables {
+			for gidx, v := range node.AppConfig.Deployment.Variables {
 				if v.Type == "secret" {
 					dep, err = jsonparser.Set(dep, []byte(`"*****"`), "variables", fmt.Sprintf("[%d]", gidx), "value")
 					if err != nil {
@@ -412,7 +411,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for gidx := range appcnf.Deployment.GitClones {
+			for gidx := range node.AppConfig.Deployment.GitClones {
 				dep, err = jsonparser.Set(dep, []byte(`"*****"`), "gitClones", fmt.Sprintf("[%d]", gidx), "pass")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
@@ -461,8 +460,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			appcnf := node.GetAppConfig()
-
 			type FieldValue struct {
 				Value string `json:"value"`
 			}
@@ -500,7 +497,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			switch vars["field"] {
 			// fields which are arrays of objects
 			case "routes":
-				if index >= int64(len(appcnf.Deployment.Routes)) {
+				if index >= int64(len(node.AppConfig.Deployment.Routes)) {
 					http.Error(w, "Index out of range for routes", 500)
 					return
 				}
@@ -508,15 +505,15 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "cname":
-					appcnf.Deployment.Routes[index].CName = newValue
+					node.AppConfig.Deployment.Routes[index].CName = newValue
 				case "port":
-					appcnf.Deployment.Routes[index].Port = newValue
+					node.AppConfig.Deployment.Routes[index].Port = newValue
 				default:
 					http.Error(w, "Invalid key for routes", 500)
 					return
 				}
 			case "gitClones":
-				if index >= int64(len(appcnf.Deployment.GitClones)) {
+				if index >= int64(len(node.AppConfig.Deployment.GitClones)) {
 					http.Error(w, "Index out of range for gitClones", 500)
 					return
 				}
@@ -524,21 +521,21 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "repo":
-					appcnf.Deployment.GitClones[index].GitRepo = newValue
+					node.AppConfig.Deployment.GitClones[index].GitRepo = newValue
 				case "branch":
-					appcnf.Deployment.GitClones[index].GitBranch = newValue
+					node.AppConfig.Deployment.GitClones[index].GitBranch = newValue
 				case "dest":
-					appcnf.Deployment.GitClones[index].Dest = newValue
+					node.AppConfig.Deployment.GitClones[index].Dest = newValue
 				case "pass":
-					appcnf.Deployment.GitClones[index].GitPass = newValue
+					node.AppConfig.Deployment.GitClones[index].GitPass = newValue
 				case "user":
-					appcnf.Deployment.GitClones[index].GitUser = newValue
+					node.AppConfig.Deployment.GitClones[index].GitUser = newValue
 				default:
 					http.Error(w, "Invalid key for gitClones", 500)
 					return
 				}
 			case "variables":
-				if index >= int64(len(appcnf.Deployment.Variables)) {
+				if index >= int64(len(node.AppConfig.Deployment.Variables)) {
 					http.Error(w, "Index out of range for variables", 500)
 					return
 				}
@@ -546,17 +543,17 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					appcnf.Deployment.Variables[index].Name = newValue
+					node.AppConfig.Deployment.Variables[index].Name = newValue
 				case "value":
-					appcnf.Deployment.Variables[index].Value = newValue
+					node.AppConfig.Deployment.Variables[index].Value = newValue
 				case "type":
-					appcnf.Deployment.Variables[index].Type = newValue
+					node.AppConfig.Deployment.Variables[index].Type = newValue
 				default:
 					http.Error(w, "Invalid key for variables", 500)
 					return
 				}
 			case "path":
-				if index >= int64(len(appcnf.Deployment.Paths)) {
+				if index >= int64(len(node.AppConfig.Deployment.Paths)) {
 					http.Error(w, "Index out of range for path", 500)
 					return
 				}
@@ -564,13 +561,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "volumedir":
-					appcnf.Deployment.Paths[index].VolumeDir = newValue
+					node.AppConfig.Deployment.Paths[index].VolumeDir = newValue
 				case "from":
-					appcnf.Deployment.Paths[index].From = newValue
+					node.AppConfig.Deployment.Paths[index].From = newValue
 				case "to":
-					appcnf.Deployment.Paths[index].To = newValue
+					node.AppConfig.Deployment.Paths[index].To = newValue
 				case "type":
-					appcnf.Deployment.Paths[index].Type = newValue
+					node.AppConfig.Deployment.Paths[index].Type = newValue
 
 				default:
 					http.Error(w, "Invalid key for path", 500)
@@ -628,7 +625,6 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		return
 	}
 
-	appcnf := node.GetAppConfig()
 	field := vars["field"]
 	var affected bool
 
@@ -645,7 +641,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				http.Error(w, "Invalid port format. Expected hostPort[:containerPort] with valid port numbers", http.StatusInternalServerError)
 				return
 			}
-			appcnf.Deployment.Routes = append(appcnf.Deployment.Routes, row)
+			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
 			affected = true
 		}
 
@@ -654,7 +650,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "git clone", w); err != nil {
 			return
 		}
-		appcnf.Deployment.GitClones = append(appcnf.Deployment.GitClones, body...)
+		node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones, body...)
 		affected = true
 
 	case "variables":
@@ -662,7 +658,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "variable", w); err != nil {
 			return
 		}
-		appcnf.Deployment.Variables = append(appcnf.Deployment.Variables, body...)
+		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, body...)
 		affected = true
 
 	case "path":
@@ -670,7 +666,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "path", w); err != nil {
 			return
 		}
-		appcnf.Deployment.Paths = append(appcnf.Deployment.Paths, body...)
+		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths, body...)
 		affected = true
 
 	default:
@@ -748,8 +744,6 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		return
 	}
 
-	appcnf := node.GetAppConfig()
-
 	field := vars["field"]
 	indexStr := vars["index"]
 	if indexStr == "" || indexStr == "undefined" {
@@ -765,29 +759,29 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 
 	switch field {
 	case "routes":
-		if index >= len(appcnf.Deployment.Routes) {
+		if index >= len(node.AppConfig.Deployment.Routes) {
 			http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 			return
 		}
-		appcnf.Deployment.Routes = append(appcnf.Deployment.Routes[:index], appcnf.Deployment.Routes[index+1:]...)
+		node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes[:index], node.AppConfig.Deployment.Routes[index+1:]...)
 	case "gitClones":
-		if index >= len(appcnf.Deployment.GitClones) {
+		if index >= len(node.AppConfig.Deployment.GitClones) {
 			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 			return
 		}
-		appcnf.Deployment.GitClones = append(appcnf.Deployment.GitClones[:index], appcnf.Deployment.GitClones[index+1:]...)
+		node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones[:index], node.AppConfig.Deployment.GitClones[index+1:]...)
 	case "variables":
-		if index >= len(appcnf.Deployment.Variables) {
+		if index >= len(node.AppConfig.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
 			return
 		}
-		appcnf.Deployment.Variables = append(appcnf.Deployment.Variables[:index], appcnf.Deployment.Variables[index+1:]...)
+		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
 	case "path":
-		if index >= len(appcnf.Deployment.Paths) {
+		if index >= len(node.AppConfig.Deployment.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return
 		}
-		appcnf.Deployment.Paths = append(appcnf.Deployment.Paths[:index], appcnf.Deployment.Paths[index+1:]...)
+		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths[:index], node.AppConfig.Deployment.Paths[index+1:]...)
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return

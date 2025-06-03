@@ -806,7 +806,7 @@ type Config struct {
 	Cloud18HealthRefreshInterval              int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
-	Apps                                      map[string]*AppConfig  `mapstructure:"apps" toml:"apps" json:"apps"`
+	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `toml:"-" json:"-"`
@@ -828,7 +828,6 @@ type Config struct {
 }
 
 type AppConfig struct {
-	ProvAppAgentIndex     int        `mapstructure:"prov-app-agent-index" toml:"prov-app-agent-index" json:"provAppAgentIndex"`
 	ProvAppType           string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
 	ProvAppMem            string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
 	ProvAppCores          string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
@@ -840,21 +839,10 @@ type AppConfig struct {
 	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
 	ProvAppDiskPool       string     `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
+	ProvAppAgents         string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	AppAPIPort            int        `mapstructure:"app-api-port" toml:"app-api-port" json:"appApiPort"`
-	AppReadPort           int        `mapstructure:"app-read-port" toml:"app-read-port" json:"appReadPort"`
-	AppWritePort          int        `mapstructure:"app-write-port" toml:"app-write-port" json:"appWritePort"`
-	AppStatPort           int        `mapstructure:"app-stat-port" toml:"app-stat-port" json:"appStatPort"`
-	AppStatHttp           string     `mapstructure:"app-stat-http" toml:"app-stat-http" json:"appStatHttp"`
-	AppUser               string     `mapstructure:"app-user" toml:"app-user" json:"appUser"`
-	AppPassword           string     `mapstructure:"app-password" toml:"app-password" json:"appPassword"`
-	AppMode               string     `mapstructure:"app-mode" toml:"app-mode" json:"appMode"`
-	AppDebug              bool       `mapstructure:"app-debug" toml:"app-debug" json:"appDebug"`
-	AppBinaryPath         string     `mapstructure:"app-binary-path" toml:"app-binary-path" json:"appBinaryPath"`
-	AppReadBindIp         string     `mapstructure:"app-read-bind-ip" toml:"app-read-bind-ip" json:"appReadBindIp"`
-	AppWriteBindIp        string     `mapstructure:"app-write-bind-ip" toml:"app-write-bind-ip" json:"appWriteBindIp"`
-	AppAPIReadBackend     string     `mapstructure:"app-api-read-backend" toml:"app-api-read-backend" json:"appApiReadBackend"`
-	AppAPIWriteBackend    string     `mapstructure:"app-api-write-backend" toml:"app-api-write-backend" json:"appApiWriteBackend"`
+	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
+	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
 	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment"`
 }
 

@@ -11,14 +11,10 @@
 package cluster
 
 import (
-	"errors"
-	"fmt"
 	"strconv"
 
-	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
-	"github.com/signal18/replication-manager/utils/misc"
 )
 
 func (cluster *Cluster) GetAppFromName(name string) *App {
@@ -31,49 +27,7 @@ func (cluster *Cluster) GetAppFromName(name string) *App {
 }
 
 func (app *App) GetAppConfig() *config.AppConfig {
-	return app.ClusterGroup.GetAppConfig(app.GetName())
-}
-
-func (cluster *Cluster) GetClusterAppConn() (*sqlx.DB, error) {
-	if len(cluster.Apps) == 0 {
-		return nil, errors.New("No apps defined")
-	}
-	app := cluster.Apps[0]
-
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-
-	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
-	if app.GetHost() != "" {
-		dsn += "tcp(" + app.GetHost() + ":" + strconv.Itoa(app.GetWritePort()) + ")/" + params
-	} else {
-
-		return nil, errors.New("No apps definition")
-	}
-	conn, err := sqlx.Open("mysql", dsn)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Can't get a app %s connection: %s", dsn, err)
-	}
-	return conn, err
-
-}
-
-func (app *App) GetClusterConnection() (*sqlx.DB, error) {
-	cluster := app.ClusterGroup
-	params := fmt.Sprintf("?timeout=%ds", cluster.Conf.Timeout)
-	dsn := cluster.GetDbUser() + ":" + cluster.GetDbPass() + "@"
-	if cluster.Conf.MonitorWriteHeartbeatCredential != "" {
-		dsn = cluster.Conf.GetDecryptedValue("monitoring-write-heartbeat-credential") + "@"
-	}
-
-	if app.Host != "" {
-		if app.Tunnel {
-			dsn += "tcp(localhost:" + strconv.Itoa(app.TunnelWritePort) + ")/" + params
-		} else {
-			dsn += "tcp(" + app.Host + ":" + strconv.Itoa(app.WritePort) + ")/" + params
-		}
-	}
-	return sqlx.Open("mysql", dsn)
-
+	return app.AppConfig
 }
 
 func (app *App) GetJanitorWeight() string {
@@ -108,7 +62,7 @@ func (app *App) GetBindAddress() string {
 }
 func (app *App) GetBindAddressExtraIPV6() string {
 	if app.HostIPV6 != "" {
-		return app.HostIPV6 + ":" + strconv.Itoa(app.WritePort) + ";"
+		return app.HostIPV6 + ";"
 	}
 	return ""
 }
@@ -144,59 +98,36 @@ func (app *App) GetEnv() map[string]string {
 }
 
 func (app *App) GetBaseEnv() map[string]string {
-	appcnf := app.ClusterGroup.GetAppConfig(app.GetName())
 	return map[string]string{
-		"%%ENV:NODES_CPU_CORES%%":                      app.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":               app.ClusterGroup.Conf.ProvCores,
-		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":                string(app.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":               string(app.Id[2:10]),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":     app.ClusterGroup.GetDbPass(),
-		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":         app.ClusterGroup.GetDbUser(),
-		"%%ENV:SERVER_IP%%":                            app.GetBindAddress(),
-		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":               app.GetBindAddressExtraIPV6(),
-		"%%ENV:SVC_CONF_ENV_APP_USE_SSL%%":             app.GetUseSSL(),
-		"%%ENV:SVC_CONF_ENV_APP_USE_COMPRESS%%":        app.GetUseCompression(),
-		"%%ENV:SERVER_PORT%%":                          app.Port,
-		"%%ENV:SVC_NAMESPACE%%":                        app.ClusterGroup.Name,
-		"%%ENV:SVC_NAME%%":                             app.Name,
-		"%%ENV:SERVERS_APP_WRITE%%":                    app.GetConfigAppModule("%%ENV:SERVERS_APP_WRITE%%"),
-		"%%ENV:SERVERS_APP_READ%%":                     app.GetConfigAppModule("%%ENV:SERVERS_APP_READ%%"),
-		"%%ENV:SVC_CONF_APP_DNS%%":                     app.GetConfigAppDNS(),
-		"%%ENV:SERVERS_APPSQL%%":                       app.GetConfigAppModule("%%ENV:SERVERS_APPSQL%%"),
-		"%%ENV:SERVERS%%":                              app.GetConfigAppModule("%%ENV:SERVERS%%"),
-		"%%ENV:SERVERS_LIST%%":                         app.GetConfigAppModule("%%ENV:SERVERS_LIST%%"),
-		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":               "80",
-		"%%ENV:SVC_CONF_ENV_PORT_R_LB%%":               strconv.Itoa(app.ReadPort),
-		"%%ENV:SVC_CONF_ENV_BIND_R_LB%%":               appcnf.AppReadBindIp,
-		"%%ENV:SVC_CONF_ENV_PORT_RW%%":                 strconv.Itoa(app.WritePort),
-		"%%ENV:SVC_CONF_ENV_BIND_RW%%":                 appcnf.AppWriteBindIp,
-		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%":   strconv.Itoa(app.ClusterGroup.Conf.MxsMaxinfoPort),
-		"%%ENV:SVC_CONF_ENV_PORT_RW_SPLIT%%":           strconv.Itoa(app.ReadWritePort),
-		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":             strconv.Itoa(app.ClusterGroup.Conf.MxsBinlogPort),
-		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":             app.Port,
-		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":              app.Port,
-		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":              app.User,
-		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":          app.Pass,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":              app.ClusterGroup.Conf.ProvSphinxMem,
-		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":     app.ClusterGroup.Conf.ProvSphinxMaxChildren,
-		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":                app.ClusterGroup.Conf.ProvProxRouteAddr,
-		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":             app.ClusterGroup.Conf.ProvProxRouteMask,
-		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":                app.ClusterGroup.Conf.ProvProxRoutePort,
-		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":            app.ClusterGroup.Conf.MonitorAddress + ":" + app.ClusterGroup.Conf.HttpPort,
-		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":        app.ClusterGroup.GetClusterName(),
-		"%%ENV:SVC_CONF_ENV_DATADIR%%":                 app.GetConfigDatadir(),
-		"%%ENV:SVC_CONF_ENV_CONFDIR%%":                 app.GetConfigConfigdir(),
-		"%%ENV:SVC_CONF_ENV_APPSQL_READER_HOSTGROUP%%": app.GetConfigAppSQLReaderHostgroup(),
-		"%%ENV:SVC_CONF_ENV_APPSQL_WRITER_HOSTGROUP%%": app.GetConfigAppSQLWriterHostgroup(),
+		"%%ENV:NODES_CPU_CORES%%":                    app.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_MAX_CORES%%":             app.ClusterGroup.Conf.ProvCores,
+		"%%ENV:SVC_CONF_ENV_CRC32_ID%%":              string(app.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_SERVER_ID%%":             string(app.Id[2:10]),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%":   app.ClusterGroup.GetDbPass(),
+		"%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%":       app.ClusterGroup.GetDbUser(),
+		"%%ENV:SERVER_IP%%":                          app.GetBindAddress(),
+		"%%ENV:EXTRA_BIND_SERVER_IPV6%%":             app.GetBindAddressExtraIPV6(),
+		"%%ENV:SERVER_PORT%%":                        app.Port,
+		"%%ENV:SVC_NAMESPACE%%":                      app.ClusterGroup.Name,
+		"%%ENV:SVC_NAME%%":                           app.Name,
+		"%%ENV:SVC_CONF_APP_DNS%%":                   app.GetConfigAppDNS(),
+		"%%ENV:SVC_CONF_ENV_PORT_HTTP%%":             "80",
+		"%%ENV:SVC_CONF_ENV_MAXSCALE_MAXINFO_PORT%%": strconv.Itoa(app.ClusterGroup.Conf.MxsMaxinfoPort),
+		"%%ENV:SVC_CONF_ENV_PORT_BINLOG%%":           strconv.Itoa(app.ClusterGroup.Conf.MxsBinlogPort),
+		"%%ENV:SVC_CONF_ENV_PORT_TELNET%%":           app.Port,
+		"%%ENV:SVC_CONF_ENV_PORT_ADMIN%%":            app.Port,
+		"%%ENV:SVC_CONF_ENV_USER_ADMIN%%":            app.User,
+		"%%ENV:SVC_CONF_ENV_PASSWORD_ADMIN%%":        app.Pass,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MEM%%":            app.ClusterGroup.Conf.ProvSphinxMem,
+		"%%ENV:SVC_CONF_ENV_SPHINX_MAX_CHILDREN%%":   app.ClusterGroup.Conf.ProvSphinxMaxChildren,
+		"%%ENV:SVC_CONF_ENV_VIP_ADDR%%":              app.ClusterGroup.Conf.ProvProxRouteAddr,
+		"%%ENV:SVC_CONF_ENV_VIP_NETMASK%%":           app.ClusterGroup.Conf.ProvProxRouteMask,
+		"%%ENV:SVC_CONF_ENV_VIP_PORT%%":              app.ClusterGroup.Conf.ProvProxRoutePort,
+		"%%ENV:SVC_CONF_ENV_MRM_API_ADDR%%":          app.ClusterGroup.Conf.MonitorAddress + ":" + app.ClusterGroup.Conf.HttpPort,
+		"%%ENV:SVC_CONF_ENV_MRM_CLUSTER_NAME%%":      app.ClusterGroup.GetClusterName(),
+		"%%ENV:SVC_CONF_ENV_DATADIR%%":               app.GetConfigDatadir(),
+		"%%ENV:SVC_CONF_ENV_CONFDIR%%":               app.GetConfigConfigdir(),
 	}
-}
-
-func (app *App) GetConfigAppSQLReaderHostgroup() string {
-	return strconv.Itoa(app.ReaderHostgroup)
-}
-
-func (app *App) GetConfigAppSQLWriterHostgroup() string {
-	return strconv.Itoa(app.WriterHostgroup)
 }
 
 func (app *App) GetConfigAppDNS() string {
@@ -219,79 +150,6 @@ resolvers dns
 	return ""
 }
 
-func (app *App) GetConfigAppModule(variable string) string {
-	appcnf := app.ClusterGroup.GetAppConfig(app.GetName())
-	confmaxscale := ""
-	confmaxscaleserverlist := ""
-	confappread := ""
-	confappwrite := ""
-	confappsql := ""
-	i := 0
-	DNS := ""
-	for _, db := range app.ClusterGroup.Servers {
-
-		i++
-		if i > 1 {
-			confmaxscaleserverlist += ","
-			confappsql += ","
-		}
-		confmaxscale += `
-[server` + strconv.Itoa(i) + `]
-type=server
-address=` + misc.Unbracket(db.Host) + `
-port=` + db.Port + `
-protocol=MariaDBBackend
-# protocol=MySQLBackend
-`
-
-		if app.HasDNS() {
-			DNS = " init-addr last,libc,none resolvers dns"
-		}
-		if appcnf.AppMode == "runtimeapi" {
-			confappread += `
-    server ` + db.Id + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + ` weight 100 maxconn 2000 check inter 1000`
-			if db.IsMaster() {
-				confappwrite += `
-    server leader ` + misc.Unbracket(db.Host) + `:` + db.Port + DNS + `  weight 100 maxconn 2000 check inter 1000`
-			}
-		} else {
-
-			confappread += `
-    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
-			confappwrite += `
-    server server` + strconv.Itoa(i) + ` ` + misc.Unbracket(db.Host) + `:` + db.Port + `  weight 100 maxconn 2000 check inter 1000`
-		}
-		UseSSL := "0"
-		if app.ClusterGroup.Configurator.HaveDBTag("ssl") {
-			UseSSL = "1"
-		}
-		confappsql += `
-    { address="` + misc.Unbracket(db.Host) + `" , port=` + db.Port + ` , hostgroup=` + strconv.Itoa(app.ReaderHostgroup) + `, max_connections=1024, use_ssl=` + UseSSL + `}`
-
-		confmaxscaleserverlist += "server" + strconv.Itoa(i)
-
-	}
-	if confappwrite == "" && appcnf.AppMode == "runtimeapi" {
-		confappwrite += `
-server leader none:3306 ` + DNS + ` weight 100 maxconn 2000 check inter 1000`
-	}
-	switch variable {
-	case "%%ENV:SERVERS_APP_WRITE%%":
-		return confappwrite
-	case "%%ENV:SERVERS_APP_READ%%":
-		return confappread
-	case "%%ENV:SERVERS_APPSQL%%":
-		return confappsql
-	case "%%ENV:SERVERS%%":
-		return confmaxscale
-	case "%%ENV:SERVERS_LIST%%":
-		return confmaxscaleserverlist
-	default:
-		return ""
-	}
-	return ""
-}
-
 func (p *App) GetAgent() string {
 	return p.Agent
 }
@@ -306,18 +164,6 @@ func (p *App) GetHost() string {
 
 func (p *App) GetPort() string {
 	return p.Port
-}
-
-func (p *App) GetWritePort() int {
-	return p.WritePort
-}
-
-func (p *App) GetReadWritePort() int {
-	return p.ReadWritePort
-}
-
-func (p *App) GetReadPort() int {
-	return p.ReadPort
 }
 
 func (p *App) GetId() string {

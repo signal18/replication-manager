@@ -14,6 +14,17 @@ import (
 	"github.com/spf13/viper"
 )
 
+func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
+	return &config.AppConfig{
+		AppHost:         apphost,
+		AppPort:         port,
+		ProvAppMem:      cluster.Conf.ProvAppMem,
+		ProvAppCores:    cluster.Conf.ProvAppCores,
+		ProvAppDiskType: "volume",
+		ProvAppDisk:     cluster.Conf.ProvAppDisk,
+	}
+}
+
 func (cluster *Cluster) LoadAppConfigs() error {
 	dirname := filepath.Join(cluster.WorkingDir, "apps")
 
@@ -29,7 +40,7 @@ func (cluster *Cluster) LoadAppConfigs() error {
 
 	// Set the new configuration
 	if cluster.Conf.Apps == nil {
-		cluster.Conf.Apps = make(map[string]*config.AppConfig)
+		cluster.Conf.Apps = make([]*config.AppConfig, 0)
 	}
 
 	// Walk through the directory and load all the configuration files
@@ -82,7 +93,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 
 	// cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
 
-	cluster.Conf.Apps[appname] = &appcnf
+	cluster.Conf.Apps = append(cluster.Conf.Apps, &appcnf)
 	// Add the app to the cluster if it does not exist
 	applist := strings.Split(cluster.Conf.AppHosts, ",")
 	if !strings.Contains(cluster.Conf.AppHosts, appname) {
@@ -201,10 +212,8 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 	filePath := cluster.WorkingDir + "/apps/" + app.Host + ".toml"
 
-	appcnf := app.GetAppConfig()
-
 	// Marshal and write TOML configuration
-	readconf, err := toml.Marshal(appcnf)
+	readconf, err := toml.Marshal(app.AppConfig)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error marshalling toml: %s", err)
 		return false, err
@@ -291,7 +300,7 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	hosts = append(hosts, srv)
 
 	cluster.Conf.AppHosts = strings.Join(hosts, ",")
-	appcnf := cluster.GetAppConfig(srv) // Get or initiate app config
+	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg
 
 	cluster.Lock()

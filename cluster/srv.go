@@ -255,6 +255,8 @@ const (
 	stateWsrepLate    string = "WsrepUnsync"
 	stateProxyRunning string = "ProxyRunning"
 	stateProxyDesync  string = "ProxyDesync"
+	stateAppRunning   string = "AppRunning"
+	stateAppDesync    string = "AppDesync"
 )
 
 const (

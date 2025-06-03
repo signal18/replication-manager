@@ -15914,15 +15914,6 @@ const docTemplate = `{
                 "process": {
                     "$ref": "#/definitions/os.Process"
                 },
-                "readPort": {
-                    "type": "integer"
-                },
-                "readWritePort": {
-                    "type": "integer"
-                },
-                "readerHostGroup": {
-                    "type": "integer"
-                },
                 "serviceName": {
                     "type": "string"
                 },
@@ -15952,12 +15943,6 @@ const docTemplate = `{
                 },
                 "weight": {
                     "type": "string"
-                },
-                "writePort": {
-                    "type": "integer"
-                },
-                "writerHostGroup": {
-                    "type": "integer"
                 }
             }
         },
@@ -17156,55 +17141,22 @@ const docTemplate = `{
         "config.AppConfig": {
             "type": "object",
             "properties": {
-                "appApiPort": {
-                    "type": "integer"
-                },
-                "appApiReadBackend": {
+                "appHost": {
                     "type": "string"
                 },
-                "appApiWriteBackend": {
+                "appPort": {
                     "type": "string"
-                },
-                "appBinaryPath": {
-                    "type": "string"
-                },
-                "appDebug": {
-                    "type": "boolean"
-                },
-                "appMode": {
-                    "type": "string"
-                },
-                "appPassword": {
-                    "type": "string"
-                },
-                "appReadBindIp": {
-                    "type": "string"
-                },
-                "appReadPort": {
-                    "type": "integer"
-                },
-                "appStatHttp": {
-                    "type": "string"
-                },
-                "appStatPort": {
-                    "type": "integer"
-                },
-                "appUser": {
-                    "type": "string"
-                },
-                "appWriteBindIp": {
-                    "type": "string"
-                },
-                "appWritePort": {
-                    "type": "integer"
                 },
                 "deployment": {
                     "$ref": "#/definitions/config.Deployment"
                 },
-                "provAppAgentIndex": {
-                    "type": "integer"
+                "provAppAgents": {
+                    "type": "string"
                 },
                 "provAppAgentsFailover": {
+                    "type": "string"
+                },
+                "provAppCores": {
                     "type": "string"
                 },
                 "provAppDiskPool": {
@@ -17217,6 +17169,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppDockerImg": {
+                    "type": "string"
+                },
+                "provAppMemory": {
                     "type": "string"
                 },
                 "provAppRouteAddr": {
@@ -18041,8 +17996,8 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "apps": {
-                    "type": "object",
-                    "additionalProperties": {
+                    "type": "array",
+                    "items": {
                         "$ref": "#/definitions/config.AppConfig"
                     }
                 },
@@ -19344,6 +19299,24 @@ const docTemplate = `{
                 },
                 "printDelayStatInterval": {
                     "type": "integer"
+                },
+                "provAppCores": {
+                    "type": "string"
+                },
+                "provAppCoresTotal": {
+                    "type": "string"
+                },
+                "provAppDiskSize": {
+                    "type": "string"
+                },
+                "provAppDiskSizeTotal": {
+                    "type": "string"
+                },
+                "provAppMemory": {
+                    "type": "string"
+                },
+                "provAppMemoryTotal": {
+                    "type": "string"
                 },
                 "provDBApplyDynamicConfig": {
                     "type": "boolean"

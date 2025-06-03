@@ -11,7 +11,10 @@
 package cluster
 
 import (
+	"net"
 	"os"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 func (app *App) hasCookie(key string) bool {
@@ -68,6 +71,13 @@ func (app *App) IsIgnored() bool {
 
 func (app *App) IsDown() bool {
 	if app.State == stateFailed || app.State == stateSuspect || app.State == stateErrorAuth {
+		return true
+	}
+	return false
+}
+
+func (app *App) HasDNS() bool {
+	if net.ParseIP(app.Host) == nil || app.ClusterGroup.Configurator.HaveProxyTag("dns") || app.GetOrchestrator() == config.ConstOrchestratorOpenSVC || app.GetOrchestrator() == config.ConstOrchestratorKubernetes {
 		return true
 	}
 	return false

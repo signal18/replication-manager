@@ -24,7 +24,7 @@ import (
 func (p *App) SetID() {
 	cluster := p.ClusterGroup
 	p.Id = "ap" + strconv.FormatUint(
-		crc64.Checksum([]byte(cluster.Name+p.Name+":"+strconv.Itoa(p.WritePort)), cluster.crcTable),
+		crc64.Checksum([]byte(cluster.Name+p.Name), cluster.crcTable),
 		10)
 }
 
@@ -157,4 +157,12 @@ func (p *App) SwitchSetting(key string) error {
 	}
 
 	return nil
+}
+
+func (p *App) SetMaintenance(maintenance bool) {
+	if maintenance {
+		p.State = stateMaintenance
+	} else {
+		p.State = stateAppRunning
+	}
 }
