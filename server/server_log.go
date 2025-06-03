@@ -131,6 +131,32 @@ func (repman *ReplicationManager) LogPanicToFile() {
 func (repman *ReplicationManager) UpdateFileHookLogLevel(hook *s18log.RotateFileHook, newLogLevel int) error {
 	// Update the log level in the hook's configuration
 	hook.Config.Level = config.ToLogrusLevel(newLogLevel)
+
+	// Remove the existing hook from the logger
+	allhooks := repman.Logrus.Hooks
+	for level, hooks := range allhooks {
+		for i, h := range hooks {
+			if h == hook {
+				if len(hooks) == 1 {
+					// If this is the only hook for this level, remove the level from allhooks
+					delete(allhooks, level)
+				} else {
+					allhooks[level] = append(hooks[:i], hooks[i+1:]...)
+				}
+				break
+			}
+		}
+	}
+
+	// Add the updated hook back to the logger
+	for _, level := range hook.Levels() {
+		allhooks[level] = append(allhooks[level], hook)
+	}
+
+	// Replace the hooks in the logger with the updated ones
+	// This is necessary to ensure the logger uses the updated hook configuration
+	repman.Logrus.ReplaceHooks(allhooks)
+
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	text := fmt.Sprintf("File log level changed successfully to %s", hook.Config.Level.String())
 
