@@ -214,7 +214,7 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 
 	timeout := time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second
 	// Total context timeout to cover all goroutines duration
-	ctx, cancel := context.WithTimeout(context.Background(), timeout*2)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout*3)
 	defer cancel()
 
 	var found int32
