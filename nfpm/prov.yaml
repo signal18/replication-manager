@@ -21,7 +21,7 @@ contents:
   - src: share/
     dst: /usr/share/replication-manager
     type: tree
-dependencies:
+depends:
   - replication-manager-client    
 
 scripts:
