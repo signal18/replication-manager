@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/signal18/replication-manager/config"
@@ -205,39 +208,84 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 }
 
 func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
-	if cluster.Conf.CheckFalsePositiveHeartbeat == false {
-		return false
-	}
-	if !cluster.isMasterFailed() {
+	if !cluster.Conf.CheckFalsePositiveHeartbeat || !cluster.isMasterFailed() {
 		return false
 	}
 
-	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Slaves heartbeats")
+	timeout := time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second
+	// Total context timeout to cover all goroutines duration
+	ctx, cancel := context.WithTimeout(context.Background(), timeout*2)
+	defer cancel()
 
-	for _, s := range cluster.slaves {
-		relaycheck, _ := cluster.GetMasterFromReplication(s)
-		if relaycheck != nil {
-			if relaycheck.IsRelay == false {
-				status, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
-				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
-				saveheartbeats := status["SLAVE_RECEIVED_HEARTBEATS"]
-				// if cluster.Conf.LogLevel > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", saveheartbeats)
-				// }
-				time.Sleep(time.Duration(cluster.Conf.CheckFalsePositiveHeartbeatTimeout) * time.Second)
-				status2, logs, err := dbhelper.GetStatusAsInt(s.Conn, s.DBVersion)
-				cluster.LogSQL(logs, err, s.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
-				// if cluster.Conf.LogLevel > 1 {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "SLAVE_RECEIVED_HEARTBEATS %d", status2["SLAVE_RECEIVED_HEARTBEATS"])
-				// }
-				if status2["SLAVE_RECEIVED_HEARTBEATS"] > saveheartbeats {
-					cluster.SetState("ERR00028", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00028"], s.URL), ErrFrom: "CHECK"})
-					return true
+	var found int32
+	var wg sync.WaitGroup
+
+	for _, slave := range cluster.slaves {
+		relaycheck, _ := cluster.GetMasterFromReplication(slave)
+		// Skip if relaycheck is nil or it's a relay slave
+		if relaycheck == nil || relaycheck.IsRelay {
+			continue
+		}
+
+		wg.Add(1)
+		go func(slave *ServerMonitor) {
+			defer wg.Done()
+
+			// Check if already found an increasing heartbeat
+			if atomic.LoadInt32(&found) == 1 {
+				return
+			}
+
+			// First heartbeat status fetch
+			status1, logs, err := dbhelper.GetStatusAsInt(slave.Conn, slave.DBVersion)
+			cluster.LogSQL(logs, err, slave.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
+			if err != nil || atomic.LoadInt32(&found) == 1 {
+				return
+			}
+
+			hb1 := status1["SLAVE_RECEIVED_HEARTBEATS"]
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"SLAVE_RECEIVED_HEARTBEATS %d (first check)", hb1)
+
+			// Wait for timeout or cancellation before second check
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(timeout):
+				// continue after timeout
+			}
+
+			if atomic.LoadInt32(&found) == 1 {
+				return
+			}
+
+			// Second heartbeat status fetch
+			status2, logs, err := dbhelper.GetStatusAsInt(slave.Conn, slave.DBVersion)
+			cluster.LogSQL(logs, err, slave.URL, "isOneSlaveHeartbeatIncreasing", config.LvlDbg, "Monitor")
+			if err != nil {
+				return
+			}
+
+			hb2 := status2["SLAVE_RECEIVED_HEARTBEATS"]
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"SLAVE_RECEIVED_HEARTBEATS %d (second check)", hb2)
+
+			// Check if heartbeat increased
+			if hb2 > hb1 {
+				cluster.SetState("ERR00028", state.State{
+					ErrType: config.LvlErr,
+					ErrDesc: fmt.Sprintf(clusterError["ERR00028"], slave.URL),
+					ErrFrom: "CHECK",
+				})
+				if atomic.CompareAndSwapInt32(&found, 0, 1) {
+					cancel() // cancel all other goroutines
 				}
 			}
-		}
+		}(slave)
 	}
-	return false
+
+	wg.Wait()
+	return atomic.LoadInt32(&found) == 1
 }
 
 func (cluster *Cluster) isMaxscaleSupectRunning() bool {
