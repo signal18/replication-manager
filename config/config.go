@@ -625,6 +625,12 @@ type Config struct {
 	AppOn                                     bool                   `mapstructure:"app-on" toml:"app-on" json:"appOn"`
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppMemTotal                           string                 `measurement:"M,bytes" mapstructure:"prov-app-memory-total" toml:"prov-app-memory-total" json:"provAppMemoryTotal"`
+	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskTotal                          string                 `measurement:"G,bytes" mapstructure:"prov-app-disk-size-total" toml:"prov-app-disk-size-total" json:"provAppDiskSizeTotal"`
+	ProvAppCores                              string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
+	ProvAppCoresTotal                         string                 `mapstructure:"prov-app-cpu-cores-total" toml:"prov-app-cpu-cores-total" json:"provAppCoresTotal"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -824,9 +830,11 @@ type Config struct {
 type AppConfig struct {
 	ProvAppAgentIndex     int        `mapstructure:"prov-app-agent-index" toml:"prov-app-agent-index" json:"provAppAgentIndex"`
 	ProvAppType           string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppMem            string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppCores          string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
+	ProvAppDisk           string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
 	ProvAppDiskType       string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
 	ProvAppVolumeData     string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDisk           string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
 	ProvAppDockerImg      string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
 	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
