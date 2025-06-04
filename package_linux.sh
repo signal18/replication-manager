@@ -31,7 +31,6 @@ if [ $nobuild -eq 0 ]; then
 fi
 
 export version
-export epoch
 
 echo "# Cleaning up previous builds"
 rm -rf "$builddir"/package/* "$builddir"/tar/* "$builddir"/release/*
