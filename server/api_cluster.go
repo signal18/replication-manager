@@ -15,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -367,9 +369,13 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
-	router.Handle("/api/clusters/{clusterName}/actions/docker-registry/connect", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/docker/actions/registry-connect", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
+	))
+	router.Handle("/api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDockerImageFilesystemDir)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
@@ -7041,7 +7047,7 @@ type DockerRegistryLoginForm struct {
 // @Failure 400 {string} string "Error decoding request body"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error creating request" or "Error making request to Docker registry" or "Docker registry login failed"
-// @Router /api/clusters/{clusterName}/actions/docker-registry/connect [post]
+// @Router /api/clusters/{clusterName}/docker/actions/registry-connect [post]
 func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -7139,5 +7145,58 @@ func RegistryImageTagExists(registry, image, tag, username, password string) (bo
 		return false, nil
 	default:
 		return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+}
+
+// handlerDockerImageFilesystemDir handles the HTTP request to list files in a directory of a Docker image.
+// @Summary List Files in Docker Image Directory
+// @Description Lists files in a specified directory of a Docker image.
+// @Tags DockerImage
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param imageRef path string true "Docker Image Reference"
+// @Param sourceDir path string true "Source Directory in Docker Image"
+// @Success 200 {array} string "List of files in the directory"
+// @Failure 400 {string} string "Image reference or source directory not provided"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error listing files in image directory" or "Error encoding JSON"
+// @Router /api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir} [get]
+func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		imageRef := vars["imageRef"]
+		sourceDir := vars["sourceDir"]
+		if imageRef == "" {
+			http.Error(w, "Image reference not provided", 400)
+			return
+		}
+
+		if sourceDir == "" {
+			http.Error(w, "Source directory not provided", 400)
+			return
+		}
+
+		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "docker", "images")
+		results, err := dockerhelper.GetDirectoryFromImageRef(cacheDir, imageRef, sourceDir)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: ", err)
+			http.Error(w, "Error listing files in image directory: "+err.Error(), 500)
+			return
+		}
+
+		// Write the JSON response
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(results)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
 	}
 }

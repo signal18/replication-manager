@@ -8,14 +8,14 @@ import styles from './styles.module.scss';
 import Dropdown from '../../../../../components/Dropdown';
 
 const volumeDirs = [
-  { value: 'config', name: 'config' },
-  { value: 'data', name: 'data' },
+  { value: 'etc', name: 'config' },
+  { value: 'var', name: 'data' },
 ]
 
 const defaultConfirmText = "Are you sure to change this field to: ";
 
 const initialRow = {
-  volumedir: "data",
+  volumedir: "var",
   dest: "",
   repo: "",
   branch: "",

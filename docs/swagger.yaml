@@ -4160,52 +4160,6 @@ paths:
       summary: Calculate checksum for all tables in a specific cluster
       tags:
       - ClusterSchema
-  /api/clusters/{clusterName}/actions/docker-registry/connect:
-    post:
-      consumes:
-      - application/json
-      description: Logs in to a Docker registry using the provided credentials.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Docker Registry Login Form
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.DockerRegistryLoginForm'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Docker registry login successful
-          schema:
-            type: string
-        "400":
-          description: Error decoding request body
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error creating request" or "Error making request to Docker
-            registry" or "Docker registry login failed
-          schema:
-            type: string
-      summary: Docker Registry Login
-      tags:
-      - DockerRegistry
   /api/clusters/{clusterName}/actions/failover:
     post:
       consumes:
@@ -6039,6 +5993,104 @@ paths:
       summary: Retrieve variable differences for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/docker/actions/registry-connect:
+    post:
+      consumes:
+      - application/json
+      description: Logs in to a Docker registry using the provided credentials.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Docker Registry Login Form
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.DockerRegistryLoginForm'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Docker registry login successful
+          schema:
+            type: string
+        "400":
+          description: Error decoding request body
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating request" or "Error making request to Docker
+            registry" or "Docker registry login failed
+          schema:
+            type: string
+      summary: Docker Registry Login
+      tags:
+      - DockerRegistry
+  /api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}:
+    get:
+      consumes:
+      - application/json
+      description: Lists files in a specified directory of a Docker image.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Docker Image Reference
+        in: path
+        name: imageRef
+        required: true
+        type: string
+      - description: Source Directory in Docker Image
+        in: path
+        name: sourceDir
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of files in the directory
+          schema:
+            items:
+              type: string
+            type: array
+        "400":
+          description: Image reference or source directory not provided
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error listing files in image directory" or "Error encoding
+            JSON
+          schema:
+            type: string
+      summary: List Files in Docker Image Directory
+      tags:
+      - DockerImage
   /api/clusters/{clusterName}/ext-role/accept:
     post:
       consumes:

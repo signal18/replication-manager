@@ -981,6 +981,21 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterDocker] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/actions/") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/images") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/containers") {
+			return true
+		}
+	}
+
 	// Print error with no valid ACL
 	if errorPrint {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)

@@ -1096,73 +1096,6 @@
                 }
             }
         },
-        "/api/clusters/{clusterName}/actions/docker-registry/connect": {
-            "post": {
-                "description": "Logs in to a Docker registry using the provided credentials.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "DockerRegistry"
-                ],
-                "summary": "Docker Registry Login",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Docker Registry Login Form",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/server.DockerRegistryLoginForm"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Docker registry login successful",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Error decoding request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error creating request\" or \"Error making request to Docker registry\" or \"Docker registry login failed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/actions/failover": {
             "post": {
                 "description": "This endpoint triggers a master failover for the specified cluster.",
@@ -3843,6 +3776,148 @@
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/docker/actions/registry-connect": {
+            "post": {
+                "description": "Logs in to a Docker registry using the provided credentials.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DockerRegistry"
+                ],
+                "summary": "Docker Registry Login",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Docker Registry Login Form",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.DockerRegistryLoginForm"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Docker registry login successful",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Error decoding request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating request\" or \"Error making request to Docker registry\" or \"Docker registry login failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}": {
+            "get": {
+                "description": "Lists files in a specified directory of a Docker image.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DockerImage"
+                ],
+                "summary": "List Files in Docker Image Directory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Docker Image Reference",
+                        "name": "imageRef",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Source Directory in Docker Image",
+                        "name": "sourceDir",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of files in the directory",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Image reference or source directory not provided",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error listing files in image directory\" or \"Error encoding JSON",
                         "schema": {
                             "type": "string"
                         }

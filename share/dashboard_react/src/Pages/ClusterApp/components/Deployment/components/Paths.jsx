@@ -1,5 +1,5 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex } from '@chakra-ui/react'
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { HiTrash } from 'react-icons/hi'
 import Dropdown from '../../../../../components/Dropdown';
 import TextForm from '../../../../../components/TextForm';
@@ -10,13 +10,15 @@ import styles from './styles.module.scss';
 const defaultConfirmText = "Are you sure to change this field to: ";
 
 const volumeDirs = [
-  { value: 'etc', name: 'etc' },
   { value: 'log', name: 'log' },
   { value: 'var', name: 'var' },
 ]
 
+const defaultValues = { id: Date.now(), volumedir: "var", from: "", to: "", type: "", agents: [] }
+
 export default React.memo(function Paths({
   rows = [],
+  gitCloneRows = [],
   fieldName = 'path',
   onRowArrayChange,
   onRowDropIndex,
@@ -25,12 +27,29 @@ export default React.memo(function Paths({
 
   const [formData, setFormData] = useState([]);
 
+  const gitPaths = useMemo(() => {
+    return gitCloneRows.map(gc => ({
+      value: gc.volumedir + "/" + gc.dest,
+      name: gc.dest
+    }));
+  }, [gitCloneRows]);
+
+  // Merge with volumedir and sort by values
+  const sources = useMemo(() => {
+    const merged = [...volumeDirs, ...gitPaths];
+    return merged.sort((a, b) => a.value.localeCompare(b.value));
+  }, [gitPaths]);
+
   const handleArrayChange = (index, key, value) => {
-    setFormData(prevState => [...prevState.map((item, i) => i === index ? { ...item, [key]: value } : item)]);
+    if (key === "volumedir" && ["var","log"].some(dir => dir === value)) {
+      setFormData(prevState => [...prevState.map((item, i) => i === index ? { ...item, ["from"]: value, ["volumedir"]: value } : item)]);
+    } else {
+      setFormData(prevState => [...prevState.map((item, i) => i === index ? { ...item, [key]: value } : item)]);
+    }
   };
 
   const handleAddItem = () => {
-    setFormData(prevState => [...prevState, { id: Date.now(), volumedir: "var", from: "", to: "", type: "", agents: [] }]);
+    setFormData(prevState => [...prevState, defaultValues]);
   };
 
   const handleRemoveItem = (index) => {
@@ -69,20 +88,24 @@ export default React.memo(function Paths({
             New Path Mapping
           </Heading>
           <Text>Enter the path mappings for your deployment. Select a volume directory and specify the source and destination paths.</Text>
-          {formData.map((p, index) => (
-            <HStack key={`new_${p.id}`}>
-              <Select value={p.volumedir} onChange={(e) => handleArrayChange(index, "volumedir", e.target.value)} >
-                {volumeDirs.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.name}
-                  </option>
-                ))}
-              </Select>
-              <Input name={`new_${index}.from`} placeholder="From" value={p.from} onChange={(e) => handleArrayChange(index, "from", e.target.value)} />
-              <Input name={`new_${index}.to`} placeholder="To" value={p.to} onChange={(e) => handleArrayChange(index, "to", e.target.value)} />
-              <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleRemoveItem(index)} />
-            </HStack>
-          ))}
+          {formData.map((p, index) => {
+            // Check if p.volumedir is from git clones
+            const isFromGit = gitPaths.some(gitPath => gitPath.value === p.volumedir);
+            return (
+              <HStack key={`new_${p.id}`}>
+                <Select value={p.volumedir} onChange={(e) => handleArrayChange(index, "volumedir", e.target.value)} >
+                  {sources.map(source => (
+                    <option key={source.value} value={source.value}>
+                      {source.name}
+                    </option>
+                  ))}
+                </Select>
+                {hasSubdir && (<Input name={`new_${index}.from`} placeholder="From" value={p.from} onChange={(e) => handleArrayChange(index, "from", e.target.value)} />)}
+                <Input name={`new_${index}.to`} placeholder="To" value={p.to} onChange={(e) => handleArrayChange(index, "to", e.target.value)} />
+                <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => handleRemoveItem(index)} />
+              </HStack>
+            )
+          })}
         </VStack>
       )}
       <VStack spacing={3} align="stretch">
