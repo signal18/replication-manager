@@ -106,7 +106,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 }
 
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
-	flags.StringVar(&conf.AppHost, "app-host", "admin", "App Host")
+	flags.StringVar(&conf.AppHost, "app-host", "app1", "App Host")
 	flags.StringVar(&conf.AppPort, "app-port", "80", "App Port")
 }
 

@@ -24,6 +24,30 @@ export default function GeneralSection({ clusterName, appId, config }) {
         />
       )
     },
+    {
+      key: 'Container Host',
+      value: (
+        <TextForm
+          value={config?.appHost}
+          confirmTitle={`Confirm change 'app-host' to: `}
+          onSave={(value) =>
+            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-host', value: value.length === 0 ? '{undefined}' : value }))
+          }
+        />
+      )
+    },
+    {
+      key: 'Container Port',
+      value: (
+        <TextForm
+          value={config?.appPort}
+          confirmTitle={`Confirm change 'app-port' to: `}
+          onSave={(value) =>
+            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-port', value: value.length === 0 ? '{undefined}' : value }))
+          }
+        />
+      )
+    },
   ];
 
   return (
