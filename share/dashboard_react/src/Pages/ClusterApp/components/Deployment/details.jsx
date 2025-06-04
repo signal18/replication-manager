@@ -33,20 +33,20 @@ function DeploymentDetail({ clusterName, appId, row }) {
   return (
     <Flex direction='column' gap='8px' w={'100%'} className={styles.contentContainer}>
       <AccordionComponent
-        heading={'Variables'}
-        body={<Variables rows={variableRows} fieldName={'variables'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
-      />
-      <AccordionComponent
-        heading={'Paths'}
-        body={<Paths rows={pathRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
-      />
-      <AccordionComponent
         heading={'Routes'}
         body={<Routes rows={routeRows} fieldName={'routes'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
       />
       <AccordionComponent
         heading={"Git Clones"}
         body={<GitClones rows={gitCloneRows} fieldName={'gitClones'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+      />
+      <AccordionComponent
+        heading={'Paths'}
+        body={<Paths rows={pathRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+      />
+      <AccordionComponent
+        heading={'Variables'}
+        body={<Variables rows={variableRows} fieldName={'variables'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
       />
     </Flex>
   )
