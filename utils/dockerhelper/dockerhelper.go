@@ -2,48 +2,62 @@ package dockerhelper
 
 import (
 	"archive/tar"
-	"encoding/json"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
+	"path"
+	"reflect"
 	"strings"
 
 	"github.com/google/go-containerregistry/pkg/crane"
+	"github.com/signal18/replication-manager/utils/treehelper"
 )
 
-// GetDirectoryFromImageRef retrieves the directory path from the image reference.
-func GetDirectoryFromImageRef(cacheDir, imageRef, dir string) ([]byte, error) {
-
-	result, err := LoadFileListFromCache(cacheDir, imageRef, dir)
-	if err == nil {
-		// If the cache is hit, return the cached result
-		return result, nil
+func GetDirectoryFromImageRef(cacheDir, imageRef, dir string, options ...crane.Option) (*treehelper.FileNode, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("directory cannot be empty")
 	}
 
-	// If not cached, pull the image and list files in the specified directory
-	result, err = ListFilesInImageDir(cacheDir, imageRef, dir)
+	cache, err := GetFileTreeCache(cacheDir, imageRef, options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list files in image directory: %w", err)
+		return nil, fmt.Errorf("failed to get file tree cache: %w", err)
 	}
 
-	return result, nil
+	if cache == nil || cache.Tree == nil {
+		return nil, fmt.Errorf("no file tree found for image reference %s", imageRef)
+	}
+
+	return TraverseFileTree(cache.Tree, dir, true)
 }
 
-// ListFilesInImageDir lists all unique file paths under the given dir
-// in the image identified by imageRef (e.g., "ubuntu:20.04").
-// The paths are returned with leading slashes, e.g., "/usr/bin/bash".
-func ListFilesInImageDir(cacheDir, imageRef, targetDir string, options ...crane.Option) ([]byte, error) {
-	if targetDir == "" {
-		return nil, fmt.Errorf("dir cannot be empty")
+func TraverseFileTree(root *treehelper.FileNode, path string, isDir bool) (*treehelper.FileNode, error) {
+	if path == "" || path == "/" {
+		return root, nil
 	}
 
-	// Normalize dir
-	dir := strings.TrimPrefix(targetDir, "/")
-	if dir != "" && !strings.HasSuffix(dir, "/") {
-		dir += "/"
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	current := root
+
+	for _, part := range parts {
+		if child, exists := current.Children[part]; exists {
+			current = child
+		} else {
+			return nil, fmt.Errorf("directory %s not found in file tree", path)
+		}
 	}
 
+	if isDir && !current.IsFile {
+		return nil, fmt.Errorf("directory %s is not a directory", path)
+	}
+
+	if !isDir && current.IsFile {
+		return nil, fmt.Errorf("path %s is a file, not a directory", path)
+	}
+
+	return current, nil
+}
+
+// GetFileTreeCache retrieves the file tree cache for the specified image reference.
+func GetFileTreeCache(cacheDir, imageRef string, options ...crane.Option) (*treehelper.FileTreeCache, error) {
 	img, err := crane.Pull(imageRef, options...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to pull image: %w", err)
@@ -54,15 +68,29 @@ func ListFilesInImageDir(cacheDir, imageRef, targetDir string, options ...crane.
 		return nil, fmt.Errorf("failed to get image layers: %w", err)
 	}
 
-	seen := make(map[string]struct{})
-	var results []string = make([]string, 0)
+	var digests []string
+	for _, layer := range layers {
+		d, err := layer.Digest()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get digest: %w", err)
+		}
+		digests = append(digests, d.String())
+	}
+
+	cached := treehelper.TryReadFileTreeCache(cacheDir, imageRef)
+	if cached != nil && reflect.DeepEqual(cached.Layers, digests) {
+		return cached, nil
+	}
+
+	seen := map[string]struct{}{}
+	deleted := map[string]struct{}{}
+	root := &treehelper.FileNode{Name: "/", IsFile: false, Children: map[string]*treehelper.FileNode{}}
 
 	for _, layer := range layers {
 		rc, err := layer.Uncompressed()
 		if err != nil {
-			return nil, fmt.Errorf("failed to read layer: %w", err)
+			return nil, fmt.Errorf("uncompress failed: %w", err)
 		}
-		// You must not defer in a loop — close immediately
 		tr := tar.NewReader(rc)
 
 		for {
@@ -74,75 +102,30 @@ func ListFilesInImageDir(cacheDir, imageRef, targetDir string, options ...crane.
 				return nil, fmt.Errorf("tar read error: %w", err)
 			}
 
-			// If dir is empty ("/"), include everything
-			if dir == "" || strings.HasPrefix(hdr.Name, dir) {
-				if _, exists := seen[hdr.Name]; !exists {
-					seen[hdr.Name] = struct{}{}
-					results = append(results, "/"+hdr.Name)
-				}
+			base := path.Base(hdr.Name)
+			parent := path.Dir(hdr.Name)
+
+			if strings.HasPrefix(base, ".wh.") {
+				whPath := path.Join(parent, strings.TrimPrefix(base, ".wh."))
+				deleted[whPath] = struct{}{}
+				continue
 			}
+
+			if _, deleted := deleted[hdr.Name]; deleted || seen[hdr.Name] != struct{}{} {
+				continue
+			}
+			seen[hdr.Name] = struct{}{}
+			treehelper.AddToFileNodeTree(root, strings.Split(hdr.Name, "/"), hdr.FileInfo().IsDir())
 		}
-
-		rc.Close() // close stream now that we're done with this layer
+		rc.Close()
 	}
 
-	go WriteToCacheFile(cacheDir, imageRef, targetDir, results)
-
-	response, err := json.Marshal(FileListResponse{
-		Files:    results,
-		IsCached: false,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal JSON: %w", err)
+	cache := &treehelper.FileTreeCache{
+		ImageRef: imageRef,
+		Layers:   digests,
+		Tree:     root,
 	}
+	treehelper.WriteToCacheFile(cacheDir, imageRef, cache)
 
-	return response, nil
-}
-
-type FileListResponse struct {
-	Files    []string `mapstructure:"files" json:"files"`
-	IsCached bool     `mapstructure:"isCached" json:"isCached"`
-}
-
-var replacer = strings.NewReplacer(":", "_", "/", "_", "\\", "_", ".", "_")
-
-func WriteToCacheFile(cacheDir, imageRef, dir string, results []string) {
-	content := FileListResponse{
-		Files:    results,
-		IsCached: true,
-	}
-
-	// Cache the result
-	imageRef = replacer.Replace(imageRef)
-	imageCacheDir := filepath.Join(cacheDir, imageRef)
-	cacheFile := filepath.Join(imageCacheDir, dir+".json")
-	if _, err := os.Stat(imageCacheDir); os.IsNotExist(err) {
-		os.MkdirAll(imageCacheDir, 0755)
-	}
-
-	file, err := os.Create(cacheFile)
-	if err != nil {
-		fmt.Printf("failed to create cache file %s: %v\n", cacheFile, err)
-		return
-	}
-	defer file.Close()
-
-	enc := json.NewEncoder(file)
-	enc.SetIndent("", "\t")
-	_ = enc.Encode(content)
-}
-
-func LoadFileListFromCache(cacheDir, imageRef, dir string) ([]byte, error) {
-	imageRef = replacer.Replace(imageRef)
-	cacheFile := filepath.Join(cacheDir, imageRef, dir+".json")
-	if _, err := os.Stat(cacheFile); os.IsNotExist(err) {
-		return nil, fmt.Errorf("cache file does not exist: %s", cacheFile)
-	}
-	content, err := os.ReadFile(cacheFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read cache file: %w", err)
-	}
-
-	return content, nil
+	return cache, nil
 }

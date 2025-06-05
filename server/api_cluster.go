@@ -29,6 +29,7 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
+	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -376,6 +377,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerImageFilesystemDir)),
+	))
+	router.Handle("/api/clusters/{clusterName}/git/actions/get-repo-tree", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
@@ -7194,7 +7199,81 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 
 		// Write the JSON response
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(results)
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "\t") // Pretty print
+		if err := encoder.Encode(results); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
+			http.Error(w, "Error encoding JSON: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxGitRepoTree handles the HTTP request to get the tree structure of a Git repository.
+// @Summary Get Git Repository Tree
+// @Description Retrieves the tree structure of a specified Git repository.
+// @Tags GitRepository
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body config.GitClone true "Git Clone Configuration"
+// @Success 200 {object} treehelper.FileNode "Git repository tree structure"
+// @Failure 400 {string} string "Invalid Git repository URL"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree"
+// @Router /api/clusters/{clusterName}/git/actions/get-repo-tree [post]
+func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		var gitClone config.GitClone
+		err := json.NewDecoder(r.Body).Decode(&gitClone)
+		if err != nil {
+			http.Error(w, "Error decoding request body: "+err.Error(), 400)
+			return
+		}
+
+		var gClient githelper.GitClient
+		var baseURL, projectID string
+		if strings.Contains(gitClone.GitRepo, "github") {
+			baseURL, projectID, err = githelper.ParseGitHubURL(gitClone.GitRepo)
+			if err != nil {
+				http.Error(w, "Invalid GitHub repository URL", 400)
+				return
+			}
+			gClient, err = githelper.NewGithubClient(gitClone.GitPass)
+		} else {
+			baseURL, projectID, err = githelper.ParseGitLabURL(gitClone.GitRepo)
+			if err != nil {
+				http.Error(w, "Invalid GitLab repository URL", 400)
+				return
+			}
+			gClient, err = githelper.NewGitlabClient(baseURL, gitClone.GitPass)
+		}
+		if err != nil {
+			http.Error(w, "Error creating Git client: "+err.Error(), 500)
+			return
+		}
+
+		// Get the repository tree
+		tree, err := gClient.GetRepositoryTree(projectID, "/", gitClone.GitBranch, 5*time.Second)
+		if err != nil {
+			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tree)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

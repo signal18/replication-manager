@@ -4169,6 +4169,73 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/git/actions/get-repo-tree": {
+            "post": {
+                "description": "Retrieves the tree structure of a specified Git repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GitRepository"
+                ],
+                "summary": "Get Git Repository Tree",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Git Clone Configuration",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/config.GitClone"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Git repository tree structure",
+                        "schema": {
+                            "$ref": "#/definitions/treehelper.FileNode"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Git repository URL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating Git client\" or \"Error getting repository tree",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/graphite-filterlist": {
             "get": {
                 "description": "This endpoint retrieves the Graphite filter list for the specified cluster.",
@@ -21266,6 +21333,23 @@
         },
         "sync.Mutex": {
             "type": "object"
+        },
+        "treehelper.FileNode": {
+            "type": "object",
+            "properties": {
+                "children": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "$ref": "#/definitions/treehelper.FileNode"
+                    }
+                },
+                "isFile": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
         },
         "user.User": {
             "type": "object",

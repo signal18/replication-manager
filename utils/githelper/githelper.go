@@ -15,7 +15,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/signal18/replication-manager/utils/treehelper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -605,4 +607,20 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 	return reqId.ID, nil
 
+}
+
+type GitClient interface {
+	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
+	GetRepositoryTree(projectID, path, sha string, timeout time.Duration) (*treehelper.FileNode, error)
+}
+
+func GetClientType(gc GitClient) string {
+	switch gc.(type) {
+	case *GitlabClient:
+		return "gitlab"
+	case *GitHubClient:
+		return "github"
+	default:
+		return "unknown"
+	}
 }

@@ -3668,6 +3668,17 @@ definitions:
     type: object
   sync.Mutex:
     type: object
+  treehelper.FileNode:
+    properties:
+      children:
+        additionalProperties:
+          $ref: '#/definitions/treehelper.FileNode'
+        type: object
+      isFile:
+        type: boolean
+      name:
+        type: string
+    type: object
   user.User:
     properties:
       gid:
@@ -6256,6 +6267,51 @@ paths:
       summary: subscribe external operations for a specific cluster
       tags:
       - Cloud18
+  /api/clusters/{clusterName}/git/actions/get-repo-tree:
+    post:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of a specified Git repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Git Clone Configuration
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/config.GitClone'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Git repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileNode'
+        "400":
+          description: Invalid Git repository URL
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating Git client" or "Error getting repository tree
+          schema:
+            type: string
+      summary: Get Git Repository Tree
+      tags:
+      - GitRepository
   /api/clusters/{clusterName}/graphite-filterlist:
     get:
       description: This endpoint retrieves the Graphite filter list for the specified
