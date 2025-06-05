@@ -144,7 +144,9 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
-	github.com/google/go-cmp v0.6.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/go-github/v72 v72.0.0 // indirect
+	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/graph-gophers/graphql-go v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -225,6 +227,7 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/yoheimuta/go-protoparser/v4 v4.3.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
+	gitlab.com/gitlab-org/api/client-go v0.129.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.18.1 // indirect
@@ -233,7 +236,7 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/term v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	golang.org/x/time v0.3.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
 	golang.org/x/tools v0.29.0 // indirect
 	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
@@ -301,7 +304,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rs/cors v1.8.2 // indirect
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed
-	golang.org/x/oauth2 v0.25.0
+	golang.org/x/oauth2 v0.30.0
 	google.golang.org/grpc/examples v0.0.0-20220316190256-c4cabf78f4a2 // indirect
 	nhooyr.io/websocket v1.8.7 // indirect
 	software.sslmate.com/src/go-pkcs12 v0.4.0
