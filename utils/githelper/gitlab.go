@@ -30,6 +30,7 @@ func NewGitlabClient(baseURL, token string) (*GitlabClient, error) {
 
 // GetRepositoryTree retrieves the repository tree for a given project ID and path.
 func (g *GitlabClient) GetRepositoryTree(projectID, path, sha string, timeout time.Duration) (*treehelper.FileNode, error) {
+	var recursive bool = true
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -37,6 +38,7 @@ func (g *GitlabClient) GetRepositoryTree(projectID, path, sha string, timeout ti
 	opt := &gitlab.ListTreeOptions{}
 	if path != "" {
 		opt.Path = &path
+		opt.Recursive = &recursive
 	}
 
 	// Fetch the repository tree from GitLab

@@ -12,6 +12,7 @@ import (
 type FileNode struct {
 	Name     string               `json:"name"`
 	IsFile   bool                 `json:"isFile"`
+	Sha      string               `json:"sha,omitempty"`
 	Children map[string]*FileNode `json:"children,omitempty"`
 }
 

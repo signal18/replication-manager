@@ -985,13 +985,10 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker") {
 			return true
 		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/actions/") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/images") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker/containers") {
+	}
+
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterGit] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/git") {
 			return true
 		}
 	}

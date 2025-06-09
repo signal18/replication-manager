@@ -1179,6 +1179,7 @@ const (
 	GrantClusterStaging            string = "cluster-staging"
 	GrantClusterAlert              string = "cluster-alert"
 	GrantClusterDocker             string = "cluster-docker"
+	GrantClusterGit                string = "cluster-git"
 
 	GrantProxyConfigCreate    string = "proxy-config-create"
 	GrantProxyConfigGet       string = "proxy-config-get"
@@ -2265,6 +2266,7 @@ func GetGrantType() map[string]string {
 		GrantClusterStaging:            GrantClusterStaging,
 		GrantClusterAlert:              GrantClusterAlert,
 		GrantClusterDocker:             GrantClusterDocker,
+		GrantClusterGit:                GrantClusterGit,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
@@ -2371,6 +2373,7 @@ func GetGrantCluster() []string {
 		GrantClusterStaging,
 		GrantClusterAlert,
 		GrantClusterDocker,
+		GrantClusterGit,
 	}
 }
 

@@ -45,7 +45,7 @@ func (g *GitHubClient) GetRepositoryTree(projectID, path, sha string, timeout ti
 	}
 	owner, repo := parts[0], parts[1]
 
-	tree, _, err := g.Client.Git.GetTree(ctx, owner, repo, sha, false)
+	tree, _, err := g.Client.Git.GetTree(ctx, owner, repo, sha, true)
 	if err != nil {
 		return nil, err
 	}
