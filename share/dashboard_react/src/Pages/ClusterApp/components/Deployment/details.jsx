@@ -9,7 +9,7 @@ import styles from './styles.module.scss'
 import Routes from './components/Routes'
 import { useCallback, useMemo } from 'react'
 
-function DeploymentDetail({ clusterName, appId, row }) {
+function DeploymentDetail({ clusterName, appId, row, dockerImage }) {
   const dispatch = useDispatch()
 
   const handleSaveArrayChange = useCallback((field, index, key, value) => {
@@ -42,7 +42,7 @@ function DeploymentDetail({ clusterName, appId, row }) {
       />
       <AccordionComponent
         heading={'Paths'}
-        body={<Paths rows={pathRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+        body={<Paths clusterName={clusterName} appId={appId} dockerImage={dockerImage} rows={pathRows} gitCloneRows={gitCloneRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
       />
       <AccordionComponent
         heading={'Variables'}

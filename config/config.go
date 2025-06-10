@@ -868,6 +868,7 @@ type GitClone struct {
 	Dest      string `mapstructure:"dest" toml:"dest" json:"dest"`
 	GitUser   string `mapstructure:"user" toml:"user" json:"user"`
 	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass"`
+	Timeout   int    `mapstructure:"timeout" toml:"timeout" json:"timeout"`
 }
 
 type Route struct {
@@ -1179,7 +1180,6 @@ const (
 	GrantClusterStaging            string = "cluster-staging"
 	GrantClusterAlert              string = "cluster-alert"
 	GrantClusterDocker             string = "cluster-docker"
-	GrantClusterGit                string = "cluster-git"
 
 	GrantProxyConfigCreate    string = "proxy-config-create"
 	GrantProxyConfigGet       string = "proxy-config-get"
@@ -1193,6 +1193,7 @@ const (
 	GrantAppDeployment string = "app-deployment"
 	GrantAppStart      string = "app-start"
 	GrantAppStop       string = "app-stop"
+	GrantAppGit        string = "app-git"
 
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
@@ -2266,7 +2267,6 @@ func GetGrantType() map[string]string {
 		GrantClusterStaging:            GrantClusterStaging,
 		GrantClusterAlert:              GrantClusterAlert,
 		GrantClusterDocker:             GrantClusterDocker,
-		GrantClusterGit:                GrantClusterGit,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
@@ -2288,6 +2288,7 @@ func GetGrantType() map[string]string {
 		GrantAppDeployment:             GrantAppDeployment,
 		GrantAppStart:                  GrantAppStart,
 		GrantAppStop:                   GrantAppStop,
+		GrantAppGit:                    GrantAppGit,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
 		GrantGlobalTerminal:            GrantGlobalTerminal,
@@ -2373,7 +2374,6 @@ func GetGrantCluster() []string {
 		GrantClusterStaging,
 		GrantClusterAlert,
 		GrantClusterDocker,
-		GrantClusterGit,
 	}
 }
 
@@ -2435,6 +2435,7 @@ func GetGrantApp() []string {
 		GrantAppStop,
 		GrantAppConfig,
 		GrantAppDeployment,
+		GrantAppGit,
 	}
 }
 

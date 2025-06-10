@@ -4,56 +4,38 @@ import (
 	"archive/tar"
 	"fmt"
 	"io"
+	"os"
 	"path"
-	"reflect"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/google/go-containerregistry/pkg/crane"
 	"github.com/signal18/replication-manager/utils/treehelper"
 )
 
-func GetDirectoryFromImageRef(cacheDir, imageRef, dir string, options ...crane.Option) (*treehelper.FileNode, error) {
+func GetDirectoryFromImageRef(cacheDir, imageRef, dir string, options ...crane.Option) (*treehelper.FileTreeCache, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("directory cannot be empty")
 	}
 
 	cache, err := GetFileTreeCache(cacheDir, imageRef, options...)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get file tree cache: %w", err)
+		return nil, err
 	}
 
 	if cache == nil || cache.Tree == nil {
 		return nil, fmt.Errorf("no file tree found for image reference %s", imageRef)
 	}
 
-	return TraverseFileTree(cache.Tree, dir, true)
-}
-
-func TraverseFileTree(root *treehelper.FileNode, path string, isDir bool) (*treehelper.FileNode, error) {
-	if path == "" || path == "/" {
-		return root, nil
+	subtree, err := treehelper.TraverseFileTree(cache.Tree, dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to traverse file tree: %w", err)
 	}
 
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	current := root
+	cache.Tree = subtree
 
-	for _, part := range parts {
-		if child, exists := current.Children[part]; exists {
-			current = child
-		} else {
-			return nil, fmt.Errorf("directory %s not found in file tree", path)
-		}
-	}
-
-	if isDir && !current.IsFile {
-		return nil, fmt.Errorf("directory %s is not a directory", path)
-	}
-
-	if !isDir && current.IsFile {
-		return nil, fmt.Errorf("path %s is a file, not a directory", path)
-	}
-
-	return current, nil
+	return cache, nil
 }
 
 // GetFileTreeCache retrieves the file tree cache for the specified image reference.
@@ -77,14 +59,34 @@ func GetFileTreeCache(cacheDir, imageRef string, options ...crane.Option) (*tree
 		digests = append(digests, d.String())
 	}
 
-	cached := treehelper.TryReadFileTreeCache(cacheDir, imageRef)
-	if cached != nil && reflect.DeepEqual(cached.Layers, digests) {
-		return cached, nil
+	//Sort the digests to ensure consistent ordering
+	if len(digests) > 1 {
+		// Use a stable sort to ensure consistent ordering
+		slices.SortStableFunc(digests, func(a, b string) int {
+			return strings.Compare(a, b)
+		})
+	}
+
+	cache := treehelper.TryReadFileTreeCache(cacheDir, imageRef)
+	if cache != nil {
+		cached := cache.Layers
+		slices.SortStableFunc(cached, func(a, b string) int {
+			return strings.Compare(a, b)
+		})
+
+		if slices.Equal(cached, digests) {
+			return cache, nil
+		}
 	}
 
 	seen := map[string]struct{}{}
 	deleted := map[string]struct{}{}
-	root := &treehelper.FileNode{Name: "/", IsFile: false, Children: map[string]*treehelper.FileNode{}}
+	root := &treehelper.FileEntry{
+		Name:     "/",
+		Path:     "/",
+		Type:     "directory",
+		Children: make([]*treehelper.FileEntry, 0),
+	}
 
 	for _, layer := range layers {
 		rc, err := layer.Uncompressed()
@@ -115,17 +117,29 @@ func GetFileTreeCache(cacheDir, imageRef string, options ...crane.Option) (*tree
 				continue
 			}
 			seen[hdr.Name] = struct{}{}
-			treehelper.AddToFileNodeTree(root, strings.Split(hdr.Name, "/"), hdr.FileInfo().IsDir())
+			ftype := "file"
+			mode := hdr.FileInfo().Mode()
+			if mode.IsDir() {
+				ftype = "directory"
+			} else if mode&os.ModeSymlink != 0 {
+				ftype = "symlink"
+			}
+			treehelper.AddToFileTree(root, strings.Split(hdr.Name, "/"), "", ftype)
 		}
 		rc.Close()
 	}
 
-	cache := &treehelper.FileTreeCache{
-		ImageRef: imageRef,
-		Layers:   digests,
-		Tree:     root,
+	cache = &treehelper.FileTreeCache{
+		Reference:  imageRef,
+		Layers:     digests,
+		Tree:       root,
+		IsCached:   true,
+		LastUpdate: time.Now(),
 	}
+
 	treehelper.WriteToCacheFile(cacheDir, imageRef, cache)
+
+	cache.IsCached = false
 
 	return cache, nil
 }

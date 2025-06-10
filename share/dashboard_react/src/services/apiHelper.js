@@ -69,11 +69,29 @@ const handleResponse = async (response) => {
 };
 
 const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') => {
-  let headerURL = baseUrl
-  if (apiUrl == "login") {
-    headerURL = ''
+  let headerURL = baseUrl;
+  if (apiUrl === "login") {
+    headerURL = '';
   }
-  const url = resolveUrl(apiUrl, authValue, baseUrl);
+
+  let url = resolveUrl(apiUrl, authValue, baseUrl);
+
+  // If GET, convert params to query string
+  if (method.toUpperCase() === 'GET' && params && typeof params === 'object') {
+    const query = buildQueryString(params);
+    if (query) {
+      const fullUrl = `${url}?${query}`;
+
+      if (fullUrl.length > 2000) {
+        console.warn('GET request URL exceeds 2000 characters. This may not work on all browsers or servers.');
+        // Optional: throw new Error('GET request URL too long. Use POST instead.');
+      }
+
+      url = fullUrl;
+    }
+    params = null; // GET should not have a body
+  }
+
   const headers = {
     ...buildHeaders(authValue, params instanceof FormData ? '' : 'json', headerURL),
   };
@@ -91,19 +109,22 @@ const performRequest = async (method, apiUrl, params, authValue, baseUrl = '') =
 
   try {
     const response = await fetch(url, options);
+
     if (response.status === 401 && baseUrl === '') {
-      clearLocalStorageByPrefix('user_token')
-      localStorage.removeItem('username')
+      clearLocalStorageByPrefix('user_token');
+      localStorage.removeItem('username');
       if (window.location.pathname !== '/login') {
         window.location.reload();
       }
     }
+
     return handleResponse(response);
   } catch (error) {
     console.error(`${method} Request Error:`, error);
     throw error;
   }
 };
+
 
 const requestWrapper = (authValue, baseUrl = '') => ({
   get: (apiUrl, params) => performRequest('GET', apiUrl, params, authValue, baseUrl),
@@ -156,4 +177,30 @@ export const getTokenByBaseURL = (baseURL) => {
   } else {
     return localStorage.getItem(`user_token_${baseURL}`);
   }
+}
+
+
+function buildQueryString(obj, parentKey = '') {
+  const query = [];
+
+  for (const key in obj) {
+    if (!Object.hasOwn(obj, key)) continue;
+
+    const value = obj[key];
+    const fullKey = parentKey ? `${parentKey}_${key}` : key;
+
+    if (value === '' || value === null || value === undefined) continue;
+
+    if (Array.isArray(value)) {
+      value.forEach(item => {
+        query.push(`${encodeURIComponent(fullKey)}=${encodeURIComponent(item)}`);
+      });
+    } else if (typeof value === 'object') {
+      query.push(buildQueryString(value, fullKey));
+    } else {
+      query.push(`${encodeURIComponent(fullKey)}=${encodeURIComponent(value)}`);
+    }
+  }
+
+  return query.join('&');
 }

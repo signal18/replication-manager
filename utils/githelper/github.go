@@ -34,7 +34,28 @@ func NewGithubClient(token string) (*GitHubClient, error) {
 	}, nil
 }
 
-func (g *GitHubClient) GetRepositoryTree(projectID, path, sha string, timeout time.Duration) (*treehelper.FileNode, error) {
+// GetDirectoryFromRepository
+func (g *GitHubClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("directory cannot be empty")
+	}
+
+	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout)
+	if cache == nil || cache.Tree == nil {
+		return nil, err
+	}
+
+	subtree, err := treehelper.TraverseFileTree(cache.Tree, dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to traverse file tree: %w", err)
+	}
+
+	cache.Tree = subtree
+
+	return cache, nil
+}
+
+func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -43,48 +64,55 @@ func (g *GitHubClient) GetRepositoryTree(projectID, path, sha string, timeout ti
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid project ID format: %s", projectID)
 	}
-	owner, repo := parts[0], parts[1]
+	owner, reponame := parts[0], parts[1]
 
-	tree, _, err := g.Client.Git.GetTree(ctx, owner, repo, sha, true)
+	commit, _, err := g.Client.Repositories.GetCommit(ctx, owner, reponame, branch, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit for branch %s: %w", branch, err)
+	}
+
+	cache := g.LoadTreeFromCache(cacheDir, projectID, commit.GetSHA())
+	if cache != nil {
+		return cache, nil
+	}
+
+	tree, _, err := g.Client.Git.GetTree(ctx, owner, reponame, branch, true)
 	if err != nil {
 		return nil, err
 	}
 
-	root := &treehelper.FileNode{
-		Name:     path,
-		IsFile:   false,
-		Children: make(map[string]*treehelper.FileNode),
+	root := &treehelper.FileEntry{
+		Name:     "root",
+		Type:     "directory",
+		Children: make([]*treehelper.FileEntry, 0),
 	}
+
+	root.Children = append(root.Children, &treehelper.FileEntry{
+		Name:     "/",
+		Path:     "/",
+		Type:     "directory",
+		ID:       commit.GetSHA(),
+		Children: make([]*treehelper.FileEntry, 0),
+	})
 
 	for _, entry := range tree.Entries {
-		parts := strings.Split(entry.GetPath(), "/")
-		current := root
-
-		for i, part := range parts {
-			// If the node doesn't exist yet, create it
-			if _, ok := current.Children[part]; !ok {
-				current.Children[part] = &treehelper.FileNode{
-					Name:     part,
-					IsFile:   false,
-					Children: make(map[string]*treehelper.FileNode),
-				}
-			}
-
-			// Descend into the next level
-			current = current.Children[part]
-
-			// If we're at the last component, set file status
-			if i == len(parts)-1 {
-				current.IsFile = entry.GetType() == "blob"
-			}
-			// If the entry is a directory, ensure it has an empty children map
-			if entry.GetType() == "tree" {
-				current.Children = make(map[string]*treehelper.FileNode)
-			}
-		}
+		treehelper.AddToFileTree(root, strings.Split(entry.GetPath(), "/"), entry.GetSHA(), entry.GetType())
 	}
 
-	return root, nil
+	cache = &treehelper.FileTreeCache{
+		Tree:       root,
+		Reference:  projectID,
+		Layers:     []string{commit.GetSHA()},
+		IsCached:   true,
+		LastUpdate: time.Now(),
+	}
+
+	// Save the cache to the specified directory
+	treehelper.WriteToCacheFile(cacheDir, projectID, cache)
+
+	cache.IsCached = false
+
+	return cache, nil
 }
 
 // GetProjectID retrieves the project ID for a given project path in GitLab.

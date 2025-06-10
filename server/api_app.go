@@ -10,14 +10,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/githelper"
 )
 
 func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
@@ -77,6 +80,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppClearSetting)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
 }
 
@@ -930,6 +937,86 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 			http.Error(w, "Server Not Found", 500)
 			return
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxGitRepoTree handles the HTTP request to get the tree structure of a Git repository.
+// @Summary Get Git Repository Tree
+// @Description Retrieves the tree structure of a specified Git repository.
+// @Tags GitRepository
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Param volumedir path string true "Volume Directory"
+// @Success 200 {object} treehelper.FileTreeCache "Git repository tree structure"
+// @Failure 400 {string} string "Invalid Git repository URL"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree"
+// @Router /api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree [get]
+func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		app := mycluster.GetAppFromName(vars["appId"])
+		if app == nil {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+
+		gc := app.GetGitCloneFromVolumeDir(vars["volumedir"])
+		if gc == nil {
+			http.Error(w, "Git Clone Not Found", 500)
+			return
+		}
+
+		var err error
+		var gClient githelper.GitClientInterface
+		var baseURL, projectID string
+		if strings.Contains(gc.GitRepo, "github") {
+			_, projectID, err = githelper.ParseGitHubURL(gc.GitRepo)
+			if err != nil {
+				http.Error(w, "Invalid GitHub repository URL", 400)
+				return
+			}
+			gClient, err = githelper.NewGithubClient(gc.GitPass)
+		} else {
+			baseURL, projectID, err = githelper.ParseGitLabURL(gc.GitRepo)
+			if err != nil {
+				http.Error(w, "Invalid GitLab repository URL", 400)
+				return
+			}
+			gClient, err = githelper.NewGitlabClient(baseURL, gc.GitPass)
+		}
+		if err != nil {
+			http.Error(w, "Error creating Git client: "+err.Error(), 500)
+			return
+		}
+
+		// Get the repository tree
+		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "git", "repos")
+		timeout := time.Duration(gc.Timeout) * time.Second
+		if gc.Timeout <= 0 {
+			timeout = 15 * time.Second // Default timeout if not specified
+		}
+		tree, err := gClient.GetRepositoryTree(cacheDir, projectID, gc.GitBranch, timeout)
+		if err != nil {
+			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tree)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

@@ -29,7 +29,6 @@ import (
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dockerhelper"
-	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -374,15 +373,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
 	))
-	router.Handle("/api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/docker/images/{imageRef}/browse", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerImageFilesystemDir)),
 	))
-	router.Handle("/api/clusters/{clusterName}/git/actions/get-repo-tree", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
-	))
-
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
@@ -7042,7 +7036,7 @@ type DockerRegistryLoginForm struct {
 // handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.
 // @Summary Docker Registry Login
 // @Description Logs in to a Docker registry using the provided credentials.
-// @Tags DockerRegistry
+// @Tags Docker
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -7121,53 +7115,20 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 	}
 }
 
-func RegistryImageTagExists(registry, image, tag, username, password string) (bool, error) {
-	url := fmt.Sprintf("https://%s/v2/%s/manifests/%s", registry, image, tag)
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return false, err
-	}
-
-	// Docker v2 registry requires this header for manifest checks
-	req.Header.Set("Accept", "application/vnd.docker.distribution.manifest.v2+json")
-
-	if username != "" && password != "" {
-		auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
-		req.Header.Set("Authorization", "Basic "+auth)
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
-
-	switch resp.StatusCode {
-	case http.StatusOK:
-		return true, nil
-	case http.StatusNotFound:
-		return false, nil
-	default:
-		return false, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-}
-
 // handlerDockerImageFilesystemDir handles the HTTP request to list files in a directory of a Docker image.
 // @Summary List Files in Docker Image Directory
 // @Description Lists files in a specified directory of a Docker image.
-// @Tags DockerImage
+// @Tags Docker
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param imageRef path string true "Docker Image Reference"
-// @Param sourceDir path string true "Source Directory in Docker Image"
-// @Success 200 {array} string "List of files in the directory"
+// @Success 200 {object} treehelper.FileTreeCache "List of files in the directory"
 // @Failure 400 {string} string "Image reference or source directory not provided"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error listing files in image directory" or "Error encoding JSON"
-// @Router /api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir} [get]
+// @Router /api/clusters/{clusterName}/docker/images/{imageRef}/browse [get]
 func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -7178,19 +7139,13 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 			return
 		}
 		imageRef := vars["imageRef"]
-		sourceDir := vars["sourceDir"]
 		if imageRef == "" {
 			http.Error(w, "Image reference not provided", 400)
 			return
 		}
 
-		if sourceDir == "" {
-			http.Error(w, "Source directory not provided", 400)
-			return
-		}
-
 		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "docker", "images")
-		results, err := dockerhelper.GetDirectoryFromImageRef(cacheDir, imageRef, sourceDir)
+		results, err := dockerhelper.GetFileTreeCache(cacheDir, imageRef)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: ", err)
 			http.Error(w, "Error listing files in image directory: "+err.Error(), 500)
@@ -7206,74 +7161,6 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 			http.Error(w, "Error encoding JSON: "+err.Error(), 500)
 			return
 		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-}
-
-// handlerMuxGitRepoTree handles the HTTP request to get the tree structure of a Git repository.
-// @Summary Get Git Repository Tree
-// @Description Retrieves the tree structure of a specified Git repository.
-// @Tags GitRepository
-// @Accept json
-// @Produce json
-// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string true "Cluster Name"
-// @Param body body config.GitClone true "Git Clone Configuration"
-// @Success 200 {object} treehelper.FileNode "Git repository tree structure"
-// @Failure 400 {string} string "Invalid Git repository URL"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree"
-// @Router /api/clusters/{clusterName}/git/actions/get-repo-tree [post]
-func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		var gitClone config.GitClone
-		err := json.NewDecoder(r.Body).Decode(&gitClone)
-		if err != nil {
-			http.Error(w, "Error decoding request body: "+err.Error(), 400)
-			return
-		}
-
-		var gClient githelper.GitClient
-		var baseURL, projectID string
-		if strings.Contains(gitClone.GitRepo, "github") {
-			baseURL, projectID, err = githelper.ParseGitHubURL(gitClone.GitRepo)
-			if err != nil {
-				http.Error(w, "Invalid GitHub repository URL", 400)
-				return
-			}
-			gClient, err = githelper.NewGithubClient(gitClone.GitPass)
-		} else {
-			baseURL, projectID, err = githelper.ParseGitLabURL(gitClone.GitRepo)
-			if err != nil {
-				http.Error(w, "Invalid GitLab repository URL", 400)
-				return
-			}
-			gClient, err = githelper.NewGitlabClient(baseURL, gitClone.GitPass)
-		}
-		if err != nil {
-			http.Error(w, "Error creating Git client: "+err.Error(), 500)
-			return
-		}
-
-		// Get the repository tree
-		tree, err := gClient.GetRepositoryTree(projectID, "/", gitClone.GitBranch, 5*time.Second)
-		if err != nil {
-			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tree)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

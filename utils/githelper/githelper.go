@@ -609,18 +609,19 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 }
 
-type GitClient interface {
+type GitClientInterface interface {
 	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
-	GetRepositoryTree(projectID, path, sha string, timeout time.Duration) (*treehelper.FileNode, error)
+	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error)
+	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error)
 }
 
-func GetClientType(gc GitClient) string {
-	switch gc.(type) {
-	case *GitlabClient:
-		return "gitlab"
-	case *GitHubClient:
-		return "github"
-	default:
-		return "unknown"
+type GitClient struct {
+}
+
+func (gc GitClient) LoadTreeFromCache(cacheDir, gitRef, commitSHA string) *treehelper.FileTreeCache {
+	cache := treehelper.TryReadFileTreeCache(cacheDir, gitRef)
+	if cache != nil && cache.Tree != nil && cache.Layers != nil && cache.Layers[0] == commitSHA {
+		return cache
 	}
+	return nil
 }

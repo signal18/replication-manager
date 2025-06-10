@@ -28,24 +28,53 @@ func NewGitlabClient(baseURL, token string) (*GitlabClient, error) {
 	}, nil
 }
 
-// GetRepositoryTree retrieves the repository tree for a given project ID and path.
-func (g *GitlabClient) GetRepositoryTree(projectID, path, sha string, timeout time.Duration) (*treehelper.FileNode, error) {
+// GetDirectoryFromRepository
+func (g *GitlabClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("directory cannot be empty")
+	}
+
+	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout)
+	if cache == nil || cache.Tree == nil {
+		return nil, err
+	}
+
+	subtree, err := treehelper.TraverseFileTree(cache.Tree, dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to traverse file tree: %w", err)
+	}
+
+	cache.Tree = subtree
+
+	return cache, nil
+}
+
+// GetRepositoryTree retrieves the repository tree for a given project ID and branch or commit ID.
+func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
 	var recursive bool = true
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	opt := &gitlab.ListTreeOptions{}
-	if path != "" {
-		opt.Path = &path
-		opt.Recursive = &recursive
+	opt := &gitlab.ListTreeOptions{
+		Recursive: &recursive,
 	}
 
 	// Fetch the repository tree from GitLab
-	root := &treehelper.FileNode{
-		Name:     path,
-		IsFile:   false,
-		Children: make(map[string]*treehelper.FileNode),
+	root := &treehelper.FileEntry{
+		Name:     "root",
+		Type:     "directory",
+		Children: make([]*treehelper.FileEntry, 0),
+	}
+
+	commit, _, err := g.Client.Commits.GetCommit(projectID, branch, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get commit for branch %s: %w", branch, err)
+	}
+
+	cache := g.LoadTreeFromCache(cacheDir, projectID, commit.ID)
+	if cache != nil {
+		return cache, nil
 	}
 
 	tree, _, err := g.Client.Repositories.ListTree(projectID, opt, gitlab.WithContext(ctx))
@@ -53,37 +82,31 @@ func (g *GitlabClient) GetRepositoryTree(projectID, path, sha string, timeout ti
 		return nil, fmt.Errorf("failed to get repository tree: %w", err)
 	}
 
+	root.Children = append(root.Children, &treehelper.FileEntry{
+		Name:     "/",
+		Path:     "/",
+		Type:     "directory",
+		ID:       commit.ID,
+		Children: make([]*treehelper.FileEntry, 0),
+	})
+
 	for _, entry := range tree {
-		parts := strings.Split(entry.Path, "/")
-		current := root
-
-		for i, part := range parts {
-			// If the node doesn't exist yet, create it
-			if _, ok := current.Children[part]; !ok {
-				current.Children[part] = &treehelper.FileNode{
-					Name:     part,
-					IsFile:   entry.Type == "blob",
-					Children: make(map[string]*treehelper.FileNode),
-				}
-			}
-			current = current.Children[part]
-
-			// If this is the last part, set IsFile based on the entry type
-			if i == len(parts)-1 {
-				current.IsFile = entry.Type == "blob"
-			}
-
-			// If this is a directory, ensure it has no children
-			if entry.Type == "tree" {
-				current.IsFile = false
-				if current.Children == nil {
-					current.Children = make(map[string]*treehelper.FileNode)
-				}
-			}
-		}
+		treehelper.AddToFileTree(root, strings.Split(entry.Path, "/"), entry.ID, entry.Type)
 	}
 
-	return root, nil
+	cache = &treehelper.FileTreeCache{
+		Tree:       root,
+		Reference:  projectID,
+		Layers:     []string{commit.ID},
+		IsCached:   true,
+		LastUpdate: time.Now(),
+	}
+
+	treehelper.WriteToCacheFile(cacheDir, projectID, cache)
+
+	cache.IsCached = false
+
+	return cache, nil
 }
 
 // GetProjectID retrieves the project ID for a given project path in GitLab.

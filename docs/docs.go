@@ -2229,6 +2229,78 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree": {
+            "get": {
+                "description": "Retrieves the tree structure of a specified Git repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GitRepository"
+                ],
+                "summary": "Get Git Repository Tree",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Volume Directory",
+                        "name": "volumedir",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Git repository tree structure",
+                        "schema": {
+                            "$ref": "#/definitions/treehelper.FileTreeCache"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Git repository URL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating Git client\" or \"Error getting repository tree",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting}": {
             "post": {
                 "description": "Clear a specific setting for a given app in a cluster",
@@ -3804,7 +3876,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "DockerRegistry"
+                    "Docker"
                 ],
                 "summary": "Docker Registry Login",
                 "parameters": [
@@ -3861,7 +3933,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}": {
+        "/api/clusters/{clusterName}/docker/images/{imageRef}/browse": {
             "get": {
                 "description": "Lists files in a specified directory of a Docker image.",
                 "consumes": [
@@ -3871,7 +3943,7 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "DockerImage"
+                    "Docker"
                 ],
                 "summary": "List Files in Docker Image Directory",
                 "parameters": [
@@ -3896,23 +3968,13 @@ const docTemplate = `{
                         "name": "imageRef",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Source Directory in Docker Image",
-                        "name": "sourceDir",
-                        "in": "path",
-                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
                         "description": "List of files in the directory",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/treehelper.FileTreeCache"
                         }
                     },
                     "400": {
@@ -4173,73 +4235,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Error subscribing external operations",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/git/actions/get-repo-tree": {
-            "post": {
-                "description": "Retrieves the tree structure of a specified Git repository.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "GitRepository"
-                ],
-                "summary": "Get Git Repository Tree",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Git Clone Configuration",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/config.GitClone"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Git repository tree structure",
-                        "schema": {
-                            "$ref": "#/definitions/treehelper.FileNode"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid Git repository URL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error creating Git client\" or \"Error getting repository tree",
                         "schema": {
                             "type": "string"
                         }
@@ -17490,6 +17485,9 @@ const docTemplate = `{
                 "repo": {
                     "type": "string"
                 },
+                "timeout": {
+                    "type": "integer"
+                },
                 "user": {
                     "type": "string"
                 },
@@ -21345,20 +21343,53 @@ const docTemplate = `{
         "sync.Mutex": {
             "type": "object"
         },
-        "treehelper.FileNode": {
+        "treehelper.FileEntry": {
             "type": "object",
             "properties": {
                 "children": {
-                    "type": "object",
-                    "additionalProperties": {
-                        "$ref": "#/definitions/treehelper.FileNode"
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/treehelper.FileEntry"
                     }
                 },
-                "isFile": {
-                    "type": "boolean"
+                "id": {
+                    "description": "Unique identifier for the file entry",
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "\"file\" or \"symlink\" or \"directory\"",
+                    "type": "string"
+                }
+            }
+        },
+        "treehelper.FileTreeCache": {
+            "type": "object",
+            "properties": {
+                "isCached": {
+                    "type": "boolean"
+                },
+                "lastUpdate": {
+                    "description": "Last update time of the cache",
+                    "type": "string"
+                },
+                "layers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reference": {
+                    "description": "Reference to the image or repository",
+                    "type": "string"
+                },
+                "tree": {
+                    "$ref": "#/definitions/treehelper.FileEntry"
                 }
             }
         },

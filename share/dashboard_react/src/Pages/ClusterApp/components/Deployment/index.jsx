@@ -20,7 +20,7 @@ const Deployment = ({ clusterName, appId, config }) => {
                     />
                 </VStack>
             </Flex>
-            <DeploymentDetail clusterName={clusterName} row={deployment} appId={appId} />
+            <DeploymentDetail clusterName={clusterName} row={deployment} appId={appId} dockerImage={config?.provAppDockerImg} />
         </Flex>
     );
 };

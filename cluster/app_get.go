@@ -225,3 +225,22 @@ func (p *App) GetSshEnv() string {
 	}
 	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"https://" + p.ClusterGroup.Conf.MonitorAddress + ":" + p.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
 }
+
+func (p *App) GetGitCloneFromVolumeDir(volumeDir string) *config.GitClone {
+	appcnf := p.GetAppConfig()
+	if appcnf == nil {
+		return nil
+	}
+
+	if appcnf.Deployment.GitClones == nil {
+		return nil
+	}
+
+	for _, gc := range appcnf.Deployment.GitClones {
+		if gc.VolumeDir == volumeDir {
+			return &gc
+		}
+	}
+
+	return nil
+}

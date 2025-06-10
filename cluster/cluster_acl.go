@@ -987,12 +987,6 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterGit] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/git") {
-			return true
-		}
-	}
-
 	// Print error with no valid ACL
 	if errorPrint {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
@@ -1028,6 +1022,11 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantAppConfig] {
 		if strings.Contains(URL, "/settings/actions/") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppGit] {
+		if strings.Contains(URL, "/git/") {
 			return true
 		}
 	}

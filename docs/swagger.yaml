@@ -1099,6 +1099,8 @@ definitions:
         type: string
       repo:
         type: string
+      timeout:
+        type: integer
       user:
         type: string
       volumedir:
@@ -3668,16 +3670,39 @@ definitions:
     type: object
   sync.Mutex:
     type: object
-  treehelper.FileNode:
+  treehelper.FileEntry:
     properties:
       children:
-        additionalProperties:
-          $ref: '#/definitions/treehelper.FileNode'
-        type: object
-      isFile:
-        type: boolean
+        items:
+          $ref: '#/definitions/treehelper.FileEntry'
+        type: array
+      id:
+        description: Unique identifier for the file entry
+        type: string
       name:
         type: string
+      path:
+        type: string
+      type:
+        description: '"file" or "symlink" or "directory"'
+        type: string
+    type: object
+  treehelper.FileTreeCache:
+    properties:
+      isCached:
+        type: boolean
+      lastUpdate:
+        description: Last update time of the cache
+        type: string
+      layers:
+        items:
+          type: string
+        type: array
+      reference:
+        description: Reference to the image or repository
+        type: string
+      tree:
+        $ref: '#/definitions/treehelper.FileEntry'
     type: object
   user.User:
     properties:
@@ -4933,6 +4958,55 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of a specified Git repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: appId
+        required: true
+        type: string
+      - description: Volume Directory
+        in: path
+        name: volumedir
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Git repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "400":
+          description: Invalid Git repository URL
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating Git client" or "Error getting repository tree
+          schema:
+            type: string
+      summary: Get Git Repository Tree
+      tags:
+      - GitRepository
   /api/clusters/{clusterName}/apps/{appId}/settings/actions/clear/{setting}:
     post:
       consumes:
@@ -6049,8 +6123,8 @@ paths:
             type: string
       summary: Docker Registry Login
       tags:
-      - DockerRegistry
-  /api/clusters/{clusterName}/docker/images/{imageRef}/browse/{sourceDir}:
+      - Docker
+  /api/clusters/{clusterName}/docker/images/{imageRef}/browse:
     get:
       consumes:
       - application/json
@@ -6072,20 +6146,13 @@ paths:
         name: imageRef
         required: true
         type: string
-      - description: Source Directory in Docker Image
-        in: path
-        name: sourceDir
-        required: true
-        type: string
       produces:
       - application/json
       responses:
         "200":
           description: List of files in the directory
           schema:
-            items:
-              type: string
-            type: array
+            $ref: '#/definitions/treehelper.FileTreeCache'
         "400":
           description: Image reference or source directory not provided
           schema:
@@ -6101,7 +6168,7 @@ paths:
             type: string
       summary: List Files in Docker Image Directory
       tags:
-      - DockerImage
+      - Docker
   /api/clusters/{clusterName}/ext-role/accept:
     post:
       consumes:
@@ -6267,51 +6334,6 @@ paths:
       summary: subscribe external operations for a specific cluster
       tags:
       - Cloud18
-  /api/clusters/{clusterName}/git/actions/get-repo-tree:
-    post:
-      consumes:
-      - application/json
-      description: Retrieves the tree structure of a specified Git repository.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Git Clone Configuration
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/config.GitClone'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Git repository tree structure
-          schema:
-            $ref: '#/definitions/treehelper.FileNode'
-        "400":
-          description: Invalid Git repository URL
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error creating Git client" or "Error getting repository tree
-          schema:
-            type: string
-      summary: Get Git Repository Tree
-      tags:
-      - GitRepository
   /api/clusters/{clusterName}/graphite-filterlist:
     get:
       description: This endpoint retrieves the Graphite filter list for the specified
