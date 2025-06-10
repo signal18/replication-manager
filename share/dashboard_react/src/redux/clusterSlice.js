@@ -253,10 +253,10 @@ export const addServer = createAsyncThunk(
 
 export const dropServer = createAsyncThunk(
   'cluster/dropServer',
-  async ({ clusterName, host, port }, thunkAPI) => {
+  async ({ clusterName, host, port, type }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.dropServer(clusterName, host, port, baseURL)
+      const { data, status } = await clusterService.dropServer(clusterName, host, port, type, baseURL)
       showSuccessBanner('New server dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {

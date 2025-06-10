@@ -173,3 +173,43 @@ func (cluster *Cluster) DelWaitSponsorCredCookie() {
 		srv.DelWaitSponsorCredCookie()
 	}
 }
+
+func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
+	newApps := make([]*App, 0)
+	index := -1
+	var appName string
+	var appcnf *config.AppConfig
+	for i, a := range cluster.Apps {
+		if a.GetHost() == host && a.GetPort() == port {
+			index = i
+			appName = a.GetName()     // use name since host might be altered by provNetCNI
+			appcnf = a.GetAppConfig() // get the app config to remove it from the config
+			break                     // found the app
+		}
+	}
+	if index >= 0 {
+		cluster.StateMachine.SetFailoverState()
+		cluster.Lock()
+		if len(cluster.Apps) > 1 {
+			newApps = append(cluster.Apps[:index], cluster.Apps[index+1:]...)
+		}
+		cluster.Apps = newApps
+		cluster.Conf.AppHosts = misc.RemoveFromList(cluster.Conf.AppHosts, appName)
+		for i, app := range cluster.Conf.Apps {
+			if app == appcnf {
+				if len(cluster.Conf.Apps) > 1 {
+					cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
+				} else {
+					cluster.Conf.Apps = make([]*config.AppConfig, 0)
+				}
+				break
+			}
+		}
+		cluster.Unlock()
+		cluster.StateMachine.RemoveFailoverState()
+	} else {
+		return fmt.Errorf("App with address %s:%s not found in cluster!", host, port)
+	}
+
+	return nil
+}

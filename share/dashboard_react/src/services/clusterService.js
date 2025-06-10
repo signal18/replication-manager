@@ -231,7 +231,10 @@ function addServer(clusterName, host, port, monitorType, tag,  dockerRegistry = 
   }
 }
 
-function dropServer(clusterName, host, port, baseURL) {
+function dropServer(clusterName, host, port, type, baseURL) {
+  if (type) {
+    return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}/${type}`)
+  }
   return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}`)
 }
 

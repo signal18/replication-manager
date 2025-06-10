@@ -4465,7 +4465,9 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 		if vars["type"] == "" {
 			mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 		} else {
-			if mycluster.MonitorType[vars["type"]] == "proxy" {
+			if mycluster.MonitorType[vars["type"]] == "app" {
+				mycluster.RemoveAppMonitor(vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "proxy" {
 				mycluster.RemoveProxyMonitor(vars["type"], vars["host"], vars["port"])
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				mycluster.RemoveServerMonitor(vars["host"], vars["port"])
