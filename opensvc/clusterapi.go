@@ -677,6 +677,87 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		//		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
 		i++
 	}
+
+	collector.GetServiceState("s18/svc/haproxy")
+
 	return nhosts, nil
+
+}
+
+func (collector *Collector) GetServiceState(svc string) (string, error) {
+
+	url := "https://" + collector.Host + ":" + collector.Port + "/object_status?path=" + svc
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", err
+	}
+
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("o-node", "*")
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+
+	stopConnect := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return "", err
+	}
+
+	defer client.CloseIdleConnections()
+	defer resp.Body.Close()
+	startRead := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	endRead := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	type NodeStatus struct {
+		Avail string `json:"avail"`
+	}
+
+	type Node struct {
+		Status NodeStatus `json:"status"`
+		// Ajoutez d'autres champs selon votre structure JSON
+	}
+
+	// Structure principale du document JSON
+	type Document struct {
+		Nodes map[string]Node `json:"nodes"`
+	}
+
+	var doc Document
+
+	// Parser le JSON
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", err
+	}
+
+	// Filtrer les nodes avec status.avail == "up" et extraire les clés
+	var upNodeKeys []string
+	for key, node := range doc.Nodes {
+		if node.Status.Avail == "up" {
+			upNodeKeys = append(upNodeKeys, key)
+			return key, nil
+		}
+	}
+
+	return "", errors.New("Node up not found")
 
 }
