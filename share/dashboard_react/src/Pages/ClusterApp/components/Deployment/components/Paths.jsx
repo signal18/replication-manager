@@ -217,7 +217,7 @@ export default React.memo(function Paths({
         {rows?.length > 0 ?
           rows?.map((p, index) => (
             <HStack key={`row_${p.to}`}>
-              <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={p.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={volumeDirs} />
+              <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={p.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={sources} />
               <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.from`} placeholder="From" value={p.from} onSave={(value) => onRowArrayChange(fieldName, index, "from", value)} />
               <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.to`} placeholder="To" value={p.to} onSave={(value) => onRowArrayChange(fieldName, index, "to", value)} />
               <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => onRowDropIndex(fieldName, index)} />
