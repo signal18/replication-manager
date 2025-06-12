@@ -211,7 +211,7 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 }
 
 func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
-	filePath := cluster.WorkingDir + "/apps/" + app.Host + ".toml"
+	filePath := cluster.WorkingDir + "/apps/" + app.Name + ".toml"
 
 	// Marshal and write TOML configuration
 	readconf, err := toml.Marshal(app.AppConfig)
@@ -300,9 +300,9 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	hosts = hosts[:n]
 	hosts = append(hosts, srv)
 
-	cluster.Conf.AppHosts = strings.Join(hosts, ",")
 	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg
+	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
 
 	cluster.Lock()
 	cluster.newAppList()

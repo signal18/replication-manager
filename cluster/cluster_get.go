@@ -1576,7 +1576,5 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 		cnf.ProvAppAgents = cluster.Conf.ProvAgents
 	}
 
-	cluster.Conf.Apps = append(cluster.Conf.Apps, cnf)
-
 	return cnf
 }

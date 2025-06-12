@@ -12,7 +12,6 @@ package cluster
 
 import (
 	"os"
-	"strings"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
@@ -56,8 +55,8 @@ type appList []*App
 
 func (cluster *Cluster) newAppList() error {
 	cluster.Apps = make([]*App, 0)
-	for k, apphost := range strings.Split(cluster.Conf.AppHosts, ",") {
-		app := NewApp(k, cluster, apphost)
+	for k, appcnf := range cluster.Conf.Apps {
+		app := NewApp(k, cluster, appcnf.AppHost)
 		cluster.AddApp(app)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "New HA App created: %s %s", app.GetHost(), app.GetPort())
 	}
