@@ -944,7 +944,7 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 		itime := strings.Index(line.Text, "[")
 		if itime != -1 {
 			log.Timestamp = line.Text[0 : itime-1]
-			if itext != -1 {
+			if itext != -1 && itime+1 < itext {
 				log.Level = line.Text[itime+1 : itext]
 			}
 		} else {
