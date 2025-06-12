@@ -98,7 +98,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	appCnf := cluster.GetAppConfig(app.Name, app.Port)
 	app.SetPlacement(placement, appCnf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)
 	app.AppConfig = appCnf
-	if conf.ProvNetCNI && !strings.Contains(app.Host, "."+cluster.Name+".svc."+conf.ProvOrchestratorCluster) {
+	if conf.ProvNetCNI {
 		app.Host = app.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
 	}
 

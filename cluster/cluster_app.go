@@ -97,7 +97,7 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	cluster.Conf.Apps = append(cluster.Conf.Apps, &appcnf)
 	// Add the app to the cluster if it does not exist
 	applist := strings.Split(cluster.Conf.AppHosts, ",")
-	if !strings.Contains(cluster.Conf.AppHosts, appname) {
+	if !strings.Contains(cluster.Conf.AppHosts, appcnf.AppHost) {
 		applist = append(applist, appname)
 		cluster.Conf.AppHosts = strings.Join(applist, ",")
 	}
