@@ -91,6 +91,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.FoundAppAgent(app)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not find app agent:  %s ", err)
 		cluster.errorChan <- err
 		return err
 	}
@@ -99,11 +100,13 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 
 	res, err := cluster.OpenSVCGetAppTemplateV2(app)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not get app template:  %s ", err)
 		cluster.errorChan <- err
 		return err
 	}
 	err = svc.CreateTemplateV2(cluster.Name, app.ServiceName, app.Agent, res)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app template:  %s ", err)
 		cluster.errorChan <- err
 		return err
 	}
