@@ -106,12 +106,17 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		return err
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Getting app template %s for OpenSVC", app.GetId())
+
 	res, err := cluster.OpenSVCGetAppTemplateV2(app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not get app template:  %s ", err)
 		cluster.errorChan <- err
 		return err
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Creating app template %s on OpenSVC", app.GetId())
+
 	err = svc.CreateTemplateV2(cluster.Name, app.ServiceName, app.Agent, res)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app template:  %s ", err)
