@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"strconv"
+	"strings"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -243,4 +244,34 @@ func (p *App) GetGitCloneFromVolumeDir(volumeDir string) *config.GitClone {
 	}
 
 	return nil
+}
+
+func (app *App) GetOpenSVCDeploymentGitEnv(gc config.GitClone, vartype string) string {
+	prefix := "GIT_CODE"
+	if gc.VolumeDir == "etc" {
+		return "GIT_CONFIG"
+	}
+
+	result := make([]string, 0)
+
+	replacer := strings.NewReplacer("-", "_", ".", "_", "/", "_")
+	prefix = prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest))
+
+	for _, s := range app.GetAppConfig().Deployment.Variables {
+		if s.Type == vartype && strings.HasPrefix(s.Name, prefix) {
+			result = append(result, "env/"+s.Name)
+		}
+	}
+
+	return strings.Join(result, " ")
+}
+
+func (app *App) GetOpenSVCDeplopymentGitPrefix(gc config.GitClone, envname string) string {
+	prefix := "GIT_CODE"
+	if gc.VolumeDir == "etc" {
+		return "GIT_CONFIG"
+	}
+
+	replacer := strings.NewReplacer("-", "_", ".", "_", "/", "_")
+	return prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest)) + "_" + envname
 }

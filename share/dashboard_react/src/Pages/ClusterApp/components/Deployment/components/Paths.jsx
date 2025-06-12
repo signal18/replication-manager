@@ -19,7 +19,7 @@ const volumeDirs = [
   { value: 'var', name: 'var' },
 ]
 
-const defaultValues = { volumedir: "var", from: "", to: "", type: "", agents: [] }
+const defaultValues = { volumedir: "var", from: "var", to: "", type: "", agents: [] }
 
 const nodeToValue = (node) => node.path;
 const nodeToString = (node) => node.name || node.path;
@@ -195,7 +195,7 @@ export default React.memo(function Paths({
       // Prevent saving if field is using relative paths (..)
       const errors = validateFormData(formData);
       if (errors) {
-        dispatch(showErrorToast(errors));
+        dispatch(showErrorToast({ title: "Invalid Path", description: errors }));
         return;
       }
       onSaveAdd(fieldName, formData).then(() => {

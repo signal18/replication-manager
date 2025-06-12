@@ -631,6 +631,7 @@ type Config struct {
 	ProvAppDiskTotal                          string                 `measurement:"G,bytes" mapstructure:"prov-app-disk-size-total" toml:"prov-app-disk-size-total" json:"provAppDiskSizeTotal"`
 	ProvAppCores                              string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
 	ProvAppCoresTotal                         string                 `mapstructure:"prov-app-cpu-cores-total" toml:"prov-app-cpu-cores-total" json:"provAppCoresTotal"`
+	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`

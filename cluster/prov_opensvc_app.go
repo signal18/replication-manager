@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -78,22 +79,10 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App) error {
 
 func (cluster *Cluster) OpenSVCStartAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
-	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + app.GetName())
-		if err != nil {
-			return err
-		}
-		agent, err := cluster.FoundAppAgent(app)
-		if err != nil {
-			return err
-		}
-		svc.StartService(agent.Node_id, service.Svc_id)
-	} else {
-		err := svc.StartServiceV2(cluster.Name, app.GetServiceName(), app.GetAgent())
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
-			return err
-		}
+	err := svc.StartServiceV2(cluster.Name, app.GetServiceName(), app.GetAgent())
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
+		return err
 	}
 	return nil
 }
@@ -105,80 +94,24 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.errorChan <- err
 		return err
 	}
-	// Unprovision if already in OpenSVC
-	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		var idsrv string
-		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + app.GetName())
-		if err == nil {
-			idsrv = mysrv.Svc_id
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found existing service %s service %s", cluster.Name+"/"+app.GetName(), idsrv)
 
-		} else {
-			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+app.GetName(), "MariaDB")
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC app service")
-				cluster.errorChan <- err
-				return err
-			}
-		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Attaching internal id  %s to opensvc service id %s", cluster.Name+"/"+app.GetName(), idsrv)
-
-		err = svc.DeleteServiceTags(idsrv)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
-			cluster.errorChan <- err
-			return err
-		}
-		taglist := strings.Split(svc.ProvAppTags, ",")
-		svctags, _ := svc.GetTags()
-		for _, tag := range taglist {
-			idtag, err := svc.GetTagIdFromTags(svctags, tag)
-			if err != nil {
-				idtag, _ = svc.CreateTag(tag)
-			}
-			svc.SetServiceTag(idtag, idsrv)
-		}
-	}
 	cluster.OpenSVCCreateMaps(agent.Node_name)
 	srvlist := make([]string, len(cluster.Servers))
 	for i, s := range cluster.Servers {
 		srvlist[i] = s.Host
 	}
 
-	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), app)
-		if err != nil {
-			cluster.errorChan <- err
-			return err
-		}
-		err = svc.CreateTemplateV2(cluster.Name, app.ServiceName, app.Agent, res)
-		if err != nil {
-			cluster.errorChan <- err
-			return err
-		}
-	} else {
-		if strings.Contains(svc.ProvAppAgents, agent.Node_name) {
-			res, err := cluster.GetAppTemplate(svc, strings.Join(srvlist, " "), agent, app)
-			if err != nil {
-				cluster.errorChan <- err
-				return err
-			}
-			idtemplate, err := svc.CreateTemplate(app.GetServiceName(), res)
-			if err != nil {
-				cluster.errorChan <- err
-				return err
-			}
-
-			idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, app.GetServiceName())
-			cluster.OpenSVCWaitDequeue(svc, idaction)
-			task := svc.GetAction(strconv.Itoa(idaction))
-			if task != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
-			}
-		}
+	res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), app)
+	if err != nil {
+		cluster.errorChan <- err
+		return err
 	}
+	err = svc.CreateTemplateV2(cluster.Name, app.ServiceName, app.Agent, res)
+	if err != nil {
+		cluster.errorChan <- err
+		return err
+	}
+
 	cluster.errorChan <- nil
 	return nil
 }
@@ -189,7 +122,10 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(backend string, app *App) (strin
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
-	svcsection["container#02"] = cluster.OpenSVCGetInitContainerSection(app.GetPort())
+	for _, gc := range app.AppConfig.Deployment.GitClones {
+		sectionName := "container#init" + gc.Dest
+		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
+	}
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
 
@@ -207,6 +143,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]stri
 	svcvol["name"] = "{name}"
 	svcvol["pool"] = app.AppConfig.ProvAppVolumeData
 	svcvol["size"] = "{env.size}"
+	svcvol["directories"] = "var etc log"
 	return svcvol
 }
 
@@ -254,172 +191,105 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	return svcenv
 }
 
-func (cluster *Cluster) GetAppsEnv(collector opensvc.Collector, backend string, agent opensvc.Host, app *App) string {
-	i := 0
-	ipPods := ""
-	//if !cluster.Conf.ProvNetCNI {
-	ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetHost() + `
-	`
-	portPods := `port_pod` + fmt.Sprintf("%02d", i+1) + ` = ` + app.GetPort() + `
-`
-	/*} else {
-		ipPods = ipPods + `ip_pod` + fmt.Sprintf("%02d", i+1) + ` = 0.0.0.0`
-	}
-	ips := strings.Split(collector.ProvAppNetGateway, ".")
-	masks := strings.Split(collector.ProvAppNetMask, ".")
-	for i, mask := range masks {
-			if mask == "0" {
-				ips[i] = "0"
-			}
-		}
-		network := strings.Join(ips, ".")
-	*/
-
-	conf := `
-[env]
-nodes = ` + agent.Node_name + `
-size = ` + collector.ProvAppDisk + `
-` + ipPods + `
-` + portPods + `
-app_img = ` + collector.ProvAppDockerImg + `
-port_http = ` + app.Port + `
-base_dir = /srv/{namespace}-{svcname}
-port_telnet = ` + app.Port + `
-port_admin = ` + app.Port + `
-mrm_api_addr = ` + cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort + `
-mrm_cluster_name = ` + cluster.GetClusterName() + `
-`
-
-	return conf
-}
-
 func (app *App) OpenSVCGetAppDefaultSection() map[string]string {
-	cluster := app.ClusterGroup
 	appcnf := app.AppConfig
 	svcdefault := make(map[string]string)
-	svcdefault["nodes"] = app.Agent
+	if appcnf.ProvAppAgents == "" {
+		if app.ClusterGroup.Conf.ProvAppAgents != "" {
+			appcnf.ProvAppAgents = app.ClusterGroup.Conf.ProvAppAgents
+		} else {
+			appcnf.ProvAppAgents = app.ClusterGroup.Conf.ProvAgents
+		}
+	}
 
-	/* Get these:
-		orchestrate = ha
-	flex_primary = s18-fr-4
-	topology = flex
-	flex_target = 2
-	rollback = false
-	id = 9054ca64-2807-4152-818f-550d3e6c9517
-	nodes = s18-fr-4 s18-fr-5
-	*/
+	nodes := strings.Split(appcnf.ProvAppAgents, " ")
+	svcdefault["nodes"] = appcnf.ProvAppAgents
 
-	if appcnf.ProvAppDiskPool == "zpool" && appcnf.ProvAppAgentsFailover != "" {
-		svcdefault["nodes"] = app.Agent + "," + appcnf.ProvAppAgentsFailover
+	if appcnf.ProvAppAgentsFailover != "" {
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
 	} else {
-		svcdefault["flex_primary"] = app.Agent
-		svcdefault["rollback"] = "false"
 		svcdefault["orchestrate"] = "ha"
+		svcdefault["flex_primary"] = nodes[0]
+		svcdefault["topology"] = "flex"
+		svcdefault["rollback"] = "false"
+		svcdefault["flex_target"] = strconv.Itoa(len(nodes))
 	}
-	svcdefault["app"] = cluster.Conf.ProvCodeApp
-	if appcnf.ProvAppType == "docker" {
-		if cluster.Conf.ProvDockerDaemonPrivate {
-			svcdefault["docker_daemon_private"] = "true"
-			if appcnf.ProvAppDiskType != "volume" {
-				svcdefault["docker_data_dir"] = "{env.base_dir}/docker"
 
-			} else {
-				svcdefault["docker_data_dir"] = "{name}-docker/docker"
-			}
-			if appcnf.ProvAppDiskPool == "zpool" {
-				svcdefault["docker_daemon_args"] = " --storage-driver=zfs"
-			} else {
-				svcdefault["docker_daemon_args"] = " --storage-driver=overlay"
-			}
-		} else {
-			svcdefault["docker_daemon_private"] = "false"
-		}
-
-	}
+	svcdefault["app"] = "app"
 	return svcdefault
 }
 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]string {
 	svccontainer := make(map[string]string)
-	if app.AppConfig.ProvAppType == "docker" || app.AppConfig.ProvAppType == "podman" || app.AppConfig.ProvAppType == "oci" {
+	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
-		svccontainer["image"] = "{env.app_img}"
 		svccontainer["rm"] = "true"
+		svccontainer["image"] = "{env.docker_image}"
 		svccontainer["type"] = cluster.Conf.ProvType
-		if app.AppConfig.ProvAppDiskType != "volume" {
-			svccontainer["run_args"] = `-v {env.base_dir}/pod01/init/checkslave:/usr/bin/checkslave:rw -v {env.base_dir}/pod01/init/checkmaster:/usr/bin/checkmaster:rw -v /etc/localtime:/etc/localtime:ro -v {env.base_dir}/pod01/etc/app:/usr/local/etc/app:rw `
-		} else {
-			//	svccontainer["post_provision"] = "chown -R 99:99 {env.base_dir}/data"
-			svccontainer["run_args"] = "--sysctl net.ipv4.ip_unprivileged_port_start=0 "
-			svccontainer["volume_mounts"] = `{name}/init/checkslave:/usr/bin/checkslave:rw {name}/init/checkmaster:/usr/bin/checkmaster:rw /etc/localtime:/etc/localtime:ro {name}/etc/app:/usr/local/etc/app:rw`
+
+		if cluster.Conf.ProvDBDockerRunArgsLimit {
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + app.AppConfig.ProvAppMem + "m --memory-swap=" + app.AppConfig.ProvAppMem + "m --cpus=" + app.AppConfig.ProvAppCores + ".0"
 		}
+
+		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
+		svccontainer["environment"] = cluster.GetOpenSVCDeploymentConfigEnv(app)
+	}
+	return svccontainer
+}
+
+var replacer = strings.NewReplacer("/", "_", "-", "_", ".", "_")
+
+func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
+		svccontainer["detach"] = "false"
+		svccontainer["type"] = "docker"
+		svccontainer["image"] = "alpine/git"
+		svccontainer["netns"] = "container#01"
+		svccontainer["rm"] = "true"
+		svccontainer["start_timeout"] = "300s"
+		svccontainer["optional"] = "true"
+		if cluster.Conf.ProvDiskType != "volume" {
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
+		} else {
+			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
+		}
+		svccontainer["entrypoint"] = "/bin/sh"
+	}
+	return svccontainer
+}
+
+func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc config.GitClone) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
+		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentGitEnv(gc, "secret")
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentGitEnv(gc, "env")
+		dirname := filepath.Join("/bootstrap", gc.VolumeDir, gc.Dest)
+		branch := app.GetOpenSVCDeplopymentGitPrefix(gc, "BRANCH")
+		gituser := app.GetOpenSVCDeplopymentGitPrefix(gc, "USER")
+		gitpass := app.GetOpenSVCDeplopymentGitPrefix(gc, "PASSWORD")
+		gitURL := app.GetOpenSVCDeplopymentGitPrefix(gc, "URL")
+		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gituser + ":$" + gitpass + "@$" + gitURL + " " + dirname + "'"
 	}
 
 	return svccontainer
 }
 
-func (cluster *Cluster) GetAppTemplate(collector opensvc.Collector, backend string, agent opensvc.Host, app *App) (string, error) {
-
-	conf := `
-[DEFAULT]
-nodes = {env.nodes}
-flex_primary = {env.nodes[0]}
-topology = flex
-rollback = false
-orchestrate = start
-`
-	conf += "app = " + cluster.Conf.ProvCodeApp
-	conf = conf + cluster.GetDockerDiskTemplate(collector)
-	i := 0
-	pod := fmt.Sprintf("%02d", i+1)
-	conf = conf + cluster.GetPodDiskTemplate(collector, pod, agent.Node_name)
-
-	//conf = conf + `post_provision = {svcmgr} -s {svcpath} push status;{svcmgr} -s {svcpath} compliance fix --attach --moduleset mariadb.svc.mrm.app
-	//`
-	conf = conf + app.GetInitContainer(collector)
-	conf = conf + cluster.GetPodNetTemplate(collector, pod, i)
-	conf = conf + cluster.GetPodDockerAppTemplate(collector, pod)
-	conf = conf + cluster.GetPodPackageTemplate(collector, pod)
-	conf = conf + cluster.GetAppsEnv(collector, backend, agent, app)
-	log.Println(conf)
-	return conf, nil
-}
-
-func (cluster *Cluster) GetPodDockerAppTemplate(collector opensvc.Collector, pod string) string {
-	var vm string
-	if collector.ProvAppMicroSrv == "docker" {
-		vm = vm + `
-[container#00` + pod + `]
-type = docker
-hostname = {svcname}.{namespace}.svc.{clustername}
-image = ghcr.io/opensvc/pause
-rm = true
-
-[container#20` + pod + `]
-tags = pod` + pod + `
-type = docker
-run_image = {env.app_img}
-netns = container#00` + pod + `
-rm = true
-run_args = -v {env.base_dir}/pod` + pod + `/init/checkslave:/usr/bin/checkslave:rw
-		-v {env.base_dir}/pod` + pod + `/init/checkmaster:/usr/bin/checkmaster:rw
-    -v /etc/localtime:/etc/localtime:ro
-    -v {env.base_dir}/pod` + pod + `/etc:/usr/local/etc/app:rw
-`
-		if dockerMinusRm {
-			vm = vm + ` --rm
-`
-		}
+func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
+	var result string
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return ""
 	}
-	return vm
-}
 
-func (cluster *Cluster) OpenSVCProvisionReloadAppConf(Conf string) string {
-	svc := cluster.OpenSVCConnect()
-	svc.SetRulesetVariableValue("mariadb.svc.mrm.app.cnf.app", "app_cnf_app", Conf)
-	return ""
+	return result
+}
+func (cluster *Cluster) GetOpenSVCDeploymentConfigEnv(app *App) string {
+	var result string
+
+	return result
 }

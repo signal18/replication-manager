@@ -24,7 +24,7 @@ function DeploymentDetail({ clusterName, appId, row, dockerImage }) {
     return dispatch(deploymentFieldIndexDrop({ clusterName, appId, field, index }))
   }, [clusterName, appId, dispatch]);
 
-  const pathRows = useMemo(() => row?.path || [], [row?.path])
+  const pathRows = useMemo(() => row?.paths || [], [row?.paths])
   const variableRows = useMemo(() => row?.variables || [], [row?.variables])
   const routeRows = useMemo(() => row?.routes || [], [row?.routes])
   const gitCloneRows = useMemo(() => row?.gitClones || [], [row?.gitClones])
