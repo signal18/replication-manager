@@ -1070,7 +1070,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "20", "Disk in g for micro service VM")
 	flags.StringVar(&conf.ProvAppCores, "prov-app-cpu-cores", "1", "Cpu cores ")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "Memory usage in M bytes")
-	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "", "Volume name of the data files")
+	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name of the data files")
 
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")

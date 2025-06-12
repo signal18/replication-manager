@@ -139,8 +139,8 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
-	for _, gc := range app.AppConfig.Deployment.GitClones {
-		sectionName := "container#init" + gc.Dest
+	for i, gc := range app.AppConfig.Deployment.GitClones {
+		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Dest)
 		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
 	}
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
@@ -290,13 +290,18 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc config
 }
 
 func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
-	var result string
+	var results []string
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return ""
 	}
 
-	return result
+	for _, p := range appcnf.Deployment.Paths {
+		from := filepath.Join("{name}", p.VolumeDir, p.From)
+		results = append(results, from+":"+p.To)
+	}
+
+	return strings.Join(results, " ")
 }
 func (cluster *Cluster) GetOpenSVCDeploymentConfigEnv(app *App) string {
 	var result string
