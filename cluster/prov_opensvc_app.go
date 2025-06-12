@@ -176,7 +176,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	appcnf := app.AppConfig
 
 	svcenv := make(map[string]string)
-	svcenv["nodes"] = app.GetAgent()
+	svcenv["nodes"] = cluster.GetAppAgents(app)
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
 	svcenv["size"] = appcnf.ProvAppDisk + "g"
 	svcenv["ip_pod01"] = app.GetHost()

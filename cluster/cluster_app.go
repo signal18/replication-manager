@@ -325,5 +325,9 @@ func (cluster *Cluster) GetAppAgents(app *App) string {
 		agents = cluster.Conf.ProvAgents
 	}
 
+	if agents != "" && appCnf != nil {
+		appCnf.ProvAppAgents = agents
+	}
+
 	return agents
 }
