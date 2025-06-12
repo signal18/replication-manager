@@ -99,7 +99,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
 
-	err = cluster.OpenSVCCreateMaps(agent.Node_name)
+	err = cluster.OpenSVCCreateAppPathMaps(agent.Node_name, app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create maps:  %s ", err)
 		cluster.errorChan <- err
@@ -307,4 +307,37 @@ func (cluster *Cluster) GetOpenSVCDeploymentConfigEnv(app *App) string {
 	var result string
 
 	return result
+}
+
+func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		return errors.New("No support of Maps in Collector API")
+	}
+
+	svc := cluster.OpenSVCConnect()
+	err := svc.CreateSecretV2(cluster.Name, app.Name, agent)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
+	}
+
+	err = svc.CreateConfigV2(cluster.Name, app.Name, agent)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
+	}
+
+	for _, v := range app.AppConfig.Deployment.Variables {
+		if v.Type == "secret" {
+			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+			}
+		} else {
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+			}
+		}
+	}
+
+	return nil
 }
