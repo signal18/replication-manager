@@ -1572,6 +1572,9 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	if cnf.Deployment.GitClones == nil {
 		cnf.Deployment.GitClones = make([]config.GitClone, 0)
 	}
+	if cnf.ProvAppAgents == "" {
+		cnf.ProvAppAgents = cluster.Conf.ProvAgents
+	}
 
 	cluster.Conf.Apps = append(cluster.Conf.Apps, cnf)
 

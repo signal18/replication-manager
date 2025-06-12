@@ -22,6 +22,7 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 		ProvAppCores:    cluster.Conf.ProvAppCores,
 		ProvAppDiskType: "volume",
 		ProvAppDisk:     cluster.Conf.ProvAppDisk,
+		ProvAppAgents:   cluster.Conf.ProvAppAgents,
 	}
 }
 
