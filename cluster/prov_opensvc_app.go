@@ -239,7 +239,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
-		svccontainer["image"] = "{env.docker_image}"
+		svccontainer["image"] = "{env.app_img}"
 		svccontainer["type"] = cluster.Conf.ProvType
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
