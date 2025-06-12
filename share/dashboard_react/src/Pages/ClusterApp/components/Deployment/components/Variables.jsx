@@ -53,8 +53,8 @@ export default React.memo(function Variables({
         { rows?.length > 0 ?
         rows?.map((v, index) => (
           <HStack key={index}>
-            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
-            <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
+            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} isDisabled={v.locked} />
+            <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} isDisabled={v.locked} />
             {v.type === "secret" ? (
               <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
             ) : (

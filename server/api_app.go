@@ -469,6 +469,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			return
 		}
 
+		replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
+
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
 			type FieldValue struct {
@@ -528,36 +530,62 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Index out of range for gitClones", 500)
 					return
 				}
+				row := node.AppConfig.Deployment.GitClones[index]
+				prefix := "GIT_CODE"
+				if row.VolumeDir == "etc" {
+					prefix = "GIT_CONFIG"
+				}
+				prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
 
+				var v *config.VariableMapping
 				// Modify field based on key
 				switch vars["key"] {
-				case "repo":
-					node.AppConfig.Deployment.GitClones[index].GitRepo = newValue
-				case "branch":
-					node.AppConfig.Deployment.GitClones[index].GitBranch = newValue
 				case "dest":
 					node.AppConfig.Deployment.GitClones[index].Dest = newValue
+				case "repo":
+					node.AppConfig.Deployment.GitClones[index].GitRepo = newValue
+					v = node.AppConfig.GetDeploymentVariables(prefix + "_URL")
+				case "branch":
+					node.AppConfig.Deployment.GitClones[index].GitBranch = newValue
+					v = node.AppConfig.GetDeploymentVariables(prefix + "_BRANCH")
 				case "pass":
 					node.AppConfig.Deployment.GitClones[index].GitPass = newValue
+					v = node.AppConfig.GetDeploymentVariables(prefix + "_PASSWORD")
 				case "user":
 					node.AppConfig.Deployment.GitClones[index].GitUser = newValue
+					v = node.AppConfig.GetDeploymentVariables(prefix + "_USER")
 				default:
 					http.Error(w, "Invalid key for gitClones", 500)
 					return
 				}
+
+				v.Value = newValue
 			case "variables":
 				if index >= int64(len(node.AppConfig.Deployment.Variables)) {
 					http.Error(w, "Index out of range for variables", 500)
 					return
 				}
 
+				row := node.AppConfig.Deployment.Variables[index]
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
+					if row.Locked {
+						http.Error(w, "Unable to change name of locked variable", 400)
+					}
 					node.AppConfig.Deployment.Variables[index].Name = newValue
 				case "value":
 					node.AppConfig.Deployment.Variables[index].Value = newValue
+					if row.Locked {
+						err := node.AppConfig.SetGitVariableValue(row.Name, newValue)
+						if err != nil {
+							http.Error(w, "Error setting git variable value: "+err.Error(), 500)
+						}
+					}
 				case "type":
+					if row.Locked {
+						http.Error(w, "Unable to change type of locked variable", 400)
+					}
 					node.AppConfig.Deployment.Variables[index].Type = newValue
 				default:
 					http.Error(w, "Invalid key for variables", 500)
@@ -638,6 +666,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 	field := vars["field"]
 	var affected bool
+	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
 
 	switch field {
 	case "routes":
@@ -661,7 +690,28 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "git clone", w); err != nil {
 			return
 		}
-		node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones, body...)
+
+		for _, row := range body {
+			if row.GitRepo == "" || row.GitBranch == "" || row.Dest == "" {
+				http.Error(w, "Git clone requires repo, branch, and dest fields", http.StatusInternalServerError)
+				return
+			}
+			if row.GitPass != "" && row.GitUser == "" {
+				http.Error(w, "Git clone requires user field when pass is provided", http.StatusInternalServerError)
+				return
+			}
+			node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones, row)
+			prefix := "GIT_CODE"
+			if row.VolumeDir == "etc" {
+				prefix = "GIT_CONFIG"
+			}
+			prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
+			branch := config.VariableMapping{Name: prefix + "_BRANCH", Value: row.GitBranch, Type: "env", Locked: true}
+			url := config.VariableMapping{Name: prefix + "_URL", Value: row.GitRepo, Type: "env", Locked: true}
+			gituser := config.VariableMapping{Name: prefix + "_USER", Value: row.GitUser, Type: "env", Locked: true}
+			gitpassword := config.VariableMapping{Name: prefix + "_PASSWORD", Value: row.GitPass, Type: "secret", Locked: true}
+			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, branch, url, gituser, gitpassword)
+		}
 		affected = true
 
 	case "variables":
@@ -669,7 +719,14 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		if err := decodeBody(r, &body, "variable", w); err != nil {
 			return
 		}
-		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, body...)
+		for _, row := range body {
+			old := node.AppConfig.GetDeploymentVariables(row.Name)
+			if old != nil && strings.Join(old.Agents, ",") == strings.Join(row.Agents, ",") {
+				http.Error(w, "Cannot duplicate variable with same name and scope", 400)
+				return
+			}
+			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, row)
+		}
 		affected = true
 
 	case "path":
@@ -780,10 +837,17 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 			return
 		}
+		gc := node.AppConfig.Deployment.GitClones[index]
 		node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones[:index], node.AppConfig.Deployment.GitClones[index+1:]...)
+		node.AppConfig.DropGitVariables(gc)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Git %s on app %s deleted with linked variables", gc.Dest, node.Name)
 	case "variables":
 		if index >= len(node.AppConfig.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
+			return
+		}
+		if node.AppConfig.Deployment.Variables[index].Locked {
+			http.Error(w, "Unable to drop locked variable", http.StatusInternalServerError)
 			return
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)

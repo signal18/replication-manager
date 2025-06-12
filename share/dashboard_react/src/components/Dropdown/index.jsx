@@ -17,6 +17,7 @@ function Dropdown({
   isSearchable = false,
   classNamePrefix = '',
   isMenuPortalTarget = true,
+  isDisabled = false,
   ...rest
 }) {
   const [selectedOption, setSelectedOption] = useState(null)
@@ -69,6 +70,7 @@ function Dropdown({
         options={options}
         isSearchable={isSearchable}
         placeholder={placeholder}
+        isDisabled={isDisabled}
         {...(isMenuPortalTarget ? { menuPortalTarget: document.body } : {})}
         {...rest}
       />

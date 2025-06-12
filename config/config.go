@@ -844,10 +844,84 @@ type AppConfig struct {
 	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment"`
 }
 
+func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
+	for _, v := range appcnf.Deployment.Variables {
+		if v.Name == name {
+			return &v
+		}
+	}
+
+	return nil
+}
+
+func (appcnf *AppConfig) SetGitVariableValue(name, newValue string) error {
+	volumedir := "var"
+	parts := strings.Split(name, "_")
+	total := len(parts)
+	if parts[0] != "GIT" || total < 4 {
+		return fmt.Errorf("not found")
+	}
+
+	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
+
+	if parts[1] == "CONFIG" {
+		volumedir = "etc"
+	}
+	dest := strings.Join(parts[2:total-2], "_")
+
+	for i, gc := range appcnf.Deployment.GitClones {
+		if gc.VolumeDir == volumedir && strings.EqualFold(replacer.Replace(gc.Dest), dest) {
+			switch parts[total-1] {
+			case "URL":
+				gc.GitRepo = newValue
+			case "USER":
+				gc.GitUser = newValue
+			case "PASSWORD":
+				gc.GitPass = newValue
+			case "BRANCH":
+				gc.GitBranch = newValue
+			default:
+				return fmt.Errorf("invalid field")
+			}
+
+			appcnf.Deployment.GitClones[i] = gc
+
+			return nil
+		}
+	}
+
+	return fmt.Errorf("invalid variable name")
+}
+
+func (appcnf *AppConfig) DropGitVariables(row GitClone) int {
+	prefix := "GIT_CODE"
+	if row.VolumeDir == "etc" {
+		prefix = "GIT_CONFIG"
+	}
+	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
+	prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
+	var newVariables []VariableMapping
+
+	dropped := 0
+	for _, v := range appcnf.Deployment.Variables {
+		if strings.HasPrefix(v.Name, prefix) && v.Locked {
+			dropped++
+			continue
+		}
+
+		newVariables = append(newVariables, v)
+	}
+
+	appcnf.Deployment.Variables = newVariables
+
+	return dropped
+}
+
 type VariableMapping struct {
 	Name   string   `toml:"name" json:"name"`
 	Value  string   `toml:"value" json:"value"`
 	Type   string   `toml:"type" json:"type" options:"secret|env"`
+	Locked bool     `toml:"locked" json:"locked"`
 	Agents []string `toml:"agents" json:"agents" example:"all"`
 }
 
