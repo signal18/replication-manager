@@ -148,6 +148,8 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]stri
 
 func (cluster *Cluster) FoundAppAgent(app *App) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
+	svc.ProvAppAgents = cluster.GetAppAgents(app)
+
 	agents, err := svc.GetNodes()
 	if err != nil {
 		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})

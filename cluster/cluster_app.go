@@ -309,3 +309,21 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	cluster.Unlock()
 	return nil
 }
+
+func (cluster *Cluster) GetAppAgents(app *App) string {
+	// Get the app config
+	appCnf := app.GetAppConfig()
+	if appCnf != nil && appCnf.ProvAppAgents != "" {
+		// If the app config has agents, return them
+		return appCnf.ProvAppAgents
+	}
+
+	// If the app config does not have agents, return the cluster agents
+	agents := cluster.Conf.ProvAppAgents
+	if agents == "" {
+		// If the cluster does not have agents, return the default agents
+		agents = cluster.Conf.ProvAgents
+	}
+
+	return agents
+}
