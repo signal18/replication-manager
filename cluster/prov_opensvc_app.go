@@ -89,6 +89,7 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App) error {
 
 func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Provisioning app %s on OpenSVC", app.GetId())
 	agent, err := cluster.FoundAppAgent(app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not find app agent:  %s ", err)
@@ -96,7 +97,14 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		return err
 	}
 
-	cluster.OpenSVCCreateMaps(agent.Node_name)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
+
+	err = cluster.OpenSVCCreateMaps(agent.Node_name)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create maps:  %s ", err)
+		cluster.errorChan <- err
+		return err
+	}
 
 	res, err := cluster.OpenSVCGetAppTemplateV2(app)
 	if err != nil {
