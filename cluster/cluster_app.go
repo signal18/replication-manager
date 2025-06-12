@@ -331,3 +331,92 @@ func (cluster *Cluster) GetAppAgents(app *App) string {
 
 	return agents
 }
+
+func (cluster *Cluster) GetAppDisk(app *App) string {
+	// Get the app config
+	appCnf := app.GetAppConfig()
+	if appCnf != nil && appCnf.ProvAppDisk != "" {
+		// If the app config has disk, return it
+		return appCnf.ProvAppDisk
+	}
+
+	// If the app config does not have disk, return the cluster disk
+	disk := cluster.Conf.ProvAppDisk
+	if disk == "" {
+		// If the cluster does not have disk, return the default disk
+		disk = cluster.Conf.ProvDisk
+	}
+
+	if disk != "" && appCnf != nil {
+		appCnf.ProvAppDisk = disk
+	}
+
+	return disk
+}
+
+func (cluster *Cluster) GetAppVolumeData(app *App) string {
+	// Get the app config
+	appCnf := app.GetAppConfig()
+	if appCnf != nil && appCnf.ProvAppVolumeData != "" {
+		// If the app config has volume data, return it
+		return appCnf.ProvAppVolumeData
+	}
+
+	// If the app config does not have volume data, return the cluster volume data
+	volumeData := cluster.Conf.ProvAppVolumeData
+	if volumeData == "" {
+		// If the cluster does not have volume data, return the default volume data
+		volumeData = cluster.Conf.ProvVolumeData
+	}
+
+	if volumeData != "" && appCnf != nil {
+		appCnf.ProvAppVolumeData = volumeData
+	}
+
+	return volumeData
+}
+
+func (cluster *Cluster) GetAppMemory(app *App) string {
+	// Get the app config
+	appCnf := app.GetAppConfig()
+	if appCnf != nil && appCnf.ProvAppMem != "" {
+		// If the app config has memory, return it
+		return appCnf.ProvAppMem
+	}
+
+	// If the app config does not have memory, return the cluster memory
+	mem := cluster.Conf.ProvAppMem
+	if mem == "" {
+		// If the cluster does not have memory, return the default memory
+		mem = cluster.Conf.ProvMem
+	}
+
+	if mem != "" && appCnf != nil {
+		appCnf.ProvAppMem = mem
+	}
+
+	return mem
+}
+
+// GetAppCores returns the cores for the app.
+func (cluster *Cluster) GetAppCores(app *App) string {
+	// Get the app config
+	appCnf := app.GetAppConfig()
+	if appCnf != nil && appCnf.ProvAppCores != "" {
+		// If the app config has cores, return it
+		return appCnf.ProvAppCores
+	}
+
+	// If the app config does not have cores, return the cluster cores
+	cores := cluster.Conf.ProvAppCores
+	if cores == "" {
+		// If the cluster does not have cores, return the default cores
+		cores = cluster.Conf.ProvCores
+	}
+
+	if cores != "" && appCnf != nil {
+		appCnf.ProvAppCores = cores
+	}
+
+	return cores
+}

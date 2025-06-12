@@ -124,8 +124,13 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 }
 
 func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
+	// Check if app image not empty
+	if app.AppConfig.ProvAppDockerImg == "" {
+		return "", errors.New("App image is not defined in app config")
+	}
+
 	svcsection := make(map[string]map[string]string)
-	svcsection["DEFAULT"] = app.OpenSVCGetAppDefaultSection()
+	svcsection["DEFAULT"] = cluster.OpenSVCGetAppDefaultSection(app)
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
@@ -148,7 +153,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
 func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
-	svcvol["pool"] = app.AppConfig.ProvAppVolumeData
+	svcvol["pool"] = cluster.GetAppVolumeData(app)
 	svcvol["size"] = "{env.size}"
 	svcvol["directories"] = "var etc log"
 	return svcvol
@@ -186,7 +191,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv := make(map[string]string)
 	svcenv["nodes"] = cluster.GetAppAgents(app)
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = appcnf.ProvAppDisk + "g"
+	svcenv["size"] = cluster.GetAppDisk(app) + "g"
 	svcenv["ip_pod01"] = app.GetHost()
 	svcenv["port_pod01"] = app.GetPort()
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
@@ -200,19 +205,12 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	return svcenv
 }
 
-func (app *App) OpenSVCGetAppDefaultSection() map[string]string {
+func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string {
 	appcnf := app.AppConfig
 	svcdefault := make(map[string]string)
-	if appcnf.ProvAppAgents == "" {
-		if app.ClusterGroup.Conf.ProvAppAgents != "" {
-			appcnf.ProvAppAgents = app.ClusterGroup.Conf.ProvAppAgents
-		} else {
-			appcnf.ProvAppAgents = app.ClusterGroup.Conf.ProvAgents
-		}
-	}
 
-	nodes := strings.Split(appcnf.ProvAppAgents, " ")
-	svcdefault["nodes"] = appcnf.ProvAppAgents
+	svcdefault["nodes"] = cluster.GetAppAgents(app)
+	nodes := strings.Split(svcdefault["nodes"], ",")
 
 	if appcnf.ProvAppAgentsFailover != "" {
 		svcdefault["cluster_type"] = "failover"
@@ -240,7 +238,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["type"] = cluster.Conf.ProvType
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + app.AppConfig.ProvAppMem + "m --memory-swap=" + app.AppConfig.ProvAppMem + "m --cpus=" + app.AppConfig.ProvAppCores + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app) + "m --memory-swap=" + cluster.GetAppMemory(app) + "m --cpus=" + cluster.GetAppCores(app) + ".0"
 		}
 
 		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
@@ -248,8 +246,6 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 	}
 	return svccontainer
 }
-
-var replacer = strings.NewReplacer("/", "_", "-", "_", ".", "_")
 
 func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]string {
 	svccontainer := make(map[string]string)

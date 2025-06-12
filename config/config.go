@@ -626,11 +626,9 @@ type Config struct {
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppMemTotal                           string                 `measurement:"M,bytes" mapstructure:"prov-app-memory-total" toml:"prov-app-memory-total" json:"provAppMemoryTotal"`
 	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppDiskTotal                          string                 `measurement:"G,bytes" mapstructure:"prov-app-disk-size-total" toml:"prov-app-disk-size-total" json:"provAppDiskSizeTotal"`
+	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
 	ProvAppCores                              string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
-	ProvAppCoresTotal                         string                 `mapstructure:"prov-app-cpu-cores-total" toml:"prov-app-cpu-cores-total" json:"provAppCoresTotal"`
 	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
@@ -839,7 +837,6 @@ type AppConfig struct {
 	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppDiskPool       string     `mapstructure:"prov-app-disk-pool" toml:"prov-app-disk-pool" json:"provAppDiskPool"`
 	ProvAppAgents         string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
