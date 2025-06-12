@@ -259,7 +259,7 @@ func (app *App) GetOpenSVCDeploymentGitEnv(gc config.GitClone, vartype string) s
 
 	for _, s := range app.GetAppConfig().Deployment.Variables {
 		if s.Type == vartype && strings.HasPrefix(s.Name, prefix) {
-			result = append(result, "env/"+s.Name)
+			result = append(result, app.Name+"/"+s.Name)
 		}
 	}
 
