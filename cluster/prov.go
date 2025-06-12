@@ -209,6 +209,26 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 	return nil
 }
 
+func (cluster *Cluster) InitAppService(app *App) error {
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		go cluster.OpenSVCProvisionAppService(app)
+	default:
+		return nil
+	}
+	// cluster.ProvisionAppScript(app)
+	select {
+	case err := <-cluster.errorChan:
+		cluster.StateMachine.RemoveFailoverState()
+		if err == nil {
+			app.SetProvisionCookie()
+		} else {
+			return err
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) Unprovision() error {
 
 	cluster.StateMachine.SetFailoverState()
