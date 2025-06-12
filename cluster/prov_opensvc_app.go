@@ -96,12 +96,8 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	}
 
 	cluster.OpenSVCCreateMaps(agent.Node_name)
-	srvlist := make([]string, len(cluster.Servers))
-	for i, s := range cluster.Servers {
-		srvlist[i] = s.Host
-	}
 
-	res, err := cluster.OpenSVCGetAppTemplateV2(strings.Join(srvlist, " "), app)
+	res, err := cluster.OpenSVCGetAppTemplateV2(app)
 	if err != nil {
 		cluster.errorChan <- err
 		return err
@@ -116,7 +112,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetAppTemplateV2(backend string, app *App) (string, error) {
+func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = app.OpenSVCGetAppDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
