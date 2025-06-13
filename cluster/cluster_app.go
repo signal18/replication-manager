@@ -15,13 +15,14 @@ import (
 
 func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 	return &config.AppConfig{
-		AppHost:         apphost,
-		AppPort:         port,
-		ProvAppMem:      cluster.Conf.ProvAppMem,
-		ProvAppCores:    cluster.Conf.ProvAppCores,
-		ProvAppDiskType: "volume",
-		ProvAppDisk:     cluster.Conf.ProvAppDisk,
-		ProvAppAgents:   cluster.Conf.ProvAppAgents,
+		AppHost:           apphost,
+		AppPort:           port,
+		ProvAppDiskType:   "volume",
+		ProvAppMem:        cluster.GetAppMemory(nil),
+		ProvAppCores:      cluster.GetAppCores(nil),
+		ProvAppDisk:       cluster.GetAppDisk(nil),
+		ProvAppAgents:     cluster.GetAppAgents(nil),
+		ProvAppVolumeData: cluster.GetAppVolumeData(nil),
 	}
 }
 
@@ -297,11 +298,15 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 }
 
 func (cluster *Cluster) GetAppAgents(app *App) string {
-	// Get the app config
-	appCnf := app.GetAppConfig()
-	if appCnf != nil && appCnf.ProvAppAgents != "" {
-		// If the app config has agents, return them
-		return appCnf.ProvAppAgents
+	var appCnf *config.AppConfig
+
+	if app != nil {
+		// Get the app config
+		appCnf = app.GetAppConfig()
+		if appCnf != nil && appCnf.ProvAppAgents != "" {
+			// If the app config has agents, return them
+			return appCnf.ProvAppAgents
+		}
 	}
 
 	// If the app config does not have agents, return the cluster agents
@@ -319,11 +324,15 @@ func (cluster *Cluster) GetAppAgents(app *App) string {
 }
 
 func (cluster *Cluster) GetAppDisk(app *App) string {
-	// Get the app config
-	appCnf := app.GetAppConfig()
-	if appCnf != nil && appCnf.ProvAppDisk != "" {
-		// If the app config has disk, return it
-		return appCnf.ProvAppDisk
+	var appCnf *config.AppConfig
+
+	if app != nil {
+		// Get the app config
+		appCnf = app.GetAppConfig()
+		if appCnf != nil && appCnf.ProvAppDisk != "" {
+			// If the app config has disk, return it
+			return appCnf.ProvAppDisk
+		}
 	}
 
 	// If the app config does not have disk, return the cluster disk
@@ -341,11 +350,15 @@ func (cluster *Cluster) GetAppDisk(app *App) string {
 }
 
 func (cluster *Cluster) GetAppVolumeData(app *App) string {
-	// Get the app config
-	appCnf := app.GetAppConfig()
-	if appCnf != nil && appCnf.ProvAppVolumeData != "" {
-		// If the app config has volume data, return it
-		return appCnf.ProvAppVolumeData
+	var appCnf *config.AppConfig
+
+	if app != nil {
+		// Get the app config
+		appCnf = app.GetAppConfig()
+		if appCnf != nil && appCnf.ProvAppVolumeData != "" {
+			// If the app config has volume data, return it
+			return appCnf.ProvAppVolumeData
+		}
 	}
 
 	// If the app config does not have volume data, return the cluster volume data
@@ -363,11 +376,15 @@ func (cluster *Cluster) GetAppVolumeData(app *App) string {
 }
 
 func (cluster *Cluster) GetAppMemory(app *App) string {
-	// Get the app config
-	appCnf := app.GetAppConfig()
-	if appCnf != nil && appCnf.ProvAppMem != "" {
-		// If the app config has memory, return it
-		return appCnf.ProvAppMem
+	var appCnf *config.AppConfig
+
+	if app != nil {
+		// Get the app config
+		appCnf = app.GetAppConfig()
+		if appCnf != nil && appCnf.ProvAppMem != "" {
+			// If the app config has memory, return it
+			return appCnf.ProvAppMem
+		}
 	}
 
 	// If the app config does not have memory, return the cluster memory
@@ -386,11 +403,15 @@ func (cluster *Cluster) GetAppMemory(app *App) string {
 
 // GetAppCores returns the cores for the app.
 func (cluster *Cluster) GetAppCores(app *App) string {
-	// Get the app config
-	appCnf := app.GetAppConfig()
-	if appCnf != nil && appCnf.ProvAppCores != "" {
-		// If the app config has cores, return it
-		return appCnf.ProvAppCores
+	var appCnf *config.AppConfig
+
+	if app != nil {
+		// Get the app config
+		appCnf = app.GetAppConfig()
+		if appCnf != nil && appCnf.ProvAppCores != "" {
+			// If the app config has cores, return it
+			return appCnf.ProvAppCores
+		}
 	}
 
 	// If the app config does not have cores, return the cluster cores
