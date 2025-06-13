@@ -56,9 +56,9 @@ export default React.memo(function Variables({
             <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} isDisabled={v.locked} />
             <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} isDisabled={v.locked} />
             {v.type === "secret" ? (
-              <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+              <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} isDisabled={v.locked} />
             ) : (
-              <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+              <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} isDisabled={v.locked} />
             )}
             <RMIconButton icon={HiTrash} aria-label="Delete Variable" onClick={() => onRowDropIndex(fieldName, index)} />
           </HStack>
