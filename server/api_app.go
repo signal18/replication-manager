@@ -1064,14 +1064,14 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		if strings.Contains(gc.GitRepo, "github") {
 			_, projectID, err = githelper.ParseGitHubURL(gc.GitRepo)
 			if err != nil {
-				http.Error(w, "Invalid GitHub repository URL", 400)
+				http.Error(w, "Invalid GitHub repository URL: "+err.Error(), 400)
 				return
 			}
 			gClient, err = githelper.NewGithubClient(gc.GitPass)
 		} else {
 			baseURL, projectID, err = githelper.ParseGitLabURL(gc.GitRepo)
 			if err != nil {
-				http.Error(w, "Invalid GitLab repository URL", 400)
+				http.Error(w, "Invalid GitLab repository URL: "+err.Error(), 400)
 				return
 			}
 			gClient, err = githelper.NewGitlabClient(baseURL, gc.GitPass)

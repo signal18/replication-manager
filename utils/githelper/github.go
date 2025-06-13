@@ -131,6 +131,10 @@ func ParseGitHubURL(input string) (apiURL, projectID string, err error) {
 		return apiURL, projectID, nil
 	}
 
+	if !strings.HasPrefix(input, "https://") {
+		input = "https://" + input
+	}
+
 	// Handle HTTPS format
 	parsedURL, err := url.Parse(input)
 	if err != nil {
