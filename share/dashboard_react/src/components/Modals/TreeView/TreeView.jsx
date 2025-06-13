@@ -127,9 +127,9 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
 
   const content = (
     <Box {...api.getRootProps()}>
-      <Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
+      { !asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
         {title}
-      </Text>
+      </Text>) }
       <Box mb={4}>
         <Text fontSize="sm" mb={1}>Selected Node</Text>
         <Box as="input" type="text" readOnly value={selectedNode || ""} style={{ width: "100%", padding: "6px", borderRadius: "6px", border: "1px solid #ccc" }} />
