@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -543,6 +544,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				case "dest":
 					node.AppConfig.Deployment.GitClones[index].Dest = newValue
 				case "repo":
+					// strip protocol if present
+					if strings.HasPrefix(newValue, "http://") || strings.HasPrefix(newValue, "https://") {
+						newValue = strings.TrimPrefix(newValue, "http://")
+						newValue = strings.TrimPrefix(newValue, "https://")
+					}
 					node.AppConfig.Deployment.GitClones[index].GitRepo = newValue
 					v = node.AppConfig.GetDeploymentVariables(prefix + "_URL")
 				case "branch":
@@ -575,6 +581,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 					node.AppConfig.Deployment.Variables[index].Name = newValue
 				case "value":
+					if row.Locked && strings.HasSuffix(row.Name, "_URL") {
+						// Strip protocol if present
+						if strings.HasPrefix(newValue, "http://") || strings.HasPrefix(newValue, "https://") {
+							newValue = strings.TrimPrefix(newValue, "http://")
+							newValue = strings.TrimPrefix(newValue, "https://")
+						}
+					}
 					node.AppConfig.Deployment.Variables[index].Value = newValue
 					if row.Locked {
 						err := node.AppConfig.SetGitVariableValue(row.Name, newValue)
@@ -700,6 +713,18 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				http.Error(w, "Git clone requires user field when pass is provided", http.StatusInternalServerError)
 				return
 			}
+			// Strip protocol if present
+			if strings.HasPrefix(row.GitRepo, "http://") || strings.HasPrefix(row.GitRepo, "https://") {
+				row.GitRepo = strings.TrimPrefix(row.GitRepo, "http://")
+				row.GitRepo = strings.TrimPrefix(row.GitRepo, "https://")
+			}
+			// Only allow alphanumeric for dest
+			regexpDest := regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+			if !regexpDest.MatchString(row.Dest) {
+				http.Error(w, "Invalid dest format. Only alphanumeric characters are allowed for directory name", http.StatusInternalServerError)
+				return
+			}
+
 			node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones, row)
 			prefix := "GIT_CODE"
 			if row.VolumeDir == "etc" {
