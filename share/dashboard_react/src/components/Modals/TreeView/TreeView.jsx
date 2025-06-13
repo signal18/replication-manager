@@ -44,15 +44,15 @@ const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) 
     if (nodeState.isBranch) {
       return (
         <Flex {...api.getBranchProps(nodeProps)} direction="column">
-          <Flex {...{...api.getBranchControlProps(nodeProps), onClick: onBranchClick}} direction="row" >
+          <Flex {...{...api.getBranchControlProps(nodeProps), onClick: onBranchClick}} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row" >
             <CustomIcon icon={HiFolder} />
             <Text {...api.getBranchTextProps(nodeProps)}>{node.name}</Text>
-            <Box {...api.getBranchIndicatorProps(nodeProps)}>
-              <CustomIcon icon={HiChevronRight} transition="transform 0.2s" transform={nodeState.expanded ? "rotate(90deg)" : "rotate(0deg)"} />
+            <Box {...api.getBranchIndicatorProps(nodeProps)} className={`${parentStyles.folderToggle} ${nodeState.expanded ? parentStyles.folderToggleOpen : ""}`} >
+              <CustomIcon icon={HiChevronRight} />
             </Box>
           </Flex>
           <Flex {...api.getBranchContentProps(nodeProps)}>
-            <Flex {...api.getBranchIndentGuideProps(nodeProps)} direction={"column"}>
+            <Flex {...api.getBranchIndentGuideProps(nodeProps)} className={parentStyles.indentGuide} direction={"column"}>
               {node.children?.map((childNode, index) => (
                 <TreeNode
                   key={childNode.id}
@@ -68,7 +68,7 @@ const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) 
     }
 
     return (
-      <Flex {...api.getItemProps(nodeProps)} direction="row">
+      <Flex {...api.getItemProps(nodeProps)} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row">
         <CustomIcon icon={HiDocument} />
         <Text>{node.name}</Text>
       </Flex>
@@ -80,8 +80,8 @@ const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) 
 
 export const TreeNode = React.memo(TreeNodeComponent)
 
-const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defaultValue = [], asModal = false, modalTitle = "Browse Path", isOpen, onClose, onSave }) => {
-  const [selectedNode, setSelectedNode] = useState([...defaultValue])
+const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defaultValues = ["/"], asModal = false, modalTitle = "Browse Path", isOpen, onClose, onSave }) => {
+  const [selectedNode, setSelectedNode] = useState([...defaultValues])
   const { theme } = useTheme()
 
   const collection = tree.collection({
@@ -89,13 +89,6 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
     nodeToString: nodeToString || ((node) => node.name),
     rootNode: treeData,
   })
-
-  useEffect(() => {
-    if (defaultValue && defaultValue.length > 0) {
-      setSelectedNode(defaultValue)
-      console.log("Default Selected Value:", defaultValue)
-    }
-  }, [defaultValue])
 
   const handleSelect = (node) => {
     let selectedValue = node?.selectedValue || []
@@ -115,7 +108,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
     collection,
     onSelectionChange: handleSelect,
     onExpandedChange: handleExpandedChange,
-    defaultSelectedValue: defaultValue,
+    defaultSelectedValue: defaultValues,
   })
 
   const api = tree.connect(service, normalizeProps)

@@ -118,3 +118,42 @@
 .fullWidth {
   width: 100% !important;
 }
+
+.treeNode {
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.treeNode:hover {
+  background-color: var(--chakra-colors-gray-100);
+}
+
+.treeNodeSelected {
+  background-color: var(--chakra-colors-blue-100);
+  font-weight: 600;
+}
+
+.indentGuide {
+  padding-left: 1rem;
+  border-left: 1px dashed var(--chakra-colors-gray-300);
+  margin-left: 0.5rem;
+}
+
+.folderToggle {
+  transition: transform 0.2s ease;
+}
+
+.folderToggleOpen {
+  transform: rotate(90deg);
+}
+
+.treeLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-grow: 1;
+}

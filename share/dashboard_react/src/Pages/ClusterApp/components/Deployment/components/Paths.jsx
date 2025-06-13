@@ -11,6 +11,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { showErrorToast } from '../../../../../redux/toastSlice';
 import { getDockerTree, getGitTree } from '../../../../../redux/pathSlice';
 import { uniqueId } from 'lodash';
+import { pauseAutoReload } from '../../../../../redux/clusterSlice';
 
 const defaultConfirmText = "Are you sure to change this field to: ";
 
@@ -35,6 +36,8 @@ export default React.memo(function Paths({
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,
+  onResumeAutoReload = () => {},
+  onPauseAutoReload = () => {},
 }) {
 
   const dispatch = useDispatch();
@@ -171,10 +174,17 @@ export default React.memo(function Paths({
 
   const handleAddItem = () => {
     setFormData(prevState => [...prevState, { ...defaultValues, id: uniqueId() }]);
+    onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
   const handleRemoveItem = (index) => {
-    setFormData(prevState => [...prevState.filter((_, i) => i !== index)]);
+    setFormData(prevState => {
+      const newState = [...prevState.filter((_, i) => i !== index)];
+      if (newState.length === 0) {
+        onResumeAutoReload(); // Resume auto-reload when no items left
+      }
+      return newState;
+    });
   };
 
   const validateFormData = (data) => {
@@ -200,12 +210,13 @@ export default React.memo(function Paths({
       }
       onSaveAdd(fieldName, formData).then(() => {
         setFormData([]); // Clear the form after saving
+        onResumeAutoReload(); // Resume auto-reload after saving
       })
     }
   }
 
   const selectedValues = useMemo(() => {
-    return browseState.selectedPath ? [browseState.selectedPath] : [];
+    return browseState.selectedPath ? [browseState.selectedPath] : ["/"];
   },[browseState.selectedPath]);
 
   return (

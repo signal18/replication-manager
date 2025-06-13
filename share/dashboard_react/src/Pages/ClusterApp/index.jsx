@@ -69,10 +69,13 @@ function ClusterApp(props) {
   }, [appId, clusterApps])
 
   const callServices = () => {
+    const isAutoReloadPaused = localStorage.getItem('pause_auto_reload')
     dispatch(getClusterApps({ clusterName }))
     dispatch(getClusterData({ clusterName }))
-    if (tabs.current[selectedTabRef.current] === 'App Overview') {
-      dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
+    if (!isAutoReloadPaused) {
+      if (tabs.current[selectedTabRef.current] === 'App Overview') {
+        dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
+      }
     }
   }
 

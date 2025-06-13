@@ -1,6 +1,6 @@
 import { useDispatch } from 'react-redux'
 import { Flex } from '@chakra-ui/react'
-import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop } from '../../../../redux/clusterSlice'
+import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload } from '../../../../redux/clusterSlice'
 import AccordionComponent from '../../../../components/AccordionComponent'
 import Variables from './components/Variables'
 import Paths from './components/Paths'
@@ -24,6 +24,14 @@ function DeploymentDetail({ clusterName, appId, row, dockerImage }) {
     return dispatch(deploymentFieldIndexDrop({ clusterName, appId, field, index }))
   }, [clusterName, appId, dispatch]);
 
+  const handlePauseAutoReload = useCallback(() => {
+    return dispatch(pauseAutoReload({ isPaused: true }))
+  }, [dispatch]);
+
+  const handleResumeAutoReload = useCallback(() => {
+    return dispatch(pauseAutoReload({ isPaused: false }))
+  }, [dispatch]);
+
   const pathRows = useMemo(() => row?.paths || [], [row?.paths])
   const variableRows = useMemo(() => row?.variables || [], [row?.variables])
   const routeRows = useMemo(() => row?.routes || [], [row?.routes])
@@ -34,19 +42,19 @@ function DeploymentDetail({ clusterName, appId, row, dockerImage }) {
     <Flex direction='column' gap='8px' w={'100%'} className={styles.contentContainer}>
       <AccordionComponent
         heading={'Routes'}
-        body={<Routes rows={routeRows} fieldName={'routes'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+        body={<Routes rows={routeRows} fieldName={'routes'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
       />
       <AccordionComponent
         heading={"Git Clones"}
-        body={<GitClones rows={gitCloneRows} fieldName={'gitClones'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+        body={<GitClones rows={gitCloneRows} fieldName={'gitClones'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
       />
       <AccordionComponent
         heading={'Paths'}
-        body={<Paths clusterName={clusterName} appId={appId} dockerImage={dockerImage} rows={pathRows} gitCloneRows={gitCloneRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+        body={<Paths clusterName={clusterName} appId={appId} dockerImage={dockerImage} rows={pathRows} gitCloneRows={gitCloneRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
       />
       <AccordionComponent
         heading={'Variables'}
-        body={<Variables rows={variableRows} fieldName={'variables'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} />}
+        body={<Variables rows={variableRows} fieldName={'variables'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
       />
     </Flex>
   )

@@ -5,6 +5,7 @@ import TextForm from '../../../../../components/TextForm';
 import RMIconButton from '../../../../../components/RMIconButton';
 import RMButton from '../../../../../components/RMButton';
 import styles from './styles.module.scss';
+import { uniqueId } from 'lodash';
 
 const defaultConfirmText = "Are you sure to change this field to: ";
 
@@ -14,6 +15,8 @@ export default React.memo(function Routes({
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,
+  onPauseAutoReload = () => {},
+  onResumeAutoReload = () => {},
 }) {
 
   const [formData, setFormData] = useState([]);
@@ -23,17 +26,25 @@ export default React.memo(function Routes({
   };
 
   const handleAddItem = () => {
-    setFormData(prevState => [...prevState, { id: Date.now(), cname: "", port: ""}]);
+    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: ""}]);
+    onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
   const handleRemoveItem = (index) => {
-    setFormData(prevState => [...prevState.filter((_, i) => i !== index)]);
+    setFormData(prevState => {
+      const newState = [...prevState.filter((_, i) => i !== index)];
+      if (newState.length === 0) {
+        onResumeAutoReload(); // Resume auto-reload when no items left
+      }
+      return newState;
+    });
   };
 
   const handleSaveAdd = () => {
     if (formData.length > 0) {
       onSaveAdd(fieldName, formData).then(() => {
         setFormData([]); // Clear the form after saving
+        onResumeAutoReload(); // Resume auto-reload after saving
       })
     }
   }
@@ -52,8 +63,8 @@ export default React.memo(function Routes({
         {rows?.length > 0 ?
           rows?.map((p, index) => (
             <HStack key={`row_${p.port}`}>
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
-              <TextForm confirmTitle={defaultConfirmText} pattern='^[0-9]{1,5}$' name={`row_${index}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
+              <TextForm confirmTitle={defaultConfirmText} name={`row_${p.port}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
+              <TextForm confirmTitle={defaultConfirmText} pattern='^[0-9]{1,5}$' name={`row_${p.port}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
               <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
             </HStack>
           )) : (
@@ -68,8 +79,8 @@ export default React.memo(function Routes({
           <Text>Enter the route mappings for your deployment. Select a volume directory and specify the source and destination Routes.</Text>
           {formData.map((p, index) => (
             <HStack key={`new_${p.id}`}>
-              <Input name={`new_${index}.cname`} placeholder="CNAME" value={p.cname} onChange={(e) => handleArrayChange(index, "cname", e.target.value)} />
-              <Input name={`new_${index}.port`} pattern='^[0-9]{1,5}$' placeholder="Port" value={p.port} onChange={(e) => handleArrayChange(index, "port", sanitizePort(e.target.value))} />
+              <Input name={`new_${p.id}.cname`} placeholder="CNAME" value={p.cname} onChange={(e) => handleArrayChange(index, "cname", e.target.value)} />
+              <Input name={`new_${p.id}.port`} pattern='^[0-9]{1,5}$' placeholder="Port" value={p.port} onChange={(e) => handleArrayChange(index, "port", sanitizePort(e.target.value))} />
               <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
             </HStack>
           ))}
