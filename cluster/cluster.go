@@ -507,8 +507,6 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.LogSlack.Activate("cloud18", true)
 	}
 
-	cluster.LoadAppConfigs()
-
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "START", "Replication manager started with version: %s", cluster.Conf.Version)
 
 	hookerr, err := s18log.NewRotateFileHook(s18log.RotateFileConfig{
@@ -544,6 +542,8 @@ func (cluster *Cluster) InitFromConf() {
 		cluster.SqlGeneralLog.WithError(err).Error("Can't init general sql log file")
 	}
 	cluster.SqlGeneralLog.AddHook(hookgen)
+
+	cluster.LoadAppConfigs()
 
 	err = cluster.newServerList()
 	if err != nil {
