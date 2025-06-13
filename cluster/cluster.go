@@ -914,7 +914,7 @@ func (cluster *Cluster) StateProcessing() {
 
 		cluster.StateMachine.ClearState()
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
-			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
 	}
 
@@ -927,7 +927,7 @@ func (cluster *Cluster) Stop() {
 	if cluster.ResticRepo != nil {
 		cluster.ResticRepo.ShutdownWorker()
 	}
-	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	cluster.ConfigManager.SaveConfig(cluster, true)
 	// prevent new cycle
 	cluster.exit = true
 }

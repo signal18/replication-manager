@@ -622,6 +622,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				return
 			}
 
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Deployment field modified"))
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -763,6 +764,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		return
 	}
 
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
 
@@ -878,6 +880,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		return
 	}
 	// If we reach here, the row was successfully removed
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Deployment field row removed"))
 }
 
@@ -920,6 +923,8 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 				http.Error(w, fmt.Sprintf("Error setting %s: %s", setting, err.Error()), 500)
 				return
 			}
+
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting updated successfully"))
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -968,6 +973,7 @@ func (repman *ReplicationManager) handlerMuxAppSwitchSetting(w http.ResponseWrit
 				http.Error(w, fmt.Sprintf("Error switch setting %s: %s", setting, err.Error()), 500)
 				return
 			}
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting switched successfully"))
 		} else {
 			http.Error(w, "Server Not Found", 500)
@@ -1016,6 +1022,7 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 				http.Error(w, fmt.Sprintf("Error clearing setting %s: %s", setting, err.Error()), 500)
 				return
 			}
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting cleared successfully"))
 		} else {
 			http.Error(w, "Server Not Found", 500)

@@ -150,7 +150,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		if len(cluster.Crashes) > 0 && cluster.HasNoDbUnconnected() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
-			cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+			cluster.ConfigManager.SaveConfig(cluster, false)
 		}
 	}
 	if cluster.Conf.Arbitration {

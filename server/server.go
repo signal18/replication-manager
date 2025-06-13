@@ -2219,7 +2219,7 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			repman.ConfigManager.SaveConfig("default", repman.Save, true)
+			repman.ConfigManager.SaveConfig(repman, true)
 
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
 				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
@@ -2314,7 +2314,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
-	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
+	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
@@ -2455,7 +2455,7 @@ func (repman *ReplicationManager) Stop() {
 		time.Sleep(time.Second)
 	}
 
-	repman.ConfigManager.SaveConfig("default", repman.Save, true)
+	repman.ConfigManager.SaveConfig(repman, true)
 
 	if repman.Conf.GitUrl != "" {
 		isNeedPush := repman.IsNeedGitPush

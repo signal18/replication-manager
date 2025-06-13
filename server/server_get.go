@@ -137,3 +137,9 @@ func (repman *ReplicationManager) GetDockerRepoImage(reponame string, version st
 
 // 	return nil
 // }
+
+// GetName returns the name for cluster configuration
+// This is used to identify the default cluster in the configuration
+func (repman *ReplicationManager) GetName() string {
+	return "default"
+}
