@@ -9,7 +9,7 @@ import styles from './styles.module.scss';
 import TreeView from '../../../../../components/Modals/TreeView/TreeView';
 import { useDispatch, useSelector } from 'react-redux';
 import { showErrorToast } from '../../../../../redux/toastSlice';
-import { getDockerTree, getGitTree } from '../../../../../redux/pathSlice';
+import { getDockerTree, getGitTree, hashMurmur } from '../../../../../redux/pathSlice';
 import { uniqueId } from 'lodash';
 import { pauseAutoReload } from '../../../../../redux/clusterSlice';
 
@@ -36,8 +36,8 @@ export default React.memo(function Paths({
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,
-  onResumeAutoReload = () => {},
-  onPauseAutoReload = () => {},
+  onResumeAutoReload = () => { },
+  onPauseAutoReload = () => { },
 }) {
 
   const dispatch = useDispatch();
@@ -217,7 +217,7 @@ export default React.memo(function Paths({
 
   const selectedValues = useMemo(() => {
     return browseState.selectedPath ? [browseState.selectedPath] : ["/"];
-  },[browseState.selectedPath]);
+  }, [browseState.selectedPath]);
 
   return (
     <Flex direction="column" className={`${styles.sectionWrapper}`}>
@@ -227,12 +227,20 @@ export default React.memo(function Paths({
         </Heading>
         {rows?.length > 0 ?
           rows?.map((p, index) => (
-            <HStack key={`row_${p.to}`}>
-              <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={p.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={sources} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.from`} placeholder="From" value={p.from} onSave={(value) => onRowArrayChange(fieldName, index, "from", value)} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.to`} placeholder="To" value={p.to} onSave={(value) => onRowArrayChange(fieldName, index, "to", value)} />
-              <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => onRowDropIndex(fieldName, index)} />
-            </HStack>
+            <PathRow
+              key={`path_${index}`}
+              row={p}
+              clusterName={clusterName}
+              appId={appId}
+              index={index}
+              onRowArrayChange={onRowArrayChange}
+              onRowDropIndex={onRowDropIndex}
+              sources={sources}
+              dockerTree={dockerTree}
+              gitCloneRows={gitCloneRows}
+              nodeToString={nodeToString}
+              nodeToValue={nodeToValue}
+            />
           )) : (
             <Text>No saved path mappings</Text>
           )}
@@ -255,7 +263,7 @@ export default React.memo(function Paths({
                     </option>
                   ))}
                 </Select>
-                {!!gc && (
+                {gc && (
                   <InputGroup>
                     <Input name={`new_${index}.from`} placeholder="From" value={p.from} onChange={(e) => handleArrayChange(index, "from", e.target.value)} />
                     <RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={() => handleBrowseGit(index, gc.repo)} />
@@ -299,3 +307,32 @@ export default React.memo(function Paths({
     </Flex>
   )
 })
+
+const PathRow = React.memo(({ clusterName, appId, row, index, onRowArrayChange, onRowDropIndex, sources, gitCloneRows, dockerTree, nodeToString, nodeToValue }) => {
+  const dispatch = useDispatch();
+  const gc = gitCloneRows.find(gc => gc.volumedir + "/" + gc.dest === row.volumedir);
+
+  const gitTree = useSelector(state => ((gc ? state.paths.gitTreeList[hashMurmur(gc.repo)] : {}) || {}));
+
+  const defaultConfirmText = "Are you sure to change this field to: ";
+
+  useEffect(() => {
+    if (gc) {
+      dispatch(getGitTree({ clusterName: clusterName, appId: appId, volumedir: gc.volumedir, repoURL: gc.repo }))
+        .catch((error) => {
+          dispatch(showErrorToast(`Failed to fetch git directory tree: ${error.message}`));
+        });
+    }
+  }, [gc, clusterName, appId, dispatch]);
+
+  return (
+    <HStack key={`row_${row.to}`}>
+      <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={row.volumedir} onChange={(value) => onRowArrayChange("path", index, "volumedir", value)} options={sources} />
+      {gc && (
+        <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.from`} placeholder="From" value={row.from} onSave={(value) => onRowArrayChange("path", index, "from", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={gitTree} />
+      )}
+      <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.to`} placeholder="To" value={row.to} onSave={(value) => onRowArrayChange("path", index, "to", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={dockerTree} />
+      <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => onRowDropIndex("path", index)} />
+    </HStack>
+  )
+});

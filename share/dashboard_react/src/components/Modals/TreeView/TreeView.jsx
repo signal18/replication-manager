@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react"
+import React, { useEffect, useMemo, useState } from "react"
 import { normalizeProps, useMachine } from "@zag-js/react"
 import * as tree from "@zag-js/tree-view"
 import { useId } from "react"
@@ -45,18 +45,18 @@ const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) 
     parentValue = ["/"]
   }
 
-    const onBranchClick = () => {
-      api.collapse()
-      api.select([nodeState.value])
-      api.expandParent(nodeState.value)
-      api.expand([nodeState.value])
-    }
+  const onBranchClick = () => {
+    api.collapse()
+    api.select([nodeState.value])
+    api.expandParent(nodeState.value)
+    api.expand([nodeState.value])
+  }
 
-  if (api.selectedValue.length == 0 || api.selectedValue.join(",").trim() == "" || nodeState.value == "/" || api.selectedValue.some((selected) => selected.includes(nodeState.value+"/") || selected === nodeState.value) || api.selectedValue.some((selected) => selected == parentValue.join("/"))) {
+  if (api.selectedValue.length == 0 || api.selectedValue.join(",").trim() == "" || nodeState.value == "/" || api.selectedValue.some((selected) => selected.includes(nodeState.value + "/") || selected === nodeState.value) || api.selectedValue.some((selected) => selected == parentValue.join("/"))) {
     if (nodeState.isBranch) {
       return (
         <Flex {...api.getBranchProps(nodeProps)} direction="column">
-          <Flex {...{...api.getBranchControlProps(nodeProps), onClick: onBranchClick}} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row" >
+          <Flex {...{ ...api.getBranchControlProps(nodeProps), onClick: onBranchClick }} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row" >
             <CustomIcon icon={HiFolder} />
             <Text {...api.getBranchTextProps(nodeProps)}>{node.name}</Text>
             <Box {...api.getBranchIndicatorProps(nodeProps)} className={`${parentStyles.folderToggle} ${nodeState.expanded ? parentStyles.folderToggleOpen : ""}`} >
@@ -96,6 +96,23 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
   const [selectedNode, setSelectedNode] = useState([...defaultValues])
   const { theme } = useTheme()
 
+  const defaultExpandedValues = useMemo(() => {
+    const expandedValues = []
+    defaultValues.forEach((value) => {
+      const parts = value.split("/")
+      let currentPath = ""
+      parts.forEach((part, index) => {
+        if (part) {
+          currentPath += `/${part}`
+          if (index < parts.length - 1) {
+            expandedValues.push(currentPath)
+          }
+        }
+      })
+    })
+    return expandedValues
+  }, [defaultValues])
+
   const collection = tree.collection({
     nodeToValue: nodeToValue || ((node) => node.id),
     nodeToString: nodeToString || ((node) => node.name),
@@ -104,9 +121,6 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
 
   const handleSelect = (node) => {
     let selectedValue = node?.selectedValue || []
-    if (Array.isArray(selectedValue)) {
-      selectedValue = selectedValue.map((item) => item.id || item)
-    }
     setSelectedNode(selectedValue)
     console.log("Selected Node:", selectedValue)
   }
@@ -121,7 +135,7 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
     onSelectionChange: handleSelect,
     onExpandedChange: handleExpandedChange,
     defaultSelectedValue: defaultValues,
-    defaultExpandedValue: defaultValues,
+    defaultExpandedValue: defaultExpandedValues,
   })
 
   const api = tree.connect(service, normalizeProps)
@@ -140,9 +154,9 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
 
   const content = (
     <Flex {...api.getRootProps()} direction={"column"} >
-      { !asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
+      {!asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
         {title}
-      </Text>) }
+      </Text>)}
       <Box mb={4}>
         <Text fontSize="sm" mb={1}>Selected Node</Text>
         <Box as="input" type="text" readOnly value={selectedNode || ""} style={{ width: "100%", padding: "6px", borderRadius: "6px", border: "1px solid #ccc" }} />
