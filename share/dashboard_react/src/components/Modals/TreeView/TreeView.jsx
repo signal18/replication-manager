@@ -9,6 +9,18 @@ import CustomIcon from "../../Icons/CustomIcon"
 import RMButton from "../../RMButton"
 import parentStyles from "../styles.module.scss"
 
+const defaultTree = {
+  id: "/",
+  name: "/",
+  path: "/",
+  children: [{
+    id: "/",
+    name: "/",
+    path: "/",
+    children: []
+  }],
+}
+
 /**
  * TreeNode component renders a single node in the tree view.
  * It handles both branch nodes (folders) and leaf nodes (documents).
@@ -80,7 +92,7 @@ const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) 
 
 export const TreeNode = React.memo(TreeNodeComponent)
 
-const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defaultValues = ["/"], asModal = false, modalTitle = "Browse Path", isOpen, onClose, onSave }) => {
+const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, nodeToValue, nodeToString, defaultValues = ["/"], asModal = false, isOpen, onClose, onSave }) => {
   const [selectedNode, setSelectedNode] = useState([...defaultValues])
   const { theme } = useTheme()
 
@@ -109,6 +121,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
     onSelectionChange: handleSelect,
     onExpandedChange: handleExpandedChange,
     defaultSelectedValue: defaultValues,
+    defaultExpandedValue: defaultValues,
   })
 
   const api = tree.connect(service, normalizeProps)
@@ -126,7 +139,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
   }
 
   const content = (
-    <VStack {...api.getRootProps()}>
+    <Flex {...api.getRootProps()} direction={"column"} >
       { !asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
         {title}
       </Text>) }
@@ -139,7 +152,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
           <TreeNode key={node.id} node={node} indexPath={[index]} api={api} nodeToValue={nodeToValue} nodeToString={nodeToString} />
         ))}
       </Box>
-    </VStack>
+    </Flex>
   )
 
   if (!asModal) return content
@@ -148,7 +161,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
     <Modal isOpen={isOpen} onClose={onCloseHandler} size="lg" closeOnOverlayClick={false}>
       <ModalOverlay />
       <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
-        <ModalHeader>{modalTitle}</ModalHeader>
+        <ModalHeader>{title}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>{content}</ModalBody>
         <ModalFooter>

@@ -283,7 +283,11 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc config
 		gituser := app.GetOpenSVCDeplopymentGitPrefix(gc, "USER")
 		gitpass := app.GetOpenSVCDeplopymentGitPrefix(gc, "PASSWORD")
 		gitURL := app.GetOpenSVCDeplopymentGitPrefix(gc, "URL")
-		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gituser + ":$" + gitpass + "@$" + gitURL + " " + dirname + "'"
+		if strings.HasPrefix(gitURL, "github.com") {
+			svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gitpass + "@$" + gitURL + " " + dirname + "'"
+		} else {
+			svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gituser + ":$" + gitpass + "@$" + gitURL + " " + dirname + "'"
+		}
 	}
 
 	return svccontainer
