@@ -1067,7 +1067,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.AppHostsIPV6, "app-hosts-ipv6", "", "App IPv6 bind address ")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents")
-	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "20", "Disk in g for micro service VM")
+	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "3", "Disk in g for micro service VM")
 	flags.StringVar(&conf.ProvAppCores, "prov-app-cpu-cores", "1", "Cpu cores ")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "Memory usage in M bytes")
 	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name of the data files")
@@ -2294,7 +2294,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.OsUser = repman.OsUser
 	repman.currentCluster.SessionManager = repman.SessionManager
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
-	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
+	repman.currentCluster.ErrorConfigMap = config.ParseConfigMeasurement(&myClusterConf, repman.DefaultFlagMap, myClusterConf.MeasurementAutoClampLimit)
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster

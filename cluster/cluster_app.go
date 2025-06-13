@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 
 	"github.com/pelletier/go-toml"
@@ -92,15 +91,13 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	// cluster.LoadDeploymentsConfig(dirname, appname, &appcnf)
+	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DynamicFlagMap, cluster.Conf.MeasurementAutoClampLimit)
+	if errormap != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error parsing app config %s: %v", appname, errormap)
+		return errormap
+	}
 
 	cluster.Conf.Apps = append(cluster.Conf.Apps, &appcnf)
-	// Add the app to the cluster if it does not exist
-	applist := strings.Split(cluster.Conf.AppHosts, ",")
-	if !strings.Contains(cluster.Conf.AppHosts, appcnf.AppHost) {
-		applist = append(applist, appname)
-		cluster.Conf.AppHosts = strings.Join(applist, ",")
-	}
 
 	return nil
 }
@@ -284,21 +281,11 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 // }
 
 func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
-	hosts := strings.Split(cluster.Conf.AppHosts, ",")
-	if slices.Contains(hosts, srv) {
-		return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
-	}
-
-	//Remove empty slices
-	n := 0
-	for i := range hosts {
-		if hosts[i] != "" {
-			hosts[n] = hosts[i]
-			n++
+	for _, app := range cluster.Conf.Apps {
+		if app.AppHost == srv && app.AppPort == port {
+			return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
 		}
 	}
-	hosts = hosts[:n]
-	hosts = append(hosts, srv)
 
 	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg

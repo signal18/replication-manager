@@ -3678,9 +3678,21 @@ type ErrorMeasurement struct {
 	Message string
 }
 
+func (e ErrorMeasurement) Error() string {
+	return fmt.Sprintf("Old: %s, New: %s, Message: %s", e.Old, e.New, e.Message)
+}
+
 type ErrorConfigMap map[string]ErrorMeasurement
 
-func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) ErrorConfigMap {
+func (e ErrorConfigMap) Error() string {
+	var sb strings.Builder
+	for k, v := range e {
+		sb.WriteString(fmt.Sprintf("Field: %s, Error: %s\n", k, v.Error()))
+	}
+	return sb.String()
+}
+
+func ParseConfigMeasurement(conf interface{}, defaultmap map[string]interface{}, clampToLimit bool) ErrorConfigMap {
 	errormap := make(ErrorConfigMap)
 	to := reflect.TypeOf(conf).Elem()
 	vo := reflect.ValueOf(conf).Elem()
@@ -3700,7 +3712,7 @@ func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) Er
 		}
 
 		// Parse unit measurement
-		val, err := ParseUnitMeasurement(tag, v, conf.MeasurementAutoClampLimit)
+		val, err := ParseUnitMeasurement(tag, v, clampToLimit)
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
