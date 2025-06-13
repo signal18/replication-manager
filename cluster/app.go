@@ -92,7 +92,7 @@ func (app *App) SendStats() error {
 func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	conf := cluster.Conf
 	app := new(App)
-	app.Name, app.Port = misc.SplitHostPort(appHost)
+	app.Name, app.Port = misc.SplitHostPortApp(appHost)
 	app.Host = app.Name
 	appCnf := cluster.GetAppConfig(app.Name, app.Port)
 	app.SetPlacement(placement, appCnf.ProvAppAgents, conf.SlapOSAppPartitions, conf.AppHostsIPV6)

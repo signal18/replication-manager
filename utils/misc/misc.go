@@ -53,6 +53,28 @@ func SplitHostPortDB(s string) (string, string, string) {
 
 }
 
+/* Returns two host and port items from a pair, e.g. host:port */
+func SplitHostPortApp(s string) (string, string) {
+
+	if strings.Count(s, ":") >= 2 {
+		// IPV6
+		host, port, err := net.SplitHostPort(s)
+		if err != nil {
+			return "", "80"
+		} else {
+			return "[" + host + "]", port
+		}
+	} else {
+		// not IPV6
+		items := strings.Split(s, ":")
+		if len(items) == 1 {
+			return items[0], "80"
+		}
+		return items[0], items[1]
+	}
+
+}
+
 /* Returns generic items from a pair, e.g. user:pass */
 func SplitPair(s string) (string, string) {
 	items := strings.Split(s, ":")
