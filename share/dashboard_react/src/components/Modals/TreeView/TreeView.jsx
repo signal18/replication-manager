@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react"
 import { normalizeProps, useMachine } from "@zag-js/react"
 import * as tree from "@zag-js/tree-view"
 import { useId } from "react"
-import { Box, Flex, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text } from "@chakra-ui/react"
+import { Box, Flex, Modal, ModalBody, ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalOverlay, Text, VStack } from "@chakra-ui/react"
 import { HiChevronRight, HiDocument, HiFolder } from "react-icons/hi"
 import { useTheme } from '../../../ThemeProvider'
 import CustomIcon from "../../Icons/CustomIcon"
@@ -126,7 +126,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
   }
 
   const content = (
-    <Box {...api.getRootProps()}>
+    <VStack {...api.getRootProps()}>
       { !asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
         {title}
       </Text>) }
@@ -139,7 +139,7 @@ const TreeView = React.memo(({ title, treeData, nodeToValue, nodeToString, defau
           <TreeNode key={node.id} node={node} indexPath={[index]} api={api} nodeToValue={nodeToValue} nodeToString={nodeToString} />
         ))}
       </Box>
-    </Box>
+    </VStack>
   )
 
   if (!asModal) return content
