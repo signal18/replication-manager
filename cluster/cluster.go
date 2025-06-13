@@ -1784,6 +1784,7 @@ func (c *Cluster) AddApp(app *App) {
 	app.SetID()
 	app.SetDataDir()
 	app.SetServiceName(c.Name)
+	app.SetDefaultRoute(c.Conf.Cloud18Domain, c.Conf.Cloud18SubDomain, c.Conf.Cloud18SubDomainZone, c.Name)
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
 	c.Apps = append(c.Apps, app)
