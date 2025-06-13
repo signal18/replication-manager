@@ -60,7 +60,7 @@ export default React.memo(function Variables({
             ) : (
               <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} isDisabled={v.locked} />
             )}
-            <RMIconButton icon={HiTrash} aria-label="Delete Variable" onClick={() => onRowDropIndex(fieldName, index)} />
+            <RMIconButton icon={HiTrash} aria-label="Delete Variable" onClick={() => onRowDropIndex(fieldName, index)} isDisabled={v.locked} />
           </HStack>
         )) : (
           <Text>No saved variables found.</Text>

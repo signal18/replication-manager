@@ -15,6 +15,7 @@ const RMIconButton = forwardRef(
       style,
       className,
       colorScheme,
+      isDisabled = false,
       ...rest
     },
     ref
@@ -30,6 +31,7 @@ const RMIconButton = forwardRef(
         size={size}
         variant={variant}
         colorScheme={colorScheme}
+        isDisabled={isDisabled}
         {...rest}
       />
     </Tooltip>
@@ -43,6 +45,7 @@ const RMIconButton = forwardRef(
       size={size}
       variant={variant}
       colorScheme={colorScheme}
+      isDisabled={isDisabled}
       {...rest}
     />
   )
