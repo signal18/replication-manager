@@ -944,8 +944,9 @@ type GitClone struct {
 }
 
 type Route struct {
-	CName string `mapstructure:"cname"  toml:"cname" json:"cname"`
-	Port  string `mapstructure:"port"  toml:"port" json:"port"`
+	CName    string `mapstructure:"cname"  toml:"cname" json:"cname"`
+	Port     string `mapstructure:"port"  toml:"port" json:"port"`
+	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp"`
 }
 
 type Deployment struct {
