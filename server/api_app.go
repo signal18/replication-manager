@@ -522,6 +522,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					node.AppConfig.Deployment.Routes[index].CName = newValue
 				case "port":
 					node.AppConfig.Deployment.Routes[index].Port = newValue
+				case "protocol":
+					if newValue != "tcp" && newValue != "https" {
+						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", 500)
+						return
+					}
+					node.AppConfig.Deployment.Routes[index].Protocol = newValue
 				default:
 					http.Error(w, "Invalid key for routes", 500)
 					return

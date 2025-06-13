@@ -6,8 +6,14 @@ import RMIconButton from '../../../../../components/RMIconButton';
 import RMButton from '../../../../../components/RMButton';
 import styles from './styles.module.scss';
 import { uniqueId } from 'lodash';
+import Dropdown from '../../../../../components/Dropdown';
 
 const defaultConfirmText = "Are you sure to change this field to: ";
+
+const protocolOptions = [
+  { value: 'https', name: 'HTTPS' },
+  { value: 'tcp', name: 'TCP' },
+];
 
 export default React.memo(function Routes({
   rows = [],
@@ -15,8 +21,8 @@ export default React.memo(function Routes({
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,
-  onPauseAutoReload = () => {},
-  onResumeAutoReload = () => {},
+  onPauseAutoReload = () => { },
+  onResumeAutoReload = () => { },
 }) {
 
   const [formData, setFormData] = useState([]);
@@ -26,7 +32,7 @@ export default React.memo(function Routes({
   };
 
   const handleAddItem = () => {
-    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: ""}]);
+    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: "" }]);
     onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
@@ -65,6 +71,7 @@ export default React.memo(function Routes({
             <HStack key={`row_${p.port}`}>
               <TextForm confirmTitle={defaultConfirmText} name={`row_${p.port}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
               <TextForm confirmTitle={defaultConfirmText} pattern='^[0-9]{1,5}$' name={`row_${p.port}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
+              <Dropdown confirmTitle={defaultConfirmText} name={`row_${p.port}.volumedir`} selectedValue={p.protocol} onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)} options={protocolOptions} />
               <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
             </HStack>
           )) : (
@@ -81,6 +88,13 @@ export default React.memo(function Routes({
             <HStack key={`new_${p.id}`}>
               <Input name={`new_${p.id}.cname`} placeholder="CNAME" value={p.cname} onChange={(e) => handleArrayChange(index, "cname", e.target.value)} />
               <Input name={`new_${p.id}.port`} pattern='^[0-9]{1,5}$' placeholder="Port" value={p.port} onChange={(e) => handleArrayChange(index, "port", sanitizePort(e.target.value))} />
+              <Select value={p.protocol} onChange={(e) => handleArrayChange(index, "protocol", e.target.value)} >
+                {protocolOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.name}
+                  </option>
+                ))}
+              </Select>
               <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => handleRemoveItem(index)} />
             </HStack>
           ))}
