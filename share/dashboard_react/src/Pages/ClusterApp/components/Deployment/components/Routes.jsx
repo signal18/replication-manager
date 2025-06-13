@@ -32,7 +32,7 @@ export default React.memo(function Routes({
   };
 
   const handleAddItem = () => {
-    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: "" }]);
+    setFormData(prevState => [...prevState, { id: uniqueId(), cname: "", port: "", protocol: "https" }]);
     onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
