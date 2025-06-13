@@ -168,3 +168,14 @@ func (p *App) SetMaintenance(maintenance bool) {
 		p.State = stateAppRunning
 	}
 }
+
+func (p *App) SetDefaultRoute(cloud18Domain, cloud18SubDomain, cloud18SubDomainZone, clusterName string) {
+	if len(p.AppConfig.Deployment.Routes) == 0 {
+		p.AppConfig.Deployment.Routes = make([]config.Route, 0)
+
+		p.AppConfig.Deployment.Routes = append(p.AppConfig.Deployment.Routes, config.Route{
+			CName: p.Name + "." + clusterName + "." + cloud18SubDomain + "-" + cloud18SubDomainZone + "." + cloud18Domain + ".cloud18.io",
+			Port:  p.AppConfig.AppPort,
+		})
+	}
+}
