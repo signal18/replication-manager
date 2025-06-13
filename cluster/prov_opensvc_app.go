@@ -123,7 +123,12 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 		cluster.errorChan <- err
 		return err
 	}
-
+	err = cluster.OpenSVCProvisionRoute(app)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create app route:  %s ", err)
+		cluster.errorChan <- err
+		return err
+	}
 	cluster.errorChan <- nil
 	return nil
 }
@@ -343,5 +348,45 @@ func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
 		}
 	}
 
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
+	svc := cluster.OpenSVCConnect()
+
+	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
+
+	for _, route := range app.AppConfig.Deployment.Routes {
+		backend := app.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
+
+		haproxyfragment := `
+	om system/cfg/haproxy decode --key=haproxy.cfg.d/phpmyadmin.cesal.svc.` + cluster.Conf.ProvOrchestratorCluster + `_80
+frontend https
+    use_backend ` + backend + ` if { hdr(host) -i ` + route.CName + ` }
+
+backend ` + backend + `
+    cookie SERVER insert indirect nocache dynamic
+    balance roundrobin
+    dynamic-cookie-key mysecretphrase
+    server-template srv 2 ` + app.Host + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `: + ` + app.Port + ` resolvers cluster check init-addr none
+	 `
+		err := svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+		if err != nil {
+			return err
+		}
+	}
+	// merge the config fragents
+
+	node, err := svc.GetServiceNodeFromState(cluster.Conf.Cloud18GatewayService)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not found node of gateway service: %s", err)
+		return err
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Creating app route %s on OpenSVC on gateway %s", app.GetId(), node)
+	err = svc.RunTaskV2(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", "")
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not aggregate fragments of gateway service: %s", err)
+		return err
+	}
 	return nil
 }

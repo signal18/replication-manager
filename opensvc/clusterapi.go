@@ -678,13 +678,11 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 		i++
 	}
 
-	collector.GetServiceState("s18/svc/haproxy")
-
 	return nhosts, nil
 
 }
 
-func (collector *Collector) GetServiceState(svc string) (string, error) {
+func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) {
 
 	url := "https://" + collector.Host + ":" + collector.Port + "/object_status?path=" + svc
 	client := collector.GetHttpClient()
