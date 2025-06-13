@@ -91,8 +91,8 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 		return err
 	}
 
-	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DynamicFlagMap, cluster.Conf.MeasurementAutoClampLimit)
-	if errormap != nil {
+	errormap := config.ParseConfigMeasurement(&appcnf, cluster.Conf.DefaultFlagMap, cluster.Conf.MeasurementAutoClampLimit)
+	if len(errormap) > 0 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error parsing app config %s: %v", appname, errormap)
 		return errormap
 	}
