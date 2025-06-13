@@ -1,0 +1,13 @@
+.List {
+  background-color: var(--secondary-gray-color);
+
+  .ListItem {
+    &:hover,
+    &:focus,
+    &:focus-visible,
+    &:focus-within {
+      background-color: var(--quaternary-color) !important;
+    }
+  }
+  
+}

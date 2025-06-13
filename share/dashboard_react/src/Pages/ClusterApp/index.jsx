@@ -103,6 +103,7 @@ function ClusterApp(props) {
               clusterName={clusterName}
               user={user}
               selectedApp={selectedApp}
+              config={clusterData?.config}
             />,
             <ClusterAppTabContent
               tab='opensvc'
@@ -110,6 +111,7 @@ function ClusterApp(props) {
               clusterName={clusterName}
               user={user}
               selectedApp={selectedApp}
+              config={clusterData?.config}
             />,
           ]}
         />

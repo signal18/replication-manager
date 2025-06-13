@@ -164,7 +164,7 @@ export default React.memo(function Paths({
       updated[index] = {
         ...updated[index],
         [key]: value,
-        ...(key === 'volumedir' && isDefaultPath(value) ? { from: value } : {})
+        ...(key === 'volumedir' ? isDefaultPath(value) ? { from: value } : {from: "/"} : {})
       };
       return updated;
     });

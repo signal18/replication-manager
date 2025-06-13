@@ -6,7 +6,7 @@ import AppStatus from '../../../Dashboard/components/Apps/AppStatus'
 import ServerName from '../../../../components/ServerName'
 import Deployment from '../Deployment'
 
-function ClusterAppTabContent({ tab, clusterName, user, selectedApp }) {
+function ClusterAppTabContent({ tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
 
   useEffect(() => {
@@ -31,7 +31,7 @@ function ClusterAppTabContent({ tab, clusterName, user, selectedApp }) {
         </HStack>
       </Flex>
       {currentTab === "overview" ? (
-        <Deployment clusterName={clusterName} appId={selectedApp?.id} config={selectedApp?.config}/>
+        <Deployment clusterName={clusterName} appId={selectedApp?.id} appConfig={selectedApp?.config} config={config}/>
       ) : null}
     </VStack>
   )

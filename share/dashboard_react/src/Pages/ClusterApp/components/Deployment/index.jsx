@@ -6,7 +6,7 @@ import DeploymentDetail from "./details";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
 
-const Deployment = ({ clusterName, appId, config }) => {
+const Deployment = ({ clusterName, config, appId, appConfig}) => {
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
 
     return (
@@ -16,11 +16,11 @@ const Deployment = ({ clusterName, appId, config }) => {
                 <VStack spacing={3} align="stretch">
                     <AccordionComponent
                         heading={'General Section'}
-                        body={<GeneralSection clusterName={clusterName} appId={appId} config={config} />}
+                        body={<GeneralSection clusterName={clusterName} appId={appId} config={config} appConfig={appConfig} />}
                     />
                 </VStack>
             </Flex>
-            <DeploymentDetail clusterName={clusterName} row={deployment} appId={appId} dockerImage={config?.provAppDockerImg} />
+            <DeploymentDetail clusterName={clusterName} row={deployment} appId={appId} dockerImage={appConfig?.provAppDockerImg} />
         </Flex>
     );
 };

@@ -143,6 +143,8 @@ func (p *App) SetSetting(key, value string) error {
 	switch key {
 	case "prov-app-docker-img":
 		p.AppConfig.ProvAppDockerImg = value
+	case "prov-app-agents":
+		p.AppConfig.ProvAppAgents = value
 	case "app-port":
 		p.AppConfig.AppPort = value
 	default:
