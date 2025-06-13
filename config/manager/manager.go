@@ -736,7 +736,28 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 
 	if err != nil && !errors.Is(err, git.NoErrAlreadyUpToDate) {
 		if errors.Is(err, transport.ErrAuthenticationRequired) {
-			cm.RotateGitAccessToken(conf)
+			acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if err != nil {
+				cm.logger.Errorf("none", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
+				conf.Cloud18 = false
+				return err
+			}
+
+			tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
+			personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
+			if personal_access_token == "" {
+				personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
+				if err != nil {
+					cm.logger.Errorf("none", config.ConstLogModGit, "Error creating personal access token: %v", err)
+					return err
+				}
+
+				var Secrets config.Secret
+				Secrets.Value = personal_access_token
+				Secrets.OldValue = conf.Secrets["git-acces-token"].Value
+				conf.GitAccesToken = personal_access_token
+				conf.Secrets["git-acces-token"] = Secrets
+			}
 		} else {
 			cm.logger.Errorf("none", config.ConstLogModGit, "Git error: cannot push: %s", err)
 		}
@@ -796,31 +817,4 @@ func (cm *ConfigManager) ShallowClone(conf *config.Config) error {
 	cm.logger.Debugf("none", config.ConstLogModGit, "Shallow clone took: %s", time.Since(clonestart))
 
 	return err
-}
-
-func (cm *ConfigManager) RotateGitAccessToken(conf *config.Config) error {
-	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-	if err != nil {
-		cm.logger.Errorf("none", config.ConstLogModGit, err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password")+"\n")
-		conf.Cloud18 = false
-		return err
-	}
-
-	tokenName := conf.Cloud18Domain + "-" + conf.Cloud18SubDomain + "-" + conf.Cloud18SubDomainZone
-	personal_access_token, _ := githelper.GetGitLabTokenOAuth(acces_tok, tokenName, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
-	if personal_access_token == "" {
-		personal_access_token, err = githelper.CreatePersonalAccessTokenCSRF(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), tokenName)
-		if err != nil {
-			cm.logger.Errorf("none", config.ConstLogModGit, "Error creating personal access token: %v", err)
-			return err
-		}
-	}
-
-	var Secrets config.Secret
-	Secrets.Value = personal_access_token
-	Secrets.OldValue = conf.Secrets["git-acces-token"].Value
-	conf.GitAccesToken = personal_access_token
-	conf.Secrets["git-acces-token"] = Secrets
-
-	return nil
 }

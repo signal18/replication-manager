@@ -204,6 +204,7 @@ type Cluster struct {
 	APIUsers                  map[string]APIUser          `json:"apiUsers"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
 	scheduler                 *cron.Cron                  `json:"-"`
+	JobScheduler              *JobScheduler               `json:"-"`
 	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
 	idSchedulerLogicalBackup  cron.EntryID                `json:"-"`
 	idSchedulerOptimize       cron.EntryID                `json:"-"`
@@ -621,6 +622,16 @@ func (cluster *Cluster) initScheduler() {
 		cluster.scheduler.Start()
 	}
 
+	// Initialize SQL job scheduler
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting SQL job scheduler")
+	if cluster.JobScheduler != nil {
+		cluster.JobScheduler.Stop()
+	}
+
+	// Create job store for persistence
+	store := NewFileJobStore(cluster.Conf.WorkingDir + "/" + cluster.Name)
+	cluster.JobScheduler = cluster.InitScheduler(store)
+	cluster.JobScheduler.Start()
 }
 
 func (cluster *Cluster) Run() {
