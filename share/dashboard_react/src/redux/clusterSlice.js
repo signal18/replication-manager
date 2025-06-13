@@ -1531,10 +1531,10 @@ export const deploymentFieldChange = createAsyncThunk(
       try {
         const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
         const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL)
-        showSuccessBanner('New deployment added!', status, thunkAPI)
+        showSuccessBanner('Deployment field updated!', status, thunkAPI)
         return { data, status }
       } catch (error) {
-        showErrorBanner('Error while adding a new deployment', error, thunkAPI)
+        showErrorBanner('Error while updating deployment field', error, thunkAPI)
         handleError(error, thunkAPI)
       }
     }
