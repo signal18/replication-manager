@@ -333,12 +333,12 @@ func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
 		if v.Type == "secret" {
 			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 			}
 		} else {
 			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
 			}
 		}
 	}
