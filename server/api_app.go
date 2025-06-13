@@ -573,32 +573,17 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 
 				row := node.AppConfig.Deployment.Variables[index]
+				if row.Locked {
+					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", 500)
+					return
+				}
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					if row.Locked {
-						http.Error(w, "Unable to change name of locked variable", 400)
-					}
 					node.AppConfig.Deployment.Variables[index].Name = newValue
 				case "value":
-					if row.Locked && strings.HasSuffix(row.Name, "_URL") {
-						// Strip protocol if present
-						if strings.HasPrefix(newValue, "http://") || strings.HasPrefix(newValue, "https://") {
-							newValue = strings.TrimPrefix(newValue, "http://")
-							newValue = strings.TrimPrefix(newValue, "https://")
-						}
-					}
 					node.AppConfig.Deployment.Variables[index].Value = newValue
-					if row.Locked {
-						err := node.AppConfig.SetGitVariableValue(row.Name, newValue)
-						if err != nil {
-							http.Error(w, "Error setting git variable value: "+err.Error(), 500)
-						}
-					}
 				case "type":
-					if row.Locked {
-						http.Error(w, "Unable to change type of locked variable", 400)
-					}
 					node.AppConfig.Deployment.Variables[index].Type = newValue
 				default:
 					http.Error(w, "Invalid key for variables", 500)
