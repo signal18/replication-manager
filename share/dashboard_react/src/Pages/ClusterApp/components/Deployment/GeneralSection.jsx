@@ -1,10 +1,9 @@
-import { Checkbox, Flex } from '@chakra-ui/react'
+import { Flex } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch, useSelector } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
 import { setAppSetting } from '../../../../redux/settingsSlice';
-import { useState } from 'react';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
 
 

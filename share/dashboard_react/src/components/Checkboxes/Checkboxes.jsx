@@ -5,6 +5,8 @@ import ConfirmModal from "../Modals/ConfirmModal";
 import { useDispatch } from "react-redux";
 import { showWarningToast } from "../../redux/toastSlice";
 
+const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
 /**
  * Checkboxes component for rendering a list of checkboxes with optional confirmation modal.
  * @param {Object} props 
@@ -42,7 +44,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
                 : values.split(",").map(v => v.trim());
         }
 
-        const isSame = JSON.stringify(newval) === JSON.stringify(selected);
+        const isSame = arraysEqual(newval,selected)
 
         if (!isOpen || isSame) {
             setSelected(newval);
@@ -62,13 +64,21 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
             ? selected.filter(item => item !== value)
             : [...selected, value];
         setSelected(updated);
-        if (confirm) setIsOpen(true);
+        if (confirm) {
+            setIsOpen(true)
+        } else {
+            onChange(updated)
+        } 
     }
 
     const handleAllChange = (checked) => {
         const updated = checked ? [] : options.map(item => item.value);
         setSelected(updated);
-        if (confirm) setIsOpen(true);
+        if (confirm) {
+            setIsOpen(true)
+        } else {
+            onChange(updated)
+        }
     }
 
 
@@ -120,6 +130,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
 
             {confirm && isOpen && (
                 <ConfirmModal
+                    isOpen={isOpen}
                     title={confirmTitle}
                     body={confirmBody}
                     closeModal={() => {
