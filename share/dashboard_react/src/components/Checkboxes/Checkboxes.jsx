@@ -70,7 +70,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
     }
 
     const handleAllChange = (checked) => {
-        const updated = checked ? [] : options.map(item => item.value);
+        const updated = checked ? options.map(item => item.value) : [];
         setSelected(updated);
         if (confirm) {
             setIsOpen(true)
