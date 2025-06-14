@@ -22,33 +22,29 @@ import (
 
 // App defines a app
 type App struct {
-	Id              string            `json:"id"`
-	Name            string            `json:"name"`
-	Type            string            `json:"type"`
-	Host            string            `json:"host"`
-	HostIPV6        string            `json:"hostIPV6"`
-	Port            string            `json:"port"`
-	User            string            `json:"-"`
-	Pass            string            `json:"-"`
-	Version         string            `json:"version"`
-	Datadir         string            `json:"datadir"`
-	State           string            `json:"state"`
-	PrevState       string            `json:"prevState"`
-	SlapOSDatadir   string            `json:"slaposDatadir"`
-	ServiceName     string            `json:"serviceName"`
-	Agent           string            `json:"agent"`
-	Weight          string            `json:"weight"`
-	FailCount       int               `json:"failCount"`
-	ShardApp        *ServerMonitor    `json:"shardApp"`
-	ClusterGroup    *Cluster          `json:"-"`
-	Process         *os.Process       `json:"process"`
-	Variables       map[string]string `json:"-"`
-	Lock            sync.Mutex        `json:"-"`
-	AppConfig       *config.AppConfig `json:"config"`
-	TunnelPort      int               `json:"tunnelPort"`
-	TunnelWritePort int               `json:"tunnelWritePort"`
-	Tunnel          bool              `json:"tunnel"`
-	IsStaging       bool              `json:"isStaging"`
+	Id            string            `json:"id"`
+	Name          string            `json:"name"`
+	Type          string            `json:"type"`
+	Host          string            `json:"host"`
+	HostIPV6      string            `json:"hostIPV6"`
+	Port          string            `json:"port"`
+	User          string            `json:"-"`
+	Pass          string            `json:"-"`
+	Version       string            `json:"version"`
+	Datadir       string            `json:"datadir"`
+	State         string            `json:"state"`
+	PrevState     string            `json:"prevState"`
+	SlapOSDatadir string            `json:"slaposDatadir"`
+	ServiceName   string            `json:"serviceName"`
+	Agent         string            `json:"agent"`
+	Weight        string            `json:"weight"`
+	FailCount     int               `json:"failCount"`
+	ClusterGroup  *Cluster          `json:"-"`
+	Process       *os.Process       `json:"process"`
+	Variables     map[string]string `json:"-"`
+	Lock          sync.Mutex        `json:"-"`
+	AppConfig     *config.AppConfig `json:"config"`
+	IsStaging     bool              `json:"isStaging"`
 }
 
 type appList []*App

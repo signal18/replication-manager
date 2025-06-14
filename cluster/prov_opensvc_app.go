@@ -378,17 +378,14 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s",route.CName , cluster.Conf.Cloud18GatewayDomainName)
 			}
 		} else  {
-      if result != cluster.Conf.Cloud18GatewayService {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
+      if strings.ToLower(strings.TrimRight(result,".")) != strings.ToLower(strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName,"."))  {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored  %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
 			}
   	}
 
-
-
-
-		backend := app.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
+  	backend := app.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
 
 		haproxyfragment := `
 	om system/cfg/haproxy decode --key=haproxy.cfg.d/phpmyadmin.cesal.svc.` + cluster.Conf.ProvOrchestratorCluster + `_80
