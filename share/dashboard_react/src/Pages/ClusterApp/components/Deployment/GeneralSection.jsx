@@ -58,7 +58,7 @@ export default function GeneralSection({ clusterName, appId, config, appConfig }
           confirm={true}
           splitConfirm={true}
           confirmTitle={`Confirm change 'prov-app-agents' to: `}
-          onChange={(value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value }))}
+          onChange={(value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))} // Convert array to string (auto join with comma)
           parentStyles={styles}
         />
       )

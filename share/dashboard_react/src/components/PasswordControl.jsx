@@ -24,10 +24,8 @@ const PasswordControl = forwardRef((props, ref) => {
     }
   }
 
-  return (
-    <FormControl isInvalid={props.passwordError}>
-      <FormLabel className={props.labelClassName} htmlFor='password'>Password</FormLabel>
-      <InputGroup>
+  const content = (
+    <InputGroup>
         <InputRightElement>
           <RMIconButton
             className={props.className}
@@ -49,6 +47,16 @@ const PasswordControl = forwardRef((props, ref) => {
           className={props.inputClassName}
         />
       </InputGroup>
+  )
+
+  if (props.noControl) {
+    return content
+  } 
+
+  return (
+    <FormControl isInvalid={props.passwordError}>
+      <FormLabel className={props.labelClassName} htmlFor='password'>Password</FormLabel>
+      {content}
       <FormErrorMessage className={props.errorMessage}>{props.passwordError}</FormErrorMessage>
     </FormControl>
   )

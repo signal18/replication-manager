@@ -6,7 +6,6 @@ import RMIconButton from '../../../../../components/RMIconButton';
 import RMButton from '../../../../../components/RMButton';
 import styles from './styles.module.scss';
 import Dropdown from '../../../../../components/Dropdown';
-import { pauseAutoReload } from '../../../../../redux/clusterSlice';
 import { uniqueId } from 'lodash';
 
 const volumeDirs = [

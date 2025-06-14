@@ -1,14 +1,22 @@
-import { Box, Flex, Input, Spinner } from '@chakra-ui/react'
+import { Box, Flex, Input, Spinner, useDisclosure } from '@chakra-ui/react'
 import React, { useEffect, useState, useRef, useMemo } from 'react'
-import { HiCheck, HiFolder, HiPencilAlt, HiX } from 'react-icons/hi'
+import { HiCheck, HiEye, HiEyeOff, HiFolder, HiPencilAlt, HiX } from 'react-icons/hi'
 import styles from './styles.module.scss'
 import RMIconButton from '../RMIconButton'
 import ConfirmModal from '../Modals/ConfirmModal'
 import TreeView from '../Modals/TreeView/TreeView'
 
-function TextForm({ onSave, id, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled, isTree = false, treeData, nodeToValue, nodeToString, ...others }) {
+function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled, isTree = false, treeData, nodeToValue, nodeToString, ...others }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
+  const { isOpen, onToggle } = useDisclosure()
+
+  const onClickReveal = () => {
+    onToggle()
+    if (inputRef.current) {
+      inputRef.current.focus({ preventScroll: true })
+    }
+  }
 
   const [currentValue, setCurrentValue] = useState('')
   const [previousValue, setPreviousValue] = useState('')
@@ -62,9 +70,10 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
       inputRef.current.focus()
     }
   }, [isTreeModalOpen])
-  
+
 
   const valid = regexPattern ? new RegExp(regexPattern).test(currentValue) : true
+  const inputType = type === 'password' && isOpen ? 'text' : type
 
   return (
     <Flex className={`${styles.textContainer} ${className}`} direction={direction}>
@@ -82,15 +91,24 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
           maxLength={maxLength}
           readOnly={!isEditable}
           onChange={handleChange}
+          type={inputType}
           {...others}
         />
         {isEditable ? (
           <>
-            {isTree && (
-              <RMIconButton 
+            {type === 'password' && (
+              <RMIconButton
                 isDisabled={isDisabled}
-                icon={HiFolder} 
-                aria-label="Browse Path" 
+                icon={isOpen ? HiEyeOff : HiEye}
+                aria-label={isOpen ? 'Mask password' : 'Reveal password'}
+                onClick={onClickReveal}
+              />
+            )}
+            {isTree && (
+              <RMIconButton
+                isDisabled={isDisabled}
+                icon={HiFolder}
+                aria-label="Browse Path"
                 onClick={handleOpenBrowseTree} />
             )}
             <RMIconButton
@@ -139,7 +157,7 @@ function TextForm({ onSave, id, label, value, loading, maxLength = 120, classNam
           }}
         />
       )}
-      { isTreeModalOpen && (
+      {isTreeModalOpen && (
         <TreeView
           isOpen={isTreeModalOpen}
           onClose={handleTreeClose}

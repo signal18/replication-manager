@@ -7,57 +7,114 @@ import Paths from './components/Paths'
 import GitClones from './components/GitClones'
 import styles from './styles.module.scss'
 import Routes from './components/Routes'
-import { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
+import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 
-function DeploymentDetail({ clusterName, appId, row, dockerImage }) {
+function useDeploymentActions(clusterName, appId, setDropIndex, setConfirmOpen) {
   const dispatch = useDispatch()
 
-  const handleSaveArrayChange = useCallback((field, index, key, value) => {
-    return dispatch(deploymentFieldChange({ clusterName, appId, field, index, key, value }))
-  }, [clusterName, appId, dispatch]);
+  const handleSaveArrayChange = useCallback(
+    (field, index, key, value) => dispatch(deploymentFieldChange({ clusterName, appId, field, index, key, value })),
+    [clusterName, appId, dispatch]
+  )
 
-  const handleSaveAddItem = useCallback((field, value) => {
-    return dispatch(deploymentFieldIndexAdd({ clusterName, appId, field, value }))
-  }, [clusterName, appId, dispatch]);
+  const handleSaveAddItem = useCallback(
+    (field, value) => dispatch(deploymentFieldIndexAdd({ clusterName, appId, field, value })),
+    [clusterName, appId, dispatch]
+  )
 
-  const handleDropIndex = useCallback((field, index) => {
-    return dispatch(deploymentFieldIndexDrop({ clusterName, appId, field, index }))
-  }, [clusterName, appId, dispatch]);
+  const handleDropIndex = useCallback(
+    (field, index) => {
+      setDropIndex({ field, index })
+      setConfirmOpen(true)
+    },
+    [setDropIndex, setConfirmOpen]
+  )
 
-  const handlePauseAutoReload = useCallback(() => {
-    return dispatch(pauseAutoReload({ isPaused: true }))
-  }, [dispatch]);
+  const handlePauseAutoReload = useCallback(
+    () => dispatch(pauseAutoReload({ isPaused: true })),
+    [dispatch]
+  )
 
-  const handleResumeAutoReload = useCallback(() => {
-    return dispatch(pauseAutoReload({ isPaused: false }))
-  }, [dispatch]);
+  const handleResumeAutoReload = useCallback(
+    () => dispatch(pauseAutoReload({ isPaused: false })),
+    [dispatch]
+  )
 
-  const pathRows = useMemo(() => row?.paths || [], [row?.paths])
-  const variableRows = useMemo(() => row?.variables || [], [row?.variables])
-  const routeRows = useMemo(() => row?.routes || [], [row?.routes])
-  const gitCloneRows = useMemo(() => row?.gitClones || [], [row?.gitClones])
+  return {
+    handleSaveArrayChange,
+    handleSaveAddItem,
+    handleDropIndex,
+    handlePauseAutoReload,
+    handleResumeAutoReload
+  }
+}
 
+const DeploymentDetail = ({ clusterName, appId, row, dockerImage, agentList }) => {
+  const dispatch = useDispatch()
+  const [isConfirmOpen, setConfirmOpen] = useState(false)
+  const [dropIndex, setDropIndex] = useState(null)
+
+  const { handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload } = useDeploymentActions(clusterName, appId, setDropIndex, setConfirmOpen);
+
+  const actionProps = useMemo(() => ({
+    onRowArrayChange: handleSaveArrayChange,
+    onSaveAdd: handleSaveAddItem,
+    onRowDropIndex: handleDropIndex,
+    onPauseAutoReload: handlePauseAutoReload,
+    onResumeAutoReload: handleResumeAutoReload
+  }), [handleSaveArrayChange, handleSaveAddItem, handleDropIndex, handlePauseAutoReload, handleResumeAutoReload]);
+
+  const handleCloseConfirm = useCallback(() => {
+    setConfirmOpen(false);
+    setDropIndex(null);
+  }, []);
+
+  const handleConfirmDrop = useCallback(() => {
+    if (dropIndex?.field != null && dropIndex?.index != null) {
+      dispatch(deploymentFieldIndexDrop({ clusterName, appId, field: dropIndex.field, index: dropIndex.index }));
+      handleCloseConfirm();
+    }
+  }, [clusterName, appId, dropIndex, dispatch]);
+
+  const fieldRows = useMemo(() => ({
+  routes: row?.routes || [],
+  gitClones: row?.gitClones || [],
+  paths: row?.paths || [],
+  variables: row?.variables || [],
+}), [row]);
+
+  const dropConfirmText = useMemo(() => dropIndex?.field
+    ? `Are you sure you want to remove this ${dropIndex.field} item? This action cannot be undone.`
+    : "Are you sure you want to remove this item?", [dropIndex]);
 
   return (
     <Flex direction='column' gap='8px' w={'100%'} className={styles.contentContainer}>
       <AccordionComponent
         heading={'Routes'}
-        body={<Routes rows={routeRows} fieldName={'routes'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
+        body={<Routes rows={fieldRows.routes} fieldName={'routes'} {...actionProps} />}
       />
       <AccordionComponent
         heading={"Git Clones"}
-        body={<GitClones rows={gitCloneRows} fieldName={'gitClones'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
+        body={<GitClones rows={fieldRows.gitClones} fieldName={'gitClones'} {...actionProps} />}
       />
       <AccordionComponent
         heading={'Paths'}
-        body={<Paths clusterName={clusterName} appId={appId} dockerImage={dockerImage} rows={pathRows} gitCloneRows={gitCloneRows} fieldName={'path'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
+        body={<Paths rows={fieldRows.paths} fieldName={'paths'} clusterName={clusterName} appId={appId} dockerImage={dockerImage} gitCloneRows={fieldRows.gitClones} {...actionProps} />}
       />
       <AccordionComponent
         heading={'Variables'}
-        body={<Variables rows={variableRows} fieldName={'variables'} onRowArrayChange={handleSaveArrayChange} onRowDropIndex={handleDropIndex} onSaveAdd={handleSaveAddItem} onPauseAutoReload={handlePauseAutoReload} onResumeAutoReload={handleResumeAutoReload} />}
+        body={<Variables rows={fieldRows.variables} agentList={agentList} fieldName={'variables'} {...actionProps} />}
+      />
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        closeModal={handleCloseConfirm}
+        onConfirmClick={handleConfirmDrop}
+        title="Confirm Delete"
+        body={dropConfirmText}
       />
     </Flex>
   )
 }
 
-export default DeploymentDetail
+export default React.memo(DeploymentDetail);

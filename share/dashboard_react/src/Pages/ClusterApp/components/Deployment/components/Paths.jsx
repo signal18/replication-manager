@@ -32,7 +32,7 @@ export default React.memo(function Paths({
   dockerImage,
   rows = [],
   gitCloneRows = [],
-  fieldName = 'path',
+  fieldName = 'paths',
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,

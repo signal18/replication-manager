@@ -595,7 +595,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Invalid key for variables", 500)
 					return
 				}
-			case "path":
+			case "paths":
 				if index >= int64(len(node.AppConfig.Deployment.Paths)) {
 					http.Error(w, "Index out of range for path", 500)
 					return
@@ -746,7 +746,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		}
 		affected = true
 
-	case "path":
+	case "paths":
 		var body []config.PathMapping
 		if err := decodeBody(r, &body, "path", w); err != nil {
 			return
@@ -869,7 +869,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 			return
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
-	case "path":
+	case "paths":
 		if index >= len(node.AppConfig.Deployment.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return

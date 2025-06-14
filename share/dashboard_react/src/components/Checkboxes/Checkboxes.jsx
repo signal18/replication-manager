@@ -54,8 +54,6 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
         }
     }, [values]);
 
-
-
     const allChecked = options.length > 0 && options.every(option => selected.includes(option.value));
     const indeterminate = options.length > 0 && options.some(option => selected.includes(option.value)) && !allChecked;
 
