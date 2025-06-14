@@ -965,10 +965,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
 	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
 	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 20G Disk)")
+	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
+	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
+	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
+	flags.StringVar(&conf.Cloud18DomainSecret, "cloud18-domain-secret", "", "Second parameter to pass prov-domain-?-script")
+
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
-		flags.StringVar(&conf.ProvDomainAddScript, "prov-domain-add-script", "", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
-		flags.StringVar(&conf.ProvDomainDropScript, "prov-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")

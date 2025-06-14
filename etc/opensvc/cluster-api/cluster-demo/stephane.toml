@@ -43,6 +43,9 @@ cloud18-sub-domain-zone = "fr-1"
 #### APPS ####
 cloud18-gateway-service="s18/svc/haproxy"
 cloud18-gateway-domain-name ="igw-s18-ovh1.cloud18.io"
+cloud18-domain-secret="hash_dfb543bb207fd896cfc2fefcc913af463e6a78baa9651562828ee677a2dff3c62d536ee625e5d6f5ed395671d1eec4bf35335936ff10b2e0"
+cloud18-domain-user="0e1a7cdecd1d6ea8b0d4dfe4079be82a"
+#
 prov-app-agents = "s18-fr-1,s18-fr-2"
 
 monitoring-save-config=true

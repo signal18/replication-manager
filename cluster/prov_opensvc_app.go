@@ -14,7 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
+  "net"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -357,6 +357,34 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 	cloud18GatewayServiceConfig := strings.Split(cluster.Conf.Cloud18GatewayService, "/")
 
 	for _, route := range app.AppConfig.Deployment.Routes {
+
+		// Add the DNS input if not exist
+		result, err := net.LookupCNAME(route.CName)
+
+		if err != nil {
+
+			slice := strings.Split(route.CName, ".")
+			if len(slice) > 2 {
+				slice = slice[:len(slice)-1]
+				slice = slice[:len(slice)-1]
+				cname := strings.Join(slice, ".")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding CNAME %s to gateway %s",cname , cluster.Conf.Cloud18GatewayService)
+
+				cluster.BashScriptProvDNS(cname)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s",route.CName , cluster.Conf.Cloud18GatewayService)
+			}
+		} else  {
+      if result != cluster.Conf.Cloud18GatewayService {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayService)
+			} else {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayService)
+			}
+  	}
+
+
+
+
 		backend := app.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
 
 		haproxyfragment := `
@@ -370,7 +398,7 @@ backend ` + backend + `
     dynamic-cookie-key mysecretphrase
     server-template srv 2 ` + app.Host + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `: + ` + app.Port + ` resolvers cluster check init-addr none
 	 `
-		err := svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 		if err != nil {
 			return err
 		}
@@ -382,11 +410,12 @@ backend ` + backend + `
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not found node of gateway service: %s", err)
 		return err
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Creating app route %s on OpenSVC on gateway %s", app.GetId(), node)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route %s on OpenSVC service host %s", app.GetId(), node)
 	err = svc.RunTaskV2(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", "")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not aggregate fragments of gateway service: %s", err)
 		return err
 	}
+
 	return nil
 }

@@ -506,10 +506,6 @@ type Config struct {
 	ProvOpensvcP12Secret                      string                 `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool                   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
 	ProvOpensvcCollectorAccount               string                 `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
-	ProvDomainAddScript                       string                 `mapstructure:"prov-domain-add-script" toml:"prov-domain-add-script" json:"provDomainAddScript"`
-	ProvDomainDropScript                      string                 `mapstructure:"prov-domain-drop-script" toml:"prov-domain-drop-script" json:"provDomainDropScript"`
-	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
-	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	ProvUser                                  string                 `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
@@ -762,6 +758,12 @@ type Config struct {
 	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
 	Cloud18GitUser                            string                 `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18GatewayDomainName                  string                 `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
+	Cloud18GatewayService                     string                 `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
+	Cloud18DomainAddScript                    string                 `scope:"server" mapstructure:"cloud18-domain-add-script" toml:"cloud18-domain-add-script" json:"cloud18DomainAddScript"`
+	Cloud18DomainDropScript                   string                 `scope:"server" mapstructure:"cloud18-domain-drop-script" toml:"cloud18-domain-drop-script" json:"cloud18DomainDropScript"`
+	Cloud18DomainUser                         string                 `scope:"server" mapstructure:"cloud18-domain-user" toml:"cloud18-domain-user" json:"cloud18DomainUser"`
+	Cloud18DomainSecret                       string                 `scope:"server" mapstructure:"cloud18-domain-secret" toml:"cloud18-domain-secret" json:"cloud18DomainSecret"`
 	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
 	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
 	Cloud18MonthlyInfraCost                   float64                `mapstructure:"cloud18-monthly-infra-cost"  toml:"cloud18-monthly-infra-cost" json:"cloud18MonthlyInfraCost"`
@@ -805,9 +807,9 @@ type Config struct {
 	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
 	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	Cloud18HealthRefreshInterval              int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
-	Cloud18GatewayDomainName                  string                 `mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
-	Cloud18GatewayService                     string                 `mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
 	Cloud18ApplicationCredits                 int                    `mapstructure:"cloud18_application_credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
+	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
+	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps"`
@@ -1468,6 +1470,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"cloud18-gitlab-password":               {"", ""},
 		"cloud18-dba-user-credentials":          {"", ""},
 		"cloud18-sponsor-user-credentials":      {"", ""},
+		"cloud18-domain-secret":                 {"", ""},
 		"vault-token":                           {"", ""},
 		"api-oauth-client-secret":               {"", ""},
 		"meet-token":                            {"", ""}}
