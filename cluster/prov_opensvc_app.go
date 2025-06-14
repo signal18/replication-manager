@@ -385,20 +385,22 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
   	}
 
-  	backend := app.Host + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
+  	backend := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
 
 		haproxyfragment := `
-	om system/cfg/haproxy decode --key=haproxy.cfg.d/phpmyadmin.cesal.svc.` + cluster.Conf.ProvOrchestratorCluster + `_80
-frontend https
-    use_backend ` + backend + ` if { hdr(host) -i ` + route.CName + ` }
 
-backend ` + backend + `
-    cookie SERVER insert indirect nocache dynamic
-    balance roundrobin
-    dynamic-cookie-key mysecretphrase
-    server-template srv 2 ` + app.Host + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `: + ` + app.Port + ` resolvers cluster check init-addr none
+frontend https\n
+    use_backend ` + backend + ` if { hdr(host) -i ` + route.CName + ` }\n
+\n
+backend ` + backend + `\n
+    cookie SERVER insert indirect nocache dynamic\n
+    balance roundrobin\n
+    dynamic-cookie-key mysecretphrase\n
+    server-template srv 2 ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + app.Port + ` resolvers cluster check init-addr none\n
 	 `
-		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+	 cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+
+		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+ backend, haproxyfragment)
 		if err != nil {
 			return err
 		}

@@ -1076,11 +1076,10 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.AppHostsIPV6, "app-hosts-ipv6", "", "App IPv6 bind address ")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents")
-	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4G", "Disk in g for micro service VM")
+	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM")
 	flags.StringVar(&conf.ProvAppCores, "prov-app-cpu-cores", "1", "Cpu cores ")
-	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1G", "Memory usage in M bytes")
+	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1024", "Memory usage in M bytes")
 	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name of the data files")
-
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
