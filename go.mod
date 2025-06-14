@@ -68,7 +68,9 @@ require (
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/dumpling v0.0.0-20200319081211-255ce0d25719
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/satori/go.uuid v1.2.0
+	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/siddontang/go v0.0.0-20180604090527-bdc77568d726
 	github.com/siddontang/go-mysql v0.0.0-20190311123328-7fc3b28d6104
 	github.com/siddontang/go-mysql-elasticsearch v0.0.0-20180201161913-f34f371d4391
@@ -196,9 +198,7 @@ require (
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/ryanuber/go-glob v1.0.0 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
-	github.com/shirou/gopsutil v3.21.11+incompatible // indirect
 	github.com/shopspring/decimal v1.2.0 // indirect
-	github.com/shurcooL/sanitized_anchor_name v1.0.0 // indirect
 	github.com/skeema/knownhosts v1.3.0 // indirect
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/spf13/afero v1.9.2 // indirect
@@ -216,6 +216,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/yoheimuta/go-protoparser/v4 v4.3.0 // indirect
+	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.18.1 // indirect
@@ -246,7 +247,6 @@ require (
 require (
 	github.com/Azure/go-autorest/autorest/to v0.4.0 // indirect
 	github.com/Azure/go-autorest/autorest/validation v0.3.0 // indirect
-	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/aclements/go-moremath v0.0.0-20170210193428-033754ab1fee // indirect
 	github.com/atc0005/go-teams-notify/v2 v2.8.0
 	github.com/bluele/slack v0.0.0-20180528010058-b4b4d354a079 // indirect
@@ -266,7 +266,7 @@ require (
 	github.com/gin-gonic/gin v1.9.1 // indirect
 	github.com/go-git/go-git/v5 v5.13.2
 	github.com/go-mysql-org/go-mysql v1.7.0
-	github.com/go-ole/go-ole v1.2.5 // indirect
+	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/gonum/blas v0.0.0-20180125090452-e7c5890b24cf // indirect
 	github.com/gonum/floats v0.0.0-20180125090339-7de1f4ea7ab5 // indirect

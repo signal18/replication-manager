@@ -66,6 +66,27 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGetJobEntries)),
 	))
 
+	// SQL Job Scheduler endpoints
+	router.Handle("/api/clusters/{clusterName}/scheduler/jobs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerSchedulerJobs)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/scheduler/jobs/{id}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerSchedulerJob)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/scheduler/jobs/{id}/enable", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerSchedulerJobEnable)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/scheduler/jobs/{id}/disable", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerSchedulerJobDisable)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/backups", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterBackups)),
