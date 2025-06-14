@@ -103,6 +103,9 @@ export default React.memo(function Variables({
       columnHelper.accessor((row) => row.type == "secret" ? maskString(row.value) : row.value, {
         header: 'Value'
       }),
+      columnHelper.accessor((row) => row.agents?.toString(), {
+        header: 'Agents'
+      }),
     ],
     []
   )
