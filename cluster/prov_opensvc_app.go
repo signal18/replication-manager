@@ -362,23 +362,26 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 		result, err := net.LookupCNAME(route.CName)
 
 		if err != nil {
-
 			slice := strings.Split(route.CName, ".")
 			if len(slice) > 2 {
+				if slice[len(slice)-2]!="cloud18" {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,  "DNS %s does not resolv to gateway %s and is not under our control please fixed it with CNAME before provison ",route.CName , cluster.Conf.Cloud18GatewayDomainName)
+					return nil
+				}
 				slice = slice[:len(slice)-1]
 				slice = slice[:len(slice)-1]
 				cname := strings.Join(slice, ".")
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding CNAME %s to gateway %s",cname , cluster.Conf.Cloud18GatewayService)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding CNAME %s to gateway %s",cname , cluster.Conf.Cloud18GatewayDomainName)
 
 				cluster.BashScriptProvDNS(cname)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s",route.CName , cluster.Conf.Cloud18GatewayService)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s",route.CName , cluster.Conf.Cloud18GatewayDomainName)
 			}
 		} else  {
       if result != cluster.Conf.Cloud18GatewayService {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayService)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
 			} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayService)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
 			}
   	}
 

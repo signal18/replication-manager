@@ -45,7 +45,6 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
-
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script: %s", string(out))
 	}
 	return nil
