@@ -13,6 +13,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"hash/crc64"
 	"io"
 	"net/http"
@@ -26,6 +27,13 @@ import (
 
 	"golang.org/x/net/http2"
 )
+
+// ConfigKeyValueRequest représente la structure des données à envoyer
+type ConfigKeyValueRequest struct {
+	Path string `json:"path"`
+	Key  string `json:"key"`
+	Data string `json:"data"`
+}
 
 func (collector *Collector) GetHttpClient() *http.Client {
 	tlsConfig := &tls.Config{InsecureSkipVerify: true}
@@ -238,39 +246,73 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 }
 
 func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
+	// Construction de l'URL de manière plus propre
+	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
 
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
-	jsondata := `{"path": "` + namespace + `/cfg/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+	// Création de la structure de données
+	requestData := ConfigKeyValueRequest{
+		Path: fmt.Sprintf("%s/cfg/%s", namespace, service),
+		Key:  key,
+		Data: value,
+	}
+
+	// Sérialisation en JSON
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", string(jsonData))
 	}
 
 	client := collector.GetHttpClient()
-	b := bytes.NewBuffer([]byte(jsondata))
-	req, err := http.NewRequest("POST", urlpost, b)
+
+	// Création de la requête HTTP
+	req, err := http.NewRequest("POST", urlpost, bytes.NewBuffer(jsonData))
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("HTTP Request Creation Error: ", err)
 		}
-		return err
+		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
+
+	// Configuration des headers
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", "ANY")
+
+	// Exécution de la requête
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("HTTP Request Execution Error: ", err)
 		}
-		return err
+		return fmt.Errorf("failed to execute HTTP request: %w", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+
+	// Lecture de la réponse
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("Response Body Read Error: ", err)
+		}
+		return fmt.Errorf("failed to read response body: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
+
+	// Vérification du code de statut HTTP
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
 	return nil
 }
 
