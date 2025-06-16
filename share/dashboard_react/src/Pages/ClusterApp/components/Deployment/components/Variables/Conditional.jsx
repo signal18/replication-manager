@@ -37,7 +37,11 @@ export function useConditionalHandlers({ conditional = [], index, onChange, fiel
     const list = checkeds.split(",").map(agent => agent.trim());
     const oldList = conditional.map(item => item.agent);
 
-    if (shallowEqual(list, oldList)) return;
+    if (shallowEqual(list, oldList)) {
+      return; // No change in agents
+    }
+    
+    // If no agents are selected, clear the conditional field
     if (list.length === 0) {
       onChange(fieldName, index, "conditional", []);
       return;
@@ -45,7 +49,7 @@ export function useConditionalHandlers({ conditional = [], index, onChange, fiel
 
     const updatedAgents = list.map(agent => {
       const existing = conditional.find(item => item.agent === agent);
-      return { agent, value: existing?.value ?? defaultValue };
+      return existing ? { ...existing } : { agent, value: defaultValue || "" };
     });
 
     onChange(fieldName, index, "conditional", updatedAgents);
