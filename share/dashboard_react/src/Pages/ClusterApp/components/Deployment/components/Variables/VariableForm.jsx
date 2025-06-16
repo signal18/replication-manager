@@ -4,7 +4,7 @@ import Checkboxes from "../../../../../../components/Checkboxes/Checkboxes";
 import TextForm from "../../../../../../components/TextForm";
 import PasswordControl from "../../../../../../components/PasswordControl";
 import Dropdown from "../../../../../../components/Dropdown";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 
 const defaultConfirmText = "Are you sure you want to change this field to: ";
 
@@ -37,7 +37,7 @@ export const VariableForm = ({
 }) => {
   const fieldPrefix = `variables[${index}]`;
 
-  const renderAgentValue = (item) => {
+  const renderAgentValue = useCallback((item) => {
     const agent = conditional.find(a => a.agent === item.value);
     if (!agent) return null;
 
@@ -52,7 +52,7 @@ export const VariableForm = ({
         editMode={renderType === "inline" ? "inline" : "form"}
       />
     );
-  };
+  }, [v.type, conditional, index, onConditionalValueChange, renderType]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
