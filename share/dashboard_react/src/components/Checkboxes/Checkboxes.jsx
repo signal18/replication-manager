@@ -128,7 +128,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
                                         {item.name}
                                     </Checkbox>
                                     {direction === "column" && isChecked && item.renderCheckedContent ? (
-                                        <Box className={`${styles.CheckedContent} ${parentStyles?.CheckedContent}`}>
+                                        <Box className={`${styles.CheckedContent} ${parentStyles?.CheckedContent}`} mt={2} pl={4}>
                                             {item.renderCheckedContent(item)}
                                         </Box>
                                     ) : null}
