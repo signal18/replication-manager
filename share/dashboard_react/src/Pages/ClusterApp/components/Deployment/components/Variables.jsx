@@ -112,8 +112,8 @@ export default React.memo(function Variables({
           }
           return (
             <VStack align="start" spacing={1}>
-              {conditional.map((item, index) => (
-                <HStack key={index} spacing={2}>
+              {conditional.map((item) => (
+                <HStack key={item.agent} spacing={2}>
                   <Text>{item.agent}:</Text>
                   <Text fontWeight="bold">{row.original.type == "secret" ? maskString(item.value) : item.value}</Text>
                 </HStack>
@@ -236,6 +236,7 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
 
 const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled }) => {
   const v = variable || { name: "", type: "secret", value: "", conditional: [], locked: false };
+  const { conditional = [] } = v;
   const onRowArrayChange = (fieldName, index, key, value) => {
     onChange(fieldName, index, key, value);
   };
@@ -247,35 +248,35 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     onRowArrayChange(fieldName, index, "conditional", updatedAgents);
   };
 
-  const onConditionalValueChange = (agent, value) => {
-    const updatedAgents = v.conditional.map(item => item.agent === agent ? { ...item, value } : item);
+  const onConditionalValueChange = useCallback((agent, value) => {
+    const updatedAgents = conditional.map(item => item.agent === agent ? { ...item, value } : item);
     onRowArrayChange(fieldName, index, "conditional", updatedAgents);
-  };
+  }, [conditional, index, onRowArrayChange]);
 
   const renderAgentValue = useCallback((item) => {
-    if (!v.conditional || !Array.isArray(v.conditional)) {
-      return null; // Ensure v.conditional is an array before proceeding
+    if (!conditional || !Array.isArray(conditional)) {
+      return null; // Ensure conditional is an array before proceeding
     }
     // Check if the agent exists in the conditional array
-    const agentExists = v.conditional.find(agent => agent.agent === item.value);
+    const agentExists = conditional?.find(agent => agent.agent === item.value);
     if (!agentExists) {
       return null; // If the agent does not exist, return null
     }
 
     if (v.type === "secret") {
       return (
-        <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.secret`} type="password" placeholder="Secret" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+        <TextForm key={`variables[${index}].conditional.${item.value}.secret`} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.secret`} type="password" placeholder="Secret" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
       );
     }
 
     return (
-      <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+      <TextForm key={`variables[${index}].conditional.${item.value}.env`} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
     );
-  }, [index, onConditionalValueChange, v.conditional]);
+  }, [index, onConditionalValueChange, conditional]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
-  }, [agentOptions, v.conditional, index, renderAgentValue]);
+  }, [agentOptions, conditional, renderAgentValue]);
 
   // Just return that variable is locked
   if (isDisabled) {
@@ -295,7 +296,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
         <Text>Conditional:</Text>
         <Checkboxes
           list={agentList}
-          values={v.conditional.map(item => item.agent)}
+          values={conditional.map(item => item.agent)}
           onChange={(value) => onAgentCheckboxChange(value, v.value)}
           parentStyles={styles}
           confirm={true}
@@ -310,6 +311,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
 
 const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange }) => {
   const [v, setV] = useState(variable || { name: "", type: "secret", value: "", conditional: [], locked: false });
+  const { conditional = [] } = v;
   const { theme } = useTheme();
 
   const handleArrayChange = (index, key, value) => {
@@ -325,17 +327,17 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
     handleArrayChange(index, "conditional", updatedAgents);
   };
 
-  const onConditionalValueChange = (agent, value) => {
-    const updatedAgents = v.conditional.map(item => item.agent === agent ? { ...item, value } : item);
+  const onConditionalValueChange = useCallback((agent, value) => {
+    const updatedAgents = conditional.map(item => item.agent === agent ? { ...item, value } : item);
     handleArrayChange(index, "conditional", updatedAgents);
-  };
+  }, [conditional, index, handleArrayChange]);
 
   const renderAgentValue = useCallback((item) => {
-    if (!v.conditional || !Array.isArray(v.conditional)) {
-      return null; // Ensure v.conditional is an array before proceeding
+    if (!conditional || !Array.isArray(conditional)) {
+      return null; // Ensure conditional is an array before proceeding
     }
     // Check if the agent exists in the conditional array
-    const agentExists = v.conditional.find(agent => agent.agent === item.value);
+    const agentExists = conditional.find(agent => agent.agent === item.value);
     if (!agentExists) {
       return null; // If the agent does not exist, return null
     }
@@ -363,11 +365,11 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
         onChange={(e) => onConditionalValueChange(item.value, e.target.value)}
       />
     )
-  }, [index, onConditionalValueChange, v.conditional]);
+  }, [index, onConditionalValueChange, conditional]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
-  }, [agentOptions, v.conditional, index, renderAgentValue]);
+  }, [agentOptions, conditional, renderAgentValue]);
 
   return (
     <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
@@ -421,7 +423,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
         <Text mb={1}>Conditional:</Text>
         <Checkboxes
           list={agentList}
-          values={v.conditional.map(item => item.agent)}
+          values={conditional.map(item => item.agent)}
           onChange={(value) => onAgentCheckboxChange(value, v.value)} 
           parentStyles={styles}
           direction="column"
