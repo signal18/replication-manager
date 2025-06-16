@@ -3,7 +3,7 @@ import { HiTrash } from 'react-icons/hi'
 import RMIconButton from '../../../../../../components/RMIconButton';
 import RMButton from '../../../../../../components/RMButton';
 import styles from '../styles.module.scss';
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { DataTable } from '../../../../../../components/DataTable';
 import { createColumnHelper } from '@tanstack/react-table';
 import { uniqueId } from 'lodash';
