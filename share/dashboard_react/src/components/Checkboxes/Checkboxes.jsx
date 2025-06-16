@@ -44,13 +44,13 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
                 : values.split(",").map(v => v.trim());
         }
 
-        const isSame = arraysEqual(newval,selected)
+        const isSame = arraysEqual(newval, selected)
 
         if (!isOpen || isSame) {
             setSelected(newval);
             setOldSelected(newval);
         } else {
-            dispatch(showWarningToast({title: "Data has changed", description: "The data has been changed externally while modal opened"}))
+            dispatch(showWarningToast({ title: "Data has changed", description: "The data has been changed externally while modal opened" }))
         }
     }, [values]);
 
@@ -66,7 +66,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
             setIsOpen(true)
         } else {
             onChange(updated)
-        } 
+        }
     }
 
     const handleAllChange = (checked) => {
@@ -107,17 +107,25 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
                             </Checkbox>
                         </Box>
 
-                        {options.map((item) => (
-                            <Box key={item.value} className={`${styles.ListItem} ${parentStyles?.ListItem}`}>
-                                <Checkbox
-                                    isChecked={selected.includes(item.value)}
-                                    onChange={() => handleChange(item.value)}
-                                    className={`${styles.Checkbox} ${parentStyles?.Checkbox}`}
-                                >
-                                    {item.name}
-                                </Checkbox>
-                            </Box>
-                        ))}
+                        {options.map((item) => {
+                            const isChecked = selected.includes(item.value);
+                            return (
+                                <Box key={item.value} className={`${styles.ListItem} ${parentStyles?.ListItem}`}>
+                                    <Checkbox
+                                        isChecked={isChecked}
+                                        onChange={() => handleChange(item.value)}
+                                        className={`${styles.Checkbox} ${parentStyles?.Checkbox}`}
+                                    >
+                                        {item.name}
+                                    </Checkbox>
+                                    {direction === "column" && isChecked && item.renderCheckedContent ? (
+                                        <Box className={`${styles.CheckedContent} ${parentStyles?.CheckedContent}`}>
+                                            {item.renderCheckedContent(item)}
+                                        </Box>
+                                    ) : null}
+                                </Box>
+                            );
+                        })}
                     </>
                 ) : (
                     <Box className={`${styles.ListItem} ${parentStyles?.ListItem}`}>

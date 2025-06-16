@@ -925,12 +925,17 @@ func (appcnf *AppConfig) DropGitVariables(row GitClone) int {
 	return dropped
 }
 
+type AgentVariable struct {
+	Agent string `mapstructure:"agent" toml:"agent" json:"agent"`
+	Value string `mapstructure:"value" toml:"value" json:"value"`
+}
+
 type VariableMapping struct {
-	Name   string   `toml:"name" json:"name"`
-	Value  string   `toml:"value" json:"value"`
-	Type   string   `toml:"type" json:"type" options:"secret|env"`
-	Locked bool     `toml:"locked" json:"locked"`
-	Agents []string `toml:"agents" json:"agents" example:"all"`
+	Name        string          `toml:"name" json:"name"`
+	Value       string          `toml:"value" json:"value"`
+	Type        string          `toml:"type" json:"type" options:"secret|env"`
+	Locked      bool            `toml:"locked" json:"locked"`
+	Conditional []AgentVariable `toml:"conditional" json:"conditional"` // This is used to set the variable value only if the agent matches
 }
 
 type PathMapping struct {

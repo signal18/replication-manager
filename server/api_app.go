@@ -591,6 +591,19 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					node.AppConfig.Deployment.Variables[index].Value = newValue
 				case "type":
 					node.AppConfig.Deployment.Variables[index].Type = newValue
+				case "conditional":
+					// Check if the conditional is a valid JSON
+					if newValue != "" {
+						var conditional []config.AgentVariable
+						err := json.Unmarshal([]byte(newValue), &conditional)
+						if err != nil {
+							http.Error(w, "Invalid conditional format", 500)
+							return
+						}
+						node.AppConfig.Deployment.Variables[index].Conditional = conditional
+					} else {
+						node.AppConfig.Deployment.Variables[index].Conditional = nil
+					}
 				default:
 					http.Error(w, "Invalid key for variables", 500)
 					return
@@ -738,8 +751,8 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		}
 		for _, row := range body {
 			old := node.AppConfig.GetDeploymentVariables(row.Name)
-			if old != nil && strings.Join(old.Agents, ",") == strings.Join(row.Agents, ",") {
-				http.Error(w, "Cannot duplicate variable with same name and scope", 400)
+			if old != nil {
+				http.Error(w, "Cannot duplicate variable with same name", 400)
 				return
 			}
 			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, row)
@@ -865,7 +878,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 			return
 		}
 		if node.AppConfig.Deployment.Variables[index].Locked {
-			http.Error(w, "Unable to drop locked variable", http.StatusInternalServerError)
+			http.Error(w, "Unable to drop locked variable. Please drop the source of the variable instead.", http.StatusInternalServerError)
 			return
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)

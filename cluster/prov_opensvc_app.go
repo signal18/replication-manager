@@ -11,10 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"path/filepath"
 	"strconv"
 	"strings"
-  "net"
+
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -335,13 +336,23 @@ func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
 	}
 
 	for _, v := range app.AppConfig.Deployment.Variables {
+		value := v.Value
+		if len(v.Conditional) > 0 {
+			for _, av := range v.Conditional {
+				if av.Agent == agent {
+					value = av.Value
+					break
+				}
+			}
+		}
+
 		if v.Type == "secret" {
-			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, value)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 			}
 		} else {
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, value)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
 			}
@@ -364,28 +375,28 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 		if err != nil {
 			slice := strings.Split(route.CName, ".")
 			if len(slice) > 2 {
-				if slice[len(slice)-2]!="cloud18" {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,  "DNS %s does not resolv to gateway %s and is not under our control please fixed it with CNAME before provison ",route.CName , cluster.Conf.Cloud18GatewayDomainName)
+				if slice[len(slice)-2] != "cloud18" {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "DNS %s does not resolv to gateway %s and is not under our control please fixed it with CNAME before provison ", route.CName, cluster.Conf.Cloud18GatewayDomainName)
 					return nil
 				}
 				slice = slice[:len(slice)-1]
 				slice = slice[:len(slice)-1]
 				cname := strings.Join(slice, ".")
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding CNAME %s to gateway %s",cname , cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Adding CNAME %s to gateway %s", cname, cluster.Conf.Cloud18GatewayDomainName)
 
 				cluster.BashScriptProvDNS(cname)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s",route.CName , cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s", route.CName, cluster.Conf.Cloud18GatewayDomainName)
 			}
-		} else  {
-      if strings.ToLower(strings.TrimRight(result,".")) != strings.ToLower(strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName,"."))  {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored  %s resolv to % different from gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
+		} else {
+			if strings.ToLower(strings.TrimRight(result, ".")) != strings.ToLower(strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName, ".")) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored  %s resolv to % different from gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored %s resolv to gateway %s",route.CName , result, cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored %s resolv to gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
 			}
-  	}
+		}
 
-  	backend := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
+		backend := app.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + "_" + route.Port
 
 		haproxyfragment := `
 
@@ -398,9 +409,9 @@ backend ` + backend + `\n
     dynamic-cookie-key mysecretphrase\n
     server-template srv 2 ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + app.Port + ` resolvers cluster check init-addr none\n
 	 `
-	 cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 
-		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+ backend, haproxyfragment)
+		err = svc.CreateConfigKeyValueV2(cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 		if err != nil {
 			return err
 		}
