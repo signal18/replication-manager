@@ -318,7 +318,7 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 
 func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
 
-	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
+	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
 
 	// Création de la structure de données
 	requestData := ConfigKeyValueRequest{
