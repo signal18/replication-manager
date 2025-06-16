@@ -291,16 +291,27 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
   }
 
   return (
-    <Flex direction="column" className={styles.variableRowForm} gap={2}>
-      <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
-      <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
-      {v.type === "secret" ? (
-        <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
-      ) : (
-        <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
-      )}
-      <HStack>
-        <Text>Conditional:</Text>
+    <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
+      <Flex direction="column" flex="1" minW="300px" gap={2}>
+        <Flex direction="column" flex="1">
+          <Text mb={1}>Variable Name:</Text>
+          <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
+        </Flex>
+        <Flex direction="column" flex="1">
+          <Text mb={1}>Variable Type:</Text>
+          <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
+        </Flex>
+        <Flex direction="column" flex="1">
+          <Text mb={1}>Variable Value:</Text>
+          {v.type === "secret" ? (
+            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+          ) : (
+            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+          )}
+        </Flex>
+      </Flex>
+      <Flex direction="column" flex="1" minW="200px">
+        <Text mb={1}>Conditional:</Text>
         <Checkboxes
           list={agentList}
           values={conditional.map(item => item.agent)}
@@ -312,7 +323,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
           splitConfirm={false}
           direction="column"
         />
-      </HStack>
+      </Flex>
     </Flex>
   )
 })
@@ -438,7 +449,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
         <Checkboxes
           list={agentList}
           values={conditional.map(item => item.agent)}
-          onChange={(value) => onAgentCheckboxChange(value, v.value)} 
+          onChange={(value) => onAgentCheckboxChange(value, v.value)}
           parentStyles={styles}
           direction="column"
         />
