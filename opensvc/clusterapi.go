@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/signal18/replication-manager/config"
 
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
@@ -739,13 +740,14 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 }
 
-func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) {
+func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {
+	result := make([]string, 0)
 
 	url := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(svc))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	req.Header.Set("content-type", "application/json")
@@ -767,7 +769,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) 
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
 		}
-		return "", err
+		return nil, err
 	}
 
 	defer client.CloseIdleConnections()
@@ -775,7 +777,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) 
 	startRead := time.Now()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	endRead := time.Now()
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
@@ -783,36 +785,22 @@ func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) 
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
-	type NodeStatus struct {
-		Avail string `json:"avail"`
+	nodes, _, _, err := jsonparser.Get(body, "nodes")
+	if err == nil {
+		jsonparser.ObjectEach(nodes, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+			if dataType == jsonparser.Object {
+				status, err := jsonparser.GetString(value, "status", "avail")
+				if err == nil && status == "up" {
+					result = append(result, string(key))
+				}
+			}
+			return nil
+		})
 	}
 
-	type Node struct {
-		Status NodeStatus `json:"status"`
-		// Ajoutez d'autres champs selon votre structure JSON
+	if len(result) > 0 {
+		return result, nil
 	}
 
-	// Structure principale du document JSON
-	type Document struct {
-		Nodes map[string]Node `json:"nodes"`
-	}
-
-	var doc Document
-
-	// Parser le JSON
-	if err := json.Unmarshal(body, &doc); err != nil {
-		return "", err
-	}
-
-	// Filtrer les nodes avec status.avail == "up" et extraire les clés
-	var upNodeKeys []string
-	for key, node := range doc.Nodes {
-		if node.Status.Avail == "up" {
-			upNodeKeys = append(upNodeKeys, key)
-			return key, nil
-		}
-	}
-
-	return "", errors.New("Node up not found")
-
+	return nil, errors.New("Service node not found")
 }
