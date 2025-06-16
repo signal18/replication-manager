@@ -390,9 +390,9 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 			}
 		} else {
 			if strings.ToLower(strings.TrimRight(result, ".")) != strings.ToLower(strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName, ".")) {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored  %s resolv to % different from gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping add CNAME %s pointing to % different location from the gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
 			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "CNAME add ignored %s resolv to gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping add CNAME %s already resolving to gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
 			}
 		}
 
