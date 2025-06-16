@@ -741,7 +741,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 
 func (collector *Collector) GetServiceNodeFromState(svc string) (string, error) {
 
-	url := "https://" + collector.Host + ":" + collector.Port + "/object_status?path=" + svc
+	url := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(svc))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
