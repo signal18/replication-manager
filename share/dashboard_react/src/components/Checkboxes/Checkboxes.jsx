@@ -12,7 +12,7 @@ const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b
  * @param {Object} props 
  * @returns 
  */
-const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles = {}, confirm = false, confirmTitle = "Change value to: ", splitConfirm = false, direction = "column" }) => {
+const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles = {}, confirm = false, confirmTitle = "Change value to: ", confirmBodyTitle, splitConfirm = false, direction = "column" }) => {
     const [selected, setSelected] = useState([])
     const [oldSelected, setOldSelected] = useState([])
     const [isOpen, setIsOpen] = useState(false)
@@ -91,12 +91,12 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
 
     const confirmBody = splitConfirm ? (
         <Flex direction={"column"}>
-            <Text>{`Change value to:`}</Text>
+            <Text>{confirmBodyTitle ? confirmBodyTitle : confirmTitle}</Text>
             {selected.map((item) => <Text key={item}>{item}</Text>)}
         </Flex>
     ) : (
         <Flex direction={"column"}>
-            <Text>Change value to: {selected.join(", ")}</Text>
+            <Text>{confirmBodyTitle ? confirmBodyTitle : confirmTitle}: {selected.join(", ")}</Text>
         </Flex>
     )
 

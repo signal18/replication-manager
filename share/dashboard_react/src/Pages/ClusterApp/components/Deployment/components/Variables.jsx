@@ -307,7 +307,8 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
           onChange={(value) => onAgentCheckboxChange(value, v.value)}
           parentStyles={styles}
           confirm={true}
-          confirmTitle="Change value to: "
+          confirmTitle="Are you sure to modify the conditional agents?"
+          confirmBodyTitle="Conditional agents changed to:"
           splitConfirm={false}
           direction="column"
         />
