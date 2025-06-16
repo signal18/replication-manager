@@ -793,17 +793,28 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 				if status == "up" {
 					result = append(result, string(key))
 				}
-			} else {
-				collector.Logrus.WithField("FROM", "OpenSVC").Errorf("OpenSVC error get node status: %s", err.Error())
 			}
 		}
 		return nil
 	}
 
-	nodes, _, _, err := jsonparser.Get(body, "nodes")
-	collector.Logrus.WithField("FROM", "OpenSVC").Debugf("OpenSVC nodes: %s", nodes)
+	scopes, _, _, err := jsonparser.Get(body, "nodes")
+	scopeparser := func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+		collector.Logrus.WithField("FROM", "OpenSVC").Debugf("OpenSVC scope: %s", value)
+		if dataType == jsonparser.Object {
+			nodes, _, _, err := jsonparser.Get(value, "nodes")
+			if err == nil {
+				err = jsonparser.ObjectEach(nodes, nodeparser)
+				if err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	}
+
 	if err == nil {
-		err = jsonparser.ObjectEach(nodes, nodeparser, "nodes")
+		err = jsonparser.ObjectEach(scopes, scopeparser)
 		if err != nil {
 			return nil, fmt.Errorf("Error iterating within nodes: %s", err.Error())
 		}
