@@ -236,10 +236,17 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
 
 const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled }) => {
   const v = variable || { name: "", type: "secret", value: "", conditional: [], locked: false };
-  const { conditional = [] } = v;
+
   const onRowArrayChange = (fieldName, index, key, value) => {
     onChange(fieldName, index, key, value);
   };
+
+  const conditional = useMemo(() => {
+    if (!v.conditional || !Array.isArray(v.conditional)) {
+      return [];
+    }
+    return v.conditional;
+  }, [v.conditional]);
 
   const onAgentCheckboxChange = (checkeds, defaultValue) => {
     const updatedAgents = checkeds.length > 0
@@ -311,8 +318,14 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
 
 const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange }) => {
   const [v, setV] = useState(variable || { name: "", type: "secret", value: "", conditional: [], locked: false });
-  const { conditional = [] } = v;
   const { theme } = useTheme();
+
+  const conditional = useMemo(() => {
+    if (!v.conditional || !Array.isArray(v.conditional)) {
+      return [];
+    }
+    return v.conditional;
+  }, [v.conditional]);
 
   const handleArrayChange = (index, key, value) => {
     setV((prev) => ({ ...prev, [key]: value }));
