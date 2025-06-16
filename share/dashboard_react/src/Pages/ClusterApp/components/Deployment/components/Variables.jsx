@@ -368,7 +368,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
     onChange(index, key, value);
   }
 
-  const onAgentCheckboxChange = useCallback((checkeds, defaultValue, conditional) => {
+  const onAgentCheckboxChange = (checkeds, defaultValue, conditional) => {
     const list = checkeds.map(agent => agent.trim());
     const oldList = conditional.map(item => item.agent);
 
@@ -384,7 +384,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
     });
 
     handleArrayChange(fieldName, index, "conditional", updatedAgents);
-  },[fieldName, index, handleArrayChange]);
+  }
 
   const onConditionalValueChange = useCallback((agent, value) => {
     const updatedAgents = conditional.map(item => item.agent === agent ? { ...item, value } : item);
