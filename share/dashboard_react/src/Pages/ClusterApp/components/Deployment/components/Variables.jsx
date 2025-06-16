@@ -105,7 +105,7 @@ export default React.memo(function Variables({
       }),
       columnHelper.accessor((row) => row.conditional, {
         header: 'Conditional',
-        cell: ({ getValue }) => {
+        cell: ({ row, getValue }) => {
           const conditional = getValue();
           if (!conditional || conditional.length === 0) {
             return <Text fontStyle="italic" color="gray.500">-</Text>;
@@ -115,7 +115,7 @@ export default React.memo(function Variables({
               {conditional.map((item, index) => (
                 <HStack key={index} spacing={2}>
                   <Text>{item.agent}:</Text>
-                  <Text fontWeight="bold">{item.value}</Text>
+                  <Text fontWeight="bold">{row.original.type == "secret" ? maskString(item.value) : item.value}</Text>
                 </HStack>
               ))}
             </VStack>
