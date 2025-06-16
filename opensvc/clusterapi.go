@@ -788,6 +788,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 	nodes, _, _, err := jsonparser.Get(body, "nodes")
 	if err == nil {
 		err = jsonparser.ObjectEach(nodes, func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
+			collector.Logrus.WithField("FROM", "OpenSVC").Debugf("OpenSVC node: %s", value)
 			if dataType == jsonparser.Object {
 				status, err := jsonparser.GetString(value, "status", "avail")
 				if err == nil {
