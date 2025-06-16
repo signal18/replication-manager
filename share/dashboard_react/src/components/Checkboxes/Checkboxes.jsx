@@ -29,10 +29,19 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
                 value: item.trim()
             }));
         }
-        return list.map(item => ({
-            name: item.name || item.label || item,
-            value: item.value || item.name || item
-        }));
+        return list.map(item => {
+            if (typeof item === "string") {
+                return {
+                    name: item.trim(),
+                    value: item.trim()
+                }
+            }
+            return {
+                ...item,
+                name: item.name || item.label || item,
+                value: item.value || item.name || item
+            }
+        });
     }, [list]);
 
 
