@@ -32,31 +32,14 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
 
 export const VariableForm = ({
   index, v, fieldName, agentOptions, conditional,
-  onChange, onAgentCheckboxChange, onConditionalValueChange,
+  onChange, onAgentCheckboxChange, renderCheckedContent,
   renderType = "form", isDisabled = false, styles
 }) => {
   const fieldPrefix = `variables[${index}]`;
 
-  const renderAgentValue = useCallback((item) => {
-    const agent = conditional.find(a => a.agent === item.value);
-    if (!agent) return null;
-
-    return (
-      <AgentValueField
-        key={item.value}
-        type={v.type}
-        agent={item.value}
-        index={index}
-        value={agent.value}
-        onChange={onConditionalValueChange}
-        editMode={renderType === "inline" ? "inline" : "form"}
-      />
-    );
-  }, [v.type, conditional, index, onConditionalValueChange, renderType]);
-
   const agentList = useMemo(() => {
-    return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
-  }, [agentOptions, conditional]);
+    return buildAgentCheckboxOptions(agentOptions, renderCheckedContent);
+  }, [agentOptions, renderCheckedContent]);
 
   if (isDisabled) {
     return <Text fontWeight="bold">Variable is locked. Please change the source configuration.</Text>;

@@ -216,6 +216,23 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     conditional, index, onChange, fieldName
   });
 
+  const renderAgentValue = useCallback((item) => {
+      const agent = conditional.find(a => a.agent === item.value);
+      if (!agent) return null;
+  
+      return (
+        <AgentValueField
+          key={item.value}
+          type={v.type}
+          agent={item.value}
+          index={index}
+          value={agent.value}
+          onChange={onConditionalValueChange}
+          editMode={"inline"}
+        />
+      );
+    }, [v.type, conditional, index, onConditionalValueChange]);
+
   return (
     <VariableForm
       index={index}
@@ -225,7 +242,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
       conditional={conditional}
       onChange={onChange}
       onAgentCheckboxChange={onAgentCheckboxChange}
-      onConditionalValueChange={onConditionalValueChange}
+      renderCheckedContent={renderAgentValue}
       isDisabled={isDisabled}
       renderType="form"
       styles={styles}
@@ -246,6 +263,23 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
     conditional, index, onChange: (_, idx, key, val) => handleChange(idx, key, val), fieldName: null
   });
 
+  const renderAgentValue = useCallback((item) => {
+      const agent = conditional.find(a => a.agent === item.value);
+      if (!agent) return null;
+  
+      return (
+        <AgentValueField
+          key={item.value}
+          type={v.type}
+          agent={item.value}
+          index={index}
+          value={agent.value}
+          onChange={onConditionalValueChange}
+          editMode={"inline"}
+        />
+      );
+    }, [v.type, conditional, index, onConditionalValueChange]);
+
   return (
     <VariableForm
       index={index}
@@ -256,6 +290,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
       onChange={handleChange}
       onAgentCheckboxChange={onAgentCheckboxChange}
       onConditionalValueChange={onConditionalValueChange}
+      renderCheckedContent={renderAgentValue}
       renderType="inline"
       styles={styles}
     />
