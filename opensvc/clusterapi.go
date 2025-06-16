@@ -741,7 +741,7 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {
-	result := make([]string, 0)
+	result := make(map[string]struct{})
 
 	url := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(svc))
 	client := collector.GetHttpClient()
@@ -791,7 +791,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 			status, err := jsonparser.GetString(value, "status", "avail")
 			if err == nil {
 				if status == "up" {
-					result = append(result, string(key))
+					result[string(key)] = struct{}{}
 				}
 			}
 		}
@@ -823,7 +823,11 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 	}
 
 	if len(result) > 0 {
-		return result, nil
+		uniqueResult := make([]string, 0, len(result))
+		for k := range result {
+			uniqueResult = append(uniqueResult, k)
+		}
+		return uniqueResult, nil
 	}
 
 	return nil, errors.New("Service node not found")
