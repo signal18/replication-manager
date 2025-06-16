@@ -96,7 +96,7 @@ const Checkboxes = ({ list = [], values = [], onChange = () => { }, parentStyles
         </Flex>
     ) : (
         <Flex direction={"column"}>
-            <Text>{confirmBodyTitle ? confirmBodyTitle : confirmTitle}: {selected.join(", ")}</Text>
+            <Text>{confirmBodyTitle ? confirmBodyTitle : confirmTitle} {selected.join(", ")}</Text>
         </Flex>
     )
 
