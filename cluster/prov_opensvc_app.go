@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -423,14 +424,28 @@ backend ` + backend + `
 		return err
 	}
 
+	var errtask ErrSlice
 	for _, node := range nodes {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route %s on OpenSVC service host %s", app.GetId(), node)
 		err = svc.RunTaskV2(cluster.Name, cluster.Conf.Cloud18GatewayService, node, "task#mergecfg", "")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not aggregate fragments of gateway service: %s", err)
-			return err
+			errtask = append(errtask, err)
 		}
 	}
 
-	return nil
+	return errtask
+}
+
+type ErrSlice []error
+
+func (e ErrSlice) Error() string {
+	var buf bytes.Buffer
+	for i, err := range e {
+		if i > 0 {
+			buf.WriteString("\n")
+		}
+		buf.WriteString(err.Error())
+	}
+	return buf.String()
 }
