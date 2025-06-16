@@ -374,7 +374,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
 
     if (shallowEqual(list, oldList)) return;
     if (list.length === 0) {
-      handleArrayChange(fieldName, index, "conditional", []);
+      handleArrayChange(index, "conditional", []);
       return;
     }
 
@@ -383,7 +383,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
       return { agent, value: existing?.value ?? defaultValue }; // Use existing value or default
     });
 
-    handleArrayChange(fieldName, index, "conditional", updatedAgents);
+    handleArrayChange(index, "conditional", updatedAgents);
   }
 
   const onConditionalValueChange = useCallback((agent, value) => {
