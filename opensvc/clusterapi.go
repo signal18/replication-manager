@@ -802,10 +802,10 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 			return nil
 		})
 		if err != nil {
-			collector.Logrus.WithField("FROM", "OpenSVC").Errorf("OpenSVC error iterate nodes: %s", err.Error())
+			return nil, fmt.Errorf("Error iterating within nodes: %s", err.Error())
 		}
 	} else {
-		collector.Logrus.WithField("FROM", "OpenSVC").Errorf("OpenSVC error get nodes: %s", err.Error())
+		return nil, fmt.Errorf("Error getting nodes from body: %s", err.Error())
 	}
 
 	if len(result) > 0 {
