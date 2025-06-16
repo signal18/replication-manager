@@ -210,7 +210,8 @@ export default React.memo(function Variables({
 
 const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled }) => {
   const v = variable || { name: "", type: "secret", value: "", conditional: [], locked: false };
-  const conditional = useMemo(() => Array.isArray(v.conditional) ? v.conditional : [], [v.conditional]);
+  const conditionalValues = (v.conditional || []).map(item => item.value).join(",");
+  const conditional = useMemo(() => Array.isArray(v.conditional) ? v.conditional : [], [conditionalValues]);
 
   const { onAgentCheckboxChange, onConditionalValueChange } = useConditionalHandlers({
     conditional, index, onChange, fieldName
@@ -252,7 +253,8 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
 
 const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange }) => {
   const [v, setV] = useState(variable || { name: "", type: "secret", value: "", conditional: [], locked: false });
-  const conditional = useMemo(() => Array.isArray(v.conditional) ? v.conditional : [], [v.conditional]);
+  const conditionalValues = (v.conditional || []).map(item => item.value).join(",");
+  const conditional = useMemo(() => Array.isArray(v.conditional) ? v.conditional : [], [conditionalValues]);
 
   const handleChange = (index, key, value) => {
     setV(prev => ({ ...prev, [key]: value }));
