@@ -319,14 +319,29 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/key"
-	jsondata := `{"path": "` + namespace + `/sec/` + service + `", "key":"` + key + ` ", "data": "` + value + `"}`
+
+	// Création de la structure de données
+	requestData := ConfigKeyValueRequest{
+		Path: fmt.Sprintf("%s/sec/%s", namespace, service),
+		Key:  key,
+		Data: value,
+	}
+
+	// Sérialisation en JSON
+	jsonData, err := json.Marshal(requestData)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", string(jsonData))
 	}
 
 	client := collector.GetHttpClient()
-	b := bytes.NewBuffer([]byte(jsondata))
+	b := bytes.NewBuffer(jsonData)
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
