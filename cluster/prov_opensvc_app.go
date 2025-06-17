@@ -101,7 +101,7 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Found app agent %s. Creating maps", agent.Node_name)
 
-	err = cluster.OpenSVCCreateAppPathMaps(agent.Node_name, app)
+	err = cluster.OpenSVCCreateAppVariableMaps(agent.Node_name, app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create maps:  %s ", err)
 		cluster.errorChan <- err
@@ -320,7 +320,7 @@ func (cluster *Cluster) GetOpenSVCDeploymentConfigEnv(app *App) string {
 	return result
 }
 
-func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
+func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) error {
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return errors.New("No support of Maps in Collector API")
 	}
