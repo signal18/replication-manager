@@ -430,7 +430,7 @@ func (cluster *Cluster) GetAppCores(app *App) string {
 }
 
 func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
-	defer wg.Done()
+
 	// if !cluster.Conf.AppOn {
 	// 	return // If the app module is not enabled, do not refresh apps
 	// }
@@ -438,11 +438,15 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 	// Refresh the apps
 	for _, app := range cluster.Apps {
 		if app != nil {
-			err := app.Refresh()
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Error refreshing app %s: %s", app.Name, err)
-			}
+			wg.Add(1)
+			go func(app *App, wg *sync.WaitGroup) {
+				defer wg.Done()
+				defer cluster.LogPanicToFile("refreshApps")
+				err := app.Refresh()
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Error refreshing app %s: %s", app.Name, err)
+				}
+			}(app, wg)
 		}
 	}
-
 }
