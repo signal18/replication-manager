@@ -256,7 +256,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     // If no agents checked, set conditional to empty array
     const updatedAgents = checkeds.length > 0
       ? checkeds.map(agent => {
-        const existing = cstate.conditional.find(item => item.agent === agent);
+        const existing = cstate.conditional?.find(item => item.agent === agent);
         return existing ? existing : { agent, value: cstate.value };
       })
       : []; // If no agents checked, set to empty array
@@ -361,7 +361,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
     // If no agents checked, set conditional to empty array
     const updatedAgents = checkeds.length > 0
       ? checkeds.map(agent => {
-        const existing = cstate.conditional.find(item => item.agent === agent);
+        const existing = cstate.conditional?.find(item => item.agent === agent);
         return existing ? existing : { agent, value: cstate.value };
       })
       : []; // If no agents checked, set to empty array
