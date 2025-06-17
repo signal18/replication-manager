@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/state"
@@ -74,16 +76,28 @@ func (app *App) GetMonitoringStatus() string {
 }
 
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
+	cluster := app.ClusterGroup
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.Timeout)*time.Second)
+	defer cancel()
+
 	tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 	client := &http.Client{Transport: tr}
+
 	urlpost := "https://" + route.CName
 
-	resp, err := client.Get(urlpost)
+	// Create a request with context
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlpost, nil)
+	if err != nil {
+		return -1, nil, fmt.Errorf("failed to create request to %s: %v", urlpost, err)
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return -1, nil, fmt.Errorf("error connecting to %s: %v", urlpost, err)
 	}
-
 	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return resp.StatusCode, nil, fmt.Errorf("error reading response body from %s: %v", urlpost, err)
@@ -101,9 +115,14 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 }
 
 func (app *App) GetAppTCPStatus(route config.Route) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", route.CName, route.Port))
+	cluster := app.ClusterGroup
+	dialer := net.Dialer{}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.Timeout)*time.Second)
+	defer cancel()
+
+	conn, err := dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%s", route.CName, route.Port))
 	if err != nil {
-		return fmt.Errorf("error connecting to %s: %v", route.CName, err)
+		return fmt.Errorf("error connecting to %s:%s: %v", route.CName, route.Port, err)
 	}
 	defer conn.Close()
 
