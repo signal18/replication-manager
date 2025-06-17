@@ -45,7 +45,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
         header: 'Docker Image'
       }),
       columnHelper.accessor((row) => (<VStack>
-        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={`${route.cname}) → ${route.port}`} />))}
+        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={route.cname} />))}
       </VStack>), {
         cell: (info) => info.getValue(),
         header: 'Routes'
