@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
@@ -428,7 +429,8 @@ func (cluster *Cluster) GetAppCores(app *App) string {
 	return cores
 }
 
-func (cluster *Cluster) refreshApps() {
+func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
+	defer wg.Done()
 	// if !cluster.Conf.AppOn {
 	// 	return // If the app module is not enabled, do not refresh apps
 	// }
