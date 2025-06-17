@@ -141,18 +141,10 @@ definitions:
         $ref: '#/definitions/os.Process'
       serviceName:
         type: string
-      shardApp:
-        $ref: '#/definitions/cluster.ServerMonitor'
       slaposDatadir:
         type: string
       state:
         type: string
-      tunnel:
-        type: boolean
-      tunnelPort:
-        type: integer
-      tunnelWritePort:
-        type: integer
       type:
         type: string
       version:
@@ -961,6 +953,13 @@ definitions:
       variableName:
         type: string
     type: object
+  config.AgentVariable:
+    properties:
+      agent:
+        type: string
+      value:
+        type: string
+    type: object
   config.AppConfig:
     properties:
       appHost:
@@ -974,8 +973,6 @@ definitions:
       provAppAgentsFailover:
         type: string
       provAppCores:
-        type: string
-      provAppDiskPool:
         type: string
       provAppDiskSize:
         type: string
@@ -1180,6 +1177,8 @@ definitions:
         type: string
       port:
         type: string
+      protocol:
+        type: string
     type: object
   config.ServicePlan:
     properties:
@@ -1293,12 +1292,13 @@ definitions:
     type: object
   config.VariableMapping:
     properties:
-      agents:
-        example:
-        - all
+      conditional:
+        description: This is used to set the variable value only if the agent matches
         items:
-          type: string
+          $ref: '#/definitions/config.AgentVariable'
         type: array
+      locked:
+        type: boolean
       name:
         type: string
       type:
@@ -1721,6 +1721,10 @@ definitions:
         type: string
       cloud18AlertSlackUser:
         type: string
+      cloud18ApplicationCredits:
+        type: integer
+      cloud18ApplicationCreditsPrice:
+        type: integer
       cloud18CostCurrency:
         type: string
       cloud18DatabaseReadSrvRecord:
@@ -1735,6 +1739,14 @@ definitions:
         type: string
       cloud18Domain:
         type: string
+      cloud18DomainAddScript:
+        type: string
+      cloud18DomainDropScript:
+        type: string
+      cloud18DomainSecret:
+        type: string
+      cloud18DomainUser:
+        type: string
       cloud18ExternalDbOps:
         type: string
       cloud18ExternalDbOpsStatus:
@@ -1742,6 +1754,10 @@ definitions:
       cloud18ExternalSysOps:
         type: string
       cloud18ExternalSysOpsStatus:
+        type: string
+      cloud18GatewayDomainName:
+        type: string
+      cloud18GatewayService:
         type: string
       cloud18GitUser:
         type: string
@@ -2406,17 +2422,15 @@ definitions:
         type: boolean
       printDelayStatInterval:
         type: integer
-      provAppCores:
+      provAppAgents:
         type: string
-      provAppCoresTotal:
+      provAppCores:
         type: string
       provAppDiskSize:
         type: string
-      provAppDiskSizeTotal:
-        type: string
       provAppMemory:
         type: string
-      provAppMemoryTotal:
+      provAppVolumeData:
         type: string
       provDBApplyDynamicConfig:
         type: boolean
@@ -5302,6 +5316,91 @@ paths:
       summary: Provision App Service
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/restart:
+    post:
+      consumes:
+      - application/json
+      description: Restart the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Restarted
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Restart App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/restart/{node}:
+    post:
+      consumes:
+      - application/json
+      description: Restart the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Node Name (optional, if not provided, will restart default node).
+          Can use ALL or * to restart on all nodes.
+        in: path
+        name: node
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Restarted
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Restart App Service
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/actions/start:
     post:
       consumes:
@@ -5342,6 +5441,51 @@ paths:
       summary: Start App Service
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/start/{node}:
+    post:
+      consumes:
+      - application/json
+      description: Start the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Node Name (optional, if not provided, will start default node).
+          Can use ALL or * to start on all nodes.
+        in: path
+        name: node
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Started
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Start App Service
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/actions/stop:
     post:
       consumes:
@@ -5363,6 +5507,51 @@ paths:
         in: path
         name: appName
         required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App Service Stopped
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" "Server Not Found
+          schema:
+            type: string
+      summary: Stop App Service
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/actions/stop/{node}:
+    post:
+      consumes:
+      - application/json
+      description: Stop the app service for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Node Name (optional, if not provided, will stop default node).
+          Can use ALL or * to stop on all nodes.
+        in: path
+        name: node
         type: string
       produces:
       - application/json
@@ -5554,8 +5743,7 @@ paths:
         required: true
         schema:
           properties:
-            value:
-              type: string
+            value: {}
           type: object
       produces:
       - application/json

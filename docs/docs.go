@@ -2735,6 +2735,130 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/restart": {
+            "post": {
+                "description": "Restart the app service for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Restart App Service",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App Service Restarted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/restart/{node}": {
+            "post": {
+                "description": "Restart the app service for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Restart App Service",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes.",
+                        "name": "node",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App Service Restarted",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/actions/start": {
             "post": {
                 "description": "Start the app service for a given cluster and app",
@@ -2794,6 +2918,71 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/start/{node}": {
+            "post": {
+                "description": "Start the app service for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Start App Service",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node Name (optional, if not provided, will start default node). Can use ALL or * to start on all nodes.",
+                        "name": "node",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App Service Started",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/actions/stop": {
             "post": {
                 "description": "Stop the app service for a given cluster and app",
@@ -2829,6 +3018,71 @@ const docTemplate = `{
                         "name": "appName",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App Service Stopped",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/actions/stop/{node}": {
+            "post": {
+                "description": "Stop the app service for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Stop App Service",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node Name (optional, if not provided, will stop default node). Can use ALL or * to stop on all nodes.",
+                        "name": "node",
+                        "in": "path"
                     }
                 ],
                 "responses": {
@@ -3173,9 +3427,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "object",
                             "properties": {
-                                "value": {
-                                    "type": "string"
-                                }
+                                "value": {}
                             }
                         }
                     }
@@ -16054,23 +16306,11 @@ const docTemplate = `{
                 "serviceName": {
                     "type": "string"
                 },
-                "shardApp": {
-                    "$ref": "#/definitions/cluster.ServerMonitor"
-                },
                 "slaposDatadir": {
                     "type": "string"
                 },
                 "state": {
                     "type": "string"
-                },
-                "tunnel": {
-                    "type": "boolean"
-                },
-                "tunnelPort": {
-                    "type": "integer"
-                },
-                "tunnelWritePort": {
-                    "type": "integer"
                 },
                 "type": {
                     "type": "string"
@@ -17275,6 +17515,17 @@ const docTemplate = `{
                 }
             }
         },
+        "config.AgentVariable": {
+            "type": "object",
+            "properties": {
+                "agent": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            }
+        },
         "config.AppConfig": {
             "type": "object",
             "properties": {
@@ -17294,9 +17545,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppCores": {
-                    "type": "string"
-                },
-                "provAppDiskPool": {
                     "type": "string"
                 },
                 "provAppDiskSize": {
@@ -17607,6 +17855,9 @@ const docTemplate = `{
                 },
                 "port": {
                     "type": "string"
+                },
+                "protocol": {
+                    "type": "string"
                 }
             }
         },
@@ -17771,14 +18022,15 @@ const docTemplate = `{
         "config.VariableMapping": {
             "type": "object",
             "properties": {
-                "agents": {
+                "conditional": {
+                    "description": "This is used to set the variable value only if the agent matches",
                     "type": "array",
                     "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "all"
-                    ]
+                        "$ref": "#/definitions/config.AgentVariable"
+                    }
+                },
+                "locked": {
+                    "type": "boolean"
                 },
                 "name": {
                     "type": "string"
@@ -18414,6 +18666,12 @@ const docTemplate = `{
                 "cloud18AlertSlackUser": {
                     "type": "string"
                 },
+                "cloud18ApplicationCredits": {
+                    "type": "integer"
+                },
+                "cloud18ApplicationCreditsPrice": {
+                    "type": "integer"
+                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -18435,6 +18693,18 @@ const docTemplate = `{
                 "cloud18Domain": {
                     "type": "string"
                 },
+                "cloud18DomainAddScript": {
+                    "type": "string"
+                },
+                "cloud18DomainDropScript": {
+                    "type": "string"
+                },
+                "cloud18DomainSecret": {
+                    "type": "string"
+                },
+                "cloud18DomainUser": {
+                    "type": "string"
+                },
                 "cloud18ExternalDbOps": {
                     "type": "string"
                 },
@@ -18445,6 +18715,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "cloud18ExternalSysOpsStatus": {
+                    "type": "string"
+                },
+                "cloud18GatewayDomainName": {
+                    "type": "string"
+                },
+                "cloud18GatewayService": {
                     "type": "string"
                 },
                 "cloud18GitUser": {
@@ -19440,22 +19716,19 @@ const docTemplate = `{
                 "printDelayStatInterval": {
                     "type": "integer"
                 },
-                "provAppCores": {
+                "provAppAgents": {
                     "type": "string"
                 },
-                "provAppCoresTotal": {
+                "provAppCores": {
                     "type": "string"
                 },
                 "provAppDiskSize": {
                     "type": "string"
                 },
-                "provAppDiskSizeTotal": {
-                    "type": "string"
-                },
                 "provAppMemory": {
                     "type": "string"
                 },
-                "provAppMemoryTotal": {
+                "provAppVolumeData": {
                     "type": "string"
                 },
                 "provDBApplyDynamicConfig": {

@@ -249,8 +249,8 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 // @Success 200 {string} string "App Service Restarted"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
-// @Router /api/clusters/{clusterName}/apps/{appName}/actions/start [post]
-// @Router /api/clusters/{clusterName}/apps/{appName}/actions/start/{node} [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/restart [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/restart/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -518,7 +518,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 // @Param field path string true "Field to modify"
 // @Param index path string true "Index of the field to modify"
 // @Param key path string true "Key of the field to modify"
-// @Param value body object{value=string} true "New value for the field"
+// @Param value body object{value=any} true "New value for the field"
 // @Success 200 {string} string "Deployment field modified"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found" "Deployment not found" "No cluster"
