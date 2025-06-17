@@ -6,8 +6,8 @@ import AppMenu from '../AppMenu'
 import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
 import ServerName from '../../../../../components/ServerName'
-import ServerStatus from '../../../../../components/ServerStatus'
 import TagPill from '../../../../../components/TagPill'
+import AppStatus from '../AppStatus'
 
 function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
   const [tableData, setTableData] = useState([])
@@ -36,7 +36,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
         cell: (info) => info.getValue(),
         header: 'Apps'
       }),
-      columnHelper.accessor((row) => (<ServerStatus state={row.state} />), {
+      columnHelper.accessor((row) => (<AppStatus state={row.state} />), {
         cell: (info) => info.getValue(),
         header: 'Status'
       }),
