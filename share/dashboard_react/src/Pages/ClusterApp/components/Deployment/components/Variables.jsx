@@ -231,7 +231,7 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
     agentOptions = agentOptions.split(',').map(agent => ({ value: agent.trim(), name: agent.trim() }));
   }
 
-  return agentOptions.map(item => ({ value: item.value, name: item.name, renderCheckedContent: renderCheckedContent }));
+  return agentOptions.map(item => ({ value: item.value, name: item.name, renderCheckedContent: renderCheckedContent })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled }) => {

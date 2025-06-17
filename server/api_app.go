@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -488,6 +489,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 
 				condValue = body.Value
+				sort.Sort(config.AVSorter(condValue))
 			} else {
 				type FieldValue struct {
 					Value string `json:"value"`

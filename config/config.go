@@ -930,12 +930,18 @@ type AgentVariable struct {
 	Value string `mapstructure:"value" toml:"value" json:"value"`
 }
 
+type AVSorter []AgentVariable
+
+func (a AVSorter) Len() int           { return len(a) }
+func (a AVSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a AVSorter) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
+
 type VariableMapping struct {
-	Name        string          `toml:"name" json:"name"`
-	Value       string          `toml:"value" json:"value"`
-	Type        string          `toml:"type" json:"type" options:"secret|env"`
-	Locked      bool            `toml:"locked" json:"locked"`
-	Conditional []AgentVariable `toml:"conditional" json:"conditional"` // This is used to set the variable value only if the agent matches
+	Name        string          `mapstructure:"name" toml:"name" json:"name"`
+	Value       string          `mapstructure:"value" toml:"value" json:"value"`
+	Type        string          `mapstructure:"type" toml:"type" json:"type" options:"secret|env"`
+	Locked      bool            `mapstructure:"locked" toml:"locked" json:"locked"`
+	Conditional []AgentVariable `mapstructure:"conditional" toml:"conditional" json:"conditional"` // This is used to set the variable value only if the agent matches
 }
 
 type PathMapping struct {
