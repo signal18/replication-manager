@@ -254,7 +254,8 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		}
 
 		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)
-		svccontainer["environment"] = cluster.GetOpenSVCDeploymentConfigEnv(app)
+		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentAppEnv("env")
+		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentAppEnv("secret")
 	}
 	return svccontainer
 }
@@ -313,11 +314,6 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	}
 
 	return strings.Join(results, " ")
-}
-func (cluster *Cluster) GetOpenSVCDeploymentConfigEnv(app *App) string {
-	var result string
-
-	return result
 }
 
 func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) error {

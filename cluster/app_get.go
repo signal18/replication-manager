@@ -246,6 +246,18 @@ func (p *App) GetGitCloneFromVolumeDir(volumeDir string) *config.GitClone {
 	return nil
 }
 
+func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
+	result := make([]string, 0)
+
+	for _, s := range app.GetAppConfig().Deployment.Variables {
+		if s.Type == vartype {
+			result = append(result, app.Name+"/"+s.Name)
+		}
+	}
+
+	return strings.Join(result, " ")
+}
+
 func (app *App) GetOpenSVCDeploymentGitEnv(gc config.GitClone, vartype string) string {
 	prefix := "GIT_CODE"
 	if gc.VolumeDir == "etc" {
