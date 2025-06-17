@@ -80,7 +80,7 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 
 	resp, err := client.Get(urlpost)
 	if err != nil {
-		return resp.StatusCode, nil, fmt.Errorf("error connecting to %s: %v", urlpost, err)
+		return -1, nil, fmt.Errorf("error connecting to %s: %v", urlpost, err)
 	}
 
 	defer resp.Body.Close()
