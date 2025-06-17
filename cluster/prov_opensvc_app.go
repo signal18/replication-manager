@@ -440,7 +440,11 @@ backend ` + backend + `
 		}
 	}
 
-	return errtask
+	if len(errtask) > 0 {
+		return ErrSlice(errtask)
+	}
+
+	return nil
 }
 
 type ErrSlice []error
