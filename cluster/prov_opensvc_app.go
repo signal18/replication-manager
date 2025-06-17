@@ -337,25 +337,31 @@ func (cluster *Cluster) OpenSVCCreateAppPathMaps(agent string, app *App) error {
 	}
 
 	for _, v := range app.AppConfig.Deployment.Variables {
-		value := v.Value
-		if len(v.Conditional) > 0 {
-			for _, av := range v.Conditional {
-				if av.Agent == agent {
-					value = av.Value
-					break
-				}
-			}
-		}
-
 		if v.Type == "secret" {
-			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, value)
+			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 			}
+
+			for _, cd := range v.Conditional {
+				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
+				err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, cdname, cd.Value)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to secret: %s %s ", cdname, err)
+				}
+			}
 		} else {
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, value)
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
+			}
+
+			for _, cd := range v.Conditional {
+				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
+				err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, cdname, cd.Value)
+				if err != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
+				}
 			}
 		}
 	}
