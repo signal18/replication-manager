@@ -38,7 +38,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
       }),
       columnHelper.accessor((row) => (<ServerStatus state={row.state} />), {
         cell: (info) => info.getValue(),
-        header: 'Apps'
+        header: 'Status'
       }),
       columnHelper.accessor((row) => row.config?.provAppDockerImg, {
         cell: (info) => info.getValue(),
