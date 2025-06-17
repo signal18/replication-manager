@@ -59,9 +59,25 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/stop/{node}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStop)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/start", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/start/{node}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppStart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/restart", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRestart)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/restart/{node}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRestart)),
 	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/need-restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -145,10 +161,12 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
+// @Param node path string false "Node Name (optional, if not provided, will start default node). Can use ALL or * to start on all nodes."
 // @Success 200 {string} string "App Service Started"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/start [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/start/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -164,9 +182,9 @@ func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *h
 			return
 		}
 
-		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil {
-			mycluster.OpenSVCStartAppService(node)
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app != nil {
+			mycluster.OpenSVCStartAppService(app, vars["node"])
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -185,10 +203,12 @@ func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *h
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
+// @Param node path string false "Node Name (optional, if not provided, will stop default node). Can use ALL or * to stop on all nodes."
 // @Success 200 {string} string "App Service Stopped"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
 // @Router /api/clusters/{clusterName}/apps/{appName}/actions/stop [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/stop/{node} [post]
 func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -204,9 +224,51 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 			return
 		}
 
-		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil {
-			mycluster.OpenSVCStopAppService(node)
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app != nil {
+			mycluster.OpenSVCStopAppService(app, vars["node"])
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// @Summary Restart App Service
+// @Description Restart the app service for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param node path string false "Node Name (optional, if not provided, will restart default node). Can use ALL or * to restart on all nodes."
+// @Success 200 {string} string "App Service Restarted"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" "Server Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/start [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/start/{node} [post]
+func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.GetOrchestrator() != "opensvc" {
+			http.Error(w, "Orchestrator not supported", 500)
+			return
+		}
+
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app != nil {
+			mycluster.OpenSVCRestartAppService(app, vars["node"])
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

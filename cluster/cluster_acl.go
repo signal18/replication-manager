@@ -1019,6 +1019,10 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/stop") {
 			return true
 		}
+
+		if strings.Contains(URL, "/actions/restart") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantAppConfig] {
 		if strings.Contains(URL, "/settings/actions/") {

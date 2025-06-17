@@ -57,34 +57,103 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
 	cluster.errorChan <- nil
 }
 
-func (cluster *Cluster) OpenSVCStopAppService(app *App) error {
+func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 	svc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		service, err := svc.GetServiceFromName(cluster.Name + "/svc/" + app.GetName())
 		if err != nil {
 			return err
 		}
-		agent, err := cluster.FoundAppAgent(app)
-		if err != nil {
-			return err
+
+		if node != "" {
+			agents, err := cluster.FoundAllAppAgents(app)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not find app agents:  %s ", err)
+				return err
+			}
+			for _, agent := range agents {
+				if strings.ToUpper(node) == "ALL" || strings.EqualFold(node, agent.Node_name) {
+					_, err := svc.StopService(agent.Node_id, service.Svc_id)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app in %s:  %s ", agent.Node_name, err)
+						return err
+					}
+				}
+			}
+		} else {
+			agent, err := cluster.FoundAppAgent(app)
+			if err != nil {
+				return err
+			}
+			svc.StopService(agent.Node_id, service.Svc_id)
 		}
-		svc.StopService(agent.Node_id, service.Svc_id)
 	} else {
-		err := svc.StopServiceV2(cluster.Name, app.GetServiceName(), app.GetAgent())
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
-			return err
+		if strings.ToUpper(node) == "ALL" {
+			err := svc.StopServiceV2(cluster.Name, app.GetServiceName(), "*")
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
+				return err
+			}
+		} else {
+			agentName := app.GetAgent()
+			if node != "" {
+				agentName = node
+			}
+			err := svc.StopServiceV2(cluster.Name, app.GetServiceName(), agentName)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
+				return err
+			}
 		}
 	}
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCStartAppService(app *App) error {
+func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	svc := cluster.OpenSVCConnect()
-	err := svc.StartServiceV2(cluster.Name, app.GetServiceName(), app.GetAgent())
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop app:  %s ", err)
-		return err
+	agent := app.GetAgent()
+	if strings.ToUpper(node) == "ALL" {
+		nodes := strings.Split(app.GetAppConfig().ProvAppAgents, ",")
+		for _, n := range nodes {
+			err := svc.StartServiceV2(cluster.Name, app.GetServiceName(), n)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
+				return err
+			}
+		}
+	} else {
+		if node != "" {
+			agent = node
+		}
+		err := svc.StartServiceV2(cluster.Name, app.GetServiceName(), agent)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start app:  %s ", err)
+			return err
+		}
+		return nil
+	}
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string) error {
+	svc := cluster.OpenSVCConnect()
+	agent := app.GetAgent()
+	if strings.ToUpper(node) == "ALL" || node == "*" {
+		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
+			return err
+		}
+	} else {
+		if node != "" {
+			agent = node
+		}
+		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), agent)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
+			return err
+		}
+		return nil
 	}
 	return nil
 }
@@ -195,6 +264,27 @@ func (cluster *Cluster) FoundAppAgent(app *App) (opensvc.Host, error) {
 		}
 	}
 	return agent, errors.New("Indice not found in apps agent list")
+}
+
+func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
+	svc := cluster.OpenSVCConnect()
+	svc.ProvAppAgents = cluster.GetAppAgents(app)
+
+	agents, err := svc.GetNodes()
+	if err != nil {
+		cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], err), ErrFrom: "TOPO"})
+	}
+	var clusteragents []opensvc.Host
+	for _, node := range agents {
+		if strings.Contains(svc.ProvAppAgents, node.Node_name) {
+			clusteragents = append(clusteragents, node)
+		}
+	}
+	if len(clusteragents) == 0 {
+		return nil, errors.New("Indice not found in apps agent list")
+	}
+
+	return clusteragents, nil
 }
 
 func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {

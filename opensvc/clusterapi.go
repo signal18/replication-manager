@@ -124,11 +124,75 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, stri
 	return "", "", errors.New("Not found")
 }
 
+// ActionRequest représente la structure des données à envoyer
+type ActionRequest struct {
+	Path         string                 `json:"path"`
+	Options      map[string]interface{} `json:"options"`
+	Sync         bool                   `json:"sync,omitempty"`          // Ajout de l'option sync
+	Action       string                 `json:"action,omitempty"`        // Ajout de l'action
+	Env          string                 `json:"env,omitempty"`           // Ajout de l'option env
+	GlobalExpect string                 `json:"global_expect,omitempty"` // Ajout de l'option global_expect
+}
+
 func (collector *Collector) StartServiceV2(cluster string, srv string, node string) error {
 
+	reqparams := ActionRequest{
+		Path:    srv,
+		Action:  "start",
+		Options: map[string]interface{}{},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	b := bytes.NewBuffer(jsondata)
+	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+	req, err := http.NewRequest("POST", urlpost, b)
+	if err != nil {
+		return err
+	}
+
+	req.Close = true
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("o-node", node)
+
 	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "action": "start", "options": {}}`
-	b := bytes.NewBuffer([]byte(jsondata))
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	return nil
+}
+
+func (collector *Collector) RestartServiceV2(cluster string, srv string, node string) error {
+
+	reqparams := ActionRequest{
+		Path:    srv,
+		Action:  "restart",
+		Options: map[string]interface{}{},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	b := bytes.NewBuffer(jsondata)
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
@@ -137,6 +201,8 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", node)
+
+	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -153,8 +219,25 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 
 func (collector *Collector) RunTaskV2(cluster string, srv string, node string, task string, parameter string) error {
 	// osvccurl -o /tmp/physical.dbdump.log -X POST -H "o-node: $NODE" --data '{"path": "namespace/svc/haproxy", "action": "run", "sync": true, "options": {"rid": "task#addcert"}, "env": "DOMAIN=www.acme.com"}' ${APIURL}/object_action
-	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "action": "run", "sync": true, "options": {"rid": "` + task + `"}, "env":"` + parameter + `"}`
+
+	reqparams := ActionRequest{
+		Path:   srv,
+		Action: "run",
+		Options: map[string]interface{}{
+			"rid": task,
+		},
+		Sync: true,      // Ajout de l'option sync
+		Env:  parameter, // Ajout de l'option env
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 
@@ -169,6 +252,8 @@ func (collector *Collector) RunTaskV2(cluster string, srv string, node string, t
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", node)
+
+	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -185,9 +270,22 @@ func (collector *Collector) RunTaskV2(cluster string, srv string, node string, t
 
 func (collector *Collector) StopServiceV2(cluster string, srv string, node string) error {
 
-	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "action": "stop", "options": {}}`
-	b := bytes.NewBuffer([]byte(jsondata))
+	//jsondata := `{"path": "` + srv + `", "action": "stop", "options": {}}`
+	reqparams := ActionRequest{
+		Path:    srv,
+		Action:  "stop",
+		Options: map[string]interface{}{},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	b := bytes.NewBuffer(jsondata)
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
@@ -201,6 +299,8 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", node)
+
+	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -216,9 +316,21 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 
 func (collector *Collector) PurgeServiceV2(cluster string, srv string, node string) error {
 
-	client := collector.GetHttpClient()
-	jsondata := `{"path": "` + srv + `", "global_expect": "purged", "options": {}}`
-	//jsondata := `{"path": "` + srv + `", "action": "purge", "options": {}}`
+	// jsondata := `{"path": "` + srv + `", "global_expect": "purged", "options": {}}`
+	reqparams := ActionRequest{
+		Path:         srv,
+		GlobalExpect: "purged",
+		Options:      map[string]interface{}{},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
 	b := bytes.NewBuffer([]byte(jsondata))
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
 
@@ -233,6 +345,8 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", node)
+
+	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -369,12 +483,31 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	return nil
 }
 
+type CreateRequest struct {
+	Data      map[string]interface{} `json:"data"`
+	Namespace string                 `json:"namespace,omitempty"`
+	Provision bool                   `json:"provision,omitempty"`
+	Sync      bool                   `json:"sync,omitempty"`
+}
+
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
 	// just create or replace
-	jsondata := `{"data": {"` + namespace + `/sec/` + service + `": {}}}`
+	reqparams := CreateRequest{
+		Data: map[string]interface{}{
+			namespace + "/sec/" + service: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
+		},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
@@ -415,7 +548,21 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`
+	// just create or replace
+	reqparams := CreateRequest{
+		Data: map[string]interface{}{
+			namespace + "/cfg/" + service: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
+		},
+	}
+	//jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`
+	// Utilisation de json.Marshal pour sérialiser la structure
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
@@ -458,8 +605,27 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": ` + template + `}}`
-	//jsondata := `{"namespace": "` + cluster + `", "sync": true, "data": {"` + srv + `": ` + template + `}}`
+
+	//jsondata := `{"namespace": "` + cluster + `", "provision": true, "sync": true, "data": {"` + srv + `": "` + template + `"}}`
+	// Utilisation de json.Marshal pour sérialiser la structure
+	reqparams := CreateRequest{
+		Data: map[string]interface{}{
+			srv: template, // Utilisation de la chaîne de caractères comme valeur
+		},
+		Namespace: cluster,
+		Provision: true,
+		Sync:      true,
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	// Log the request if debug level is enabled
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
 	}
@@ -500,7 +666,21 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/object_monitor"
-	jsondata := `{"path": "` + srv + `", "global_expect": "provisioned", "options": {}}`
+	//jsondata := `{"path": "` + srv + `", "global_expect": "provisioned", "options": {}}`
+	// Utilisation de json.Marshal pour sérialiser la structure
+	reqparams := ActionRequest{
+		Path:         srv,
+		GlobalExpect: "provisioned",
+		Options:      map[string]interface{}{},
+	}
+
+	jsondata, err := json.Marshal(reqparams)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
+		}
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
 
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Request: ", urlpost, " Payload: ", jsondata)
