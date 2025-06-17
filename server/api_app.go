@@ -475,7 +475,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
 			type FieldValue struct {
-				Value string `json:"value"`
+				Value interface{} `json:"value"`
 			}
 			var body FieldValue
 			err := json.NewDecoder(r.Body).Decode(&body)
@@ -483,8 +483,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				http.Error(w, "Error decoding JSON: "+err.Error(), 500)
 				return
 			}
-
-			newValue := body.Value
 
 			if vars["index"] == "" || vars["index"] == "undefined" {
 				http.Error(w, "Index not provided", 500)
@@ -516,6 +514,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
+				newValue := body.Value.(string)
+
 				// Modify field based on key
 				switch vars["key"] {
 				case "cname":
@@ -537,6 +537,9 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Index out of range for gitClones", 500)
 					return
 				}
+
+				newValue := body.Value.(string)
+
 				row := node.AppConfig.Deployment.GitClones[index]
 				prefix := "GIT_CODE"
 				if row.VolumeDir == "etc" {
@@ -578,6 +581,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
+				newValue := body.Value
+
 				row := node.AppConfig.Deployment.Variables[index]
 				if row.Locked {
 					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", 500)
@@ -586,21 +591,15 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					node.AppConfig.Deployment.Variables[index].Name = newValue
+					node.AppConfig.Deployment.Variables[index].Name = newValue.(string)
 				case "value":
-					node.AppConfig.Deployment.Variables[index].Value = newValue
+					node.AppConfig.Deployment.Variables[index].Value = newValue.(string)
 				case "type":
-					node.AppConfig.Deployment.Variables[index].Type = newValue
+					node.AppConfig.Deployment.Variables[index].Type = newValue.(string)
 				case "conditional":
 					// Check if the conditional is a valid JSON
-					if newValue != "" {
-						var conditional []config.AgentVariable
-						err := json.Unmarshal([]byte(newValue), &conditional)
-						if err != nil {
-							http.Error(w, "Invalid conditional format", 500)
-							return
-						}
-						node.AppConfig.Deployment.Variables[index].Conditional = conditional
+					if avs, ok := newValue.([]config.AgentVariable); ok {
+						node.AppConfig.Deployment.Variables[index].Conditional = avs
 					} else {
 						node.AppConfig.Deployment.Variables[index].Conditional = nil
 					}
@@ -613,6 +612,8 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Index out of range for path", 500)
 					return
 				}
+
+				newValue := body.Value.(string)
 
 				// Modify field based on key
 				switch vars["key"] {
