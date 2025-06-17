@@ -966,6 +966,12 @@ type Route struct {
 	CName    string `mapstructure:"cname"  toml:"cname" json:"cname"`
 	Port     string `mapstructure:"port"  toml:"port" json:"port"`
 	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp"`
+	Primary  bool   `mapstructure:"primary"  toml:"primary" json:"primary"`
+}
+
+type RouteStatus struct {
+	Route
+	Status string `mapstructure:"status"  toml:"status" json:"status"`
 }
 
 type Deployment struct {

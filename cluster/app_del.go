@@ -16,10 +16,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-func (app *App) DelLock() {
-	app.Lock.Unlock()
-}
-
 func (app *App) delCookie(key string) error {
 	err := os.Remove(app.Datadir + "/@" + key)
 	cluster := app.ClusterGroup

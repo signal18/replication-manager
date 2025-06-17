@@ -427,3 +427,20 @@ func (cluster *Cluster) GetAppCores(app *App) string {
 
 	return cores
 }
+
+func (cluster *Cluster) refreshApps() {
+	// if !cluster.Conf.AppOn {
+	// 	return // If the app module is not enabled, do not refresh apps
+	// }
+
+	// Refresh the apps
+	for _, app := range cluster.Apps {
+		if app != nil {
+			err := app.Refresh()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "Error refreshing app %s: %s", app.Name, err)
+			}
+		}
+	}
+
+}

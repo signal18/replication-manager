@@ -400,6 +400,10 @@ func (cluster *Cluster) GetStateMachine() *state.StateMachine {
 	return cluster.StateMachine
 }
 
+func (cluster *Cluster) GetAppStateMachine() *state.StateMachine {
+	return cluster.StateMachine
+}
+
 func (cluster *Cluster) GetMasterFailCount() int {
 	return cluster.master.FailCount
 }

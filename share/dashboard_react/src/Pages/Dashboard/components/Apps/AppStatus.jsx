@@ -12,7 +12,7 @@ function AppStatus({ status }) {
           <CheckOrCrossIcon isValid={true} variant='thumb' />
         ) : status === 'Failed' ? (
           <CheckOrCrossIcon isValid={false} variant='thumb' />
-        ) : status === 'Suspect' ? (
+        ) : status === 'Suspect' || status === "AppWarning" ? (
           <CustomIcon icon={HiExclamation} color={'orange'} />
         ) : null}
       </Box>

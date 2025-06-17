@@ -28,10 +28,6 @@ func (p *App) SetID() {
 		10)
 }
 
-func (p *App) SetLock() {
-	p.Lock.Lock()
-}
-
 // TODO: clarify where this is used, can maybe be replaced with a Getter
 func (app *App) SetServiceName(namespace string) {
 	app.ServiceName = namespace + "/svc/" + app.Name

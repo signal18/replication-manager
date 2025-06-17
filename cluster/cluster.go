@@ -707,6 +707,7 @@ func (cluster *Cluster) Run() {
 					if !cluster.IsInFailover() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
+						go cluster.refreshApps()
 
 						if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
 							go cluster.MonitorSchema()

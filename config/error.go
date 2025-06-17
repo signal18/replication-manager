@@ -211,3 +211,10 @@ var ClusterError = map[string]string{
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
 }
+
+var AppError = map[string]string{
+	"APPERR001": "Error connecting to application %s. Err: %s",
+	"APPERR002": "Unexpected status for application %s. Code: %d Err: %s",
+	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
+	"APPERR004": "Unsupported protocol %s for application %s",
+}

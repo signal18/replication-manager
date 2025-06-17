@@ -256,7 +256,7 @@ const (
 	stateProxyRunning string = "ProxyRunning"
 	stateProxyDesync  string = "ProxyDesync"
 	stateAppRunning   string = "AppRunning"
-	stateAppDesync    string = "AppDesync"
+	stateAppWarning   string = "AppWarning"
 )
 
 const (

@@ -53,16 +53,6 @@ export const DataTable = React.memo(function DataTable({
     { name: 'show 30', value: 30 }
   ])
 
-  useEffect(() => {
-    console.log('DataTable expanded state:', expanded)
-  },[expanded])
-
-
-  useEffect(() => {
-    console.log('DataTable expanded state:', expanded)
-    console.log('DataTable data or columns changed:', { data, columns })
-  }, [data, columns])
-
   const table = useReactTable({
     columns,
     data,

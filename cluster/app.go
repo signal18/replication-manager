@@ -22,29 +22,30 @@ import (
 
 // App defines a app
 type App struct {
-	Id            string            `json:"id"`
-	Name          string            `json:"name"`
-	Type          string            `json:"type"`
-	Host          string            `json:"host"`
-	HostIPV6      string            `json:"hostIPV6"`
-	Port          string            `json:"port"`
-	User          string            `json:"-"`
-	Pass          string            `json:"-"`
-	Version       string            `json:"version"`
-	Datadir       string            `json:"datadir"`
-	State         string            `json:"state"`
-	PrevState     string            `json:"prevState"`
-	SlapOSDatadir string            `json:"slaposDatadir"`
-	ServiceName   string            `json:"serviceName"`
-	Agent         string            `json:"agent"`
-	Weight        string            `json:"weight"`
-	FailCount     int               `json:"failCount"`
-	ClusterGroup  *Cluster          `json:"-"`
-	Process       *os.Process       `json:"process"`
-	Variables     map[string]string `json:"-"`
-	Lock          sync.Mutex        `json:"-"`
-	AppConfig     *config.AppConfig `json:"config"`
-	IsStaging     bool              `json:"isStaging"`
+	Id            string               `json:"id"`
+	Name          string               `json:"name"`
+	Type          string               `json:"type"`
+	Host          string               `json:"host"`
+	HostIPV6      string               `json:"hostIPV6"`
+	Port          string               `json:"port"`
+	User          string               `json:"-"`
+	Pass          string               `json:"-"`
+	Version       string               `json:"version"`
+	Datadir       string               `json:"datadir"`
+	State         string               `json:"state"`
+	PrevState     string               `json:"prevState"`
+	SlapOSDatadir string               `json:"slaposDatadir"`
+	ServiceName   string               `json:"serviceName"`
+	Agent         string               `json:"agent"`
+	Weight        string               `json:"weight"`
+	FailCount     int                  `json:"failCount"`
+	ClusterGroup  *Cluster             `json:"-"`
+	Process       *os.Process          `json:"process"`
+	RouteStatus   []config.RouteStatus `json:"routeStatus"`
+	Variables     map[string]string    `json:"-"`
+	AppConfig     *config.AppConfig    `json:"config"`
+	IsStaging     bool                 `json:"isStaging"`
+	*sync.Mutex   `json:"-"`
 }
 
 type appList []*App
@@ -60,13 +61,6 @@ func (cluster *Cluster) newAppList() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
 
 	return nil
-}
-
-func (cluster *Cluster) initApps() {
-	for _, pr := range cluster.Apps {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "New app monitored: %s %s:%s", pr.GetType(), pr.GetHost(), pr.GetPort())
-		pr.Init()
-	}
 }
 
 func (cluster *Cluster) SendAppStats(app *App) error {
@@ -88,6 +82,7 @@ func (app *App) SendStats() error {
 func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	conf := cluster.Conf
 	app := new(App)
+	app.Mutex = &sync.Mutex{}
 	app.Name, app.Port = misc.SplitHostPortApp(appHost)
 	app.Host = app.Name
 	appCnf := cluster.GetAppConfig(app.Name, app.Port)
@@ -95,6 +90,19 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	app.AppConfig = appCnf
 	if conf.ProvNetCNI {
 		app.Host = app.Host + "." + cluster.Name + ".svc." + conf.ProvOrchestratorCluster
+	}
+
+	app.RouteStatus = make([]config.RouteStatus, 0)
+	hasPrimaryRoute := false
+	for _, route := range app.AppConfig.Deployment.Routes {
+		if route.Primary {
+			hasPrimaryRoute = true
+			break
+		}
+	}
+	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
+		app.AppConfig.Deployment.Routes[0].Primary = true
+		cluster.LogModulePrintf(conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
 	}
 
 	return app
@@ -105,12 +113,42 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppPort, "app-port", "80", "App Port")
 }
 
-func (app *App) Init() {
-
-}
-
 func (app *App) Refresh() error {
+	cluster := app.ClusterGroup
+	appState := app.GetMonitoringStatus()
 
+	// Do not change state if the app is in maintenance mode
+	if app.State == stateMaintenance {
+		return nil
+	}
+
+	if appState == stateAppRunning {
+		app.SetState(stateAppRunning)
+		app.FailCount = 0
+	} else if appState == stateFailed {
+		if app.FailCount >= cluster.Conf.MaxFail {
+			app.SetState(stateFailed)
+		} else {
+			app.SetState(stateSuspect)
+			app.FailCount++
+		}
+	} else if appState == stateMaintenance {
+		app.SetState(stateMaintenance)
+	} else if appState == stateAppWarning {
+		app.SetState(stateAppWarning)
+	}
+
+	// Send alert if state has changed
+	if app.PrevState != app.State {
+		//if cluster.Conf.Verbose {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
+		if app.State != stateSuspect {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
+		}
+	}
+	if app.PrevState != app.State {
+		app.SetPrevState(app.State)
+	}
 	return nil
 }
 

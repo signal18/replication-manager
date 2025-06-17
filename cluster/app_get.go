@@ -287,3 +287,4 @@ func (app *App) GetOpenSVCDeplopymentGitPrefix(gc config.GitClone, envname strin
 	replacer := strings.NewReplacer("-", "_", ".", "_", "/", "_")
 	return prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest)) + "_" + envname
 }
+

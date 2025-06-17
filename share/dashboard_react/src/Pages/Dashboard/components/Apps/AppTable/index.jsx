@@ -6,6 +6,8 @@ import AppMenu from '../AppMenu'
 import styles from './styles.module.scss'
 import { Link } from 'react-router-dom'
 import ServerName from '../../../../../components/ServerName'
+import ServerStatus from '../../../../../components/ServerStatus'
+import TagPill from '../../../../../components/TagPill'
 
 function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
   const [tableData, setTableData] = useState([])
@@ -20,9 +22,9 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor(
-        (row) => row.isMenuOptionVisible && <AppMenu row={row} isDesktop={isDesktop} clusterName={clusterName} user={user} />,
+        (row) => row.name || row.id,
         {
-          cell: (info) => info.getValue(),
+          cell: ({row}) => <AppMenu row={row.original} isDesktop={isDesktop} clusterName={clusterName} user={user} />,
           id: 'options',
           header: '',
           width: '40px'
@@ -34,12 +36,16 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
         cell: (info) => info.getValue(),
         header: 'Apps'
       }),
+      columnHelper.accessor((row) => (<ServerStatus state={row.state} />), {
+        cell: (info) => info.getValue(),
+        header: 'Apps'
+      }),
       columnHelper.accessor((row) => row.config?.provAppDockerImg, {
         cell: (info) => info.getValue(),
         header: 'Docker Image'
       }),
       columnHelper.accessor((row) => (<VStack>
-        {row.config?.deployment?.routes?.map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={`${route.cname}) → ${route.port}`} />))}
+        {row.routeStatus?.filter((route) => route.primary).map((route, idx) => (<TagPill key={idx} colorScheme="blue" text={`${route.cname}) → ${route.port}`} />))}
       </VStack>), {
         cell: (info) => info.getValue(),
         header: 'Routes'
