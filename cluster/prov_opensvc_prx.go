@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strconv"
 	"strings"
 
@@ -333,7 +332,7 @@ func (cluster *Cluster) OpenSVCProvisionProxyService(pri DatabaseProxy) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) (string, error) {
+func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabaseProxy) ([]byte, error) {
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = pri.OpenSVCGetProxyDefaultSection()
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
@@ -384,10 +383,9 @@ func (cluster *Cluster) OpenSVCGetProxyTemplateV2(servers string, pri DatabasePr
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
-		return "", err
+		return []byte(""), err
 	}
-	log.Println(svcsectionJson)
-	return string(svcsectionJson), nil
+	return svcsectionJson, nil
 
 }
 

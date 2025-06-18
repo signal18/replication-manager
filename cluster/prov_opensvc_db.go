@@ -19,30 +19,29 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) string {
+func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) []byte {
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
 	if err != nil {
 		cluster.errorChan <- err
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't OpenSVCFoundDatabaseAgent in service config %s", err)
-		return ""
+		return []byte("")
 	}
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc := cluster.OpenSVCConnect()
 		res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, s.Id, agent.Node_name)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template %s", err)
-			return ""
+			return []byte("")
 		}
-		return res
+		return []byte(res)
 	} else {
 		res, err := s.GenerateDBTemplateV2()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template  %s", err)
-			return ""
+			return []byte("")
 		}
 		return res
 	}
-	return ""
 }
 
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
@@ -91,7 +90,7 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 			cluster.errorChan <- err
 			return
 		}
-		idtemplate, _ := svc.CreateTemplate(cluster.Name+"/svc/"+s.Name, res)
+		idtemplate, _ := svc.CreateTemplate(cluster.Name+"/svc/"+s.Name, string(res))
 		idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+s.Name)
 		err = cluster.OpenSVCWaitDequeue(svc, idaction)
 		if err != nil {
@@ -652,7 +651,7 @@ func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 	return svcvol
 }
 
-func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
+func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
@@ -694,13 +693,10 @@ func (server *ServerMonitor) GenerateDBTemplateV2() (string, error) {
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
-		return "", err
+		return []byte(""), err
 	}
 
-	svcsectionStr := string(svcsectionJson)
-	server.ClusterGroup.LogModulePrintf(server.ClusterGroup.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, svcsectionStr)
-
-	return svcsectionStr, nil
+	return svcsectionJson, nil
 
 }
 

@@ -203,10 +203,10 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
+func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	// Check if app image not empty
 	if app.AppConfig.ProvAppDockerImg == "" {
-		return "", errors.New("App image is not defined in app config")
+		return []byte(""), errors.New("App image is not defined in app config")
 	}
 
 	svcsection := make(map[string]map[string]string)
@@ -223,10 +223,10 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
 
 	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
 	if err != nil {
-		return "", err
+		return []byte(""), err
 	}
 
-	return string(svcsectionJson), nil
+	return svcsectionJson, nil
 
 }
 

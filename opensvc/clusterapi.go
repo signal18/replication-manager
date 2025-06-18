@@ -602,7 +602,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 
 // CreateTemplateV2 post a template to the collector
 
-func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template string) error {
+func (collector *Collector) CreateTemplateV2(cluster string, srv string, node string, template []byte) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
@@ -610,7 +610,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	// Utilisation de json.Marshal pour sérialiser la structure
 	reqparams := CreateRequest{
 		Data: map[string]interface{}{
-			srv: template, // Utilisation de la chaîne de caractères comme valeur
+			srv: "", // Utilisation de la chaîne de caractères comme valeur
 		},
 		Namespace: cluster,
 		Provision: true,
@@ -623,6 +623,14 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Marshal Error: ", err)
 		}
 		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+
+	jsondata, err = jsonparser.Set(jsondata, template, "data", srv)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Set Error: ", err)
+		}
+		return fmt.Errorf("failed to set JSON data: %w", err)
 	}
 
 	// Log the request if debug level is enabled

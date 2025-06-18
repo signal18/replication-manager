@@ -1230,7 +1230,7 @@ func (repman *ReplicationManager) handlerMuxGetAppServiceConfig(w http.ResponseW
 				http.Error(w, "Error creating OpenSVC config template: "+err.Error(), 500)
 				return
 			}
-			w.Write([]byte(res))
+			w.Write(res)
 		} else {
 			http.Error(w, "Not a valid app", 500)
 		}
