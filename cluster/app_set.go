@@ -37,18 +37,14 @@ func (app *App) SetStaging(staging bool) {
 	app.IsStaging = staging
 }
 
-func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, HostsIPV6 string) {
+func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string) {
 	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")
-	ipv6hosts := strings.Split(HostsIPV6, ",")
 	if k < len(slapospartitions) {
 		app.SlapOSDatadir = slapospartitions[k]
 	}
 	if ProvAgents != "" {
 		app.Agent = agents[k%len(agents)]
-	}
-	if k < len(ipv6hosts) {
-		app.HostIPV6 = ipv6hosts[k]
 	}
 }
 

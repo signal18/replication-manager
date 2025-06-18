@@ -78,7 +78,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       ) : currentTab === 'variables' ? (
         <Variables clusterName={clusterName} dbId={dbId} toggleVariableMode={toggleVariableMode} variableMode={variableMode} />
       ) : currentTab === 'opensvc' ? (
-        <ServiceOpenSvc clusterName={clusterName} dbId={dbId} />
+        <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} />
       ) : currentTab === 'metadata' ? (
         <MetadataLocks clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'resptime' ? (

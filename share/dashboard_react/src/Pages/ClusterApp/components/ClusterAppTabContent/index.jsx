@@ -5,9 +5,11 @@ import AppMenu from '../../../Dashboard/components/Apps/AppMenu'
 import AppStatus from '../../../Dashboard/components/Apps/AppStatus'
 import ServerName from '../../../../components/ServerName'
 import Deployment from '../Deployment'
+import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
 
-function ClusterAppTabContent({ tab, clusterName, user, selectedApp, config }) {
+function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
+  const appConfig = selectedApp?.config
 
   useEffect(() => {
     setCurrentTab(tab)
@@ -31,8 +33,10 @@ function ClusterAppTabContent({ tab, clusterName, user, selectedApp, config }) {
         </HStack>
       </Flex>
       {currentTab === "overview" ? (
-        <Deployment clusterName={clusterName} appId={selectedApp?.id} appConfig={selectedApp?.config} config={config}/>
-      ) : null}
+        <Deployment clusterName={clusterName} appId={appId} appConfig={appConfig} config={config}/>
+      ) : currentTab === "opensvc" ? (
+        <ServiceOpenSvc clusterName={clusterName} type="app" id={appId} />
+      ) : null }
     </VStack>
   )
 }

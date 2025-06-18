@@ -298,6 +298,17 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 	return nil
 }
 
+func (cluster *Cluster) GetAppByHostPort(host, port string) (*App, int) {
+	// Check if the app exists in the cluster
+	for i, app := range cluster.Apps {
+		if app.GetHost() == host && app.GetPort() == port {
+			return app, i // Return the existing app and its index
+		}
+	}
+
+	return nil, -1
+}
+
 func (cluster *Cluster) GetAppAgents(app *App) string {
 	var appCnf *config.AppConfig
 

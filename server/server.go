@@ -1072,8 +1072,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
-	flags.StringVar(&conf.AppHosts, "app-hosts", "127.0.0.1", "App hosts")
-	flags.StringVar(&conf.AppHostsIPV6, "app-hosts-ipv6", "", "App IPv6 bind address ")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
 	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents")
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM")

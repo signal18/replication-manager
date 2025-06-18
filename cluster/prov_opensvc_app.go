@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"path/filepath"
 	"strconv"
@@ -43,7 +42,7 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
 			cluster.errorChan <- err
 		}
 	} else {
-		node, _ := cluster.FoundAppAgent(app)
+		node, _ := cluster.OpenSVCFoundAppAgent(app)
 		for _, svc := range node.Svc {
 			if app.GetServiceName() == svc.Svc_name {
 				idaction, _ := opensvc.UnprovisionService(node.Node_id, svc.Svc_id)
@@ -81,7 +80,7 @@ func (cluster *Cluster) OpenSVCStopAppService(app *App, node string) error {
 				}
 			}
 		} else {
-			agent, err := cluster.FoundAppAgent(app)
+			agent, err := cluster.OpenSVCFoundAppAgent(app)
 			if err != nil {
 				return err
 			}
@@ -161,7 +160,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string) error {
 func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	svc := cluster.OpenSVCConnect()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Provisioning app %s on OpenSVC", app.GetId())
-	agent, err := cluster.FoundAppAgent(app)
+	agent, err := cluster.OpenSVCFoundAppAgent(app)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not find app agent:  %s ", err)
 		cluster.errorChan <- err
@@ -226,7 +225,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	log.Println(svcsectionJson)
+
 	return string(svcsectionJson), nil
 
 }
@@ -240,7 +239,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]stri
 	return svcvol
 }
 
-func (cluster *Cluster) FoundAppAgent(app *App) (opensvc.Host, error) {
+func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
 	svc.ProvAppAgents = cluster.GetAppAgents(app)
 

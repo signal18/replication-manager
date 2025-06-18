@@ -999,6 +999,9 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/actions/provision") {
 			return true
 		}
+		if strings.Contains(URL, "/service-opensvc") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantProvAppUnprovision] {
 		if strings.Contains(URL, "/actions/unprovision") {

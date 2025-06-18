@@ -31,6 +31,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApp)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/service-opensvc", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetAppServiceConfig)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDeployments)),
@@ -1191,6 +1195,45 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tree)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Get App Service Config
+// @Description Retrieves the OpenSVC service configuration for a specific app.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "OpenSVC service configuration"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating OpenSVC config template" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/service-opensvc [get]
+func (repman *ReplicationManager) handlerMuxGetAppServiceConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app != nil {
+			res, err := mycluster.OpenSVCGetAppTemplateV2(app)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template  %s", err)
+				http.Error(w, "Error creating OpenSVC config template: "+err.Error(), 500)
+				return
+			}
+			w.Write([]byte(res))
+		} else {
+			http.Error(w, "Not a valid app", 500)
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

@@ -1623,6 +1623,7 @@ const initialState = {
   },
   app: {
     deployment: null,
+    serviceOpensvc: null,
   },
   database: {
     processList: null,
@@ -2018,11 +2019,15 @@ export const clusterSlice = createSlice({
       ),
       (state, action) => {
         const { serviceName } = action.meta.arg
-        if (serviceName === 'deployment') {
-          if (!state.app.deployment || !isEqual(state.app.deployment, action.payload.data)) {
-            state.app.deployment = action.payload.data
+          if (serviceName === 'deployment') {
+            if (!state.app.deployment || !isEqual(state.app.deployment, action.payload.data)) {
+              state.app.deployment = action.payload.data
+            }
+          } else if (serviceName === 'service-opensvc') {
+            if (!state.app.serviceOpensvc || !isEqual(state.app.serviceOpensvc, action.payload.data)) {
+              state.app.serviceOpensvc = action.payload.data
+            }
           }
-        } 
       }
     )
   }
