@@ -41,7 +41,7 @@ func (cluster *Cluster) BashScriptProvDNS(cname string) error {
 	if cluster.Conf.Cloud18DomainAddScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script")
 		var out []byte
-		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.Cloud18DomainSecret, cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
 		}
