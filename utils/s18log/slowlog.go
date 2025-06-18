@@ -10,7 +10,6 @@
 package s18log
 
 import (
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -94,7 +93,7 @@ func (tl *SlowLog) ParseLine(line string, sl *SlowMessage) {
 	}
 
 	if strings.HasPrefix(line, "# Time") {
-		log.Printf("match 3 %s", line)
+		// log.Printf("match 3 %s", line)
 		m := timeRe.FindStringSubmatch(line)
 		if len(m) < 2 {
 			return

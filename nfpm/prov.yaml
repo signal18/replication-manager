@@ -1,6 +1,5 @@
 name: replication-manager-pro
 version: ${version}
-epoch: ${epoch}
 maintainer: "Guillaume Lefranc <guillaume@signal18.io>"
 description: "Replication Manager for MariaDB and MySQL - provisioning version"
 license: "GPLv3"
@@ -21,7 +20,7 @@ contents:
   - src: share/
     dst: /usr/share/replication-manager
     type: tree
-dependencies:
+depends:
   - replication-manager-client    
 
 scripts:
