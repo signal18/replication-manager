@@ -6,6 +6,7 @@ import AppStatus from '../../../Dashboard/components/Apps/AppStatus'
 import ServerName from '../../../../components/ServerName'
 import Deployment from '../Deployment'
 import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
+import ServerStatus from '../../../../components/ServerStatus'
 
 function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -26,7 +27,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
                 row={selectedApp}
                 user={user}
               />
-              <AppStatus status={selectedApp?.state} />
+              <ServerStatus state={selectedApp?.state} />
               <ServerName className={styles.appName} name={`${selectedApp?.host}`} />
             </>
           )}
