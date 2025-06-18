@@ -36,7 +36,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
         cell: (info) => info.getValue(),
         header: 'Apps'
       }),
-      columnHelper.accessor((row) => (<AppStatus state={row.state} />), {
+      columnHelper.accessor((row) => (<AppStatus status={row.state} />), {
         cell: (info) => info.getValue(),
         header: 'Status'
       }),
