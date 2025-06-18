@@ -627,7 +627,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 
 	// Log the request if debug level is enabled
 	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", string(jsondata))
 	}
 
 	client := collector.GetHttpClient()
