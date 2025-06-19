@@ -107,7 +107,7 @@ const formReducer = (state, action) => {
           ...state.formData,
           dockerRegistry: {
             ...state.formData.dockerRegistry,
-            ...action.payload
+            template: action.payload || ''
           }
         }
       }
