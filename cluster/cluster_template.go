@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/signal18/replication-manager/config"
 )
 
 var reTemplate = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
@@ -13,16 +15,20 @@ var reTemplate = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]interface{}) (string, error) {
 	missingKeys := map[string]bool{}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "%v", data)
+
 	for i := 0; i < cluster.Conf.TemplateVariableMaxDepth; i++ {
 		changed := false
 
 		template = reTemplate.ReplaceAllStringFunc(template, func(match string) string {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", match)
 			keyExpr := strings.TrimSpace(match[2 : len(match)-2])
 
 			// Keep resolving until no more {{ }} inside keyExpr
 			for j := 0; j < cluster.Conf.TemplateVariableMaxDepth; j++ {
 				innerChanged := false
 				keyExpr = reTemplate.ReplaceAllStringFunc(keyExpr, func(innerMatch string) string {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", innerMatch)
 					innerKey := strings.TrimSpace(innerMatch[2 : len(innerMatch)-2])
 					val, ok := data[innerKey]
 					if ok {
