@@ -279,7 +279,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   <Dropdown
                     id='template'
                     isMenuPortalTarget={false}
-                    onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: { template: option.value } }) }}
+                    onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: option.value }) }}
                     options={templateOptions}
                     value={template}
                   />
