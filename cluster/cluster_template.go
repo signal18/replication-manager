@@ -40,7 +40,7 @@ func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[s
 		if strings.Contains(keyExpr, "{{") && strings.Contains(keyExpr, "}}") {
 			// Nested template key, resolve it recursively
 			if depth <= cluster.Conf.TemplateVariableMaxDepth {
-				return cluster.ResolveTemplateKeysRecursive(keyExpr, data, missingKeys, depthExceeded, depth+1)
+				return "{{" + cluster.ResolveTemplateKeysRecursive(keyExpr, data, missingKeys, depthExceeded, depth+1) + "}}"
 			} else {
 				*depthExceeded = true
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for key: %s", keyExpr)
