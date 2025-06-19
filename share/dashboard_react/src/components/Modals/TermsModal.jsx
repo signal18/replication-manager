@@ -11,7 +11,6 @@ import {
   ModalOverlay,
   Stack,
   Text,
-  useColorModeValue,
 } from '@chakra-ui/react'
 import React, { useState, useRef } from 'react'
 import Markdown from 'react-markdown'
@@ -36,10 +35,24 @@ function TermsModal({
   const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false)
   const scrollContainerRef = useRef(null)
 
-  // Chakra UI color values for consistent theming
-  const scrollBg = useColorModeValue('gray.50', 'gray.700')
-  const scrollBorder = useColorModeValue('gray.200', 'gray.600')
-  const hintColor = useColorModeValue('red.500', 'red.300')
+  // Theme-based styling to match your custom theme system
+  const getScrollStyles = () => {
+    if (theme === 'dark') {
+      return {
+        bg: '#2D3748', // Dark gray background for dark theme
+        borderColor: 'var(--secondary-color)',
+        color: 'white'
+      }
+    }
+    return {
+      bg: 'var(--white-color)', // White background for light theme (as it was working)
+      borderColor: 'var(--secondary-color)',
+      color: 'black'
+    }
+  }
+
+  const scrollStyles = getScrollStyles()
+  const hintColor = theme === 'dark' ? 'red.300' : 'red.500'
 
   const handleSubmit = () => {
     if (onAgreeTerms) {
@@ -82,9 +95,10 @@ function TermsModal({
               maxHeight="400px"
               overflowY="auto"
               border="1px solid"
-              borderColor={scrollBorder}
+              borderColor={scrollStyles.borderColor}
               borderRadius="md"
-              bg={scrollBg}
+              bg={scrollStyles.bg}
+              color={scrollStyles.color}
               p={4}
               onScroll={handleScroll}
               css={{
