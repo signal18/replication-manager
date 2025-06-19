@@ -34,7 +34,6 @@ func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]int
 
 func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]interface{}, missingKeys *map[string]bool, depthExceeded *bool, depth int) string {
 	return reTemplate.ReplaceAllStringFunc(template, func(match string) string {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", match)
 		keyExpr := strings.TrimSpace(match[2 : len(match)-2])
 
 		if strings.Contains(keyExpr, "{{") && strings.Contains(keyExpr, "}}") {
