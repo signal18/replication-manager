@@ -82,6 +82,7 @@ const formReducer = (state, action) => {
         formData: {
           ...state.formData,
           dockerRegistry: {
+            ...state.formData.dockerRegistry,
             private: action.payload,
             url: action.payload ? state.formData.dockerRegistry.url : '',
             username: action.payload ? state.formData.dockerRegistry.username : '',
@@ -172,6 +173,10 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: templates })
     }
   }, [monitor?.serviceTemplates])
+
+  useEffect(() => {
+    console.log("::formState::", formState)
+  },[formState])
 
   const handleCreateNewServer = () => {
     const hostError = host ? '' : 'Host is required'
@@ -281,7 +286,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                     isMenuPortalTarget={false}
                     onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: option.value }) }}
                     options={templateOptions}
-                    value={template}
+                    value={templateOptions.find((option) => option.value === template) || null}
                   />
                 </FormControl>
 
