@@ -35,10 +35,12 @@ const initialState = {
       authType: 'password',
       url: '',
       username: '',
-      password: ''
+      password: '',
+      template: ''
     },
   },
   serviceRepos: [],
+  templateOptions: [],
   tagOptions: [],
   errors: {
     host: '',
@@ -54,6 +56,8 @@ const formReducer = (state, action) => {
       return { ...state, formData: { ...state.formData, ...action.payload } }
     case 'SET_SERVICE_REPOS':
       return { ...state, serviceRepos: action.payload }
+    case 'SET_TEMPLATE_OPTIONS':
+      return { ...state, templateOptions: action.payload }
     case 'SET_TAG_OPTIONS':
       return { ...state, tagOptions: action.payload }
     case 'FILL_VERSION_DROPDOWN':
@@ -96,6 +100,17 @@ const formReducer = (state, action) => {
           }
         }
       }
+    case 'SET_DOCKER_TEMPLATE':
+      return {
+        ...state,
+        formData: {
+          ...state.formData,
+          dockerRegistry: {
+            ...state.formData.dockerRegistry,
+            ...action.payload
+          }
+        }
+      }
     case 'RESET_FORM':
       return { ...initialState, serviceRepos: state.serviceRepos, tagOptions: state.tagOptions }
     case 'RESET':
@@ -128,9 +143,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   const { theme } = useTheme()
   const { globalClusters: { monitor } } = useSelector((state) => state)
   const [formState, formDispatch] = useReducer(formReducer, initialState)
-  const { formData, tagOptions, errors } = formState
+  const { formData, tagOptions, templateOptions, errors } = formState
   const { host, port, monitorType, dockerImage, tag, dockerRegistry } = formData
-  const { private: isPrivateRegistry, url, username, password, authType } = dockerRegistry
+  const { private: isPrivateRegistry, url, username, password, authType, template } = dockerRegistry
 
   useEffect(() => {
     if (monitor?.serviceRepos?.length > 0) {
@@ -146,6 +161,17 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       formDispatch({ type: 'SET_SERVICE_REPOS', payload: repos })
     }
   }, [monitor?.serviceRepos])
+
+  useEffect(() => {
+    if (monitor?.serviceTemplates?.length > 0) {
+      const templates = monitor?.serviceTemplates.map(item => ({
+          name: item,
+          value: item
+      }))
+
+      formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: templates })
+    }
+  }, [monitor?.serviceTemplates])
 
   const handleCreateNewServer = () => {
     const hostError = host ? '' : 'Host is required'
@@ -246,6 +272,17 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 <FormControl>
                   <FormLabel htmlFor='dockerImage'>Docker image</FormLabel>
                   <Input id='dockerImage' type='text' isRequired={true} value={dockerImage} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { dockerImage: e.target.value } })} />
+                </FormControl>
+
+                <FormControl>
+                  <FormLabel htmlFor='template'>Template</FormLabel>
+                  <Dropdown
+                    id='template'
+                    isMenuPortalTarget={false}
+                    onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: { template: option.value } }) }}
+                    options={templateOptions}
+                    value={template}
+                  />
                 </FormControl>
 
                 {/* Private Docker Registry Checkbox */}

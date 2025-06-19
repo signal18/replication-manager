@@ -3,7 +3,7 @@
     locked = false
     name = "PMA_HOSTS"
     type = "env"
-    value = "{{database_proxies_internal_fqdn}}"
+    value = "{{database_proxies_internal_fqdn_short}}"
 
   [[deployment.variables]]
     locked = false

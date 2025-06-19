@@ -58,6 +58,7 @@ import (
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -106,6 +107,7 @@ type ReplicationManager struct {
 	ServiceRoles                                     []config.Role               `json:"serviceRoles"`
 	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
 	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
+	ServiceTemplates                                 []string                    `json:"serviceTemplates"`
 	ServiceFS                                        map[string]bool             `json:"serviceFS"`
 	ServiceVM                                        map[string]bool             `json:"serviceVM"`
 	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
@@ -2011,6 +2013,10 @@ func (repman *ReplicationManager) Run() error {
 	repman.ServiceTarballs, err = repman.Conf.GetTarballs(repman.Conf.Test)
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
+	}
+	repman.ServiceTemplates, err = share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	if err != nil {
+		repman.Logrus.WithError(err).Errorf("Initialization templates repo failed: %s %s", repman.Conf.ShareDir+"/repo/templates.json", err)
 	}
 
 	repman.ServiceVM = config.GetVMType()
