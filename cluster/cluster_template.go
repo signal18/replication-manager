@@ -14,57 +14,53 @@ var reTemplate = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
 // Phase 1: Resolve nested key expressions like {{ {{env}}_{{host}}_url }}
 func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]interface{}) (string, error) {
 	missingKeys := map[string]bool{}
+	depthExceeded := false
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "%v", data)
-
-	for i := 0; i < cluster.Conf.TemplateVariableMaxDepth; i++ {
-		changed := false
-
-		template = reTemplate.ReplaceAllStringFunc(template, func(match string) string {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", match)
-			keyExpr := strings.TrimSpace(match[2 : len(match)-2])
-
-			// Keep resolving until no more {{ }} inside keyExpr
-			for j := 0; j < cluster.Conf.TemplateVariableMaxDepth; j++ {
-				innerChanged := false
-				keyExpr = reTemplate.ReplaceAllStringFunc(keyExpr, func(innerMatch string) string {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", innerMatch)
-					innerKey := strings.TrimSpace(innerMatch[2 : len(innerMatch)-2])
-					val, ok := data[innerKey]
-					if ok {
-						innerChanged = true
-						if strVal, ok := val.(string); ok {
-							return strVal
-						}
-						return fmt.Sprintf("%v", val)
-					}
-					missingKeys[innerKey] = true
-					return innerMatch
-				})
-				if !innerChanged {
-					break
-				}
-			}
-
-			// Final resolved keyExpr may now be something like "app1_external_fqdn"
-			changed = true
-			return "{{ " + keyExpr + " }}"
-		})
-
-		if !changed {
-			break
-		}
+	resolved := cluster.ResolveTemplateKeysRecursive(template, data, &missingKeys, &depthExceeded, 0)
+	if depthExceeded {
+		return resolved, fmt.Errorf("depth exceeded")
 	}
 
 	if len(missingKeys) > 0 {
-		keys := make([]string, 0, len(missingKeys))
-		for k := range missingKeys {
-			keys = append(keys, k)
+		missingKeysList := make([]string, 0, len(missingKeys))
+		for key := range missingKeys {
+			missingKeysList = append(missingKeysList, key)
 		}
-		return "", fmt.Errorf("ResolveTemplateKeys: missing nested keys: %v", keys)
+		return resolved, fmt.Errorf("missing keys: %v", missingKeysList)
 	}
 
-	return template, nil
+	return resolved, nil
+}
+
+func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]interface{}, missingKeys *map[string]bool, depthExceeded *bool, depth int) string {
+	return reTemplate.ReplaceAllStringFunc(template, func(match string) string {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "ResolveTemplateKeys: match: %s", match)
+		keyExpr := strings.TrimSpace(match[2 : len(match)-2])
+
+		if strings.Contains(keyExpr, "{{") && strings.Contains(keyExpr, "}}") {
+			// Nested template key, resolve it recursively
+			if depth <= cluster.Conf.TemplateVariableMaxDepth {
+				return cluster.ResolveTemplateKeysRecursive(keyExpr, data, missingKeys, depthExceeded, depth+1)
+			} else {
+				*depthExceeded = true
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for key: %s", keyExpr)
+				return match
+			}
+		}
+
+		// Simple key, check if it exists in data
+		val, ok := data[keyExpr]
+		if ok && depth > 0 {
+			return fmt.Sprintf("%v", val)
+		} else if !ok {
+			// If the key is not found, add it to missing keys
+			if !(*missingKeys)[keyExpr] {
+				(*missingKeys)[keyExpr] = true
+			}
+		}
+
+		return match // leave unresolved
+	})
 }
 
 // Phase 2: Replace resolved template keys with their values, return error if some unresolved
