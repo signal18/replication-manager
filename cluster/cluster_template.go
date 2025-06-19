@@ -19,25 +19,30 @@ func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]int
 		template = reTemplate.ReplaceAllStringFunc(template, func(match string) string {
 			keyExpr := strings.TrimSpace(match[2 : len(match)-2])
 
-			// Resolve nested keys inside the keyExpr
-			keyResolved := reTemplate.ReplaceAllStringFunc(keyExpr, func(innerMatch string) string {
-				innerKey := strings.TrimSpace(innerMatch[2 : len(innerMatch)-2])
-				if val, ok := data[innerKey]; ok {
-					changed = true
-					if strVal, ok := val.(string); ok {
-						return strVal
+			// Keep resolving until no more {{ }} inside keyExpr
+			for j := 0; j < cluster.Conf.TemplateVariableMaxDepth; j++ {
+				innerChanged := false
+				keyExpr = reTemplate.ReplaceAllStringFunc(keyExpr, func(innerMatch string) string {
+					innerKey := strings.TrimSpace(innerMatch[2 : len(innerMatch)-2])
+					val, ok := data[innerKey]
+					if ok {
+						innerChanged = true
+						if strVal, ok := val.(string); ok {
+							return strVal
+						}
+						return fmt.Sprintf("%v", val)
 					}
-					return fmt.Sprintf("%v", val) // convert to string if not already
+					missingKeys[innerKey] = true
+					return innerMatch
+				})
+				if !innerChanged {
+					break
 				}
-				missingKeys[innerKey] = true
-				return innerMatch
-			})
-
-			if keyResolved != keyExpr {
-				changed = true
 			}
 
-			return "{{ " + keyResolved + " }}"
+			// Final resolved keyExpr may now be something like "app1_external_fqdn"
+			changed = true
+			return "{{ " + keyExpr + " }}"
 		})
 
 		if !changed {
