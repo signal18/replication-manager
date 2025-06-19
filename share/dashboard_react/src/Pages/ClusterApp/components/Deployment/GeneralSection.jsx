@@ -1,4 +1,4 @@
-import { Flex } from '@chakra-ui/react'
+import { Flex, Text } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch, useSelector } from 'react-redux';
@@ -48,6 +48,10 @@ export default function GeneralSection({ clusterName, appId, config, appConfig }
           }
         />
       )
+    },
+    {
+      key: 'Domain Gateway',
+      value: (<Text fontWeight={"bold"}>{config.cloud18GatewayDomainName}</Text>)
     },
     {
       key: 'OpenSVC Agents',

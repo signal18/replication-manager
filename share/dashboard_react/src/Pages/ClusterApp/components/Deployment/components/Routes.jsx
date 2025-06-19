@@ -66,6 +66,7 @@ export default React.memo(function Routes({
         <Heading as="h3" size="md">
           Saved route mappings
         </Heading>
+        <Text>These are the route mappings that will be used for your deployment. Make sure the domain already points to our gateway.</Text>
         {rows?.length > 0 ?
           rows?.map((p, index) => (
             <HStack key={`row_${p.port}`}>
