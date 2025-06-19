@@ -1,0 +1,12 @@
+[deployment]
+  [[deployment.variables]]
+    locked = false
+    name = "PMA_HOSTS"
+    type = "env"
+    value = "{{database_proxies_internal_fqdn}}"
+
+  [[deployment.variables]]
+    locked = false
+    name = "PMA_ABSOLUTE_URI"
+    type = "env"
+    value = "https://{{ {{app_host}}_external_fqdn }}/"

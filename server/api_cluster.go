@@ -4311,9 +4311,15 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
-		if vars["type"] == "" {
-			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
-		} else if vars["type"] == "app" {
+		var srvtype, host, port, tag, template string
+		srvtype = vars["type"]
+		host = vars["host"]
+		port = vars["port"]
+		tag = vars["tag"]
+
+		if srvtype == "" {
+			err = mycluster.AddSeededServer(host + ":" + port)
+		} else if srvtype == "app" {
 			// Add app monitor
 			var formData DockerRegistryLoginForm
 			if r.Body != nil {
@@ -4333,36 +4339,40 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error adding Docker private registry credentials: %s", err.Error())
 					}
 				}
+
+				if formData.Template != "" {
+					template = formData.Template
+				}
 			}
 
-			if vars["tag"] == "" {
+			if tag == "" {
 				http.Error(w, "Docker image is required for app monitor", 400)
 				return
 			}
 
-			err = mycluster.AddSeededApp(vars["host"], vars["port"], vars["tag"])
+			err = mycluster.AddSeededApp(host, port, tag, template)
 		} else {
-			repopath = repman.GetDockerRepoPath(vars["type"])
+			repopath = repman.GetDockerRepoPath(srvtype)
 
-			if repman.MonitorType[vars["type"]] == "proxy" {
+			if repman.MonitorType[srvtype] == "proxy" {
 				// update image if tag is not empty
-				if vars["tag"] != "" {
+				if tag != "" {
 					updateImg = true
 
 					// check if repository list is exists
-					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+					repoimg = repman.GetDockerRepoImage(srvtype, tag)
 
 					if repoimg == "" && repopath == "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for proxy %s. Skipping proxy image update", vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for proxy %s. Skipping proxy image update", srvtype)
 						updateImg = false
 					} else if repopath != "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for proxy %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for proxy %s. Changing to the latest tag.", tag, srvtype)
 						repoimg = repopath + ":latest"
 					}
 
 					// update image
 					if updateImg {
-						switch vars["type"] {
+						switch srvtype {
 						case config.ConstProxyHaproxy:
 							mycluster.Conf.ProvProxHaproxyImg = repoimg
 						case config.ConstProxySqlproxy:
@@ -4374,35 +4384,35 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						}
 					}
 				}
-				err = mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
-			} else if repman.MonitorType[vars["type"]] == "database" {
+				err = mycluster.AddSeededProxy(srvtype, host, port, "", "")
+			} else if repman.MonitorType[srvtype] == "database" {
 				// Check if new database repo is different with current repo
 				oldrepopath := strings.Split(mycluster.Conf.ProvDbImg, ":")[0]
 				if oldrepopath != repopath {
 					updateImg = true
 
 					// if no tag, use the latest version
-					if vars["tag"] == "" {
-						vars["tag"] = "latest"
+					if tag == "" {
+						tag = "latest"
 					}
 				}
 
-				if vars["tag"] != "" {
+				if tag != "" {
 					updateImg = true
-					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+					repoimg = repman.GetDockerRepoImage(srvtype, tag)
 
 					if repoimg == "" && repopath == "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for database %s. Skipping database image update", vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for database %s. Skipping database image update", srvtype)
 						updateImg = false
 					} else if repopath != "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", tag, srvtype)
 						repoimg = repopath + ":latest"
 					}
 				}
 
 				// update image
 				if updateImg {
-					switch vars["type"] {
+					switch srvtype {
 					case "mariadb":
 						mycluster.Conf.ProvDbImg = repoimg
 					case "percona":
@@ -4411,13 +4421,13 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						mycluster.Conf.ProvDbImg = repoimg
 					}
 				}
-				err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+				err = mycluster.AddSeededServer(host + ":" + port)
 			}
 		}
 
 		// This will only return duplicate error
 		if err != nil {
-			errStr := fmt.Sprintf("Error adding new %s monitor of %s: %s", vars["type"], vars["host"]+":"+vars["port"], err.Error())
+			errStr := fmt.Sprintf("Error adding new %s monitor of %s: %s", srvtype, host+":"+port, err.Error())
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, errStr)
 			w.WriteHeader(409)
 			w.Write([]byte(`{"msg":"` + errStr + `"}`))
@@ -7033,6 +7043,7 @@ type DockerRegistryLoginForm struct {
 	URL       string `json:"url"`
 	Username  string `json:"username"`
 	Password  string `json:"password"`
+	Template  string `json:"template"` // Optional template for the registry, e.g., "docker.io" or "quay.io"
 }
 
 // handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.

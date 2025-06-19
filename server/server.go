@@ -970,6 +970,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
 	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
 	flags.StringVar(&conf.Cloud18DomainSecret, "cloud18-domain-secret", "", "Second parameter to pass prov-domain-?-script")
+	flags.IntVar(&conf.TemplateVariableMaxDepth, "template-var-max-depth", 10, "Maximum depth of template variable expansion")
+	flags.BoolVar(&conf.TemplateStrict, "template-strict", false, "Enable strict template variable resolution")
 
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")

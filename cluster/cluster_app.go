@@ -11,6 +11,7 @@ import (
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/share"
 	"github.com/spf13/viper"
 )
 
@@ -101,6 +102,49 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	}
 
 	return errormap
+}
+
+func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template string) error {
+	var content []byte
+	var err error
+
+	if template == "" {
+		return nil
+	}
+
+	template = "app/deployments/" + template
+
+	// Check if the template file exists within share
+	content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error reading template file %s: %s", template, err)
+		return err
+	}
+
+	// Parse the template content
+	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.GetAppTemplateData(appcnf))
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error parsing template file %s: %s", template, err)
+		return err
+	}
+
+	// read parsed content (toml format) and merge it into the app configuration
+	appViper := viper.New()
+	appViper.SetConfigType("toml")
+	err = appViper.ReadConfig(strings.NewReader(parsed))
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error reading parsed template file %s: %s", template, err)
+		return err
+	}
+
+	// Unmarshal the parsed content into the app configuration
+	err = appViper.Unmarshal(appcnf)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+		return err
+	}
+
+	return nil
 }
 
 // // LoadConfig loads the configuration from a file to the configuration struct.
@@ -281,7 +325,7 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 // 	return true, nil
 // }
 
-func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
+func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) error {
 	for _, app := range cluster.Conf.Apps {
 		if app.AppHost == srv && app.AppPort == port {
 			return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
@@ -290,10 +334,12 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg string) error {
 
 	appcnf := cluster.GetAppConfig(srv, port) // Get or initiate app config
 	appcnf.ProvAppDockerImg = dockerImg
+	appcnf.ProvAppTemplate = template
 	cluster.Conf.Apps = append(cluster.Conf.Apps, appcnf)
 
 	cluster.Lock()
 	cluster.newAppList()
+	cluster.LoadAppTemplate(appcnf, template)
 	cluster.Unlock()
 	return nil
 }
@@ -460,4 +506,31 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 			}(app, wg)
 		}
 	}
+}
+
+func (cluster *Cluster) GetAppTemplateData(appcnf *config.AppConfig) map[string]interface{} {
+	result := cluster.GetTemplateData()
+
+	if appcnf != nil {
+		fqdn := appcnf.AppHost
+		domain := cluster.GetDomain()
+		// FQDN: Fully Qualified Domain Name
+		if !strings.Contains(appcnf.AppHost, domain) {
+			fqdn = fqdn + "." + domain
+		}
+		// Add app-specific template data
+		result["app_host"] = appcnf.AppHost // App name is the host
+		result["app_fqdn"] = fqdn
+		result["app_port"] = appcnf.AppPort
+		result["app_docker_img"] = appcnf.ProvAppDockerImg
+		result["app_template"] = appcnf.ProvAppTemplate
+		result["app_disk_type"] = appcnf.ProvAppDiskType
+		result["app_disk"] = appcnf.ProvAppDisk
+		result["app_volume_data"] = appcnf.ProvAppVolumeData
+		result["app_memory"] = appcnf.ProvAppMem
+		result["app_cores"] = appcnf.ProvAppCores
+		result["app_agents"] = appcnf.ProvAppAgents
+	}
+
+	return result
 }

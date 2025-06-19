@@ -695,7 +695,7 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 	}
 
 	client := collector.GetHttpClient()
-	b := bytes.NewBuffer([]byte(jsondata))
+	b := bytes.NewBuffer(jsondata)
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {

@@ -628,6 +628,8 @@ type Config struct {
 	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
 	ProvAppCores                              string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
 	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	TemplateVariableMaxDepth                  int                    `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
+	TemplateStrict                            bool                   `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -845,6 +847,7 @@ type AppConfig struct {
 	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppTemplate       string     `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
 	ProvAppAgents         string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
 	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	AppHostsIPV6          string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`

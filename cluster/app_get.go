@@ -288,3 +288,11 @@ func (app *App) GetOpenSVCDeplopymentGitPrefix(gc config.GitClone, envname strin
 	return prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest)) + "_" + envname
 }
 
+func (app *App) GetExternalFQDN() string {
+	for _, route := range app.AppConfig.Deployment.Routes {
+		if route.Primary {
+			return route.CName
+		}
+	}
+	return ""
+}
