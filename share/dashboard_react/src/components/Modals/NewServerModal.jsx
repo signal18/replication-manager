@@ -269,7 +269,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 isMenuPortalTarget={false}
                 onChange={(option) => formDispatch({ type: 'FILL_VERSION_DROPDOWN', payload: option.value })}
                 options={serviceTypes}
-                value={serviceTypes.find((type) => type.value === monitorType) || null}
+                selectedValue={monitorType}
               />
             </FormControl>
             {monitorType === 'app' ? (
@@ -286,7 +286,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                     isMenuPortalTarget={false}
                     onChange={(option) => { formDispatch({ type: 'SET_DOCKER_TEMPLATE', payload: option.value }) }}
                     options={templateOptions}
-                    value={templateOptions.find((option) => option.value === template) || null}
+                    selectedValue={template}
                   />
                 </FormControl>
 
@@ -341,7 +341,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                         isMenuPortalTarget={false}
                         onChange={(option) => formDispatch({ type: 'SET_REGISTRY_CREDENTIALS', payload: { authType: option.value } })}
                         options={authTypes}
-                        value={authTypes.find((type) => type.value === authType) || null}
+                        selectedValue={authType}
                       />
                     </FormControl>
                     <FormControl>
@@ -361,7 +361,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   isMenuPortalTarget={false}
                   onChange={(option) => { formDispatch({ type: 'SET_FORM_DATA', payload: { tag: option.value } }) }}
                   options={tagOptions}
-                  value={tagOptions.find((option) => option.value === tag) || null}
+                  selectedValue={tag}
                 />
               </FormControl>
             )}
