@@ -9,7 +9,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 )
 
-var reTemplate = regexp.MustCompile(`\{\{\s*([^{}]+?)\s*\}\}`)
+var reTemplate = regexp.MustCompile(`\{\{\s*((?:\{\{[^{}]+\}\}|[^{}])+?)\s*\}\}`)
 
 // Phase 1: Resolve nested key expressions like {{ {{env}}_{{host}}_url }}
 func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]interface{}) (string, error) {
