@@ -290,10 +290,9 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	domain := cluster.GetDomain()
 
 	appcnf := app.AppConfig
-	svcenv := make(map[string]string)
+	svcenv := cluster.GetTemplateData()
 
 	// Cluster values section
-	svcenv = cluster.GetTemplateData(svcenv)
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
@@ -437,6 +436,8 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
 	}
 
+	envs := cluster.OpenSVCGetAppEnvSection(app)
+
 	for _, v := range app.AppConfig.Deployment.Variables {
 		if v.Type == "secret" {
 			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
@@ -452,14 +453,16 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 				}
 			}
 		} else {
-			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			mappedValue, _ := cluster.OpenSVCParseTemplate(v.Value, envs, "env")
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, v.Name, mappedValue)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", v.Name, err)
 			}
 
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
-				err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, cdname, cd.Value)
+				mappedValue, _ := cluster.OpenSVCParseTemplate(cd.Value, envs, "env")
+				err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, cdname, mappedValue)
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 				}
