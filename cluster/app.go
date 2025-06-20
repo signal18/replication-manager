@@ -85,6 +85,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	app.Mutex = &sync.Mutex{}
 	app.Name, app.Port = misc.SplitHostPortApp(appHost)
 	app.Host = app.Name
+	app.State = stateSuspect
 	appCnf := cluster.GetAppConfig(app.Name, app.Port)
 	app.SetPlacement(placement, appCnf.ProvAppAgents, conf.SlapOSAppPartitions)
 	app.AppConfig = appCnf
