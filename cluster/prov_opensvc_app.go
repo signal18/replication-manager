@@ -233,7 +233,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]string {
 	svcvol := make(map[string]string)
 	svcvol["name"] = "{name}"
-	svcvol["pool"] = cluster.GetAppVolumeData(app)
+	svcvol["pool"] = cluster.GetAppVolumeData(app.AppConfig)
 	svcvol["size"] = "{env.size}"
 	svcvol["directories"] = "var etc log"
 	return svcvol
@@ -241,7 +241,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]stri
 
 func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
-	svc.ProvAppAgents = cluster.GetAppAgents(app)
+	svc.ProvAppAgents = cluster.GetAppAgents(app.AppConfig)
 
 	agents, err := svc.GetNodes()
 	if err != nil {
@@ -267,7 +267,7 @@ func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
 
 func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
 	svc := cluster.OpenSVCConnect()
-	svc.ProvAppAgents = cluster.GetAppAgents(app)
+	svc.ProvAppAgents = cluster.GetAppAgents(app.AppConfig)
 
 	agents, err := svc.GetNodes()
 	if err != nil {
@@ -287,23 +287,37 @@ func (cluster *Cluster) FoundAllAppAgents(app *App) ([]opensvc.Host, error) {
 }
 
 func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
-	appcnf := app.AppConfig
+	domain := cluster.GetDomain()
 
+	appcnf := app.AppConfig
 	svcenv := make(map[string]string)
-	svcenv["nodes"] = cluster.GetAppAgents(app)
+
+	// Cluster values section
+	svcenv = cluster.GetTemplateData(svcenv)
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"
-	svcenv["size"] = cluster.GetAppDisk(app) + "g"
-	svcenv["ip_pod01"] = app.GetHost()
-	svcenv["port_pod01"] = app.GetPort()
-	svcenv["app_img"] = appcnf.ProvAppDockerImg
-	svcenv["port_http"] = "80"
-	svcenv["port_telnet"] = app.GetPort()
-	svcenv["port_admin"] = app.GetPort()
-	svcenv["user_admin"] = app.User
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
-	svcenv = cluster.GetTemplateData(svcenv)
+	// App section
+	// FQDN: Fully Qualified Domain Name
+	fqdn := appcnf.AppHost
+	if !strings.Contains(appcnf.AppHost, domain) {
+		fqdn = fqdn + "." + domain
+	}
+
+	svcenv["nodes"] = cluster.GetAppAgents(appcnf)
+	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
+	svcenv["app_img"] = appcnf.ProvAppDockerImg
+	svcenv["app_host"] = appcnf.AppHost
+	svcenv["app_port"] = appcnf.AppPort
+	svcenv["app_fqdn"] = fqdn
+
+	svcenv["ip_pod01"] = app.GetHost()
+	svcenv["port_pod01"] = app.GetPort()
+	svcenv["port_telnet"] = app.GetPort()
+	svcenv["port_admin"] = app.GetPort()
+	svcenv["port_http"] = "80"
+	svcenv["user_admin"] = app.User
 
 	return svcenv
 }
@@ -312,7 +326,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 	appcnf := app.AppConfig
 	svcdefault := make(map[string]string)
 
-	svcdefault["nodes"] = cluster.GetAppAgents(app)
+	svcdefault["nodes"] = cluster.GetAppAgents(appcnf)
 	nodes := strings.Split(svcdefault["nodes"], ",")
 
 	if appcnf.ProvAppAgentsFailover != "" {
@@ -341,7 +355,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["type"] = cluster.Conf.ProvType
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
-			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app) + "m --memory-swap=" + cluster.GetAppMemory(app) + "m --cpus=" + cluster.GetAppCores(app) + ".0"
+			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app.AppConfig) + "m --memory-swap=" + cluster.GetAppMemory(app.AppConfig) + "m --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
 		}
 
 		svccontainer["volume_mounts"] = cluster.GetOpenSVCDeploymentPathMapping(app)

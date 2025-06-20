@@ -122,7 +122,8 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	}
 
 	// Parse the template content
-	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.GetAppTemplateData(appcnf, cluster.GetTemplateData(nil)))
+	app := cluster.GetAppByConfig(appcnf)
+	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.OpenSVCGetAppEnvSection(app))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error parsing template file %s: %s", template, err)
 		return err
@@ -355,15 +356,23 @@ func (cluster *Cluster) GetAppByHostPort(host, port string) (*App, int) {
 	return nil, -1
 }
 
-func (cluster *Cluster) GetAppAgents(app *App) string {
-	var appCnf *config.AppConfig
+func (cluster *Cluster) GetAppByConfig(appcnf *config.AppConfig) *App {
+	// Check if the app exists in the cluster
+	for _, app := range cluster.Apps {
+		if app.AppConfig != nil && app.AppConfig.AppHost == appcnf.AppHost && app.AppConfig.AppPort == appcnf.AppPort {
+			return app
+		}
+	}
 
-	if app != nil {
+	return nil
+}
+
+func (cluster *Cluster) GetAppAgents(appcnf *config.AppConfig) string {
+	if appcnf != nil {
 		// Get the app config
-		appCnf = app.GetAppConfig()
-		if appCnf != nil && appCnf.ProvAppAgents != "" {
+		if appcnf.ProvAppAgents != "" {
 			// If the app config has agents, return them
-			return appCnf.ProvAppAgents
+			return appcnf.ProvAppAgents
 		}
 	}
 
@@ -374,23 +383,17 @@ func (cluster *Cluster) GetAppAgents(app *App) string {
 		agents = cluster.Conf.ProvAgents
 	}
 
-	if agents != "" && appCnf != nil {
-		appCnf.ProvAppAgents = agents
+	if agents != "" && appcnf != nil {
+		appcnf.ProvAppAgents = agents
 	}
 
 	return agents
 }
 
-func (cluster *Cluster) GetAppDisk(app *App) string {
-	var appCnf *config.AppConfig
-
-	if app != nil {
-		// Get the app config
-		appCnf = app.GetAppConfig()
-		if appCnf != nil && appCnf.ProvAppDisk != "" {
-			// If the app config has disk, return it
-			return appCnf.ProvAppDisk
-		}
+func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppDisk != "" {
+		// If the app config has disk, return it
+		return appcnf.ProvAppDisk
 	}
 
 	// If the app config does not have disk, return the cluster disk
@@ -400,23 +403,17 @@ func (cluster *Cluster) GetAppDisk(app *App) string {
 		disk = cluster.Conf.ProvDisk
 	}
 
-	if disk != "" && appCnf != nil {
-		appCnf.ProvAppDisk = disk
+	if disk != "" && appcnf != nil {
+		appcnf.ProvAppDisk = disk
 	}
 
 	return disk
 }
 
-func (cluster *Cluster) GetAppVolumeData(app *App) string {
-	var appCnf *config.AppConfig
-
-	if app != nil {
-		// Get the app config
-		appCnf = app.GetAppConfig()
-		if appCnf != nil && appCnf.ProvAppVolumeData != "" {
-			// If the app config has volume data, return it
-			return appCnf.ProvAppVolumeData
-		}
+func (cluster *Cluster) GetAppVolumeData(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppVolumeData != "" {
+		// If the app config has volume data, return it
+		return appcnf.ProvAppVolumeData
 	}
 
 	// If the app config does not have volume data, return the cluster volume data
@@ -426,23 +423,17 @@ func (cluster *Cluster) GetAppVolumeData(app *App) string {
 		volumeData = cluster.Conf.ProvVolumeData
 	}
 
-	if volumeData != "" && appCnf != nil {
-		appCnf.ProvAppVolumeData = volumeData
+	if volumeData != "" && appcnf != nil {
+		appcnf.ProvAppVolumeData = volumeData
 	}
 
 	return volumeData
 }
 
-func (cluster *Cluster) GetAppMemory(app *App) string {
-	var appCnf *config.AppConfig
-
-	if app != nil {
-		// Get the app config
-		appCnf = app.GetAppConfig()
-		if appCnf != nil && appCnf.ProvAppMem != "" {
-			// If the app config has memory, return it
-			return appCnf.ProvAppMem
-		}
+func (cluster *Cluster) GetAppMemory(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppMem != "" {
+		// If the app config has memory, return it
+		return appcnf.ProvAppMem
 	}
 
 	// If the app config does not have memory, return the cluster memory
@@ -452,24 +443,18 @@ func (cluster *Cluster) GetAppMemory(app *App) string {
 		mem = cluster.Conf.ProvMem
 	}
 
-	if mem != "" && appCnf != nil {
-		appCnf.ProvAppMem = mem
+	if mem != "" && appcnf != nil {
+		appcnf.ProvAppMem = mem
 	}
 
 	return mem
 }
 
 // GetAppCores returns the cores for the app.
-func (cluster *Cluster) GetAppCores(app *App) string {
-	var appCnf *config.AppConfig
-
-	if app != nil {
-		// Get the app config
-		appCnf = app.GetAppConfig()
-		if appCnf != nil && appCnf.ProvAppCores != "" {
-			// If the app config has cores, return it
-			return appCnf.ProvAppCores
-		}
+func (cluster *Cluster) GetAppCores(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppCores != "" {
+		// If the app config has cores, return it
+		return appcnf.ProvAppCores
 	}
 
 	// If the app config does not have cores, return the cluster cores
@@ -479,8 +464,8 @@ func (cluster *Cluster) GetAppCores(app *App) string {
 		cores = cluster.Conf.ProvCores
 	}
 
-	if cores != "" && appCnf != nil {
-		appCnf.ProvAppCores = cores
+	if cores != "" && appcnf != nil {
+		appcnf.ProvAppCores = cores
 	}
 
 	return cores
@@ -506,33 +491,4 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 			}(app, wg)
 		}
 	}
-}
-
-func (cluster *Cluster) GetAppTemplateData(appcnf *config.AppConfig, basemap map[string]string) map[string]string {
-	if basemap == nil {
-		basemap = make(map[string]string)
-	}
-
-	if appcnf != nil {
-		fqdn := appcnf.AppHost
-		domain := cluster.GetDomain()
-		// FQDN: Fully Qualified Domain Name
-		if !strings.Contains(appcnf.AppHost, domain) {
-			fqdn = fqdn + "." + domain
-		}
-		// Add app-specific template data
-		basemap["app_host"] = appcnf.AppHost // App name is the host
-		basemap["app_fqdn"] = fqdn
-		basemap["app_port"] = appcnf.AppPort
-		basemap["app_docker_img"] = appcnf.ProvAppDockerImg
-		basemap["app_template"] = appcnf.ProvAppTemplate
-		basemap["app_disk_type"] = appcnf.ProvAppDiskType
-		basemap["app_disk"] = appcnf.ProvAppDisk
-		basemap["app_volume_data"] = appcnf.ProvAppVolumeData
-		basemap["app_memory"] = appcnf.ProvAppMem
-		basemap["app_cores"] = appcnf.ProvAppCores
-		basemap["app_agents"] = appcnf.ProvAppAgents
-	}
-
-	return basemap
 }
