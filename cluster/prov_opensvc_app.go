@@ -303,6 +303,8 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["mrm_api_addr"] = cluster.Conf.MonitorAddress + ":" + cluster.Conf.HttpPort
 	svcenv["mrm_cluster_name"] = cluster.GetClusterName()
 
+	svcenv = cluster.GetTemplateData(svcenv)
+
 	return svcenv
 }
 

@@ -12,7 +12,7 @@ import (
 var reTemplate = regexp.MustCompile(`\{\{\s*((?:\{\{[^{}]+\}\}|[^{}])+?)\s*\}\}`)
 
 // Phase 1: Resolve nested key expressions like {{ {{env}}_{{host}}_url }}
-func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]interface{}) (string, error) {
+func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]string) (string, error) {
 	missingKeys := map[string]bool{}
 	depthExceeded := false
 
@@ -32,7 +32,7 @@ func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]int
 	return resolved, nil
 }
 
-func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]interface{}, missingKeys *map[string]bool, depthExceeded *bool, depth int) string {
+func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]string, missingKeys *map[string]bool, depthExceeded *bool, depth int) string {
 	return reTemplate.ReplaceAllStringFunc(template, func(match string) string {
 		keyExpr := strings.TrimSpace(match[2 : len(match)-2])
 
@@ -55,7 +55,7 @@ func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[s
 		// Simple key, check if it exists in data
 		val, ok := data[keyExpr]
 		if ok && depth > 0 {
-			return fmt.Sprintf("%v", val)
+			return val
 		} else if !ok {
 			// If the key is not found, add it to missing keys
 			if !(*missingKeys)[keyExpr] {
@@ -68,7 +68,7 @@ func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[s
 }
 
 // Phase 2: Replace resolved template keys with their values, return error if some unresolved
-func (cluster *Cluster) RenderTemplateValues(template string, data map[string]string) (string, error) {
+func (cluster *Cluster) OpenSVCRenderTemplate(template string, data map[string]string) (string, error) {
 	missingKeys := []string{}
 	missingSet := map[string]bool{}
 
@@ -91,8 +91,11 @@ func (cluster *Cluster) RenderTemplateValues(template string, data map[string]st
 	return result, nil
 }
 
-func (cluster *Cluster) GetTemplateData() map[string]interface{} {
-	result := make(map[string]interface{})
+func (cluster *Cluster) GetTemplateData(basemap map[string]string) map[string]string {
+	if basemap == nil {
+		basemap = make(map[string]string)
+	}
+
 	domain := cluster.GetDomain()
 
 	proxies := make([]string, 0)
@@ -107,14 +110,14 @@ func (cluster *Cluster) GetTemplateData() map[string]interface{} {
 				host = host + "." + domain
 			}
 			proxies = append(proxies, host)
-			result["database_proxy_"+seq+"_internal_fqdn_long"] = host
-			result["database_proxy_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+			basemap["database_proxy_"+seq+"_internal_fqdn_long"] = host
+			basemap["database_proxy_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
 		}
 	}
 
 	proxyHosts := strings.Join(proxies, ",")
-	result["database_proxies_internal_fqdn_long"] = proxyHosts
-	result["database_proxies_internal_fqdn_short"] = strings.ReplaceAll(proxyHosts, cluster.GetDomain(), "")
+	basemap["database_proxies_internal_fqdn_long"] = proxyHosts
+	basemap["database_proxies_internal_fqdn_short"] = strings.ReplaceAll(proxyHosts, cluster.GetDomain(), "")
 
 	for i, db := range cluster.Servers {
 		if db != nil {
@@ -124,14 +127,14 @@ func (cluster *Cluster) GetTemplateData() map[string]interface{} {
 				host = host + "." + domain
 			}
 			dbs = append(dbs, host)
-			result["database_"+seq+"_internal_fqdn_long"] = host
-			result["database_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+			basemap["database_"+seq+"_internal_fqdn_long"] = host
+			basemap["database_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
 		}
 	}
 
 	dbHosts := strings.Join(dbs, ",")
-	result["databases_internal_fqdn_long"] = dbHosts
-	result["databases_internal_fqdn_short"] = strings.ReplaceAll(dbHosts, cluster.GetDomain(), "")
+	basemap["databases_internal_fqdn_long"] = dbHosts
+	basemap["databases_internal_fqdn_short"] = strings.ReplaceAll(dbHosts, cluster.GetDomain(), "")
 
 	for _, app := range cluster.Apps {
 		if app != nil {
@@ -139,11 +142,11 @@ func (cluster *Cluster) GetTemplateData() map[string]interface{} {
 			if !strings.Contains(host, domain) {
 				host = host + "." + domain
 			}
-			result[app.Name+"_internal_fqdn_long"] = host
-			result[app.Name+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
-			result[app.Name+"_external_fqdn"] = app.GetExternalFQDN()
+			basemap[app.Name+"_internal_fqdn_long"] = host
+			basemap[app.Name+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+			basemap[app.Name+"_external_fqdn"] = app.GetExternalFQDN()
 		}
 	}
 
-	return result
+	return basemap
 }

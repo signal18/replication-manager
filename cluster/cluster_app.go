@@ -122,7 +122,7 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	}
 
 	// Parse the template content
-	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.GetAppTemplateData(appcnf))
+	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.GetAppTemplateData(appcnf, cluster.GetTemplateData(nil)))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error parsing template file %s: %s", template, err)
 		return err
@@ -508,8 +508,10 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 	}
 }
 
-func (cluster *Cluster) GetAppTemplateData(appcnf *config.AppConfig) map[string]interface{} {
-	result := cluster.GetTemplateData()
+func (cluster *Cluster) GetAppTemplateData(appcnf *config.AppConfig, basemap map[string]string) map[string]string {
+	if basemap == nil {
+		basemap = make(map[string]string)
+	}
 
 	if appcnf != nil {
 		fqdn := appcnf.AppHost
@@ -519,18 +521,18 @@ func (cluster *Cluster) GetAppTemplateData(appcnf *config.AppConfig) map[string]
 			fqdn = fqdn + "." + domain
 		}
 		// Add app-specific template data
-		result["app_host"] = appcnf.AppHost // App name is the host
-		result["app_fqdn"] = fqdn
-		result["app_port"] = appcnf.AppPort
-		result["app_docker_img"] = appcnf.ProvAppDockerImg
-		result["app_template"] = appcnf.ProvAppTemplate
-		result["app_disk_type"] = appcnf.ProvAppDiskType
-		result["app_disk"] = appcnf.ProvAppDisk
-		result["app_volume_data"] = appcnf.ProvAppVolumeData
-		result["app_memory"] = appcnf.ProvAppMem
-		result["app_cores"] = appcnf.ProvAppCores
-		result["app_agents"] = appcnf.ProvAppAgents
+		basemap["app_host"] = appcnf.AppHost // App name is the host
+		basemap["app_fqdn"] = fqdn
+		basemap["app_port"] = appcnf.AppPort
+		basemap["app_docker_img"] = appcnf.ProvAppDockerImg
+		basemap["app_template"] = appcnf.ProvAppTemplate
+		basemap["app_disk_type"] = appcnf.ProvAppDiskType
+		basemap["app_disk"] = appcnf.ProvAppDisk
+		basemap["app_volume_data"] = appcnf.ProvAppVolumeData
+		basemap["app_memory"] = appcnf.ProvAppMem
+		basemap["app_cores"] = appcnf.ProvAppCores
+		basemap["app_agents"] = appcnf.ProvAppAgents
 	}
 
-	return result
+	return basemap
 }
