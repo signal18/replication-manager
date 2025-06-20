@@ -33,25 +33,25 @@ import (
 // Proxy defines a proxy
 type Proxy struct {
 	DatabaseProxy
-	Id              string               `json:"id" app:"id"`
-	Name            string               `json:"name" app:"name"`
-	Type            string               `json:"type" app:"type"`
-	Host            string               `json:"host" app:"fqdn"`
+	Id              string               `json:"id" groups:"apps"`
+	Name            string               `json:"name" groups:"apps"`
+	Type            string               `json:"type" groups:"apps"`
+	Host            string               `json:"host"groups:"apps"`
 	HostIPV6        string               `json:"hostIPV6"`
-	Port            string               `json:"port" app:"port"`
+	Port            string               `json:"port" groups:"apps"`
 	TunnelPort      int                  `json:"tunnelPort"`
 	TunnelWritePort int                  `json:"tunnelWritePort"`
 	Tunnel          bool                 `json:"tunnel"`
 	User            string               `json:"-"`
 	Pass            string               `json:"-"`
-	WritePort       int                  `json:"writePort" app:"database-write-port"`
-	ReadPort        int                  `json:"readPort" app:"database-read-port"`
-	ReadWritePort   int                  `json:"readWritePort" app:"database-read-write-port"`
+	WritePort       int                  `json:"writePort" groups:"apps"`
+	ReadPort        int                  `json:"readPort" groups:"apps"`
+	ReadWritePort   int                  `json:"readWritePort" groups:"apps"`
 	ReaderHostgroup int                  `json:"readerHostGroup"`
 	WriterHostgroup int                  `json:"writerHostGroup"`
 	BackendsWrite   []Backend            `json:"backendsWrite"`
 	BackendsRead    []Backend            `json:"backendsRead"`
-	Version         string               `json:"version" app:"version"`
+	Version         string               `json:"version" groups:"apps"`
 	InternalProxy   *myproxy.Server      `json:"internalProxy"`
 	ShardProxy      *ServerMonitor       `json:"shardProxy"`
 	ClusterGroup    *Cluster             `json:"-"`

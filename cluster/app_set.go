@@ -33,10 +33,6 @@ func (app *App) SetServiceName(namespace string) {
 	app.ServiceName = namespace + "/svc/" + app.Name
 }
 
-func (app *App) SetStaging(staging bool) {
-	app.IsStaging = staging
-}
-
 func (app *App) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string) {
 	slapospartitions := strings.Split(SlapOSDBPartitions, ",")
 	agents := strings.Split(ProvAgents, ",")

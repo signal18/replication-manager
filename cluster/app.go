@@ -22,30 +22,30 @@ import (
 
 // App defines a app
 type App struct {
-	Id            string               `json:"id" app:"id"`
-	Name          string               `json:"name" app:"name"`
-	Type          string               `json:"type" app:"type"`
-	Host          string               `json:"host" app:"host"`
-	HostIPV6      string               `json:"hostIPV6"`
-	Port          string               `json:"port" app:"port"`
-	User          string               `json:"-"`
-	Pass          string               `json:"-"`
-	Version       string               `json:"version" app:"version"`
-	Datadir       string               `json:"datadir"`
-	State         string               `json:"state"`
-	PrevState     string               `json:"prevState"`
-	SlapOSDatadir string               `json:"slaposDatadir"`
-	ServiceName   string               `json:"serviceName"`
-	Agent         string               `json:"agent"`
-	Weight        string               `json:"weight"`
-	FailCount     int                  `json:"failCount"`
-	ClusterGroup  *Cluster             `json:"-"`
-	Process       *os.Process          `json:"process"`
-	RouteStatus   []config.RouteStatus `json:"routeStatus"`
-	Variables     map[string]string    `json:"-"`
-	AppConfig     *config.AppConfig    `json:"config" app:"config"`
-	IsStaging     bool                 `json:"isStaging"`
-	*sync.Mutex   `json:"-"`
+	Id                   string               `json:"id" groups:"app"`
+	Name                 string               `json:"name" groups:"apps"`
+	Type                 string               `json:"type" groups:"apps""`
+	Host                 string               `json:"host" groups:"apps"`
+	HostIPV6             string               `json:"hostIPV6"`
+	Port                 string               `json:"port" groups:"apps"`
+	User                 string               `json:"-"`
+	Pass                 string               `json:"-"`
+	Version              string               `json:"version" groups:"apps"`
+	Datadir              string               `json:"datadir"`
+	State                string               `json:"state"`
+	PrevState            string               `json:"prevState"`
+	SlapOSDatadir        string               `json:"slaposDatadir"`
+	ServiceName          string               `json:"serviceName"`
+	Agent                string               `json:"agent"`
+	Weight               string               `json:"weight"`
+	FailCount            int                  `json:"failCount"`
+	ClusterGroup         *Cluster             `json:"-"`
+	Process              *os.Process          `json:"process"`
+	RouteStatus          []config.RouteStatus `json:"routeStatus"`
+	Variables            map[string]string    `json:"-"`
+	AppConfig            *config.AppConfig    `json:"config" groups:"apps"`
+	AppClusterSubstitute string               `json:"appClusterSubstitute"`
+	*sync.Mutex          `json:"-"`
 }
 
 type appList []*App
@@ -120,7 +120,10 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 func (app *App) Refresh() error {
 	cluster := app.ClusterGroup
 	appState := app.GetMonitoringStatus()
-
+	sub, err := cluster.GetAppsSubstitutionJSon()
+	if err == nil {
+		app.AppClusterSubstitute = sub
+	}
 	// Do not change state if the app is in maintenance mode
 	if app.State == stateMaintenance {
 		return nil

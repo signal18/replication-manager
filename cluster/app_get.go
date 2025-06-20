@@ -11,17 +11,27 @@
 package cluster
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 
-	jsoniter "github.com/json-iterator/go"
+	"github.com/liip/sheriff/v2"
+
+	//jsoniter "github.com/json-iterator/go"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) GetAppClusterSubstitutionJSon() (string, error) {
-	json := jsoniter.Config{TagKey: "app"}.Froze()
-	return json.MarshalToString(cluster)
+func (cluster *Cluster) GetAppsSubstitutionJSon() (string, error) {
+
+	o := &sheriff.Options{Groups: []string{"apps"}}
+	data, err := sheriff.Marshal(o, cluster)
+	if err != nil {
+		return "", err
+	}
+	result, err2 := json.Marshal(data)
+	return string(result), err2
+
 }
 
 func (cluster *Cluster) GetAppFromName(name string) *App {
