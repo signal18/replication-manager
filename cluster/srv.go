@@ -42,18 +42,18 @@ import (
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
 	Id                          string                     `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name                        string                     `json:"name"`
-	Domain                      string                     `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
+	Name                        string                     `json:"name" app:"name"`
+	Domain                      string                     `json:"domain" app:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
 	ServiceName                 string                     `json:"serviceName"`
-	SourceClusterName           string                     `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
+	SourceClusterName           string                     `json:"sourceClusterName" app:"source-cluster-name"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                   `json:"-"`
 	User                        string                     `json:"user"`
 	Pass                        string                     `json:"-"`
-	URL                         string                     `json:"url"`
+	URL                         string                     `json:"url" app:"fqdn"`
 	DSN                         string                     `json:"-"`
-	Host                        string                     `json:"host"`
+	Host                        string                     `json:"host" app:"host"`
 	HostCnf                     string                     `json:"-"` // used to store host from config file
-	Port                        string                     `json:"port"`
+	Port                        string                     `json:"port" app:"port"`
 	TunnelPort                  string                     `json:"tunnelPort"`
 	IP                          string                     `json:"ip"`
 	Strict                      string                     `json:"strict"`

@@ -14,9 +14,15 @@ import (
 	"strconv"
 	"strings"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 )
+
+func (cluster *Cluster) GetAppClusterSubstitutionJSon() (string, error) {
+	json := jsoniter.Config{TagKey: "app"}.Froze()
+	return json.MarshalToString(cluster)
+}
 
 func (cluster *Cluster) GetAppFromName(name string) *App {
 	for _, pr := range cluster.Apps {

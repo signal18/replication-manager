@@ -22,15 +22,15 @@ import (
 
 // App defines a app
 type App struct {
-	Id            string               `json:"id"`
-	Name          string               `json:"name"`
-	Type          string               `json:"type"`
-	Host          string               `json:"host"`
+	Id            string               `json:"id" app:"id"`
+	Name          string               `json:"name" app:"name"`
+	Type          string               `json:"type" app:"type"`
+	Host          string               `json:"host" app:"host"`
 	HostIPV6      string               `json:"hostIPV6"`
-	Port          string               `json:"port"`
+	Port          string               `json:"port" app:"port"`
 	User          string               `json:"-"`
 	Pass          string               `json:"-"`
-	Version       string               `json:"version"`
+	Version       string               `json:"version" app:"version"`
 	Datadir       string               `json:"datadir"`
 	State         string               `json:"state"`
 	PrevState     string               `json:"prevState"`
@@ -43,7 +43,7 @@ type App struct {
 	Process       *os.Process          `json:"process"`
 	RouteStatus   []config.RouteStatus `json:"routeStatus"`
 	Variables     map[string]string    `json:"-"`
-	AppConfig     *config.AppConfig    `json:"config"`
+	AppConfig     *config.AppConfig    `json:"config" app:"config"`
 	IsStaging     bool                 `json:"isStaging"`
 	*sync.Mutex   `json:"-"`
 }

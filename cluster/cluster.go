@@ -74,18 +74,18 @@ type ClusterResponse struct {
 
 type Cluster struct {
 	OsUser                        *user.User             `json:"-"`
-	Name                          string                 `json:"name"`
+	Name                          string                 `json:"name" app:"name"`
 	Tenant                        string                 `json:"tenant"`
 	WorkingDir                    string                 `json:"workingDir"`
-	Servers                       serverList             `json:"-"`
+	Servers                       serverList             `json:"-" app:"databases"`
 	LogSlaveServers               []string               `json:"-"` //To store slave with log-slave-updates
 	ServerIdList                  []string               `json:"dbServers"`
 	Crashes                       crashList              `json:"dbServersCrashes"` //This will be purged on all db node up
 	FailoverHistory               crashList              `json:"failoverHistory"`  //This will be used for PITR
-	Apps                          appList                `json:"-"`
+	Apps                          appList                `json:"-" app:"applications"`
 	AppIdList                     []string               `json:"appServers"`
-	Proxies                       proxyList              `json:"-"`
-	ProxyIdList                   []string               `json:"proxyServers"`
+	Proxies                       proxyList              `json:"-" app:"proxies"`
+	ProxyIdList                   []string               `json:"proxy-list"`
 	FailoverCtr                   int                    `json:"failoverCounter"`
 	FailoverTs                    int64                  `json:"failoverLastTime"`
 	Status                        string                 `json:"activePassiveStatus"`
@@ -121,7 +121,7 @@ type Cluster struct {
 	IsRefreshStaging              bool                   `json:"isRefreshStaging"`
 	IsNeedStagingChange           bool                   `json:"isNeedStagingChange"`
 	IsConfigPathChange            bool                   `json:"isConfigPathChange"`
-	Conf                          *config.Config         `json:"config"`
+	Conf                          *config.Config         `json:"config" app="config"`
 	Confs                         *config.ConfVersion    `json:"-"`
 	CleanAll                      bool                   `json:"cleanReplication"` //used in testing
 	Topology                      string                 `json:"topology"`
@@ -153,11 +153,11 @@ type Cluster struct {
 	hostList                      []string               `json:"-"`
 	proxyList                     []string               `json:"-"`
 	clusterList                   map[string]*Cluster    `json:"-"`
-	slaves                        serverList             `json:"slaves"`
-	master                        *ServerMonitor         `json:"master"`
+	slaves                        serverList             `json:"slaves" app:"replicas"`
+	master                        *ServerMonitor         `json:"master" app:"leader"`
 	oldMaster                     *ServerMonitor         `json:"oldmaster"`
-	vmaster                       *ServerMonitor         `json:"vmaster"`
-	StagingServer                 *ServerMonitor         `json:"-"`
+	vmaster                       *ServerMonitor         `json:"vmaster" `
+	StagingServer                 *ServerMonitor         `json:"-" app:"staging"`
 	mxs                           *maxscale.MaxScale     `json:"-"`
 	CheckSumConfig                map[string]hash.Hash   `json:"-"`
 	//dbUser                        string                      `json:"-"`

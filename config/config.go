@@ -755,9 +755,9 @@ type Config struct {
 	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
 	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
-	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
-	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
+	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain" app:"cloud18-domain"`
+	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain" app:"cloud18-sub-domain`
+	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" app:"cloud18-sub-domain-zone"`
 	Cloud18GitUser                            string                 `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
 	Cloud18GatewayDomainName                  string                 `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
@@ -815,7 +815,7 @@ type Config struct {
 	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
-	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps"`
+	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" app:"apps"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `toml:"-" json:"-"`
@@ -853,10 +853,10 @@ type AppConfig struct {
 	AppHostsIPV6          string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
-	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser"`
-	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"-"`
-	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema"`
-	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment"`
+	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" app:"application-database-user"`
+	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"-" app:"application-database-password"`
+	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" app:"application-database-schema"`
+	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" app:"deployment`
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {

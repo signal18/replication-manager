@@ -33,25 +33,25 @@ import (
 // Proxy defines a proxy
 type Proxy struct {
 	DatabaseProxy
-	Id              string               `json:"id"`
-	Name            string               `json:"name"`
-	Type            string               `json:"type"`
-	Host            string               `json:"host"`
+	Id              string               `json:"id" app:"id"`
+	Name            string               `json:"name" app:"name"`
+	Type            string               `json:"type" app:"type"`
+	Host            string               `json:"host" app:"fqdn"`
 	HostIPV6        string               `json:"hostIPV6"`
-	Port            string               `json:"port"`
+	Port            string               `json:"port" app:"port"`
 	TunnelPort      int                  `json:"tunnelPort"`
 	TunnelWritePort int                  `json:"tunnelWritePort"`
 	Tunnel          bool                 `json:"tunnel"`
 	User            string               `json:"-"`
 	Pass            string               `json:"-"`
-	WritePort       int                  `json:"writePort"`
-	ReadPort        int                  `json:"readPort"`
-	ReadWritePort   int                  `json:"readWritePort"`
+	WritePort       int                  `json:"writePort" app:"database-write-port"`
+	ReadPort        int                  `json:"readPort" app:"database-read-port"`
+	ReadWritePort   int                  `json:"readWritePort" app:"database-read-write-port"`
 	ReaderHostgroup int                  `json:"readerHostGroup"`
 	WriterHostgroup int                  `json:"writerHostGroup"`
 	BackendsWrite   []Backend            `json:"backendsWrite"`
 	BackendsRead    []Backend            `json:"backendsRead"`
-	Version         string               `json:"version"`
+	Version         string               `json:"version" app:"version"`
 	InternalProxy   *myproxy.Server      `json:"internalProxy"`
 	ShardProxy      *ServerMonitor       `json:"shardProxy"`
 	ClusterGroup    *Cluster             `json:"-"`
