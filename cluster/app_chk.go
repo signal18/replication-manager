@@ -17,7 +17,7 @@ import (
 
 func (app *App) GetMonitoringStatus() string {
 	routes := app.GetAppConfig().Deployment.Routes
-	var primaryStatus string = stateAppRunning
+	var primaryStatus string = app.State
 	if len(routes) == 0 {
 		return stateFailed
 	}

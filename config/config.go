@@ -853,6 +853,9 @@ type AppConfig struct {
 	AppHostsIPV6          string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
+	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser"`
+	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"-"`
+	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema"`
 	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment"`
 }
 

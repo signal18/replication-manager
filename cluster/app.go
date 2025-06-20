@@ -112,6 +112,9 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppHost, "app-host", "app1", "App Host")
 	flags.StringVar(&conf.AppPort, "app-port", "80", "App Port")
+	flags.StringVar(&conf.AppDbUser, "app-db-user", "", "App Database User")
+	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
+	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
 }
 
 func (app *App) Refresh() error {
