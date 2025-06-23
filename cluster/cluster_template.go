@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
+	"github.com/tidwall/gjson"
 )
 
 var reTemplate = regexp.MustCompile(`\{\{\s*((?:\{\{[^{}]+\}\}|[^{}])+?)\s*\}\}`)
@@ -95,11 +95,7 @@ var reTemplate = regexp.MustCompile(`\{\{\s*((?:\{\{[^{}]+\}\}|[^{}])+?)\s*\}\}`
 // }
 
 // OpenSVCParseTemplate parses a template string with placeholders in the format {{key}}.
-func (cluster *Cluster) ParseAppTemplate(template string, data []byte) (string, error) {
-	if data == nil {
-		return template, fmt.Errorf("OpenSVCParseTemplate: data is nil")
-	}
-
+func (cluster *Cluster) ParseAppTemplate(template string, data string) (string, error) {
 	missingKeys := []string{}
 	missingSet := map[string]bool{}
 
@@ -109,53 +105,43 @@ func (cluster *Cluster) ParseAppTemplate(template string, data []byte) (string, 
 			return match // leave unresolved if empty key
 		}
 
-		// Split the key by dots to handle nested keys
-		parts := strings.Split(key, ".")
-		for i, part := range parts {
-			// if it's an index like "0", wrap it in brackets []
-			if idx, err := strconv.Atoi(part); err == nil {
-				parts[i] = fmt.Sprintf("[%d]", idx) // convert to array index format
-			} else {
-				// otherwise, keep it as a string
-				parts[i] = part
-			}
-		}
-		// Check if the key exists in the data
-		val, valtype, _, err := jsonparser.Get(data, parts...)
-		if err != nil {
-			if strings.Contains(err.Error(), "not found") {
-				// If the key is not found, add it to missing keys
-				if !missingSet[key] {
-					missingSet[key] = true
-					missingKeys = append(missingKeys, key)
-				}
-			}
-			return match // leave unresolved
-		} else if valtype == jsonparser.String {
-			// If the value is a string, return it directly
-			return string(val)
-		} else if valtype == jsonparser.Array {
-			// If the value is an array, return it as a comma-separated string
-			var values []string
-			jsonparser.ArrayEach(val, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
-				if dataType == jsonparser.String {
-					values = append(values, string(value))
-				} else {
-					values = append(values, fmt.Sprintf("%v", value))
-				}
-			})
-			return strings.Join(values, ", ")
-		} else if valtype == jsonparser.Object {
-			// cannot handle objects directly, return unresolved
-			// This is a limitation, as we cannot resolve nested objects directly
+		res := gjson.Get(data, key).Value()
+		if res == nil {
 			if !missingSet[key] {
-				missingSet[key] = true
 				missingKeys = append(missingKeys, key)
+				missingSet[key] = true
 			}
-			return match
+			return match // leave unresolved if key not found
+		} else if str, ok := res.(string); ok {
+			return str // return the resolved value
+		} else if num, ok := res.(float64); ok {
+			return strconv.FormatFloat(num, 'f', -1, 64) // return number as string
+		} else if boolVal, ok := res.(bool); ok {
+			if boolVal {
+				return "true" // return boolean as string
+			}
+			return "false"
+		} else if arr, ok := res.([]interface{}); ok {
+			// If it's an array, join the elements with commas
+			strArr := make([]string, len(arr))
+			for i, v := range arr {
+				if str, ok := v.(string); ok {
+					strArr[i] = str
+				} else if num, ok := v.(float64); ok {
+					strArr[i] = strconv.FormatFloat(num, 'f', -1, 64)
+				} else if boolVal, ok := v.(bool); ok {
+					if boolVal {
+						strArr[i] = "true"
+					} else {
+						strArr[i] = "false"
+					}
+				} else {
+					return match // leave unresolved if unsupported type
+				}
+			}
+			return strings.Join(strArr, ", ") // join array elements
 		} else {
-			// For other types, convert to string
-			return fmt.Sprintf("%v", val)
+			return match // leave unresolved if unsupported type
 		}
 	})
 

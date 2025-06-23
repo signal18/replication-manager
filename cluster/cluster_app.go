@@ -139,7 +139,7 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	// If the app cluster substitute is still empty, use the template as is
 	var parsed string = string(content)
 	if app.AppClusterSubstitute != "" {
-		parsed, err = cluster.ParseAppTemplate(string(content), []byte(app.AppClusterSubstitute))
+		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file %s: %s", template, err)
 		}
