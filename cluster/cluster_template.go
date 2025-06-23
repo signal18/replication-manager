@@ -111,6 +111,15 @@ func (cluster *Cluster) ParseAppTemplate(template string, data []byte) (string, 
 
 		// Split the key by dots to handle nested keys
 		parts := strings.Split(key, ".")
+		for i, part := range parts {
+			// if it's an index like "0", wrap it in brackets []
+			if idx, err := strconv.Atoi(part); err == nil {
+				parts[i] = fmt.Sprintf("[%d]", idx) // convert to array index format
+			} else {
+				// otherwise, keep it as a string
+				parts[i] = part
+			}
+		}
 		// Check if the key exists in the data
 		val, valtype, _, err := jsonparser.Get(data, parts...)
 		if err != nil {
