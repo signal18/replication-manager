@@ -6,98 +6,98 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/signal18/replication-manager/config"
+	"github.com/buger/jsonparser"
 )
 
 var reTemplate = regexp.MustCompile(`\{\{\s*((?:\{\{[^{}]+\}\}|[^{}])+?)\s*\}\}`)
 
-// Phase 1: Resolve nested key expressions like {{ {{env}}_{{host}}_url }}
-func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]string) (string, error) {
-	missingKeys := map[string]bool{}
-	cache := map[string]string{}
-	depthExceeded := false
-	// First pass to resolve deepest nested keys
-	resolved, depth := cluster.ResolveTemplateKeysRecursive(template, data, cache, missingKeys, &depthExceeded, 0)
+// // Phase 1: Resolve nested key expressions like {{ {{env}}_{{host}}_url }}
+// func (cluster *Cluster) ResolveTemplateKeys(template string, data map[string]string) (string, error) {
+// 	missingKeys := map[string]bool{}
+// 	cache := map[string]string{}
+// 	depthExceeded := false
+// 	// First pass to resolve deepest nested keys
+// 	resolved, depth := cluster.ResolveTemplateKeysRecursive(template, data, cache, missingKeys, &depthExceeded, 0)
 
-	// If depth is greater than 0, we need to resolve nested keys multiple times
-	if depth > 0 {
-		for i := 0; i < depth; i++ {
-			resolved, _ = cluster.ResolveTemplateKeysRecursive(resolved, data, cache, missingKeys, &depthExceeded, 0)
-		}
-	}
+// 	// If depth is greater than 0, we need to resolve nested keys multiple times
+// 	if depth > 0 {
+// 		for i := 0; i < depth; i++ {
+// 			resolved, _ = cluster.ResolveTemplateKeysRecursive(resolved, data, cache, missingKeys, &depthExceeded, 0)
+// 		}
+// 	}
 
-	if depthExceeded || len(missingKeys) > 0 {
-		missingKeysList := make([]string, 0, len(missingKeys))
-		for key := range missingKeys {
-			missingKeysList = append(missingKeysList, key)
-		}
+// 	if depthExceeded || len(missingKeys) > 0 {
+// 		missingKeysList := make([]string, 0, len(missingKeys))
+// 		for key := range missingKeys {
+// 			missingKeysList = append(missingKeysList, key)
+// 		}
 
-		if depthExceeded {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for template: %s", template)
-		}
-		return resolved, fmt.Errorf("ResolveTemplateKeys: missing keys or depth exceeded: [%s]", strings.Join(missingKeysList, ", "))
-	}
+// 		if depthExceeded {
+// 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for template: %s", template)
+// 		}
+// 		return resolved, fmt.Errorf("ResolveTemplateKeys: missing keys or depth exceeded: [%s]", strings.Join(missingKeysList, ", "))
+// 	}
 
-	return resolved, nil
-}
+// 	return resolved, nil
+// }
 
-func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]string, cache map[string]string, missingKeys map[string]bool, depthExceeded *bool, depth int) (string, int) {
-	deepest := depth
-	resolved := reTemplate.ReplaceAllStringFunc(template, func(match string) string {
-		keyExpr := strings.TrimSpace(match[2 : len(match)-2])
-		if val, ok := cache[keyExpr]; ok {
-			// If the key is already resolved, return it directly
-			return val
-		}
+// func (cluster *Cluster) ResolveTemplateKeysRecursive(template string, data map[string]string, cache map[string]string, missingKeys map[string]bool, depthExceeded *bool, depth int) (string, int) {
+// 	deepest := depth
+// 	resolved := reTemplate.ReplaceAllStringFunc(template, func(match string) string {
+// 		keyExpr := strings.TrimSpace(match[2 : len(match)-2])
+// 		if val, ok := cache[keyExpr]; ok {
+// 			// If the key is already resolved, return it directly
+// 			return val
+// 		}
 
-		if strings.Contains(keyExpr, "{{") && strings.Contains(keyExpr, "}}") {
-			// Nested template key, resolve it recursively
-			if depth <= cluster.Conf.TemplateVariableMaxDepth {
-				result, rdeep := cluster.ResolveTemplateKeysRecursive(keyExpr, data, cache, missingKeys, depthExceeded, depth+1)
-				if rdeep > deepest {
-					deepest = rdeep
-				}
+// 		if strings.Contains(keyExpr, "{{") && strings.Contains(keyExpr, "}}") {
+// 			// Nested template key, resolve it recursively
+// 			if depth <= cluster.Conf.TemplateVariableMaxDepth {
+// 				result, rdeep := cluster.ResolveTemplateKeysRecursive(keyExpr, data, cache, missingKeys, depthExceeded, depth+1)
+// 				if rdeep > deepest {
+// 					deepest = rdeep
+// 				}
 
-				if depth == 0 && !strings.HasPrefix(result, "{{") {
-					return "{{" + result + "}}"
-				} else {
-					// cache nested result
-					if !strings.HasPrefix(result, "{{") && !strings.HasSuffix(result, "}}") {
-						// Add to cache if not already resolved
-						if _, exists := cache[keyExpr]; !exists {
-							cache[keyExpr] = result
-						}
-					}
-					return result
-				}
-			} else {
-				*depthExceeded = true
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for key: %s", keyExpr)
-				return match
-			}
-		}
+// 				if depth == 0 && !strings.HasPrefix(result, "{{") {
+// 					return "{{" + result + "}}"
+// 				} else {
+// 					// cache nested result
+// 					if !strings.HasPrefix(result, "{{") && !strings.HasSuffix(result, "}}") {
+// 						// Add to cache if not already resolved
+// 						if _, exists := cache[keyExpr]; !exists {
+// 							cache[keyExpr] = result
+// 						}
+// 					}
+// 					return result
+// 				}
+// 			} else {
+// 				*depthExceeded = true
+// 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlErr, "ResolveTemplateKeys: depth exceeded for key: %s", keyExpr)
+// 				return match
+// 			}
+// 		}
 
-		// Simple key, check if it exists in data
-		val, ok := data[keyExpr]
-		if ok && depth > 0 {
-			return val
-		} else if !ok {
-			// If the key is not found, add it to missing keys
-			if !missingKeys[keyExpr] {
-				missingKeys[keyExpr] = true
-			}
-		}
+// 		// Simple key, check if it exists in data
+// 		val, ok := data[keyExpr]
+// 		if ok && depth > 0 {
+// 			return val
+// 		} else if !ok {
+// 			// If the key is not found, add it to missing keys
+// 			if !missingKeys[keyExpr] {
+// 				missingKeys[keyExpr] = true
+// 			}
+// 		}
 
-		return match // leave unresolved
-	})
+// 		return match // leave unresolved
+// 	})
 
-	return resolved, deepest
-}
+// 	return resolved, deepest
+// }
 
-// Phase 2: Replace resolved template keys {{key}} to opensvc template syntax {[prefix.]key}
-func (cluster *Cluster) OpenSVCParseTemplate(template string, data map[string]string, prefix string) (string, error) {
+// OpenSVCParseTemplate parses a template string with placeholders in the format {{key}}.
+func (cluster *Cluster) ParseAppTemplate(template string, data []byte) (string, error) {
 	if data == nil {
-		return template, fmt.Errorf("OpenSVCParseTemplate: data map is nil")
+		return template, fmt.Errorf("OpenSVCParseTemplate: data is nil")
 	}
 
 	missingKeys := []string{}
@@ -105,18 +105,49 @@ func (cluster *Cluster) OpenSVCParseTemplate(template string, data map[string]st
 
 	result := reTemplate.ReplaceAllStringFunc(template, func(match string) string {
 		key := strings.TrimSpace(match[2 : len(match)-2])
-		if _, ok := data[key]; ok {
-			if prefix != "" {
-				return fmt.Sprintf("{%s.%s}", prefix, key)
-			} else {
-				return fmt.Sprintf("{%s}", key)
+		if key == "" {
+			return match // leave unresolved if empty key
+		}
+
+		// Split the key by dots to handle nested keys
+		parts := strings.Split(key, ".")
+		// Check if the key exists in the data
+		val, valtype, _, err := jsonparser.Get(data, parts...)
+		if err != nil {
+			if strings.Contains(err.Error(), "not found") {
+				// If the key is not found, add it to missing keys
+				if !missingSet[key] {
+					missingSet[key] = true
+					missingKeys = append(missingKeys, key)
+				}
 			}
+			return match // leave unresolved
+		} else if valtype == jsonparser.String {
+			// If the value is a string, return it directly
+			return string(val)
+		} else if valtype == jsonparser.Array {
+			// If the value is an array, return it as a comma-separated string
+			var values []string
+			jsonparser.ArrayEach(val, func(value []byte, dataType jsonparser.ValueType, offset int, err error) {
+				if dataType == jsonparser.String {
+					values = append(values, string(value))
+				} else {
+					values = append(values, fmt.Sprintf("%v", value))
+				}
+			})
+			return strings.Join(values, ", ")
+		} else if valtype == jsonparser.Object {
+			// cannot handle objects directly, return unresolved
+			// This is a limitation, as we cannot resolve nested objects directly
+			if !missingSet[key] {
+				missingSet[key] = true
+				missingKeys = append(missingKeys, key)
+			}
+			return match
+		} else {
+			// For other types, convert to string
+			return fmt.Sprintf("%v", val)
 		}
-		if !missingSet[key] {
-			missingSet[key] = true
-			missingKeys = append(missingKeys, key)
-		}
-		return match // leave unresolved
 	})
 
 	if len(missingKeys) > 0 {

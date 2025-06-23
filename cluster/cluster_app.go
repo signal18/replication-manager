@@ -117,16 +117,33 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	// Check if the template file exists within share
 	content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error reading template file %s: %s", template, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", template, err)
 		return err
 	}
 
 	// Parse the template content
 	app := cluster.GetAppByConfig(appcnf)
-	parsed, err := cluster.ResolveTemplateKeys(string(content), cluster.OpenSVCGetAppEnvSection(app))
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error parsing template file %s: %s", template, err)
-		return err
+	if app == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App configuration not found for %s:%s", appcnf.AppHost, appcnf.AppPort)
+		return errors.New("app configuration not found")
+	}
+
+	if app.AppClusterSubstitute == "" {
+		// If the app cluster substitute is empty, generate it
+		app.AppClusterSubstitute, err = cluster.GetAppsSubstitutionJSon(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error getting app cluster substitute for %s:%s: %s", appcnf.AppHost, appcnf.AppPort, err)
+		}
+	}
+
+	// If the app cluster substitute is still empty, use the template as is
+	var parsed string = string(content)
+	if app.AppClusterSubstitute != "" {
+		parsed, err = cluster.ParseAppTemplate(string(content), []byte(app.AppClusterSubstitute))
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file %s: %s", template, err)
+			return err
+		}
 	}
 
 	// read parsed content (toml format) and merge it into the app configuration
@@ -134,14 +151,14 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	appViper.SetConfigType("toml")
 	err = appViper.ReadConfig(strings.NewReader(parsed))
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error reading parsed template file %s: %s", template, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading parsed template file %s: %s", template, err)
 		return err
 	}
 
 	// Unmarshal the parsed content into the app configuration
 	err = appViper.Unmarshal(appcnf)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGraphite, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
 		return err
 	}
 
