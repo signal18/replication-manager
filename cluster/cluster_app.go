@@ -357,6 +357,10 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	cluster.Lock()
 	cluster.newAppList()
 	cluster.Unlock()
+	app := cluster.GetAppByConfig(appcnf)
+	if app != nil {
+		app.CheckPrimaryRoute()
+	}
 	cluster.LoadAppTemplate(appcnf, template)
 	return nil
 }
