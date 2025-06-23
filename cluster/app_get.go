@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/buger/jsonparser"
 	"github.com/liip/sheriff/v2"
 
 	//jsoniter "github.com/json-iterator/go"
@@ -22,7 +23,7 @@ import (
 	"github.com/signal18/replication-manager/opensvc"
 )
 
-func (cluster *Cluster) GetAppsSubstitutionJSon() (string, error) {
+func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
 
 	o := &sheriff.Options{Groups: []string{"apps"}}
 	data, err := sheriff.Marshal(o, cluster)
@@ -30,7 +31,23 @@ func (cluster *Cluster) GetAppsSubstitutionJSon() (string, error) {
 		return "", err
 	}
 	result, err2 := json.Marshal(data)
-	return string(result), err2
+	if err2 != nil {
+		return string(result), err2
+	}
+
+	// Add app specific data
+	child, err3 := sheriff.Marshal(o, app)
+	if err3 != nil {
+		return string(result), err3
+	}
+
+	result2, err4 := json.Marshal(child)
+	if err4 != nil {
+		return string(result), err4
+	}
+
+	result, err5 := jsonparser.Set(result, result2, "app")
+	return string(result), err5
 
 }
 

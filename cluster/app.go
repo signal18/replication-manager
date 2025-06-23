@@ -22,7 +22,7 @@ import (
 
 // App defines a app
 type App struct {
-	Id                   string               `json:"id" groups:"app"`
+	Id                   string               `json:"id" groups:"apps"`
 	Name                 string               `json:"name" groups:"apps"`
 	Type                 string               `json:"type" groups:"apps""`
 	Host                 string               `json:"host" groups:"apps"`
@@ -110,7 +110,7 @@ func (app *App) Refresh() error {
 	cluster := app.ClusterGroup
 	app.CheckPrimaryRoute()
 	appState := app.GetMonitoringStatus()
-	sub, err := cluster.GetAppsSubstitutionJSon()
+	sub, err := cluster.GetAppsSubstitutionJSon(app)
 	if err == nil {
 		app.AppClusterSubstitute = sub
 	}
