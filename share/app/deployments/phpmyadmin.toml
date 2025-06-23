@@ -9,4 +9,4 @@
     locked = false
     name = "PMA_ABSOLUTE_URI"
     type = "env"
-    value = "https://{{ app.deployment.primaryRoute.cname }}/"
+    value = "https://{{ app.config.deployment.primaryRoute.cname }}/"
