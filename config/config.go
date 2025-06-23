@@ -945,36 +945,36 @@ func (a AVSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a AVSorter) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
 
 type VariableMapping struct {
-	Name        string          `mapstructure:"name" toml:"name" json:"name"`
-	Value       string          `mapstructure:"value" toml:"value" json:"value"`
-	Type        string          `mapstructure:"type" toml:"type" json:"type" options:"secret|env"`
-	Locked      bool            `mapstructure:"locked" toml:"locked" json:"locked"`
-	Conditional []AgentVariable `mapstructure:"conditional" toml:"conditional" json:"conditional"` // This is used to set the variable value only if the agent matches
+	Name        string          `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	Value       string          `mapstructure:"value" toml:"value" json:"value" groups:"apps"`
+	Type        string          `mapstructure:"type" toml:"type" json:"type" options:"secret|env" groups:"apps"`
+	Locked      bool            `mapstructure:"locked" toml:"locked" json:"locked" groups:"apps"`
+	Conditional []AgentVariable `mapstructure:"conditional" toml:"conditional" json:"conditional" groups:"apps"` // This is used to set the variable value only if the agent matches
 }
 
 type PathMapping struct {
-	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var"` // This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}
-	From      string   `toml:"from" json:"from"`
-	To        string   `toml:"to" json:"to"`
-	Type      string   `toml:"type" json:"type" options:"shm|direct"`
-	Agents    []string `toml:"agents" json:"agents" example:"all"`
+	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"` // This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}
+	From      string   `toml:"from" json:"from" groups:"apps"`
+	To        string   `toml:"to" json:"to" groups:"apps"`
+	Type      string   `toml:"type" json:"type" options:"shm|direct" groups:"apps"`
+	Agents    []string `toml:"agents" json:"agents" example:"all" groups:"apps"`
 }
 
 type GitClone struct {
-	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo"`
-	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch"`
-	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"config|data"`
-	Dest      string `mapstructure:"dest" toml:"dest" json:"dest"`
-	GitUser   string `mapstructure:"user" toml:"user" json:"user"`
-	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass"`
-	Timeout   int    `mapstructure:"timeout" toml:"timeout" json:"timeout"`
+	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo" groups:"apps"`
+	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch" groups:"apps"`
+	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"config|data" groups:"apps"`
+	Dest      string `mapstructure:"dest" toml:"dest" json:"dest" groups:"apps"`
+	GitUser   string `mapstructure:"user" toml:"user" json:"user" groups:"apps"`
+	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass" groups:"apps"`
+	Timeout   int    `mapstructure:"timeout" toml:"timeout" json:"timeout" groups:"apps"`
 }
 
 type Route struct {
-	CName    string `mapstructure:"cname"  toml:"cname" json:"cname"`
-	Port     string `mapstructure:"port"  toml:"port" json:"port"`
-	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp"`
-	Primary  bool   `mapstructure:"primary"  toml:"primary" json:"primary"`
+	CName    string `mapstructure:"cname"  toml:"cname" json:"cname" groups:"apps"`
+	Port     string `mapstructure:"port"  toml:"port" json:"port" groups:"apps"`
+	Protocol string `mapstructure:"protocol"  toml:"protocol" json:"protocol" options:"https|tcp" groups:"apps"`
+	Primary  bool   `mapstructure:"primary"  toml:"primary" json:"primary" groups:"apps"`
 }
 
 type RouteStatus struct {
