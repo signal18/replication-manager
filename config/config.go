@@ -854,7 +854,7 @@ type AppConfig struct {
 	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
 	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
-	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"-" groups:"apps"`
+	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
 	AppDbPassClear        string     `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
 	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
 	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`

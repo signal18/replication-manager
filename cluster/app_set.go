@@ -135,6 +135,12 @@ func (p *App) SetSetting(key, value string) error {
 		p.AppConfig.ProvAppAgents = value
 	case "app-port":
 		p.AppConfig.AppPort = value
+	case "app-db-user":
+		p.AppConfig.AppDbUser = value
+	case "app-db-pass":
+		p.AppConfig.AppDbPass = value
+	case "app-db-schema":
+		p.AppConfig.AppDbSchema = value
 	default:
 		return errors.New("unknown setting: " + key)
 	}

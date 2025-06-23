@@ -7019,6 +7019,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 
 		for idx := range mycluster.Apps {
 			apps = jsonparser.Delete(apps, fmt.Sprintf("[%d]", idx), "config", "deployment")
+			apps, _ = jsonparser.Set(apps, []byte("******"), fmt.Sprintf("[%d]", idx), "config", "appDbPass")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
