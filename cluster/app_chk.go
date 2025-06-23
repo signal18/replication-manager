@@ -129,3 +129,25 @@ func (app *App) GetAppTCPStatus(route config.Route) error {
 	// If we can connect, the app is running
 	return nil
 }
+
+func (app *App) CheckPrimaryRoute() {
+	cluster := app.ClusterGroup
+	hasPrimaryRoute := false
+	for _, route := range app.AppConfig.Deployment.Routes {
+		if route.Primary {
+			hasPrimaryRoute = true
+			break
+		}
+	}
+	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
+		app.AppConfig.Deployment.Routes[0].Primary = true
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
+	}
+
+	for _, route := range app.AppConfig.Deployment.Routes {
+		if route.Primary {
+			app.AppConfig.Deployment.PrimaryRoute = route
+			break
+		}
+	}
+}

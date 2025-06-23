@@ -983,10 +983,11 @@ type RouteStatus struct {
 }
 
 type Deployment struct {
-	Variables []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables"`
-	Paths     []PathMapping     `mapstructure:"paths"  toml:"paths" json:"paths"`
-	Routes    []Route           `mapstructure:"routes"  toml:"routes" json:"routes"`
-	GitClones []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones"`
+	PrimaryRoute Route             `mapstructure:"-"  toml:"-" json:"primaryRoute" groups:"apps"`
+	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
+	Paths        []PathMapping     `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
+	Routes       []Route           `mapstructure:"routes"  toml:"routes" json:"routes" groups:"apps"`
+	GitClones    []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones" groups:"apps"`
 }
 
 func NewDeploymentConfig() *Deployment {

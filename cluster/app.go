@@ -94,18 +94,7 @@ func NewApp(placement int, cluster *Cluster, appHost string) *App {
 	}
 
 	app.RouteStatus = make([]config.RouteStatus, 0)
-	hasPrimaryRoute := false
-	for _, route := range app.AppConfig.Deployment.Routes {
-		if route.Primary {
-			hasPrimaryRoute = true
-			break
-		}
-	}
-	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
-		app.AppConfig.Deployment.Routes[0].Primary = true
-		cluster.LogModulePrintf(conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
-	}
-
+	app.CheckPrimaryRoute()
 	return app
 }
 
@@ -119,6 +108,7 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 
 func (app *App) Refresh() error {
 	cluster := app.ClusterGroup
+	app.CheckPrimaryRoute()
 	appState := app.GetMonitoringStatus()
 	sub, err := cluster.GetAppsSubstitutionJSon()
 	if err == nil {
