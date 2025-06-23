@@ -357,8 +357,8 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 
 	cluster.Lock()
 	cluster.newAppList()
-	cluster.LoadAppTemplate(appcnf, template)
 	cluster.Unlock()
+	cluster.LoadAppTemplate(appcnf, template)
 	return nil
 }
 
