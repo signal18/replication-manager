@@ -4801,6 +4801,11 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			}
 		}
 
+		// Reduce the content of the cluster object
+		cl = jsonparser.Delete(cl, "config", "apps")
+		cl = jsonparser.Delete(cl, "servers")
+		cl = jsonparser.Delete(cl, "proxies")
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
 	} else {
