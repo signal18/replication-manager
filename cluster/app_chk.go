@@ -136,18 +136,13 @@ func (app *App) CheckPrimaryRoute() {
 	for _, route := range app.AppConfig.Deployment.Routes {
 		if route.Primary {
 			hasPrimaryRoute = true
+			app.AppConfig.Deployment.PrimaryRoute = route
 			break
 		}
 	}
 	if !hasPrimaryRoute && len(app.AppConfig.Deployment.Routes) > 0 {
 		app.AppConfig.Deployment.Routes[0].Primary = true
+		app.AppConfig.Deployment.PrimaryRoute = app.AppConfig.Deployment.Routes[0]
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
-	}
-
-	for _, route := range app.AppConfig.Deployment.Routes {
-		if route.Primary {
-			app.AppConfig.Deployment.PrimaryRoute = route
-			break
-		}
 	}
 }
