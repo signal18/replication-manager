@@ -930,8 +930,6 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {
-	result := make(map[string]struct{})
-
 	url := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(svc))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
@@ -974,24 +972,71 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
-	key := `nodes.@values.#.[{node:nodes.@keys,val:nodes.@values.#.status.avail}].0.@group.@values.#(val=="up")#.node`
+	key := `nodes.@values.#.{node:nodes.@keys,val:nodes.@values.#.status.avail}.@group.#(val=="up")#.node`
 	results := gjson.GetBytes(body, key)
-	for _, r := range results.Array() {
-		if r.Exists() {
-			node := r.Raw
-			if node != "" {
-				result[node] = struct{}{}
+	if !results.Exists() {
+		return nil, errors.New("Service node not found")
+	}
+
+	nodes := collector.GetUniqueNodes(results.Value())
+	if len(nodes) == 0 {
+		return nil, errors.New("No nodes found for service")
+	}
+
+	return nodes, nil
+}
+
+func (collector *Collector) GetUniqueNodes(slices interface{}) []string {
+	uniqueMap := make(map[string]struct{})
+	if slices == nil {
+		return nil
+	}
+
+	slices, ok := slices.([]interface{})
+	if !ok {
+		collector.GetUniqueValuesFromSlicesRecursive([]interface{}{slices}, uniqueMap)
+	}
+
+	for _, item := range slices.([]interface{}) {
+		if arr, ok := item.([]interface{}); ok {
+			collector.GetUniqueValuesFromSlicesRecursive(arr, uniqueMap)
+		}
+
+		if str, ok := item.(string); ok && str != "" {
+			uniqueMap[str] = struct{}{}
+		}
+	}
+
+	uniqueSlice := make([]string, 0, len(uniqueMap))
+	for key := range uniqueMap {
+		uniqueSlice = append(uniqueSlice, key)
+	}
+
+	return uniqueSlice
+}
+
+func (collector *Collector) GetUniqueValuesFromSlicesRecursive(slices []interface{}, valuemap map[string]struct{}) {
+	for _, item := range slices {
+		if arr, ok := item.([]interface{}); ok {
+			collector.GetUniqueValuesFromSlicesRecursive(arr, valuemap)
+			continue
+		}
+
+		switch v := item.(type) {
+		case string:
+			if v != "" {
+				valuemap[v] = struct{}{}
+			}
+		case bool:
+			valuemap[strconv.FormatBool(v)] = struct{}{}
+		case float64:
+			valuemap[strconv.FormatFloat(v, 'f', -1, 64)] = struct{}{}
+		case int:
+			valuemap[strconv.Itoa(v)] = struct{}{}
+		default:
+			if item != nil {
+				collector.Logrus.WithField("FROM", "OpenSVC").Warnln("Unhandled type in GetUniqueValuesFromSlicesRecursive:", v)
 			}
 		}
 	}
-
-	if len(result) > 0 {
-		uniqueResult := make([]string, 0, len(result))
-		for k := range result {
-			uniqueResult = append(uniqueResult, k)
-		}
-		return uniqueResult, nil
-	}
-
-	return nil, errors.New("Service node not found")
 }
