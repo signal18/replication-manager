@@ -16,14 +16,16 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
@@ -51,6 +53,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCluster)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/opensvc-gateway", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGatewayServiceNodes)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -638,8 +645,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		for _, srv := range mycluster.GetServers() {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
-			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			data, err = jsonparser.Set(data, list, "binaryLogFiles")
+			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), 500)
 				return
@@ -718,8 +724,7 @@ func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWri
 		for _, srv := range mycluster.GetServersByState(vars["state"]) {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
-			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			data, err = jsonparser.Set(data, list, "binaryLogFiles")
+			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), 500)
 				return
@@ -808,8 +813,7 @@ func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.Resp
 		}
 
 		data, _ := json.Marshal(srv)
-		list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-		data, err = jsonparser.Set(data, list, "binaryLogFiles")
+		data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 		if err != nil {
 			http.Error(w, "Encoding error: "+err.Error(), 500)
 			return
@@ -855,21 +859,28 @@ func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w 
 			return
 		}
 
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
 		var value []byte
-		var valtype jsonparser.ValueType
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
+
 		if vars["attrName"] == "binaryLogFiles" {
 			value, _ = json.Marshal(srv.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ := json.Marshal(srv)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
+				data, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(srv)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			value = []byte(resultval.String())
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -1035,26 +1046,33 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 			return
 		}
 
-		var data, value []byte
-		var valtype jsonparser.ValueType
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
+		var value []byte
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 		// get the value from the json path
 		// if the attribute is binaryLogFiles, we need to convert the map to json
 		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
 		// otherwise, we just get the value from the json path
 		if vars["attrName"] == "binaryLogFiles" {
 			value, _ = json.Marshal(slave.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ = json.Marshal(slave.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ = json.Marshal(slave)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
+				data, _ := json.Marshal(slave.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(slave)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		// if the value is not found, return an error
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			// if the value is not found, return an error
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			// convert the value to bytes
+			value = []byte(resultval.String())
 		}
 
 		// Write the value to the response
@@ -4784,27 +4802,24 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			return
 		}
 
-		for crkey, _ := range mycluster.Conf.Secrets {
-			cl, err = jsonparser.Set(cl, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+		for crkey := range mycluster.Conf.Secrets {
+			cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
 		}
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
 		}
 
-		list, _ := json.Marshal(mycluster.BackupMetaMap.ToNewMap())
-		if len(list) > 0 {
-			cl, err = jsonparser.Set(cl, list, "backupList")
-			if err != nil {
-				http.Error(w, "Encoding error", 500)
-				return
-			}
+		cl, err = sjson.SetBytes(cl, "backupList", mycluster.BackupMetaMap.ToNewMap())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
 		}
 
 		// Reduce the content of the cluster object
-		cl = jsonparser.Delete(cl, "config", "apps")
-		cl = jsonparser.Delete(cl, "servers")
-		cl = jsonparser.Delete(cl, "proxies")
+		cl, _ = sjson.DeleteBytes(cl, "config.apps")
+		cl, _ = sjson.DeleteBytes(cl, "servers")
+		cl, _ = sjson.DeleteBytes(cl, "proxies")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
@@ -7023,8 +7038,8 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		}
 
 		for idx := range mycluster.Apps {
-			apps = jsonparser.Delete(apps, fmt.Sprintf("[%d]", idx), "config", "deployment")
-			apps, _ = jsonparser.Set(apps, []byte(`"*****"`), fmt.Sprintf("[%d]", idx), "config", "appDbPass")
+			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.config.deployment", idx))
+			apps, _ = sjson.SetBytes(apps, fmt.Sprintf("%d.config.appDbPass", idx), "*****")
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -7178,6 +7193,55 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 		if err := encoder.Encode(results); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
 			http.Error(w, "Error encoding JSON: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterGatewayServiceNodes handles the HTTP request to retrieve the gateway nodes of a cluster.
+// @Summary Get Cluster Gateway Nodes
+// @Description Retrieves the gateway nodes of the specified cluster.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} opensvc.ServiceNode "List of gateway nodes"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting gateway nodes
+// @Router /api/clusters/{clusterName}/opensvc-gateway [get]
+func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		svc := mycluster.OpenSVCConnect()
+		nodes, err := svc.GetServiceNodeFromState(mycluster.Conf.Cloud18GatewayService)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
+			http.Error(w, "Error getting gateway nodes: "+err.Error(), 500)
+			return
+		}
+
+		// Marshal provided interface into JSON structure
+		nodesJSON, err := json.Marshal(nodes)
+		if err != nil {
+			http.Error(w, "Error marshalling nodes: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(nodesJSON)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response: "+err.Error(), 500)
 			return
 		}
 	} else {

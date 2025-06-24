@@ -21,8 +21,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/signal18/replication-manager/config"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	//	pkcs12 "software.sslmate.com/src/go-pkcs12"
 
@@ -625,7 +626,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
-	jsondata, err = jsonparser.Set(jsondata, template, "data", srv)
+	jsondata, err = sjson.SetRawBytes(jsondata, fmt.Sprintf("data.%s", srv), template)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
 			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("JSON Set Error: ", err)
@@ -973,41 +974,15 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
-	nodeparser := func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
-		collector.Logrus.WithField("FROM", "OpenSVC").Debugf("OpenSVC node: %s", value)
-		if dataType == jsonparser.Object {
-			status, err := jsonparser.GetString(value, "status", "avail")
-			if err == nil {
-				if status == "up" {
-					result[string(key)] = struct{}{}
-				}
+	key := `nodes.@values.[{node:nodes.@keys,val:nodes.@values.status.avail}].0.@group.@values.#(val=="up")#.node`
+	results := gjson.GetBytes(body, key)
+	for _, r := range results.Array() {
+		if r.Exists() {
+			node := r.String()
+			if node != "" {
+				result[node] = struct{}{}
 			}
 		}
-		return nil
-	}
-
-	scopes, _, _, err := jsonparser.Get(body, "nodes")
-	scopeparser := func(key []byte, value []byte, dataType jsonparser.ValueType, offset int) error {
-		collector.Logrus.WithField("FROM", "OpenSVC").Debugf("OpenSVC scope: %s", value)
-		if dataType == jsonparser.Object {
-			nodes, _, _, err := jsonparser.Get(value, "nodes")
-			if err == nil {
-				err = jsonparser.ObjectEach(nodes, nodeparser)
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	}
-
-	if err == nil {
-		err = jsonparser.ObjectEach(scopes, scopeparser)
-		if err != nil {
-			return nil, fmt.Errorf("Error iterating within nodes: %s", err.Error())
-		}
-	} else {
-		return nil, fmt.Errorf("Error getting nodes from body: %s", err.Error())
 	}
 
 	if len(result) > 0 {

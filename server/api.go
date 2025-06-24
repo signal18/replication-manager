@@ -29,11 +29,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/iancoleman/strcase"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/sjson"
 	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
@@ -870,16 +870,10 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 		return
 	}
 
-	clres, err := json.Marshal(cl)
-	if err != nil {
-		http.Error(w, "Error Marshal", 500)
-		return
-	}
+	res, err = sjson.SetBytes(res, "clusters", cl)
 
-	res, err = jsonparser.Set(res, clres, "clusters")
-
-	for crkey, _ := range repman.Conf.Secrets {
-		res, err = jsonparser.Set(res, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+	for crkey := range repman.Conf.Secrets {
+		res, err = sjson.SetBytes(res, "config."+strcase.ToLowerCamel(crkey), "*:*")
 	}
 
 	if err != nil {
@@ -1086,8 +1080,8 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		}
 
 		for i, cluster := range clusters {
-			for crkey, _ := range cluster.Conf.Secrets {
-				cl, err = jsonparser.Set(cl, []byte(`"*:*" `), fmt.Sprintf("[%d]", i), "config", strcase.ToLowerCamel(crkey))
+			for crkey := range cluster.Conf.Secrets {
+				cl, err = sjson.SetBytes(cl, fmt.Sprintf("%d.config.%s", i, strcase.ToLowerCamel(crkey)), "*:*")
 				if err != nil {
 					http.Error(w, "Encoding error", 500)
 					return

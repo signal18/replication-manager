@@ -17,12 +17,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/tidwall/sjson"
 )
 
 func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
@@ -481,7 +481,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 			for gidx, v := range node.AppConfig.Deployment.Variables {
 				if v.Type == "secret" {
-					dep, err = jsonparser.Set(dep, []byte(`"*****"`), "variables", fmt.Sprintf("[%d]", gidx), "value")
+					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", gidx), "*****")
 					if err != nil {
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 						http.Error(w, "Encoding error", 500)
@@ -491,7 +491,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			}
 
 			for gidx := range node.AppConfig.Deployment.GitClones {
-				dep, err = jsonparser.Set(dep, []byte(`"*****"`), "gitClones", fmt.Sprintf("[%d]", gidx), "pass")
+				dep, err = sjson.SetBytes(dep, fmt.Sprintf("gitClones.%d.pass", gidx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 					http.Error(w, "Encoding error", 500)

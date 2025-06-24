@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/buger/jsonparser"
 	"github.com/liip/sheriff/v2"
+	"github.com/tidwall/sjson"
 
 	//jsoniter "github.com/json-iterator/go"
 	"github.com/signal18/replication-manager/config"
@@ -41,12 +41,7 @@ func (cluster *Cluster) GetAppsSubstitutionJSon(app *App) (string, error) {
 		return string(result), err3
 	}
 
-	result2, err4 := json.Marshal(child)
-	if err4 != nil {
-		return string(result), err4
-	}
-
-	result, err5 := jsonparser.Set(result, result2, "app")
+	result, err5 := sjson.SetBytes(result, "app", child)
 	return string(result), err5
 
 }

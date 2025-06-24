@@ -12,16 +12,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -485,8 +487,7 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 
 		var cont map[string]interface{}
 		data, _ := json.Marshal(node)
-		list, _ := json.Marshal(node.BinaryLogFiles.ToNewMap())
-		data, err = jsonparser.Set(data, list, "binaryLogFiles")
+		data, err = sjson.SetBytes(data, "binaryLogFiles", node.BinaryLogFiles.ToNewMap())
 		if err != nil {
 			http.Error(w, "Encoding error: "+err.Error(), 500)
 			return
@@ -547,26 +548,33 @@ func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWrite
 			return
 		}
 
-		var data, value []byte
-		var valtype jsonparser.ValueType
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
+		var value []byte
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 		// get the value from the json path
 		// if the attribute is binaryLogFiles, we need to convert the map to json
 		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
 		// otherwise, we just get the value from the json path
-		if vars["attrName"] == "binaryLogFiles" {
+		if jsonpath == "binaryLogFiles" {
 			value, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ = json.Marshal(node)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(jsonpath, "binaryLogFiles.") {
+				data, _ := json.Marshal(node.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(node)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		// if the value is not found, return an error
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			// if the value is not found, return an error
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			// convert the result to bytes
+			value = []byte(resultval.String())
 		}
 
 		// Write the value to the response
