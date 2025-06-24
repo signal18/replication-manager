@@ -978,7 +978,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 	results := gjson.GetBytes(body, key)
 	for _, r := range results.Array() {
 		if r.Exists() {
-			node := r.String()
+			node := r.Raw
 			if node != "" {
 				result[node] = struct{}{}
 			}
