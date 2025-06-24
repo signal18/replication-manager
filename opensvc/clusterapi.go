@@ -974,7 +974,7 @@ func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
-	key := `nodes.@values.[{node:nodes.@keys,val:nodes.@values.status.avail}].0.@group.@values.#(val=="up")#.node`
+	key := `nodes.@values.#.[{node:nodes.@keys,val:nodes.@values.#.status.avail}].0.@group.@values.#(val=="up")#.node`
 	results := gjson.GetBytes(body, key)
 	for _, r := range results.Array() {
 		if r.Exists() {
