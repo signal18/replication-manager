@@ -3454,6 +3454,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/service-opensvc": {
+            "get": {
+                "description": "Retrieves the OpenSVC service configuration for a specific app.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Get App Service Config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OpenSVC service configuration",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating OpenSVC config template\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/archives": {
             "get": {
                 "description": "This endpoint retrieves the backups for the specified cluster.",
@@ -4705,6 +4764,58 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "503 -No rolling restart needed!\" or \"500 -No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/opensvc-gateway": {
+            "get": {
+                "description": "Retrieves the gateway nodes of the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterGateway"
+                ],
+                "summary": "Get Cluster Gateway Nodes",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of gateway nodes",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error getting gateway nodes",
                         "schema": {
                             "type": "string"
                         }
@@ -16270,6 +16381,9 @@ const docTemplate = `{
                 "agent": {
                     "type": "string"
                 },
+                "appClusterSubstitute": {
+                    "type": "string"
+                },
                 "config": {
                     "$ref": "#/definitions/config.AppConfig"
                 },
@@ -16288,9 +16402,6 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
-                "isStaging": {
-                    "type": "boolean"
-                },
                 "name": {
                     "type": "string"
                 },
@@ -16302,6 +16413,12 @@ const docTemplate = `{
                 },
                 "process": {
                     "$ref": "#/definitions/os.Process"
+                },
+                "routeStatus": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.RouteStatus"
+                    }
                 },
                 "serviceName": {
                     "type": "string"
@@ -16383,6 +16500,12 @@ const docTemplate = `{
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "apps": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.App"
                     }
                 },
                 "backupList": {
@@ -16583,6 +16706,13 @@ const docTemplate = `{
                 "log": {
                     "$ref": "#/definitions/s18log.HttpLog"
                 },
+                "logSlaveServers": {
+                    "description": "To store slave with log-slave-updates",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "logTask": {
                     "$ref": "#/definitions/s18log.HttpLog"
                 },
@@ -16601,10 +16731,20 @@ const docTemplate = `{
                 "partner": {
                     "$ref": "#/definitions/config.Partner"
                 },
-                "proxyServers": {
+                "proxies": {
+                    "type": "array",
+                    "items": {}
+                },
+                "proxy-list": {
                     "type": "array",
                     "items": {
                         "type": "string"
+                    }
+                },
+                "servers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.ServerMonitor"
                     }
                 },
                 "slaHistory": {
@@ -17010,7 +17150,7 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "dbVersion": {
-                    "$ref": "#/definitions/version.Version"
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_utils_version.Version"
                 },
                 "dbdataDir": {
                     "type": "string"
@@ -17529,7 +17669,19 @@ const docTemplate = `{
         "config.AppConfig": {
             "type": "object",
             "properties": {
+                "appDbPass": {
+                    "type": "string"
+                },
+                "appDbSchema": {
+                    "type": "string"
+                },
+                "appDbUser": {
+                    "type": "string"
+                },
                 "appHost": {
+                    "type": "string"
+                },
+                "appHostsIpv6": {
                     "type": "string"
                 },
                 "appPort": {
@@ -17569,6 +17721,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppServiceType": {
+                    "type": "string"
+                },
+                "provAppTemplate": {
                     "type": "string"
                 },
                 "provAppVolumeData": {
@@ -17678,6 +17833,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/config.PathMapping"
                     }
+                },
+                "primaryRoute": {
+                    "$ref": "#/definitions/config.Route"
                 },
                 "routes": {
                     "type": "array",
@@ -17856,7 +18014,30 @@ const docTemplate = `{
                 "port": {
                     "type": "string"
                 },
+                "primary": {
+                    "type": "boolean"
+                },
                 "protocol": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.RouteStatus": {
+            "type": "object",
+            "properties": {
+                "cname": {
+                    "type": "string"
+                },
+                "port": {
+                    "type": "string"
+                },
+                "primary": {
+                    "type": "boolean"
+                },
+                "protocol": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -18378,14 +18559,14 @@ const docTemplate = `{
                 "apiTokenTimeout": {
                     "type": "integer"
                 },
+                "app": {
+                    "type": "boolean"
+                },
                 "appHosts": {
                     "type": "string"
                 },
                 "appHostsIpv6": {
                     "type": "string"
-                },
-                "appOn": {
-                    "type": "boolean"
                 },
                 "apps": {
                     "type": "array",
@@ -20487,6 +20668,12 @@ const docTemplate = `{
                 "sysbenchV1": {
                     "type": "boolean"
                 },
+                "templateStrict": {
+                    "type": "boolean"
+                },
+                "templateVarMaxDepth": {
+                    "type": "integer"
+                },
                 "terminalSessionEnabled": {
                     "type": "boolean"
                 },
@@ -20568,6 +20755,32 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "serverUrl": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_signal18_replication-manager_utils_version.Version": {
+            "type": "object",
+            "properties": {
+                "dist": {
+                    "$ref": "#/definitions/github_com_signal18_replication-manager_utils_version.Version"
+                },
+                "flavor": {
+                    "type": "string"
+                },
+                "major": {
+                    "type": "integer"
+                },
+                "minor": {
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "release": {
+                    "type": "integer"
+                },
+                "suffix": {
                     "type": "string"
                 }
             }
@@ -21270,6 +21483,10 @@ const docTemplate = `{
                     "description": "true if private registry, false if public",
                     "type": "boolean"
                 },
+                "template": {
+                    "description": "Optional template for the registry, e.g., \"docker.io\" or \"quay.io\"",
+                    "type": "string"
+                },
                 "update": {
                     "description": "true if updating existing credentials, false if new credentials",
                     "type": "boolean"
@@ -21490,6 +21707,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.Tarball"
                     }
                 },
+                "serviceTemplates": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "serviceVM": {
                     "type": "object",
                     "additionalProperties": {
@@ -21687,32 +21910,6 @@ const docTemplate = `{
                 },
                 "username": {
                     "description": "Username is the login name.",
-                    "type": "string"
-                }
-            }
-        },
-        "version.Version": {
-            "type": "object",
-            "properties": {
-                "dist": {
-                    "$ref": "#/definitions/version.Version"
-                },
-                "flavor": {
-                    "type": "string"
-                },
-                "major": {
-                    "type": "integer"
-                },
-                "minor": {
-                    "type": "integer"
-                },
-                "path": {
-                    "type": "string"
-                },
-                "release": {
-                    "type": "integer"
-                },
-                "suffix": {
                     "type": "string"
                 }
             }

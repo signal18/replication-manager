@@ -117,6 +117,8 @@ definitions:
     properties:
       agent:
         type: string
+      appClusterSubstitute:
+        type: string
       config:
         $ref: '#/definitions/config.AppConfig'
       datadir:
@@ -129,8 +131,6 @@ definitions:
         type: string
       id:
         type: string
-      isStaging:
-        type: boolean
       name:
         type: string
       port:
@@ -139,6 +139,10 @@ definitions:
         type: string
       process:
         $ref: '#/definitions/os.Process'
+      routeStatus:
+        items:
+          $ref: '#/definitions/config.RouteStatus'
+        type: array
       serviceName:
         type: string
       slaposDatadir:
@@ -192,6 +196,10 @@ definitions:
       appServers:
         items:
           type: string
+        type: array
+      apps:
+        items:
+          $ref: '#/definitions/cluster.App'
         type: array
       backupList:
         $ref: '#/definitions/config.BackupMetaMap'
@@ -326,6 +334,11 @@ definitions:
         type: string
       log:
         $ref: '#/definitions/s18log.HttpLog'
+      logSlaveServers:
+        description: To store slave with log-slave-updates
+        items:
+          type: string
+        type: array
       logTask:
         $ref: '#/definitions/s18log.HttpLog'
       monitorSpin:
@@ -338,9 +351,16 @@ definitions:
         type: string
       partner:
         $ref: '#/definitions/config.Partner'
-      proxyServers:
+      proxies:
+        items: {}
+        type: array
+      proxy-list:
         items:
           type: string
+        type: array
+      servers:
+        items:
+          $ref: '#/definitions/cluster.ServerMonitor'
         type: array
       slaHistory:
         items:
@@ -615,7 +635,7 @@ definitions:
       datadir:
         type: string
       dbVersion:
-        $ref: '#/definitions/version.Version'
+        $ref: '#/definitions/github_com_signal18_replication-manager_utils_version.Version'
       dbdataDir:
         type: string
       delayStat:
@@ -962,7 +982,15 @@ definitions:
     type: object
   config.AppConfig:
     properties:
+      appDbPass:
+        type: string
+      appDbSchema:
+        type: string
+      appDbUser:
+        type: string
       appHost:
+        type: string
+      appHostsIpv6:
         type: string
       appPort:
         type: string
@@ -989,6 +1017,8 @@ definitions:
       provAppRoutePort:
         type: string
       provAppServiceType:
+        type: string
+      provAppTemplate:
         type: string
       provAppVolumeData:
         type: string
@@ -1061,6 +1091,8 @@ definitions:
         items:
           $ref: '#/definitions/config.PathMapping'
         type: array
+      primaryRoute:
+        $ref: '#/definitions/config.Route'
       routes:
         items:
           $ref: '#/definitions/config.Route'
@@ -1177,7 +1209,22 @@ definitions:
         type: string
       port:
         type: string
+      primary:
+        type: boolean
       protocol:
+        type: string
+    type: object
+  config.RouteStatus:
+    properties:
+      cname:
+        type: string
+      port:
+        type: string
+      primary:
+        type: boolean
+      protocol:
+        type: string
+      status:
         type: string
     type: object
   config.ServicePlan:
@@ -1529,12 +1576,12 @@ definitions:
         type: boolean
       apiTokenTimeout:
         type: integer
+      app:
+        type: boolean
       appHosts:
         type: string
       appHostsIpv6:
         type: string
-      appOn:
-        type: boolean
       apps:
         items:
           $ref: '#/definitions/config.AppConfig'
@@ -2936,6 +2983,10 @@ definitions:
         type: integer
       sysbenchV1:
         type: boolean
+      templateStrict:
+        type: boolean
+      templateVarMaxDepth:
+        type: integer
       terminalSessionEnabled:
         type: boolean
       terminalSessionManager:
@@ -2990,6 +3041,23 @@ definitions:
       errType:
         type: string
       serverUrl:
+        type: string
+    type: object
+  github_com_signal18_replication-manager_utils_version.Version:
+    properties:
+      dist:
+        $ref: '#/definitions/github_com_signal18_replication-manager_utils_version.Version'
+      flavor:
+        type: string
+      major:
+        type: integer
+      minor:
+        type: integer
+      path:
+        type: string
+      release:
+        type: integer
+      suffix:
         type: string
     type: object
   gtid.Gtid:
@@ -3456,6 +3524,9 @@ definitions:
       private:
         description: true if private registry, false if public
         type: boolean
+      template:
+        description: Optional template for the registry, e.g., "docker.io" or "quay.io"
+        type: string
       update:
         description: true if updating existing credentials, false if new credentials
         type: boolean
@@ -3601,6 +3672,10 @@ definitions:
       serviceTarballs:
         items:
           $ref: '#/definitions/config.Tarball'
+        type: array
+      serviceTemplates:
+        items:
+          type: string
         type: array
       serviceVM:
         additionalProperties:
@@ -3749,23 +3824,6 @@ definitions:
         type: string
       username:
         description: Username is the login name.
-        type: string
-    type: object
-  version.Version:
-    properties:
-      dist:
-        $ref: '#/definitions/version.Version'
-      flavor:
-        type: string
-      major:
-        type: integer
-      minor:
-        type: integer
-      path:
-        type: string
-      release:
-        type: integer
-      suffix:
         type: string
     type: object
 info:
@@ -5816,6 +5874,46 @@ paths:
       summary: Drop Deployment Field Row
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/service-opensvc:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the OpenSVC service configuration for a specific app.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenSVC service configuration
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating OpenSVC config template" or "No cluster
+          schema:
+            type: string
+      summary: Get App Service Config
+      tags:
+      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -6669,6 +6767,41 @@ paths:
       summary: Check if a cluster needs a rolling restart
       tags:
       - Database
+  /api/clusters/{clusterName}/opensvc-gateway:
+    get:
+      description: Retrieves the gateway nodes of the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of gateway nodes
+          schema:
+            items:
+              type: string
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "Error getting gateway nodes
+          schema:
+            type: string
+      summary: Get Cluster Gateway Nodes
+      tags:
+      - ClusterGateway
   /api/clusters/{clusterName}/proxies/{proxyName}:
     get:
       description: Shows the proxies for that specific named cluster

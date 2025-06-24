@@ -7208,7 +7208,7 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Success 200 {array} opensvc.ServiceNode "List of gateway nodes"
+// @Success 200 {array} string "List of gateway nodes"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster" or "Error getting gateway nodes
 // @Router /api/clusters/{clusterName}/opensvc-gateway [get]
