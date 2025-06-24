@@ -1670,7 +1670,7 @@ func (server *ServerMonitor) JobBackupScript() error {
 	defer cluster.SetInLogicalBackupState(false)
 
 	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), "="+cluster.GetDbPass(), "=XXXX", 1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", -1))
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
 	scriptCmd.Start()
