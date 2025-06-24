@@ -506,8 +506,8 @@ function sendCredentials(clusterName, username, type, baseURL) {
 }
 
 //#Peer subscription APIs
-function clusterSubscribe(username, password, clusterName, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/subscribe`, { username, password })
+function clusterSubscribe(clusterName, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/subscribe`)
 }
 
 function clusterUnsubscribe(username, clusterName, baseURL) {

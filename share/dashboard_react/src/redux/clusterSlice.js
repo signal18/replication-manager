@@ -1230,9 +1230,9 @@ export const dropUser = createAsyncThunk(
   }
 )
 
-export const clusterSubscribe = createAsyncThunk('auth/clusterSubscribe', async ({ password, clusterName, baseURL }, thunkAPI) => {
+export const clusterSubscribe = createAsyncThunk('auth/clusterSubscribe', async ({ clusterName, baseURL }, thunkAPI) => {
   try {
-    const { data, status } = await clusterService.clusterSubscribe(thunkAPI.getState().auth.user.username, password, clusterName, baseURL)
+    const { data, status } = await clusterService.clusterSubscribe(clusterName, baseURL)
     if (status === 200) {
       showSuccessBanner(`Register user to peer cluster sent!`, status, thunkAPI)
       return { data, status }
