@@ -6,7 +6,7 @@ const VariableNode = ({ node, path, onSelect }) => {
   if (typeof node === 'object' && !Array.isArray(node)) {
     return (
       <Box className={styles.treeNode}>
-        {Object.entries(node).map(([key, val]) => (
+        {Object.entries(node).sort(([ax], [bx]) => ax.localeCompare(bx)).map(([key, val]) => (
           <Box key={key}>
             <Text
               className={styles.nodeLabel}
