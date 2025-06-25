@@ -407,7 +407,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
         name={`variables[${index}].conditional.${item.value}.env`}
         placeholder="Env"
         value={agentExists.value}
-        onChange={(e) => onConditionalValueChange(item.value, e.target.value)}
+        onChange={(value) => onConditionalValueChange(item.value, value)}
       />
     )
   }, [index, onConditionalValueChange, conditional]);
