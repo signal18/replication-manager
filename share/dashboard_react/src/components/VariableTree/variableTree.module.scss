@@ -42,3 +42,27 @@
   font-weight: bold;
   color: var(--primary-color);
 }
+
+.nodeHeader {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.expandToggle {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.nodeGroup {
+  margin-left: 1rem;
+}
+
+.wildcard {
+  font-weight: bold;
+}

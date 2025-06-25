@@ -1272,9 +1272,11 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 				return
 			}
 
+			jsondata, _ := sjson.DeleteBytes([]byte(app.AppClusterSubstitute), "config.apps")
+
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(app.AppClusterSubstitute))
+			w.Write(jsondata)
 		} else {
 			http.Error(w, "Not a valid app", 500)
 		}
