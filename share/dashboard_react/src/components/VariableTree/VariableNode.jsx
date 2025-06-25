@@ -46,6 +46,7 @@ const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
                 {isBranch && isOpen && (
                   <Box className={styles.nodeGroup}>
                     <VariableNode
+                      key={currentPath}
                       node={val}
                       path={currentPath}
                       onSelect={onSelect}
@@ -86,6 +87,7 @@ const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
           !Array.isArray(node[0]) && (
             <Box className={styles.nodeGroup}>
               <VariableNode
+                key={currentPath}
                 node={node[0]}
                 path={currentPath}
                 onSelect={onSelect}
