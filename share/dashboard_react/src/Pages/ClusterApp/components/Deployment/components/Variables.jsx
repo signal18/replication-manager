@@ -289,11 +289,11 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     return (
       <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
     );
-  }, [index, onConditionalValueChange, conditional]);
+  }, [index, onConditionalValueChange, conditional, substitution]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
-  }, [agentOptions, conditional, renderAgentValue]);
+  }, [agentOptions, conditional, renderAgentValue, substitution]);
 
   // Just return that variable is locked
   if (isDisabled) {
@@ -410,11 +410,11 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
         onChange={(value) => onConditionalValueChange(item.value, value)}
       />
     )
-  }, [index, onConditionalValueChange, conditional]);
+  }, [index, onConditionalValueChange, conditional, substitution]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
-  }, [agentOptions, conditional, renderAgentValue]);
+  }, [agentOptions, conditional, renderAgentValue, substitution]);
 
   return (
     <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
