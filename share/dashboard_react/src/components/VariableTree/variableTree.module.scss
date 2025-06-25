@@ -1,0 +1,44 @@
+.variableTree {
+  max-height: 16rem;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  background-color: var(--secondary-gray-color);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  z-index: 3;
+}
+
+.treeNode {
+  margin-left: 1rem;
+}
+
+.nodeLabel {
+  cursor: pointer;
+  user-select: none;
+  display: inline-block;
+  padding: 0.2rem 0.4rem;
+  border-radius: 0.25rem;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: var(--quaternary-color);
+  }
+
+  &.disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
+}
+
+.nodeGroup {
+  margin-top: 0.25rem;
+  margin-left: 0.5rem;
+  border-left: 1px dashed var(--border-color);
+  padding-left: 0.5rem;
+}
+
+.wildcard {
+  font-weight: bold;
+  color: var(--primary-color);
+}

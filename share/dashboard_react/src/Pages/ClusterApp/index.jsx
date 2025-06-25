@@ -75,6 +75,7 @@ function ClusterApp(props) {
     if (!isAutoReloadPaused) {
       if (tabs.current[selectedTabRef.current] === 'App Overview') {
         dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
+        dispatch(getAppService({ clusterName, serviceName: 'substitution', appId }))
       }
       if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))

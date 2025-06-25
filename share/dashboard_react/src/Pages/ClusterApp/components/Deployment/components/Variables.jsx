@@ -12,6 +12,7 @@ import Checkboxes from '../../../../../components/Checkboxes/Checkboxes';
 import { uniqueId } from 'lodash';
 import PasswordControl from '../../../../../components/PasswordControl';
 import { useTheme } from '../../../../../ThemeProvider';
+import VariableInputArea from '../../../../../components/VariableTree/VariableInputArea';
 
 const defaultConfirmText = "Are you sure you want to change this field to: ";
 
@@ -35,6 +36,7 @@ const maskString = (str, mask = '*') => {
 }
 
 export default React.memo(function Variables({
+  substitution,
   rows = [],
   fieldName = "variables",
   agentList,
@@ -145,7 +147,7 @@ export default React.memo(function Variables({
         header: '',
         meta: {
           renderExpansion: (row) => {
-            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} />);
+            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} substitution={substitution}/>);
           },
         },
         cell: () => null,
@@ -172,7 +174,7 @@ export default React.memo(function Variables({
         header: '',
         meta: {
           renderExpansion: (row) => {
-            return (<VariableNewForm variable={row.original} agentOptions={agentOptions} index={row.index} onChange={handleArrayChange} />);
+            return (<VariableNewForm variable={row.original} agentOptions={agentOptions} index={row.index} onChange={handleArrayChange} substitution={substitution}/>);
           },
         },
         cell: () => null,
@@ -234,7 +236,7 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
   return agentOptions.map(item => ({ value: item.value, name: item.name, renderCheckedContent: renderCheckedContent })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled }) => {
+const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled, substitution }) => {
   const v = variable || { name: "", type: "secret", value: "", conditional: [], locked: false };
 
   const onRowArrayChange = (fieldName, index, key, value) => {
@@ -285,7 +287,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     }
 
     return (
-      <TextForm key={`variables[${index}].conditional.${item.value}.env`} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+      <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
     );
   }, [index, onConditionalValueChange, conditional]);
 
@@ -314,7 +316,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
           {v.type === "secret" ? (
             <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           ) : (
-            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+            <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           )}
         </Flex>
       </Flex>
@@ -336,7 +338,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
   )
 })
 
-const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange }) => {
+const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, substitution }) => {
   const [v, setV] = useState(variable || { name: "", type: "secret", value: "", conditional: [], locked: false });
   const { theme } = useTheme();
 
@@ -399,7 +401,9 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
 
     // If the type is not secret, render as input
     return (
-      <Input
+      <VariableInputArea
+        variables={substitution}
+        alwaysEditable={true}
         name={`variables[${index}].conditional.${item.value}.env`}
         placeholder="Env"
         value={agentExists.value}
@@ -450,11 +454,13 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange })
               onChange={(e) => handleArrayChange(index, "value", e.target.value)}
             />
           ) : (
-            <Input
+            <VariableInputArea
+              variables={substitution}
+              alwaysEditable={true}
               name={`variables[${index}].env`}
               placeholder="Env"
               value={v.value}
-              onChange={(e) => handleArrayChange(index, "value", e.target.value)}
+              onChange={(value) => handleArrayChange(index, "value", value)}
             />
           )}
         </Flex>

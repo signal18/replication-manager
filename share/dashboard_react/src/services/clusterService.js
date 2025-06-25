@@ -1,4 +1,3 @@
-import { get } from 'lodash'
 import { getApi } from './apiHelper'
 
 export const clusterService = {

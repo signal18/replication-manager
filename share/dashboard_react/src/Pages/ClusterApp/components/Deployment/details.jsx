@@ -50,7 +50,7 @@ function useDeploymentActions(clusterName, appId, setDropIndex, setConfirmOpen) 
   }
 }
 
-const DeploymentDetail = ({ clusterName, appId, row, dockerImage, agentList }) => {
+const DeploymentDetail = ({ clusterName, appId, row, dockerImage, agentList, substitution }) => {
   const dispatch = useDispatch()
   const [isConfirmOpen, setConfirmOpen] = useState(false)
   const [dropIndex, setDropIndex] = useState(null)
@@ -104,7 +104,7 @@ const DeploymentDetail = ({ clusterName, appId, row, dockerImage, agentList }) =
       />
       <AccordionComponent
         heading={'Variables'}
-        body={<Variables rows={fieldRows.variables} agentList={agentList} fieldName={'variables'} {...actionProps} />}
+        body={<Variables substitution={substitution} rows={fieldRows.variables} agentList={agentList} fieldName={'variables'} {...actionProps} />}
       />
       <ConfirmModal
         isOpen={isConfirmOpen}

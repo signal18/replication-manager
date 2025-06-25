@@ -5914,6 +5914,47 @@ paths:
       summary: Get App Service Config
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/substitution:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the substitution variables for a specific app in a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Substitution variables for the app
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No substitution variables defined for this app" or "Not a valid
+            app" or "No cluster
+          schema:
+            type: string
+      summary: Get App Substitution Variables
+      tags:
+      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.

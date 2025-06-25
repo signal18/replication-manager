@@ -35,6 +35,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetAppServiceConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/substitution", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSubstitutionVariables)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDeployments)),
@@ -1231,6 +1235,46 @@ func (repman *ReplicationManager) handlerMuxGetAppServiceConfig(w http.ResponseW
 				return
 			}
 			w.Write(res)
+		} else {
+			http.Error(w, "Not a valid app", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Get App Substitution Variables
+// @Description Retrieves the substitution variables for a specific app in a cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "Substitution variables for the app"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No substitution variables defined for this app" or "Not a valid app" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/substitution [get]
+func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		app := mycluster.GetAppFromName(vars["appName"])
+		if app != nil {
+			if app.AppClusterSubstitute == "" {
+				http.Error(w, "No substitution variables defined for this app", 500)
+				return
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(app.AppClusterSubstitute))
 		} else {
 			http.Error(w, "Not a valid app", 500)
 		}

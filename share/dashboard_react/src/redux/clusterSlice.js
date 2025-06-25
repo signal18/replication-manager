@@ -1622,6 +1622,7 @@ const initialState = {
     menuActions: false
   },
   app: {
+    substitution: null,
     deployment: null,
     serviceOpensvc: null,
   },
@@ -2022,6 +2023,10 @@ export const clusterSlice = createSlice({
           if (serviceName === 'deployment') {
             if (!state.app.deployment || !isEqual(state.app.deployment, action.payload.data)) {
               state.app.deployment = action.payload.data
+            }
+          } else if (serviceName === 'substitution') {
+            if (!state.app.substitution || !isEqual(state.app.substitution, action.payload.data)) {
+              state.app.substitution = action.payload.data
             }
           } else if (serviceName === 'service-opensvc') {
             if (!state.app.serviceOpensvc || !isEqual(state.app.serviceOpensvc, action.payload.data)) {

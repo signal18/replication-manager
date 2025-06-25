@@ -4820,6 +4820,7 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 		cl, _ = sjson.DeleteBytes(cl, "config.apps")
 		cl, _ = sjson.DeleteBytes(cl, "servers")
 		cl, _ = sjson.DeleteBytes(cl, "proxies")
+		cl, _ = sjson.DeleteBytes(cl, "apps")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
@@ -7038,6 +7039,7 @@ func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.
 		}
 
 		for idx := range mycluster.Apps {
+			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.appClusterSubstitute", idx))
 			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.config.deployment", idx))
 			apps, _ = sjson.SetBytes(apps, fmt.Sprintf("%d.config.appDbPass", idx), "*****")
 		}

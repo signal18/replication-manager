@@ -1,13 +1,13 @@
 
 import { Heading, VStack, HStack, Flex } from "@chakra-ui/react";
-import { useSelector } from "react-redux";
+import { shallowEqual, useSelector } from "react-redux";
 import styles from "./styles.module.scss";
 import DeploymentDetail from "./details";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
 
 const Deployment = ({ clusterName, config, appId, appConfig}) => {
-    const deployment = useSelector((state) => state.cluster?.app?.deployment);
+    const {deployment, substitution} = useSelector((state) => ({ deployment: state.cluster?.app?.deployment, substitution: state.cluster?.app?.substitution }),[shallowEqual]);
 
     return (
         <Flex direction="column" className={styles.contentContainer} w={"100%"} alignItems={"flex-start"} gap={4}>
@@ -20,7 +20,7 @@ const Deployment = ({ clusterName, config, appId, appConfig}) => {
                     />
                 </VStack>
             </Flex>
-            <DeploymentDetail clusterName={clusterName} row={deployment} appId={appId} dockerImage={appConfig?.provAppDockerImg} agentList={appConfig?.provAppAgents} />
+            <DeploymentDetail substitution={substitution} clusterName={clusterName} row={deployment} appId={appId} dockerImage={appConfig?.provAppDockerImg} agentList={appConfig?.provAppAgents} />
         </Flex>
     );
 };
