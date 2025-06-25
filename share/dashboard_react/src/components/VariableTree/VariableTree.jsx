@@ -5,7 +5,7 @@ import styles from './variableTree.module.scss';
 const VariableTree = ({ variables, onSelect }) => {
   return (
     <div className={styles.variableTree}>
-      <VariableNode node={variables} onSelect={onSelect} path="" />
+      {variables && (<VariableNode node={variables} onSelect={onSelect} path="" />)}
     </div>
   );
 };
