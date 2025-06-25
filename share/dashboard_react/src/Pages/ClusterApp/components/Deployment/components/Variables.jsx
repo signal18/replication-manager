@@ -153,7 +153,7 @@ export default React.memo(function Variables({
         cell: () => null,
       }
     ],
-    [fieldName, agentOptions, onRowArrayChange, onRowDropIndex]
+    [fieldName, agentOptions, onRowArrayChange, onRowDropIndex, substitution]
   )
 
   const columnsNewForm = useMemo(
@@ -180,7 +180,7 @@ export default React.memo(function Variables({
         cell: () => null,
       }
     ],
-    [agentOptions, handleArrayChange, handleRemoveItem]
+    [agentOptions, handleArrayChange, handleRemoveItem, substitution]
   )
 
   return (
