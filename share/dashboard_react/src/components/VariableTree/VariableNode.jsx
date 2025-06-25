@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Box, HStack, Text } from '@chakra-ui/react';
+import React from 'react';
+import { Box, Text } from '@chakra-ui/react';
 import { HiChevronDown, HiChevronRight } from 'react-icons/hi';
 import styles from './variableTree.module.scss';
 
@@ -7,9 +7,7 @@ const isLeaf = (val) =>
   typeof val !== 'object' ||
   (Array.isArray(val) && typeof val[0] !== 'object');
 
-const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
-  const [isOpen, setIsOpen] = useState(autoExpand);
-
+const VariableNode = ({ node, path = '', onSelect, toggleExpand, isExpanded }) => {
   if (node === null || node === undefined) return null;
 
   const buildPath = (key) => (path ? `${path}.${key}` : key);
@@ -23,33 +21,37 @@ const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
           .map(([key, val]) => {
             const currentPath = buildPath(key);
             const isBranch = !isLeaf(val);
+            const expanded = isExpanded(currentPath);
 
             return (
               <Box key={currentPath}>
-                <HStack gap={2} className={styles.nodeHeader}>
-                  <Text
-                    className={styles.nodeLabel}
-                    onClick={() => isBranch ? setIsOpen(!isOpen) : onSelect(`{{${currentPath}}}`) }
-                  >
-                    {key}
-                  </Text>
+                <Box className={styles.nodeHeader}>
                   {isBranch && (
                     <Box
                       as="span"
                       className={styles.expandToggle}
-                      onClick={() => setIsOpen(!isOpen)}
+                      onClick={() => toggleExpand(currentPath)}
                     >
-                      {isOpen ? <HiChevronDown /> : <HiChevronRight />}
+                      {expanded ? <HiChevronDown /> : <HiChevronRight />}
                     </Box>
                   )}
-                </HStack>
-                {isBranch && isOpen && (
+                  <Text
+                    className={styles.nodeLabel}
+                    onClick={() =>
+                      !isBranch && onSelect(`{{${currentPath}}}`)
+                    }
+                  >
+                    {key}
+                  </Text>
+                </Box>
+                {isBranch && expanded && (
                   <Box className={styles.nodeGroup}>
                     <VariableNode
-                      key={currentPath}
                       node={val}
                       path={currentPath}
                       onSelect={onSelect}
+                      toggleExpand={toggleExpand}
+                      isExpanded={isExpanded}
                     />
                   </Box>
                 )}
@@ -63,34 +65,36 @@ const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
   // Handle array
   if (Array.isArray(node)) {
     const currentPath = buildPath('#');
+    const expanded = isExpanded(currentPath);
 
     return (
       <Box className={styles.treeNode}>
-        <HStack gap={2} className={styles.nodeHeader}>
+        <Box className={styles.nodeHeader}>
+          <Box
+            as="span"
+            className={styles.expandToggle}
+            onClick={() => toggleExpand(currentPath)}
+          >
+            {expanded ? <HiChevronDown /> : <HiChevronRight />}
+          </Box>
           <Text
             className={`${styles.nodeLabel} ${styles.wildcard}`}
             onClick={() => onSelect(`{{${currentPath}}}`)}
           >
             #
           </Text>
-          <Box
-            as="span"
-            className={styles.expandToggle}
-            onClick={() => setIsOpen(!isOpen)}
-          >
-            {isOpen ? <HiChevronDown /> : <HiChevronRight />}
-          </Box>
-        </HStack>
-        {isOpen &&
+        </Box>
+        {expanded &&
           node.length > 0 &&
           typeof node[0] === 'object' &&
           !Array.isArray(node[0]) && (
             <Box className={styles.nodeGroup}>
               <VariableNode
-                key={currentPath}
                 node={node[0]}
                 path={currentPath}
                 onSelect={onSelect}
+                toggleExpand={toggleExpand}
+                isExpanded={isExpanded}
               />
             </Box>
           )}
@@ -101,4 +105,4 @@ const VariableNode = ({ node, path = '', onSelect, autoExpand = false }) => {
   return null;
 };
 
-export default VariableNode;
+export default React.memo(VariableNode);
