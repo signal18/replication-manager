@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Text } from '@chakra-ui/react';
+import { Box, HStack, Text } from '@chakra-ui/react';
 import { HiChevronDown, HiChevronRight } from 'react-icons/hi';
 import styles from './variableTree.module.scss';
 
@@ -25,25 +25,22 @@ const VariableNode = ({ node, path = '', onSelect, toggleExpand, isExpanded }) =
 
             return (
               <Box key={currentPath}>
-                <Box className={styles.nodeHeader}>
+                <HStack gap={2} className={styles.nodeHeader} onClick={() => isBranch && toggleExpand(currentPath)}>
+                  <Text
+                    className={styles.nodeLabel}
+                    onClick={() => !isBranch && onSelect(`{{${currentPath}}}`)}
+                  >
+                    {key}
+                  </Text>
                   {isBranch && (
                     <Box
                       as="span"
                       className={styles.expandToggle}
-                      onClick={() => toggleExpand(currentPath)}
                     >
                       {expanded ? <HiChevronDown /> : <HiChevronRight />}
                     </Box>
                   )}
-                  <Text
-                    className={styles.nodeLabel}
-                    onClick={() =>
-                      !isBranch && onSelect(`{{${currentPath}}}`)
-                    }
-                  >
-                    {key}
-                  </Text>
-                </Box>
+                </HStack>
                 {isBranch && expanded && (
                   <Box className={styles.nodeGroup}>
                     <VariableNode
@@ -69,7 +66,13 @@ const VariableNode = ({ node, path = '', onSelect, toggleExpand, isExpanded }) =
 
     return (
       <Box className={styles.treeNode}>
-        <Box className={styles.nodeHeader}>
+        <HStack gap={2} className={styles.nodeHeader}>
+          <Text
+            className={`${styles.nodeLabel} ${styles.wildcard}`}
+            onClick={() => onSelect(`{{${currentPath}}}`)}
+          >
+            #
+          </Text>
           <Box
             as="span"
             className={styles.expandToggle}
@@ -77,13 +80,7 @@ const VariableNode = ({ node, path = '', onSelect, toggleExpand, isExpanded }) =
           >
             {expanded ? <HiChevronDown /> : <HiChevronRight />}
           </Box>
-          <Text
-            className={`${styles.nodeLabel} ${styles.wildcard}`}
-            onClick={() => onSelect(`{{${currentPath}}}`)}
-          >
-            #
-          </Text>
-        </Box>
+        </HStack>
         {expanded &&
           node.length > 0 &&
           typeof node[0] === 'object' &&
