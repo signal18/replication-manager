@@ -133,6 +133,8 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-agents":
 		app.AppConfig.ProvAppAgents = value
+	case "prov-app-template":
+		app.AppConfig.ProvAppTemplate = value
 	case "app-port":
 		app.AppConfig.AppPort = value
 	case "app-db-user":
