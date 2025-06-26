@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -2014,9 +2015,9 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
-	repman.ServiceTemplates, err = share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	err = repman.GetAppTemplates()
 	if err != nil {
-		repman.Logrus.WithError(err).Errorf("Initialization templates repo failed: %s %s", repman.Conf.ShareDir+"/repo/templates.json", err)
+		repman.Logrus.WithError(err).Errorf("Initialization app templates failed: %s %s", repman.Conf.ShareDir+"/app/deployments/", err)
 	}
 
 	repman.ServiceVM = config.GetVMType()
@@ -2987,6 +2988,24 @@ func (repman *ReplicationManager) Save() error {
 	}
 
 	repman.IsNeedGitPush = has_changed
+
+	return nil
+}
+
+func (repman *ReplicationManager) GetAppTemplates() error {
+	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	if err != nil {
+		return err
+	}
+
+	for i, file := range filelist {
+		ext := filepath.Ext(file)
+		if ext == ".toml" {
+			filelist[i] = strings.TrimSuffix(file, ext)
+		}
+	}
+
+	repman.ServiceTemplates = filelist
 
 	return nil
 }
