@@ -10,6 +10,12 @@ import meetReducer from '../redux/meetSlice'
 import logger from 'redux-logger'
 import pathReducer from './pathSlice'
 
+const middleware = []
+
+if (process.env.NODE_ENV === 'development') {
+  middleware.push(logger)
+}
+
 export default configureStore({
   reducer: {
     auth: authReducer,
@@ -22,5 +28,5 @@ export default configureStore({
     globalClusters: globalClustersReducer,
     paths: pathReducer,
   },
-  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger)
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(middleware)
 })

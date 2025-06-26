@@ -10,7 +10,7 @@ import TagPill from '../../../../../components/TagPill'
 import AppStatus from '../AppStatus'
 import ServerStatus from '../../../../../components/ServerStatus'
 
-function AppTable({ apps = [], isDesktop, clusterName, showGridView, user }) {
+function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, states }) {
   const [tableData, setTableData] = useState([])
   useEffect(() => {
     if (apps?.length > 0) {

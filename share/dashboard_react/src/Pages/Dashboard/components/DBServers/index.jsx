@@ -16,10 +16,10 @@ import { Link } from 'react-router-dom'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
 
 function DBServers({ selectedCluster, user }) {
-  const {
-    common: { isDesktop },
-    cluster: { clusterServers, clusterStates, clusterMaster }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const clusterStates = useSelector((state) => state.cluster.clusterStates)
+  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
 
   const [data, setData] = useState([])
   const [viewType, setViewType] = useState('table')

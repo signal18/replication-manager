@@ -4,10 +4,9 @@ import AppTable from './AppTable'
 import AppGrid from './AppGrid'
 
 function Apps({ selectedCluster, user }) {
-  const {
-    common: { isDesktop },
-    cluster: { clusterApps, clusterAppStates }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+  const clusterApps = useSelector((state) => state.cluster.clusterApps)
+  const clusterAppStates = useSelector((state) => state.cluster.clusterAppStates)
 
   const [viewType, setViewType] = useState('table')
 
@@ -18,8 +17,6 @@ function Apps({ selectedCluster, user }) {
     setViewType('table')
   }
 
-  useEffect(() => {},[clusterAppStates])
-
   return clusterApps ? (
     viewType === 'table' ? (
       <AppTable
@@ -29,6 +26,7 @@ function Apps({ selectedCluster, user }) {
         showGridView={showGridView}
         isMenuOptionsVisible={true}
         user={user}
+        states={clusterAppStates}
       />
     ) : (
       <AppGrid
@@ -38,6 +36,7 @@ function Apps({ selectedCluster, user }) {
         showTableView={showTableView}
         isMenuOptionsVisible={true}
         user={user}
+        states={clusterAppStates}
       />
     )
   ) : null

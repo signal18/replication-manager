@@ -65,10 +65,9 @@ function Home() {
   // use navigation
   const navigate = useNavigate()
 
-  const {
-    cluster: { refreshInterval, clusterData },
-    globalClusters: { monitor }
-  } = useSelector((state) => state)
+  const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+  const monitor = useSelector((state) => state.globalClusters.monitor)
 
   useEffect(() => {
     if (params?.cluster) {

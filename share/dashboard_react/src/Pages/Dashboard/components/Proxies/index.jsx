@@ -4,10 +4,9 @@ import ProxyTable from './ProxyTable'
 import ProxyGrid from './ProxyGrid'
 
 function Proxies({ selectedCluster, user }) {
-  const {
-    common: { isDesktop },
-    cluster: { clusterProxies, clusterProxiesStaging }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+  const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
+  const clusterProxiesStaging = useSelector((state) => state.cluster.clusterProxiesStaging)
 
   const [viewType, setViewType] = useState('table')
 

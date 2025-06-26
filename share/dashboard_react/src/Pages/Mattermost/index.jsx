@@ -27,10 +27,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 })
     const [selectedFile, setSelectedFile] = useState(null);
     const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-    const {
-        auth: { isLogged }
-      } = useSelector((state) => state)
-    
+    const isLogged = useSelector((state) => state.auth.isLogged);
 
     useEffect(() => {
         if (selectedChannel) {

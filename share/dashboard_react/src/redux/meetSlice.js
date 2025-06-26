@@ -280,9 +280,9 @@ const meetSlice = createSlice({
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
         state.meetError = false;
         state.channels = [
-          ...Object.entries(action.payload.data?.channel_ids_open).map(([name, id]) => ({ name, id, type: 'O' })),
-          ...Object.entries(action.payload.data?.channel_ids_private).map(([name, id]) => ({ name, id, type: 'P' })),
-          ...Object.entries(action.payload.data?.channel_ids_direct).map(([name, id]) => ({ name, id, type: 'D' })),
+          ...Object.entries(action.payload.data?.channel_ids_open || {}).map(([name, id]) => ({ name, id, type: 'O' })),
+          ...Object.entries(action.payload.data?.channel_ids_private || {}).map(([name, id]) => ({ name, id, type: 'P' })),
+          ...Object.entries(action.payload.data?.channel_ids_direct || {}).map(([name, id]) => ({ name, id, type: 'D' })),
         ]
       })
       .addCase(logoutFromMeet.pending, (state) => {

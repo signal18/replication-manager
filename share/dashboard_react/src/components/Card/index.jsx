@@ -19,9 +19,7 @@ function Card({
   width,
   className
 }) {
-  const {
-    common: { isDesktop }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
 
   return (
     <Box className={`${styles.card} ${className}`} w={width}>

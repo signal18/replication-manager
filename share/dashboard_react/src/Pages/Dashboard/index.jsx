@@ -11,9 +11,7 @@ import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
 
 function Dashboard({ selectedCluster, user }) {
-  const {
-    common: { isDesktop }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
 
   return (
     <Flex direction='column' gap='8px'>

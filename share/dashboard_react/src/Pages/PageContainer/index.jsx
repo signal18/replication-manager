@@ -15,11 +15,9 @@ function PageContainer({ children }) {
   const navigate = useNavigate()
   const [fullVersion, setFullVersion] = useState('')
 
-  const {
-    common: { isDesktop },
-    auth: { isLogged, user },
-    globalClusters: { monitor }
-  } = useSelector((state) => state)
+  const isLogged = useSelector((state) => state.auth.isLogged)
+  const user = useSelector((state) => state.auth.user)
+  const monitor = useSelector((state) => state.globalClusters.monitor)
 
   const currentBreakpoint = useBreakpointValue({
     base: 'base',
@@ -31,7 +29,7 @@ function PageContainer({ children }) {
   useEffect(() => {
     if (monitor === null) {
       dispatch(getMonitoredData({}))
-    } 
+    }
 
     if (monitor?.fullVersion) {
       setFullVersion(monitor?.fullVersion)
@@ -70,9 +68,9 @@ function PageContainer({ children }) {
     <Box className={styles.container}>
       <Navbar username={user?.username} />
       <Box className={styles.pageContent}>{children}</Box>
-        <Box as='footer' className={styles.footer} textAlign={location.pathname === '/login' ? 'right' : 'left'}>
-          { location.pathname === '/login' ? monitor?.config.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>) : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
-        </Box>
+      <Box as='footer' className={styles.footer} textAlign={location.pathname === '/login' ? 'right' : 'left'}>
+        {location.pathname === '/login' ? monitor?.config.apiSwaggerEnabled && (<Link href='/api-docs/index.html' target='_blank' rel='noreferrer'>API Swagger</Link>) : (<Text>{`Replication-Manager ${fullVersion} © 2017-${new Date().getFullYear()} SIGNAL18 CLOUD SAS`}</Text>)}
+      </Box>
     </Box>
   )
 }
