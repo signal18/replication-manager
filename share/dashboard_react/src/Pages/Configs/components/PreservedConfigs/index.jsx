@@ -120,7 +120,7 @@ function PreservedConfigs({ selectedCluster, user }) {
                 header: 'Value',
                 size: 100,
                 maxSize: 200,
-                cell: (info) => (<TextForm isDisabled={user?.grants['cluster-settings'] == false} value={info.getValue()} confirmTitle={`Confirm set value to `} maxLength={1024} className={styles.textContainer} onSave={(value) => {dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: info.row.original.variableName + "=" + value }))}}/>)
+                cell: (info) => (<TextForm isDisabled={user?.grants['cluster-settings'] == false} value={info.getValue()} confirmTitle={`Variable value changed`} maxLength={1024} className={styles.textContainer} onSave={(value) => {dispatch(preserveVariable({ clusterName: selectedCluster?.name, preserve: true, variableName: info.row.original.variableName + "=" + value }))}}/>)
             }),
             columnHelper.display({
                 id: 'actions',

@@ -70,9 +70,9 @@ export default React.memo(function Routes({
         {rows?.length > 0 ?
           rows?.map((p, index) => (
             <HStack key={`row_${p.port}`}>
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${p.port}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
-              <TextForm confirmTitle={defaultConfirmText} pattern='^[0-9]{1,5}$' name={`row_${p.port}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
-              <Dropdown confirmTitle={defaultConfirmText} name={`row_${p.port}.volumedir`} selectedValue={p.protocol} onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)} options={protocolOptions} />
+              <TextForm confirmTitle={"CNAME changed"} name={`row_${p.port}.cname`} placeholder="CNAME" value={p.cname} onSave={(value) => onRowArrayChange(fieldName, index, "cname", value)} />
+              <TextForm confirmTitle={"Port changed"} pattern='^[0-9]{1,5}$' name={`row_${p.port}.port`} placeholder="Port" value={p.port} onSave={(value) => onRowArrayChange(fieldName, index, "port", sanitizePort(value))} />
+              <Dropdown confirmTitle={"Protocol changed"} name={`row_${p.port}.volumedir`} selectedValue={p.protocol} onChange={(value) => onRowArrayChange(fieldName, index, "protocol", value)} options={protocolOptions} />
               <RMIconButton icon={HiTrash} aria-label="Delete Route" onClick={() => onRowDropIndex(fieldName, index)} />
             </HStack>
           )) : (

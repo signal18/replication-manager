@@ -327,11 +327,11 @@ const PathRow = React.memo(({ clusterName, appId, row, index, onRowArrayChange, 
 
   return (
     <HStack key={`row_${row.to}`}>
-      <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={row.volumedir} onChange={(value) => onRowArrayChange("path", index, "volumedir", value)} options={sources} isDisabled={true} />
+      <Dropdown confirmTitle={"Volumedir changed"} selectedValue={row.volumedir} onChange={(value) => onRowArrayChange("path", index, "volumedir", value)} options={sources} isDisabled={true} />
       {!!gc && (
-        <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.from`} placeholder="From" value={row.from} onSave={(value) => onRowArrayChange("path", index, "from", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={gitTree} />
+        <TextForm confirmTitle={"From changed"} name={`row_${index}.from`} placeholder="From" value={row.from} onSave={(value) => onRowArrayChange("path", index, "from", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={gitTree} />
       )}
-      <TextForm confirmTitle={defaultConfirmText} name={`row_${index}.to`} placeholder="To" value={row.to} onSave={(value) => onRowArrayChange("path", index, "to", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={dockerTree} />
+      <TextForm confirmTitle={"To changed"} name={`row_${index}.to`} placeholder="To" value={row.to} onSave={(value) => onRowArrayChange("path", index, "to", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={dockerTree} />
       <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => onRowDropIndex("path", index)} />
     </HStack>
   )

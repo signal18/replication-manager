@@ -15,7 +15,8 @@ function NumberInput({
   onChange,
   showEditButton = false,
   showConfirmModal = false,
-  confirmTitle = 'Confirm change to:',
+  confirmTitle = 'Confirm change',
+  confirmBody = 'Are you sure you want to change the value to: ',
   onConfirm,
   containerClassName
 }) {
@@ -103,7 +104,8 @@ function NumberInput({
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={() => setIsConfirmModalOpen(false)}
-          title={`${confirmTitle} ${currentValue}`}
+          title={`${confirmTitle}`}
+          body={`${confirmBody} "${currentValue}"?`}
           onConfirmClick={() => {
             onConfirm(currentValue)
             setIsReadOnly(true)

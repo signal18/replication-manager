@@ -14,6 +14,7 @@ function Dropdown({
   className,
   onChange,
   confirmTitle,
+  confirmBody = 'Are you sure you want to change the value to: ',
   isSearchable = false,
   classNamePrefix = '',
   isMenuPortalTarget = true,
@@ -80,7 +81,8 @@ function Dropdown({
           closeModal={() => {
             closeConfirmModal('cancel')
           }}
-          title={`${confirmTitle} ${selectedOption.name || selectedOption.label}`}
+          title={`${confirmTitle}`}
+          body={`${confirmBody} ${selectedOption.name || selectedOption.label}?`}
           onConfirmClick={() => {
             onChange(selectedOption.value || selectedOption.name)
             closeConfirmModal('')

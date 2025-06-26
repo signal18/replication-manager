@@ -5,12 +5,14 @@ import { useDispatch, useSelector } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
 import { setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
+import { useMemo } from 'react';
+import Dropdown from '../../../../components/Dropdown';
 
-
-
-export default function GeneralSection({ clusterName, appId, config, appConfig }) {
+export default function GeneralSection({ clusterName, appId, config, appConfig, dockerTemplates }) {
 
   const dispatch = useDispatch();
+
+  const templateOptions = useMemo(() => (dockerTemplates?.map(item => ({ name: item,value: item})) || []), [dockerTemplates]);
 
   const dataObject = [
     {
@@ -18,7 +20,8 @@ export default function GeneralSection({ clusterName, appId, config, appConfig }
       value: (
         <TextForm
           value={appConfig?.provAppDockerImg}
-          confirmTitle={`Confirm change 'prov-app-docker-img' to: `}
+          confirmTitle="Docker Image Change"
+          confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
           onSave={(value) =>
             dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value.length === 0 ? '{undefined}' : value }))
           }
@@ -30,7 +33,8 @@ export default function GeneralSection({ clusterName, appId, config, appConfig }
       value: (
         <TextForm
           value={appConfig?.appHost}
-          confirmTitle={`Confirm change 'app-host' to: `}
+          confirmTitle="Container Host Change"
+          confirmBody='Are you sure you want to change "app-host" to: '
           onSave={(value) =>
             dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-host', value: value.length === 0 ? '{undefined}' : value }))
           }
@@ -42,10 +46,24 @@ export default function GeneralSection({ clusterName, appId, config, appConfig }
       value: (
         <TextForm
           value={appConfig?.appPort}
-          confirmTitle={`Confirm change 'app-port' to: `}
+          confirmTitle="Container Port Change"
+          confirmBody='Are you sure you want to change "app-port" to: '
           onSave={(value) =>
             dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-port', value: value.length === 0 ? '{undefined}' : value }))
           }
+        />
+      )
+    },
+    {
+      key: 'Docker Template',
+      value: (
+        <Dropdown
+          confirmTitle="Docker Template Change"
+          confirmBody='Are you sure you want to change "prov-app-template" to: '
+          isMenuPortalTarget={false}
+          onChange={(option) => { setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: option.value }) }}
+          options={templateOptions}
+          selectedValue={appConfig?.provAppTemplate}
         />
       )
     },

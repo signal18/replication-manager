@@ -14,8 +14,6 @@ import PasswordControl from '../../../../../components/PasswordControl';
 import { useTheme } from '../../../../../ThemeProvider';
 import VariableInputArea from '../../../../../components/VariableTree/VariableInputArea';
 
-const defaultConfirmText = "Are you sure you want to change this field to: ";
-
 const variableTypes = [
   { value: 'secret', name: 'Secret' },
   { value: 'env', name: 'Env' },
@@ -282,12 +280,12 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
 
     if (v.type === "secret") {
       return (
-        <TextForm key={`variables[${index}].conditional.${item.value}.secret`} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.secret`} type="password" placeholder="Secret" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+        <TextForm key={`variables[${index}].conditional.${item.value}.secret`} confirmTitle={"Variable value changed"} name={`variables[${index}].conditional.${item.value}.secret`} type="password" placeholder="Secret" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
       );
     }
 
     return (
-      <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+      <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
     );
   }, [index, onConditionalValueChange, conditional, substitution]);
 
@@ -305,16 +303,16 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
       <Flex direction="column" flex="1" minW="300px" gap={2}>
         <Flex direction="column" flex="1">
           <Text mb={1}>Variable Name:</Text>
-          <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
+          <TextForm confirmTitle={"Variable name changed"} name={`variables[${index}].name`} placeholder="Name" value={v.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Variable Type:</Text>
-          <Dropdown id={`variables[${index}].type`} confirmTitle={"Are you sure to change variable type: "} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
+          <Dropdown id={`variables[${index}].type`} confirmTitle={"Variable type changed"} selectedValue={v.type} onChange={(e) => onRowArrayChange(fieldName, index, "type", e.target.value)} options={variableTypes} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Variable Value:</Text>
           {v.type === "secret" ? (
-            <TextForm confirmTitle={defaultConfirmText} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+            <TextForm confirmTitle={"Variable value changed"} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           ) : (
             <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           )}

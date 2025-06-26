@@ -6,8 +6,8 @@ import DeploymentDetail from "./details";
 import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
 
-const Deployment = ({ clusterName, config, appId, appConfig}) => {
-    const {deployment, substitution} = useSelector((state) => ({ deployment: state.cluster?.app?.deployment, substitution: state.cluster?.app?.substitution }),[shallowEqual]);
+const Deployment = ({ clusterName, config, appId, appConfig }) => {
+    const {deployment, substitution, dockerTemplates} = useSelector((state) => ({ deployment: state.cluster?.app?.deployment, substitution: state.cluster?.app?.substitution, dockerTemplates: state.globalClusters.monitor?.serviceTemplates }),[shallowEqual]);
 
     return (
         <Flex direction="column" className={styles.contentContainer} w={"100%"} alignItems={"flex-start"} gap={4}>
@@ -16,7 +16,7 @@ const Deployment = ({ clusterName, config, appId, appConfig}) => {
                 <VStack spacing={3} align="stretch">
                     <AccordionComponent
                         heading={'General Section'}
-                        body={<GeneralSection clusterName={clusterName} appId={appId} config={config} appConfig={appConfig} />}
+                        body={<GeneralSection clusterName={clusterName} appId={appId} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} />}
                     />
                 </VStack>
             </Flex>

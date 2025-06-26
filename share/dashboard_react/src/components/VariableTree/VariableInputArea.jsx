@@ -25,8 +25,8 @@ const VariableInputArea = ({
   isDisabled = false,
   type = 'text',
   useConfirmModal = false,
-  confirmTitle = 'Are you sure you want to save changes?',
-  confirmMessage = 'This action cannot be undone.',
+  confirmTitle = 'Save confirmation',
+  confirmBody = 'Are you sure you want to save this value? This action cannot be undone.',
   alwaysEditable = false,
 }) => {
   const inputRef = useRef(null);
@@ -200,7 +200,7 @@ const VariableInputArea = ({
           onConfirmClick={handleConfirmSave}
           closeModal={handleConfirmCancel}
           title={confirmTitle}
-          body={confirmMessage}
+          body={confirmBody}
         />
       )}
     </Box>

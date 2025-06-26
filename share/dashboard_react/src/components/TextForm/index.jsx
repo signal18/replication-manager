@@ -6,7 +6,9 @@ import RMIconButton from '../RMIconButton'
 import ConfirmModal from '../Modals/ConfirmModal'
 import TreeView from '../Modals/TreeView/TreeView'
 
-function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, className, direction, confirmTitle, regexPattern, isDisabled, isTree = false, treeData, nodeToValue, nodeToString, ...others }) {
+function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, className, direction, confirmTitle,
+  confirmBody = "Are you sure you want to change the value to: ",
+  regexPattern, isDisabled, isTree = false, treeData, nodeToValue, nodeToString, ...others }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
   const { isOpen, onToggle } = useDisclosure()
@@ -149,7 +151,8 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
         <ConfirmModal
           isOpen={isConfirmModalOpen}
           closeModal={() => setIsConfirmModalOpen(false)}
-          title={`${confirmTitle} ${currentValue}`}
+          title={`${confirmTitle}`}
+          body={`${confirmBody} "${currentValue}"?`}
           onConfirmClick={() => {
             onSave(currentValue)
             setIsEditable(false)

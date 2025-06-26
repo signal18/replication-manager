@@ -13,8 +13,6 @@ const volumeDirs = [
   { value: 'var', name: 'data' },
 ]
 
-const defaultConfirmText = "Are you sure to change this field to: ";
-
 const initialRow = {
   volumedir: "var",
   dest: "",
@@ -73,12 +71,12 @@ export default React.memo(function GitClones({
         {rows?.length > 0 ?
           rows?.map((gc, index) => (
             <HStack key={`row_${gc.dest}`}>
-              <Dropdown confirmTitle={"Are you sure to change volumedir: "} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={volumeDirs} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${gc.dest}.dest`} placeholder="Directory Name" value={gc.dest} onSave={(value) => onRowArrayChange(fieldName, index, "dest", value)} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${gc.dest}.repo`} placeholder="Repo URL" value={gc.repo} onSave={(value) => onRowArrayChange(fieldName, index, "repo", value)} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${gc.dest}.branch`} placeholder="Branch" value={gc.branch} onSave={(value) => onRowArrayChange(fieldName, index, "branch", value)} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${gc.dest}.user`} placeholder="Git User" value={gc.user} onSave={(value) => onRowArrayChange(fieldName, index, "user", value)} />
-              <TextForm confirmTitle={defaultConfirmText} name={`row_${gc.dest}.pass`} type="password" placeholder="Secret" value={gc.pass} onSave={(value) => onRowArrayChange(fieldName, index, "pass", value)} />
+              <Dropdown confirmTitle={"Volumedir changed"} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={volumeDirs} />
+              <TextForm confirmTitle={"Directory Name changed"} name={`row_${gc.dest}.dest`} placeholder="Directory Name" value={gc.dest} onSave={(value) => onRowArrayChange(fieldName, index, "dest", value)} />
+              <TextForm confirmTitle={"Repo URL changed"} name={`row_${gc.dest}.repo`} placeholder="Repo URL" value={gc.repo} onSave={(value) => onRowArrayChange(fieldName, index, "repo", value)} />
+              <TextForm confirmTitle={"Branch changed"} name={`row_${gc.dest}.branch`} placeholder="Branch" value={gc.branch} onSave={(value) => onRowArrayChange(fieldName, index, "branch", value)} />
+              <TextForm confirmTitle={"Git User changed"} name={`row_${gc.dest}.user`} placeholder="Git User" value={gc.user} onSave={(value) => onRowArrayChange(fieldName, index, "user", value)} />
+              <TextForm confirmTitle={"Secret changed"} name={`row_${gc.dest}.pass`} type="password" placeholder="Secret" value={gc.pass} onSave={(value) => onRowArrayChange(fieldName, index, "pass", value)} />
               <RMIconButton
                 icon={HiTrash}
                 aria-label="Delete Git Clones"
