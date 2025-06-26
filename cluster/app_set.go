@@ -21,10 +21,10 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
-func (p *App) SetID() {
-	cluster := p.ClusterGroup
-	p.Id = "ap" + strconv.FormatUint(
-		crc64.Checksum([]byte(cluster.Name+p.Name), cluster.crcTable),
+func (app *App) SetID() {
+	cluster := app.ClusterGroup
+	app.Id = "ap" + strconv.FormatUint(
+		crc64.Checksum([]byte(cluster.Name+app.Name), cluster.crcTable),
 		10)
 }
 
@@ -103,44 +103,44 @@ func (app *App) SetNoConfigFetchCookie() error {
 	return app.createCookie("cookie_noconfigfetch")
 }
 
-func (p *App) SetPrevState(state string) {
-	p.PrevState = state
+func (app *App) SetPrevState(state string) {
+	app.PrevState = state
 }
 
-func (p *App) SetSuspect() {
-	p.State = stateSuspect
+func (app *App) SetSuspect() {
+	app.State = stateSuspect
 }
 
-func (p *App) SetFailCount(c int) {
-	p.FailCount = c
+func (app *App) SetFailCount(c int) {
+	app.FailCount = c
 }
 
-func (p *App) SetCredential(credential string) {
-	p.User, p.Pass = misc.SplitPair(credential)
+func (app *App) SetCredential(credential string) {
+	app.User, app.Pass = misc.SplitPair(credential)
 }
 
-func (p *App) SetState(v string) {
-	p.State = v
+func (app *App) SetState(v string) {
+	app.State = v
 }
 
-func (p *App) SetCluster(c *Cluster) {
-	p.ClusterGroup = c
+func (app *App) SetCluster(c *Cluster) {
+	app.ClusterGroup = c
 }
 
-func (p *App) SetSetting(key, value string) error {
+func (app *App) SetSetting(key, value string) error {
 	switch key {
 	case "prov-app-docker-img":
-		p.AppConfig.ProvAppDockerImg = value
+		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-agents":
-		p.AppConfig.ProvAppAgents = value
+		app.AppConfig.ProvAppAgents = value
 	case "app-port":
-		p.AppConfig.AppPort = value
+		app.AppConfig.AppPort = value
 	case "app-db-user":
-		p.AppConfig.AppDbUser = value
+		app.AppConfig.AppDbUser = value
 	case "app-db-pass":
-		p.AppConfig.AppDbPass = value
+		app.AppConfig.AppDbPass = value
 	case "app-db-schema":
-		p.AppConfig.AppDbSchema = value
+		app.AppConfig.AppDbSchema = value
 	default:
 		return errors.New("unknown setting: " + key)
 	}
@@ -148,7 +148,7 @@ func (p *App) SetSetting(key, value string) error {
 	return nil
 }
 
-func (p *App) SwitchSetting(key string) error {
+func (app *App) SwitchSetting(key string) error {
 	switch key {
 	default:
 		return errors.New("unknown setting: " + key)
@@ -157,23 +157,54 @@ func (p *App) SwitchSetting(key string) error {
 	return nil
 }
 
-func (p *App) SetMaintenance(maintenance bool) {
+func (app *App) SetMaintenance(maintenance bool) {
 	if maintenance {
-		p.State = stateMaintenance
+		app.State = stateMaintenance
 	} else {
-		p.State = stateAppRunning
+		app.State = stateAppRunning
 	}
 }
 
-func (p *App) SetDefaultRoute(cloud18Domain, cloud18SubDomain, cloud18SubDomainZone, clusterName string) {
-	if len(p.AppConfig.Deployment.Routes) == 0 {
-		p.AppConfig.Deployment.Routes = make([]config.Route, 0)
+func (app *App) SetDefaultRoute(cloud18Domain, cloud18SubDomain, cloud18SubDomainZone, clusterName string) {
+	if len(app.AppConfig.Deployment.Routes) == 0 {
+		app.AppConfig.Deployment.Routes = make([]config.Route, 0)
 
-		p.AppConfig.Deployment.Routes = append(p.AppConfig.Deployment.Routes, config.Route{
-			CName:    p.Name + "." + clusterName + "." + cloud18SubDomain + "-" + cloud18SubDomainZone + "." + cloud18Domain + ".cloud18.io",
-			Port:     p.AppConfig.AppPort,
+		app.AppConfig.Deployment.Routes = append(app.AppConfig.Deployment.Routes, config.Route{
+			CName:    app.Name + "." + clusterName + "." + cloud18SubDomain + "-" + cloud18SubDomainZone + "." + cloud18Domain + ".cloud18.io",
+			Port:     app.AppConfig.AppPort,
 			Protocol: "https",
 		})
 	}
 
+}
+
+func (app *App) UpdateVariable(vIndex int, field, newValue string) error {
+	switch field {
+	case "name":
+		app.AppConfig.Deployment.Variables[vIndex].Name = newValue
+	case "value":
+		newValue, _ = app.ClusterGroup.ParseAppTemplate(newValue, app.AppClusterSubstitute)
+		app.AppConfig.Deployment.Variables[vIndex].Value = newValue
+	case "type":
+		app.AppConfig.Deployment.Variables[vIndex].Type = newValue
+	default:
+		return errors.New("unknown variable field: " + field)
+	}
+
+	return nil
+}
+
+func (app *App) UpdateConditionalVariables(vIndex int, condValue config.AVSlice) error {
+	old := app.AppConfig.Deployment.Variables[vIndex].Conditional
+	addFunc := func(new config.AgentVariable) config.AgentVariable {
+		new.Value, _ = app.ClusterGroup.ParseAppTemplate(new.Value, app.AppClusterSubstitute)
+		return new
+	}
+	updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
+		new.Value, _ = app.ClusterGroup.ParseAppTemplate(new.Value, app.AppClusterSubstitute)
+		return new
+	}
+
+	app.AppConfig.Deployment.Variables[vIndex].Conditional = old.Merge(condValue, addFunc, updateFunc)
+	return nil
 }

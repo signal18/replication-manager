@@ -938,18 +938,52 @@ type AgentVariable struct {
 	Value string `mapstructure:"value" toml:"value" json:"value"`
 }
 
-type AVSorter []AgentVariable
+type AVSlice []AgentVariable
 
-func (a AVSorter) Len() int           { return len(a) }
-func (a AVSorter) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a AVSorter) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
+func (old AVSlice) Merge(new AVSlice, addFunc func(new AgentVariable) AgentVariable, updateFunc func(old, new AgentVariable) AgentVariable) AVSlice {
+	agentMap := make(map[string]AgentVariable)
+	addMap := make(map[string]bool)
+	for _, av := range new {
+		agentMap[av.Agent] = av // Update or add the agent variable
+		addMap[av.Agent] = true
+	}
+	for _, av := range old {
+		if newVal, exists := agentMap[av.Agent]; exists {
+			addMap[av.Agent] = false // Mark as not added
+
+			// If the value is different, we may want to update it
+			if newVal.Value != av.Value {
+				// If updateFunc is provided, use it to update the value
+				if updateFunc != nil {
+					agentMap[av.Agent] = updateFunc(av, agentMap[av.Agent])
+				}
+			}
+		}
+	}
+
+	var merged AVSlice
+	for agent, av := range agentMap {
+		if addMap[agent] && addFunc != nil {
+			// If addFunc is provided, use it to add the agent variable
+			merged = append(merged, addFunc(av))
+		} else {
+			merged = append(merged, av)
+		}
+	}
+
+	return merged
+}
+
+func (a AVSlice) Len() int           { return len(a) }
+func (a AVSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a AVSlice) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
 
 type VariableMapping struct {
-	Name        string          `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
-	Value       string          `mapstructure:"value" toml:"value" json:"value" groups:"apps"`
-	Type        string          `mapstructure:"type" toml:"type" json:"type" options:"secret|env" groups:"apps"`
-	Locked      bool            `mapstructure:"locked" toml:"locked" json:"locked" groups:"apps"`
-	Conditional []AgentVariable `mapstructure:"conditional" toml:"conditional" json:"conditional" groups:"apps"` // This is used to set the variable value only if the agent matches
+	Name        string  `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	Value       string  `mapstructure:"value" toml:"value" json:"value" groups:"apps"`
+	Type        string  `mapstructure:"type" toml:"type" json:"type" options:"secret|env" groups:"apps"`
+	Locked      bool    `mapstructure:"locked" toml:"locked" json:"locked" groups:"apps"`
+	Conditional AVSlice `mapstructure:"conditional" toml:"conditional" json:"conditional" groups:"apps"` // This is used to set the variable value only if the agent matches
 }
 
 type PathMapping struct {

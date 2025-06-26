@@ -546,10 +546,10 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
 			var newValue string
-			var condValue []config.AgentVariable
+			var condValue config.AVSlice
 			if vars["field"] == "variables" && vars["key"] == "conditional" {
 				type ConditionalValue struct {
-					Value []config.AgentVariable `json:"value"`
+					Value config.AVSlice `json:"value"`
 				}
 				var body ConditionalValue
 				err := json.NewDecoder(r.Body).Decode(&body)
@@ -559,7 +559,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 
 				condValue = body.Value
-				sort.Sort(config.AVSorter(condValue))
+				sort.Sort(condValue)
 			} else {
 				type FieldValue struct {
 					Value string `json:"value"`
@@ -579,7 +579,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				return
 			}
 
-			index, err := strconv.ParseInt(vars["index"], 10, 64)
+			index, err := strconv.Atoi(vars["index"])
 			if err != nil {
 				http.Error(w, "Error parsing index: "+err.Error(), 500)
 				return
@@ -599,7 +599,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			switch vars["field"] {
 			// fields which are arrays of objects
 			case "routes":
-				if index >= int64(len(node.AppConfig.Deployment.Routes)) {
+				if index >= len(node.AppConfig.Deployment.Routes) {
 					http.Error(w, "Index out of range for routes", 500)
 					return
 				}
@@ -621,7 +621,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 			case "gitClones":
-				if index >= int64(len(node.AppConfig.Deployment.GitClones)) {
+				if index >= len(node.AppConfig.Deployment.GitClones) {
 					http.Error(w, "Index out of range for gitClones", 500)
 					return
 				}
@@ -661,7 +661,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 				v.Value = newValue
 			case "variables":
-				if index >= int64(len(node.AppConfig.Deployment.Variables)) {
+				if index >= len(node.AppConfig.Deployment.Variables) {
 					http.Error(w, "Index out of range for variables", 500)
 					return
 				}
@@ -673,21 +673,20 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 				// Modify field based on key
 				switch vars["key"] {
-				case "name":
-					node.AppConfig.Deployment.Variables[index].Name = newValue
-				case "value":
-					node.AppConfig.Deployment.Variables[index].Value = newValue
-				case "type":
-					node.AppConfig.Deployment.Variables[index].Type = newValue
+				case "name", "value", "type":
+					err := node.UpdateVariable(index, vars["key"], newValue)
+					if err != nil {
+						http.Error(w, err.Error(), 500)
+						return
+					}
 				case "conditional":
-					// Check if the conditional is a valid JSON
-					node.AppConfig.Deployment.Variables[index].Conditional = condValue
+					node.UpdateConditionalVariables(index, condValue)
 				default:
 					http.Error(w, "Invalid key for variables", 500)
 					return
 				}
 			case "paths":
-				if index >= int64(len(node.AppConfig.Deployment.Paths)) {
+				if index >= len(node.AppConfig.Deployment.Paths) {
 					http.Error(w, "Index out of range for path", 500)
 					return
 				}

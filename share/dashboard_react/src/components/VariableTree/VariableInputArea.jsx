@@ -12,10 +12,12 @@ import styles from './variableInputArea.module.scss';
 import treeStyles from './variableTree.module.scss';
 import RMIconButton from '../RMIconButton';
 import ConfirmModal from '../Modals/ConfirmModal';
+import { debounce } from 'lodash';
 
 const VariableInputArea = ({
   value,
-  onChange,
+  onChange = () => { },
+  onSave = () => { },
   variables,
   placeholder = 'Enter value...',
   multiline = false,
@@ -43,6 +45,25 @@ const VariableInputArea = ({
     setPreviousValue(value);
   }, [value]);
 
+  const debouncedOnChange = debounce((newValue) => {
+    onChange(newValue);
+  }, 300);
+
+  useEffect(() => {
+    return () => {
+      debouncedOnChange.cancel();
+    };
+  }, []);
+
+
+  
+
+  const handleChange = (value) => {
+    if (value === currentValue) return;
+    setCurrentValue(value);
+    if (alwaysEditable) debouncedOnChange(value);
+  };
+
   const handleInsert = (variable) => {
     if (isDisabled || !editable) return;
 
@@ -54,7 +75,7 @@ const VariableInputArea = ({
     const after = currentValue.substring(end);
     const newValue = before + variable + after;
 
-    setCurrentValue(newValue);
+    handleChange(newValue);
 
     setTimeout(() => {
       input.focus();
@@ -63,8 +84,9 @@ const VariableInputArea = ({
   };
 
   const handleConfirmSave = () => {
+    onSave(currentValue);
     setIsConfirmModalOpen(false);
-    onChange(currentValue);
+    setIsEditable(false);
   };
 
   const handleConfirmCancel = () => {
@@ -72,12 +94,12 @@ const VariableInputArea = ({
   };
 
   const handleSave = () => {
-    setIsEditable(false);
     setPreviousValue(currentValue);
     if (useConfirmModal) {
       setIsConfirmModalOpen(true);
     } else {
-      onChange(currentValue);
+      onSave(currentValue);
+      setIsEditable(false);
     }
   };
 
@@ -103,7 +125,8 @@ const VariableInputArea = ({
             className={styles.inputField}
             rows={rows}
             value={currentValue}
-            onChange={(e) => setCurrentValue(e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
+            onBlur={() => { if (alwaysEditable) debouncedOnChange(currentValue) }}
             placeholder={placeholder}
             isDisabled={isDisabled}
             isReadOnly={!editable && !isDisabled}
@@ -114,7 +137,8 @@ const VariableInputArea = ({
             className={styles.inputField}
             type={isPassword && !isOpen ? 'password' : 'text'}
             value={currentValue}
-            onChange={(e) => setCurrentValue(e.target.value)}
+            onChange={(e) => handleChange(e.target.value)}
+            onBlur={() => { if (alwaysEditable) debouncedOnChange(currentValue) }}
             placeholder={placeholder}
             isDisabled={isDisabled}
             isReadOnly={!editable && !isDisabled}
