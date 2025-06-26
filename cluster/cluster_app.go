@@ -112,7 +112,7 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		return nil
 	}
 
-	template = "app/deployments/" + template
+	template = "app/deployments/" + template + ".toml"
 
 	// Check if the template file exists within share
 	content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
