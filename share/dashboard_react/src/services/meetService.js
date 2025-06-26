@@ -61,7 +61,7 @@ async function postJitsiMeetingOnChannel(channelId, meetingId) {
 async function getMeetMessageFromChannel(channelId, page = 0) {
     try {
         const response = await meetApi.get(`read/${channelId}/${page}`);
-        console.log('Messages from meetService:', response.data.Messages, page);
+        // console.log('Messages from meetService:', response.data.Messages, page);
         return response.data.Messages;
     } catch (error) {
         console.error('Error fetching meet messages:', error);

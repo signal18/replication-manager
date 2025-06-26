@@ -174,9 +174,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
     }
   }, [monitor?.serviceTemplates])
 
-  useEffect(() => {
-    console.log("::formState::", formState)
-  },[formState])
+  // useEffect(() => {
+  //   console.log("::formState::", formState)
+  // },[formState])
 
   const handleCreateNewServer = () => {
     const hostError = host ? '' : 'Host is required'
@@ -231,7 +231,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
     }
 
     dispatch(connectDockerRegistry({ clusterName, dockerRegistry })).then((response) => {
-      console.log("::response::", response)
+      // console.log("::response::", response)
     }, (error) => {
       formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: error.message } })
     })

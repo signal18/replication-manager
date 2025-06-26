@@ -20,7 +20,7 @@ export const gtidstring = function (arr) {
 }
 
 export const showSuccessBanner = (message, responseStatus, thunkAPI) => {
-  console.log(message, status);
+  // console.log(message, status);
   thunkAPI.dispatch(
     showSuccessToast({
       status: 'success',
@@ -175,7 +175,7 @@ export const getReadableTime = (timeInseconds) => {
   if (hours < 24) {
     return `${Math.round(hours)} hours`
   }
-  console.log()
+  // console.log()
   return `${Math.round(hours / 7)} days`
 }
 

@@ -122,11 +122,11 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
   const handleSelect = (node) => {
     let selectedValue = node?.selectedValue || []
     setSelectedNode(selectedValue)
-    console.log("Selected Node:", selectedValue)
+    // console.log("Selected Node:", selectedValue)
   }
 
   const handleExpandedChange = (node) => {
-    console.log("Expanded Node:", node)
+    // console.log("Expanded Node:", node)
   }
 
   const service = useMachine(tree.machine, {

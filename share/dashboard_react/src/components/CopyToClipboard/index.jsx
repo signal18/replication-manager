@@ -60,7 +60,7 @@ function CopyToClipboard({
 
   const fallbackCopyTextToClipboard = (textToCopy) => {
     const element = fromModal ? document.querySelector("[class*='modal__body']") : document.body
-    console.log('element::', element)
+    // console.log('element::', element)
     const textArea = document.createElement('textarea')
     textArea.value = textToCopy
     textArea.style.position = 'fixed'

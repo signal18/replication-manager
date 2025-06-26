@@ -16,7 +16,7 @@ function AppTable({ apps = [], isDesktop, clusterName, showGridView, user, state
     if (apps?.length > 0) {
       setTableData(apps)
     }
-    console.log(apps)
+    // console.log(apps)
   }, [apps])
 
   const columnHelper = createColumnHelper()
