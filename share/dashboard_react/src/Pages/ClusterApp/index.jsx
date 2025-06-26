@@ -22,9 +22,10 @@ function ClusterApp(props) {
   const [appId, setAppId] = useState(params.appname)
   const tabs = useRef([])
 
-  const {
-    cluster: { refreshInterval, clusterApps, clusterData }
-  } = useSelector((state) => state)
+  const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
+  const clusterApps = useSelector((state) => state.cluster.clusterApps)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+
   useEffect(() => {
     let intervalId = 0
     let interval = localStorage.getItem('refresh_interval')

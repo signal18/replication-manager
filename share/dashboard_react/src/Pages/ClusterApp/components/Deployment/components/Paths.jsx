@@ -11,9 +11,6 @@ import { useDispatch, useSelector } from 'react-redux';
 import { showErrorToast } from '../../../../../redux/toastSlice';
 import { getDockerTree, getGitTree, hashMurmur } from '../../../../../redux/pathSlice';
 import { uniqueId } from 'lodash';
-import { pauseAutoReload } from '../../../../../redux/clusterSlice';
-
-const defaultConfirmText = "Are you sure to change this field to: ";
 
 const volumeDirs = [
   { value: 'log', name: 'log' },
@@ -41,11 +38,8 @@ export default React.memo(function Paths({
 }) {
 
   const dispatch = useDispatch();
-
-  const { gitTree, dockerTree } = useSelector(state => ({
-    gitTree: state.paths.current.gitTree || {},
-    dockerTree: state.paths.current.dockerTree || {},
-  }));
+  const gitTree = useSelector(state => state.paths.current.gitTree || EMPTY_OBJECT);
+  const dockerTree = useSelector(state => state.paths.current.dockerTree || EMPTY_OBJECT);
 
   const [sources, setSources] = useState(volumeDirs);
   const [formData, setFormData] = useState([]);
@@ -308,13 +302,13 @@ export default React.memo(function Paths({
   )
 })
 
+const EMPTY_OBJECT = {};
+
 const PathRow = React.memo(({ clusterName, appId, row, index, onRowArrayChange, onRowDropIndex, sources, gitCloneRows, dockerTree, nodeToString, nodeToValue }) => {
   const dispatch = useDispatch();
   const gc = gitCloneRows.find(gc => gc.volumedir + "/" + gc.dest === row.volumedir);
-
-  const gitTree = useSelector(state => ((gc ? state.paths.gitTreeList[hashMurmur(gc.repo)] : {}) || {}));
-
-  const defaultConfirmText = "Are you sure to change this field to: ";
+  const hash = useMemo(() => (gc?.repo ? hashMurmur(gc.repo) : null), [gc?.repo]);
+  const gitTree = useSelector(state => (hash ? state.paths.gitTreeList[hash] : EMPTY_OBJECT));
 
   useEffect(() => {
     if (gc) {
