@@ -9,7 +9,8 @@ export const settingsService = {
   updateGraphiteBlackList,
   setAppSetting,
   switchAppSettings,
-  clearAppSetting
+  clearAppSetting,
+  resetAppFromTemplate
 }
 
 function switchSettings(clusterName, setting, baseURL) {
@@ -56,4 +57,8 @@ function switchAppSettings(clusterName, setting, baseURL) {
 
 function clearAppSetting(clusterName, appId, setting, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/clear/${setting}`)
+}
+
+function resetAppFromTemplate( clusterName, appId , baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`)
 }

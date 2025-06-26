@@ -7,12 +7,14 @@ import { setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
 import { useMemo } from 'react';
 import Dropdown from '../../../../components/Dropdown';
+import RMIconButton from '../../../../components/RMIconButton';
+import { HiRefresh } from 'react-icons/hi';
 
 export default function GeneralSection({ clusterName, appId, config, appConfig, dockerTemplates }) {
 
   const dispatch = useDispatch();
 
-  const templateOptions = useMemo(() => (dockerTemplates?.map(item => ({ name: item,value: item})) || []), [dockerTemplates]);
+  const templateOptions = useMemo(() => ([{ name: 'Select Template', value: '' }, ...dockerTemplates?.map(item => ({ name: item, value: item }))]), [dockerTemplates?.length]);
 
   const dataObject = [
     {
@@ -64,6 +66,19 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
           onChange={(option) => { setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: option.value }) }}
           options={templateOptions}
           selectedValue={appConfig?.provAppTemplate}
+        />
+      )
+    },
+    {
+      key: 'Reset App From Template',
+      value: (
+        <RMIconButton
+          icon={<HiRefresh />}
+          aria-label="Reset App From Template"
+          tooltip="Reset App From Template"
+          onClick={() => dispatch(resetAppFromTemplate({ clusterName, appId }))}
+          isDisabled={!appConfig?.provAppTemplate}
+          confirmTitle="Reset App From Template"
         />
       )
     },

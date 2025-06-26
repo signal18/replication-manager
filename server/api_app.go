@@ -107,6 +107,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppClearSetting)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/reset-from-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
@@ -1278,6 +1282,43 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 			w.Write(jsondata)
 		} else {
 			http.Error(w, "Not a valid app", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Reset App from Template
+// @Description Reloads the app template configuration for a specific app in a cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Success 200 {string} string "App template reloaded successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template [post]
+func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			mycluster.LoadAppTemplate(node.AppConfig, node.AppConfig.ProvAppTemplate)
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
+			w.Write([]byte("App template reloaded successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
