@@ -73,7 +73,7 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
       key: 'Reset App From Template',
       value: (
         <RMIconButton
-          icon={<HiRefresh />}
+          icon={HiRefresh}
           aria-label="Reset App From Template"
           tooltip="Reset App From Template"
           onClick={() => dispatch(resetAppFromTemplate({ clusterName, appId }))}
