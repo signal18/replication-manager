@@ -1,6 +1,7 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
+ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 
 USER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%
 PASSWORD=$MYSQL_ROOT_PASSWORD
@@ -59,6 +60,7 @@ CHECKPOINT_DIR="$TMP_DIR/checkpoints"
 LOCK_DIR="$TMP_DIR/locks"
 BATCH_SIZE=5
 JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
+ERRCODE=0
 
 # OSX need socat extra path
 export PATH=$PATH:/usr/local/bin
@@ -281,7 +283,7 @@ process_log_file() {
         log_file="$LOG_DIR/flash.out"
         ;;
     *)
-        log_file="$LOG_DIR/$job.out"
+        log_file="$LOG_DIR/$job.process.out"
         ;;
     esac
 
@@ -363,7 +365,7 @@ doneJob() {
             echo "No successful record (complete OK!) found in $LOG_DIR/backup.out." >>$LOG_DIR/$job.out
         fi
         ;;
-        reseedmariabackup | reseedxtrabackup)
+    reseedmariabackup | reseedxtrabackup)
         matches=$(sed -n '/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!/p' $LOG_DIR/reseed.out)
         if [ ! -n "$matches" ]; then
             jobstate=5
@@ -371,7 +373,7 @@ doneJob() {
             echo "No successful record (complete OK!) found in $LOG_DIR/reseed.out." >>$LOG_DIR/$job.out
         fi
         ;;
-        flashbackmariabackup | flashbackxtrabackup)
+    flashbackmariabackup | flashbackxtrabackup)
         matches=$(sed -n '/[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\} completed OK!/p' $LOG_DIR/flash.out)
         if [ ! -n "$matches" ]; then
             jobstate=5
@@ -379,17 +381,29 @@ doneJob() {
             echo "No successful record (complete OK!) found in $LOG_DIR/flash.out." >>$LOG_DIR/$job.out
         fi
         ;;
+    *)
+        if [ $ERRCODE -ne 0 ]; then
+            jobstate=5
+            done=0
+            echo "Error occurred while processing $LOG_DIR/$job.out." >>$LOG_DIR/$job.out
+        fi
     esac
-    
+
     if [ $jobstate -eq 3 ]; then
-        send_lines_to_api "Job $job ended with state: Finished" "$job" 
+        send_lines_to_api "Job $job ended with state: Finished" "$job"
     else
         send_lines_to_api "Job $job ended with state: Error" "$job"
+    fi
+    if [ -f "$REPMAN_CLIENT" ]; then
+        $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="$jobstate" --done="$done" --result="LOAD_FILE('$LOG_DIR/$job.out')" > $LOG_DIR/repman.out
     fi
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';" &
 }
 
 pauseJob() {
+    if [ -f "$REPMAN_CLIENT" ]; then
+        $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="2" --result="waiting" > $LOG_DIR/repman.out
+    fi
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=2, result='waiting' WHERE id='$ID';" &
 }
 
@@ -451,7 +465,6 @@ if [ ! -f "$REPMAN_CLIENT" ]; then
 fi
 
 if [ -f "$REPMAN_CLIENT" ]; then
-    ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
     $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" > $LOG_DIR/repman.out
 fi
 
@@ -460,7 +473,7 @@ fi
 #####################
 
 for job in "${JOBS[@]}"; do
-
+    ERRCODE=0
     TASK=($(echo "SELECT concat(id,'@',server,':',port) FROM replication_manager_schema.jobs WHERE task='$job' and done=0 AND state=0 order by id desc limit 1" | $BINARY_CLIENT -N))
 
     ADDRESS=($(echo $TASK | awk -F@ '{ print $2 }'))
@@ -477,6 +490,9 @@ for job in "${JOBS[@]}"; do
                 ;;
             flashbackmariabackup|flashbackxtrabackup)
                 rm -f "$LOG_DIR/flash.out"
+                ;;
+            *)
+                rm -f "$LOG_DIR/$job.process.out"
                 ;;
         esac
 
@@ -505,6 +521,10 @@ for job in "${JOBS[@]}"; do
         #purge de past
         $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;"
         $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=1, result='processing' WHERE task='$job' AND ID=$ID;"
+        if [ -f "$REPMAN_CLIENT" ]; then
+            $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="1" --result="processing" > $LOG_DIR/repman.out
+        fi
+
         case "$job" in
         reseedxtrabackup)
             rm -rf $BACKUPDIR
@@ -557,7 +577,7 @@ for job in "${JOBS[@]}"; do
             ;;
         errorlog)
             cat $ERROLOG >> $ERRROLOG'_'$(date '+%Y-%m-%d')
-            cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
             if [ -f $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
               gzip $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
             fi
@@ -568,7 +588,7 @@ for job in "${JOBS[@]}"; do
             ;;
         slowquery)
             cat $SLOWLOG >> $SLOWLOG'_'$(date '+%Y-%m-%d')
-            cat $SLOWLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            cat $SLOWLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
             if [ -f $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
               gzip $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
             fi
@@ -579,23 +599,25 @@ for job in "${JOBS[@]}"; do
             ;;
         zfssnapback)
             LASTSNAP=$(zfs list -r -t all | grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1 | cut -d" " -f1)
+            ERRCODE=$?
             %%ENV:SERVICES_SVCNAME%% stop
             zfs rollback $LASTSNAP
             %%ENV:SERVICES_SVCNAME%% start
             ;;
         optimize)
-            $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.out"
+            $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
+            ERRCODE=$?
             ;;
         restart)
             systemctl restart mysql
-            journalctl -u mysql >"$LOG_DIR/$job.out"
+            journalctl -u mysql >"$LOG_DIR/$job.process.out"
             ;;
         stop)
             systemctl stop mysql
-            journalctl -u mysql >"$LOG_DIR/$job.out"
+            journalctl -u mysql >"$LOG_DIR/$job.process.out"
             ;;
         esac
-        doneJob "$job"
+        doneJob "$job" "$ERRCODE" 
         sleep 1 && rmdir "$LOG_DIR/$job.run" &
     fi
 done
