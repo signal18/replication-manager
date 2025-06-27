@@ -96,7 +96,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	if err != nil {
 		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
 	}
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result LONGTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 	if err != nil {
 		return fmt.Errorf("Failed to create jobs table: %v", err)
 	}
@@ -106,7 +106,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 
 	if exist == 0 {
 		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result VARCHAR(1000), start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result LONGTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
 		if err != nil {
 			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
