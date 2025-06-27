@@ -395,14 +395,14 @@ doneJob() {
         send_lines_to_api "Job $job ended with state: Error" "$job"
     fi
     if [ -f "$REPMAN_CLIENT" ]; then
-        $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="$jobstate" --done="$done" --result="LOAD_FILE('$LOG_DIR/$job.out')" > $LOG_DIR/repman.out
+        $REPMAN_CLIENT "set-job-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="$jobstate" --done="$done" --result="LOAD_FILE('$LOG_DIR/$job.out')" > $LOG_DIR/repman.out
     fi
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';" &
 }
 
 pauseJob() {
     if [ -f "$REPMAN_CLIENT" ]; then
-        $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="2" --result="waiting" > $LOG_DIR/repman.out
+        $REPMAN_CLIENT "set-job-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="2" --result="waiting" > $LOG_DIR/repman.out
     fi
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=2, result='waiting' WHERE id='$ID';" &
 }
@@ -522,7 +522,7 @@ for job in "${JOBS[@]}"; do
         $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set done=1 WHERE done=0 AND task='$job' AND ID<>$ID;"
         $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set state=1, result='processing' WHERE task='$job' AND ID=$ID;"
         if [ -f "$REPMAN_CLIENT" ]; then
-            $REPMAN_CLIENT "set-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="1" --result="processing" > $LOG_DIR/repman.out
+            $REPMAN_CLIENT "set-job-state" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --job="$job" --state="1" --result="processing" > $LOG_DIR/repman.out
         fi
 
         case "$job" in
