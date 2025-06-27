@@ -96,7 +96,9 @@ func (server *ServerMonitor) JobsCreateTable() error {
 	if err != nil {
 		return fmt.Errorf("Failed to create replication_manager_schema: %v", err)
 	}
-	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+
+	createquery := `CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb`
+	_, err = server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
 	if err != nil {
 		return fmt.Errorf("Failed to create jobs table: %v", err)
 	}
@@ -106,7 +108,7 @@ func (server *ServerMonitor) JobsCreateTable() error {
 
 	if exist == 0 {
 		server.ConnExecQueryWithTimeout(Conn, JobTimeout, "DROP TABLE IF EXISTS replication_manager_schema.jobs")
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, createquery)
 		if err != nil {
 			return fmt.Errorf("Failed to create jobs table: %v", err)
 		}
@@ -127,14 +129,13 @@ func (server *ServerMonitor) JobsCreateTable() error {
 		}
 	}
 
-server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE like '%VARCHAR%'")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE like '%VARCHAR%'")
 	if exist == 1 {
 		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL")
 		if err != nil {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}
 	}
-
 
 	return nil
 }
