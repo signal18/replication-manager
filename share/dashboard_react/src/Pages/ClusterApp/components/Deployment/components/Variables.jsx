@@ -314,7 +314,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
           {v.type === "secret" ? (
             <TextForm confirmTitle={"Variable value changed"} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           ) : (
-            <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={defaultConfirmText} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+            <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           )}
         </Flex>
       </Flex>
