@@ -148,8 +148,8 @@ func (app *App) SetSetting(key, value string) error {
 		if err != nil {
 			return errors.New("invalid credit planned value: " + value)
 		}
-		if creditPlanSize < 0 {
-			return errors.New("credit planned must be greater than or equal to 0")
+		if creditPlanSize < 1 {
+			return errors.New("credit planned must be greater than or equal to 1")
 		}
 		if err := app.SetAppProvisionByCredit(creditPlanSize); err != nil {
 			return err
