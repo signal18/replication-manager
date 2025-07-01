@@ -626,8 +626,9 @@ type Config struct {
 	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
 	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
 	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppCores                              string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
+	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
 	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppHighAvailability                   string                 `mapstructure:"prov-app-high-availability" toml:"prov-app-high-availability" json:"provAppHighAvailability"`
 	TemplateVariableMaxDepth                  int                    `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool                   `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
@@ -810,6 +811,7 @@ type Config struct {
 	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	Cloud18HealthRefreshInterval              int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
 	Cloud18ApplicationCredits                 int                    `mapstructure:"cloud18-application-credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
+	Cloud18ApplicationCreditsUsed             int                    `mapstructure:"cloud18-application-credits-used" toml:"Cloud18-application-credits-used" json:"cloud18ApplicationCreditsUsed"`
 	Cloud18ApplicationCreditsPrice            int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
 	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
@@ -837,27 +839,31 @@ type Config struct {
 }
 
 type AppConfig struct {
-	ProvAppType           string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
-	ProvAppMem            string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppCores          string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCores"`
-	ProvAppDisk           string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppDiskType       string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
-	ProvAppVolumeData     string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDockerImg      string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
-	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
-	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppTemplate       string     `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
-	ProvAppAgents         string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	AppHostsIPV6          string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
-	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
-	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
-	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
-	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
-	AppDbPassClear        string     `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
-	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
-	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+	ProvAppType             string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppMem              string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppCpuCores         string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppDisk             string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskType         string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppVolumeData       string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppDockerImg        string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppRouteAddr        string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort        string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask        string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppTemplate         string     `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
+	ProvAppAgents           string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppHighAvailability string     `mapstructure:"prov-app-high-availability" toml:"prov-app-high-availability" json:"provAppHighAvailability"`
+	ProvAppAgentsFailover   string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppCreditUsed       int        `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
+	ProvAppCreditPlanned    int        `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
+	AppName                 string     `mapstructure:"app-name" toml:"app-name" json:"appName"`
+	AppHost                 string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
+	AppHostsIPV6            string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppPort                 string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
+	AppDbUser               string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
+	AppDbPass               string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
+	AppDbPassClear          string     `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
+	AppDbSchema             string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
+	Deployment              Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
@@ -1120,6 +1126,11 @@ type ConfVersion struct {
 	ConfDynamic  Config `json:"-"`
 	ConfImmuable Config `json:"-"`
 }
+
+const (
+	OpenSVCTopologyFailover string = "failover"
+	OpenSVCTopologyFlex     string = "flex"
+)
 
 // Log levels
 const (
@@ -3740,6 +3751,30 @@ func (conf *Config) CheckKeepWithin() error {
 	return nil
 }
 
+type MeasurementConfig struct {
+	Min      int
+	Max      int
+	Required bool
+	Bytes    bool
+}
+
+func (m MeasurementConfig) String() string {
+	var parts []string
+	if m.Min > 0 {
+		parts = append(parts, fmt.Sprintf("min:%d", m.Min))
+	}
+	if m.Max > 0 {
+		parts = append(parts, fmt.Sprintf("max:%d", m.Max))
+	}
+	if m.Required {
+		parts = append(parts, "required")
+	}
+	if m.Bytes {
+		parts = append(parts, "bytes")
+	}
+	return strings.Join(parts, ", ")
+}
+
 var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 type ErrorMeasurement struct {
@@ -3914,7 +3949,7 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	// 1. (\d+) : number (required)
 	// 2. ([K|M|G|T|P|E|Z|Y])? : unit (optional)
 	// 3. (B)? : bytes (optional)
-	r := regexp.MustCompile(`^(\d+)([K|M|G|T|P|E|Z|Y])?(B)?$`)
+	r := regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s*([KMGTPEZY])?(B)?$`)
 	matches := r.FindStringSubmatch(vstr)
 	if len(matches) < 2 {
 		return result, fmt.Errorf("invalid value: %s", vstr)
@@ -3980,4 +4015,18 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	result = strconv.Itoa(val)
 
 	return result, nil
+}
+
+func ParseUnitMeasurementToInt(tag, vstr string, clampToLimit bool) (int, error) {
+	valstr, err := ParseUnitMeasurement(tag, vstr, clampToLimit)
+	if err != nil {
+		return 0, err
+	}
+
+	val, err := strconv.Atoi(valstr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid value: %s", valstr)
+	}
+
+	return val, nil
 }

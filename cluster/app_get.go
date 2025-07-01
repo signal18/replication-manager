@@ -324,3 +324,20 @@ func (app *App) GetExternalFQDN() string {
 	}
 	return ""
 }
+
+func (app *App) GetAppAgents() []string {
+	agents := make([]string, 0)
+	if app.AppConfig == nil {
+		return agents
+	}
+
+	stragents := strings.Split(app.AppConfig.ProvAppAgents, ",")
+	for _, agent := range stragents {
+		agent = strings.TrimSpace(agent)
+		if agent != "" {
+			agents = append(agents, agent)
+		}
+	}
+
+	return agents
+}

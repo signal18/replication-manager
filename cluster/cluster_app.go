@@ -21,7 +21,7 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 		AppPort:           port,
 		ProvAppDiskType:   "volume",
 		ProvAppMem:        cluster.GetAppMemory(nil),
-		ProvAppCores:      cluster.GetAppCores(nil),
+		ProvAppCpuCores:   cluster.GetAppCores(nil),
 		ProvAppDisk:       cluster.GetAppDisk(nil),
 		ProvAppAgents:     cluster.GetAppAgents(nil),
 		ProvAppVolumeData: cluster.GetAppVolumeData(nil),
@@ -472,20 +472,20 @@ func (cluster *Cluster) GetAppMemory(appcnf *config.AppConfig) string {
 
 // GetAppCores returns the cores for the app.
 func (cluster *Cluster) GetAppCores(appcnf *config.AppConfig) string {
-	if appcnf != nil && appcnf.ProvAppCores != "" {
+	if appcnf != nil && appcnf.ProvAppCpuCores != "" {
 		// If the app config has cores, return it
-		return appcnf.ProvAppCores
+		return appcnf.ProvAppCpuCores
 	}
 
 	// If the app config does not have cores, return the cluster cores
-	cores := cluster.Conf.ProvAppCores
+	cores := cluster.Conf.ProvAppCpuCores
 	if cores == "" {
 		// If the cluster does not have cores, return the default cores
 		cores = cluster.Conf.ProvCores
 	}
 
 	if cores != "" && appcnf != nil {
-		appcnf.ProvAppCores = cores
+		appcnf.ProvAppCpuCores = cores
 	}
 
 	return cores

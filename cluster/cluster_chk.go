@@ -984,3 +984,9 @@ func (cluster *Cluster) CheckDefaultUser(i bool) {
 		cluster.SetState("WARN0108", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0108"], out), ErrFrom: "CLUSTER"})
 	}
 }
+
+func (cluster *Cluster) CheckAvailableCredit() {
+	if cluster.CreditUsed > cluster.Conf.Cloud18ApplicationCredits {
+		cluster.SetState("CREDIT01", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["CREDIT01"], cluster.Conf.Cloud18ApplicationCredits, cluster.CreditUsed), ErrFrom: "CLUSTER"})
+	}
+}

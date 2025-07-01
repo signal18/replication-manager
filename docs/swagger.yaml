@@ -220,6 +220,8 @@ definitions:
         $ref: '#/definitions/github_com_signal18_replication-manager_config.Config'
       configurator:
         $ref: '#/definitions/configurator.Configurator'
+      creditUsed:
+        type: integer
       dbServers:
         items:
           type: string
@@ -992,6 +994,8 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
+      appName:
+        type: string
       appPort:
         type: string
       deployment:
@@ -1000,13 +1004,19 @@ definitions:
         type: string
       provAppAgentsFailover:
         type: string
-      provAppCores:
+      provAppCpuCores:
         type: string
+      provAppCreditPlanned:
+        type: integer
+      provAppCreditUsed:
+        type: integer
       provAppDiskSize:
         type: string
       provAppDiskType:
         type: string
       provAppDockerImg:
+        type: string
+      provAppHighAvailability:
         type: string
       provAppMemory:
         type: string
@@ -1772,6 +1782,8 @@ definitions:
         type: integer
       cloud18ApplicationCreditsPrice:
         type: integer
+      cloud18ApplicationCreditsUsed:
+        type: integer
       cloud18CostCurrency:
         type: string
       cloud18DatabaseReadSrvRecord:
@@ -2471,9 +2483,11 @@ definitions:
         type: integer
       provAppAgents:
         type: string
-      provAppCores:
+      provAppCpuCores:
         type: string
       provAppDiskSize:
+        type: string
+      provAppHighAvailability:
         type: string
       provAppMemory:
         type: string
@@ -5912,6 +5926,47 @@ paths:
           schema:
             type: string
       summary: Get App Service Config
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template:
+    post:
+      consumes:
+      - application/json
+      description: Reloads the app template configuration for a specific app in a
+        cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App template reloaded successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Server Not Found" or "No cluster
+          schema:
+            type: string
+      summary: Reset App from Template
       tags:
       - Apps
   /api/clusters/{clusterName}/apps/{appName}/substitution:

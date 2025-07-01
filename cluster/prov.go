@@ -210,6 +210,10 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 }
 
 func (cluster *Cluster) InitAppService(app *App) error {
+	if app != nil {
+		app.ApplyPlannedCredits()
+	}
+
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		go cluster.OpenSVCProvisionAppService(app)

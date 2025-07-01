@@ -146,3 +146,15 @@ func (app *App) CheckPrimaryRoute() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "No primary route defined for app %s, setting first route as primary", app.Name)
 	}
 }
+
+func (app *App) CheckAppCredits() {
+	if app.AppConfig.ProvAppCreditPlanned < 0 {
+		app.ClusterGroup.SetState("CREDIT02", state.State{ErrType: "WARN", ErrKey: "CREDIT02", ErrDesc: fmt.Sprintf(config.AppError["CREDIT02"], app.GetId(), app.AppConfig.ProvAppCreditPlanned)})
+	}
+	if app.AppConfig.ProvAppCreditUsed < 0 {
+		app.ClusterGroup.SetState("CREDIT03", state.State{ErrType: "WARN", ErrKey: "CREDIT03", ErrDesc: fmt.Sprintf(config.AppError["CREDIT03"], app.GetId(), app.AppConfig.ProvAppCreditUsed)})
+	}
+	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
+		app.ClusterGroup.SetState("CREDIT04", state.State{ErrType: "WARN", ErrKey: "CREDIT04", ErrDesc: fmt.Sprintf(config.AppError["CREDIT04"], app.GetId(), app.AppConfig.ProvAppCreditPlanned, app.AppConfig.ProvAppCreditUsed)})
+	}
+}

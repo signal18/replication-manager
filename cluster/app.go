@@ -104,6 +104,8 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbUser, "app-db-user", "", "App Database User")
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
+	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 1, "Planned App Credit for the application, default is 1. This will be the multiplier for the app provisioning resources.")
+	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }
 
 func (app *App) Refresh() error {
@@ -114,12 +116,10 @@ func (app *App) Refresh() error {
 	if err == nil {
 		app.AppClusterSubstitute = sub
 	}
-	// Do not change state if the app is in maintenance mode
-	if app.State == stateMaintenance {
-		return nil
-	}
 
-	if appState == stateAppRunning {
+	if appState == stateMaintenance {
+		app.SetState(stateMaintenance)
+	} else if appState == stateAppRunning {
 		app.SetState(stateAppRunning)
 		app.FailCount = 0
 	} else if appState == stateFailed {
@@ -129,11 +129,11 @@ func (app *App) Refresh() error {
 			app.SetState(stateSuspect)
 			app.FailCount++
 		}
-	} else if appState == stateMaintenance {
-		app.SetState(stateMaintenance)
 	} else if appState == stateAppWarning {
 		app.SetState(stateAppWarning)
 	}
+
+	app.CheckAppCredits()
 
 	// Send alert if state has changed
 	if app.PrevState != app.State {
@@ -143,6 +143,7 @@ func (app *App) Refresh() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
 		}
 	}
+
 	if app.PrevState != app.State {
 		app.SetPrevState(app.State)
 	}

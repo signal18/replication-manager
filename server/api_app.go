@@ -320,7 +320,7 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			err := mycluster.OpenSVCProvisionAppService(node)
+			err := mycluster.InitAppService(node)
 			if err != nil {
 				http.Error(w, "Failed to provision app service: "+err.Error(), 500)
 				return

@@ -218,3 +218,10 @@ var AppError = map[string]string{
 	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
 	"APPERR004": "Unsupported protocol %s for application %s",
 }
+
+var Credit = map[string]string{
+	"CREDIT01": "Cluster has exceeded available credits. Credits: (%d), Total Usage: (%d). Additional charge may apply.",
+	"CREDIT02": "Application %s has negative planned credit (%d). Please check the configuration.",
+	"CREDIT03": "Application %s has negative used credit (%d). Please check the configuration.",
+	"CREDIT04": "Application %s has planned credit (%d) not equal to used credit (%d). Please provision the application again to implement the changes.",
+}

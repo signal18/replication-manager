@@ -143,6 +143,17 @@ func (app *App) SetSetting(key, value string) error {
 		app.AppConfig.AppDbPass = value
 	case "app-db-schema":
 		app.AppConfig.AppDbSchema = value
+	case "prov-app-credit-planned":
+		creditPlanSize, err := strconv.Atoi(value)
+		if err != nil {
+			return errors.New("invalid credit planned value: " + value)
+		}
+		if creditPlanSize < 0 {
+			return errors.New("credit planned must be greater than or equal to 0")
+		}
+		if err := app.SetAppProvisionByCredit(creditPlanSize); err != nil {
+			return err
+		}
 	default:
 		return errors.New("unknown setting: " + key)
 	}
@@ -209,4 +220,61 @@ func (app *App) UpdateConditionalVariables(vIndex int, condValue config.AVSlice)
 
 	app.AppConfig.Deployment.Variables[vIndex].Conditional = old.Merge(condValue, addFunc, updateFunc)
 	return nil
+}
+
+func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
+
+	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {
+		// No change in credit planned, nothing to do
+		return nil
+	}
+
+	provCredit := creditPlanSize
+	num_agents := len(app.GetAppAgents())
+
+	if app.AppConfig.ProvAppHighAvailability == config.OpenSVCTopologyFlex {
+		if num_agents == 0 {
+			return errors.New("no agents available for flex provisioning")
+		}
+		if creditPlanSize%num_agents != 0 {
+			return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
+		}
+
+		// For flex provisioning, we divide the credit planned by the number of agents
+		provCredit = creditPlanSize / num_agents
+	}
+
+	baseCore, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppCpuCores, true)
+	if err != nil {
+		return err
+	}
+	baseMemory, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppMem, true)
+	if err != nil {
+		return err
+	}
+	baseDisk, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppDisk, true)
+	if err != nil {
+		return err
+	}
+
+	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
+	app.AppConfig.ProvAppCpuCores = strconv.Itoa(provCredit * baseCore)
+	app.AppConfig.ProvAppMem = strconv.Itoa(provCredit * baseMemory)
+	app.AppConfig.ProvAppDisk = strconv.Itoa(provCredit * baseDisk)
+
+	// only reduce available credits if the credit planned is greater than the old credit, else do nothing and will update the used credits when application is re-provisioned
+	if creditPlanSize >= app.AppConfig.ProvAppCreditUsed {
+		app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed - app.AppConfig.ProvAppCreditUsed + creditPlanSize
+	}
+
+	app.SetReprovCookie()
+
+	return nil
+}
+
+func (app *App) ApplyPlannedCredits() {
+	// If the planned credits are not equal to the used credits, we need to update the used credits (usually happens when the app is re-provisioned with lower credits)
+	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
+		app.AppConfig.ProvAppCreditUsed = app.AppConfig.ProvAppCreditPlanned
+	}
 }

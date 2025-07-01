@@ -3513,6 +3513,65 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template": {
+            "post": {
+                "description": "Reloads the app template configuration for a specific app in a cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Reset App from Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App template reloaded successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/substitution": {
             "get": {
                 "description": "Retrieves the substitution variables for a specific app in a cluster.",
@@ -16595,6 +16654,9 @@ const docTemplate = `{
                 "configurator": {
                     "$ref": "#/definitions/configurator.Configurator"
                 },
+                "creditUsed": {
+                    "type": "integer"
+                },
                 "dbServers": {
                     "type": "array",
                     "items": {
@@ -17743,6 +17805,9 @@ const docTemplate = `{
                 "appHostsIpv6": {
                     "type": "string"
                 },
+                "appName": {
+                    "type": "string"
+                },
                 "appPort": {
                     "type": "string"
                 },
@@ -17755,8 +17820,14 @@ const docTemplate = `{
                 "provAppAgentsFailover": {
                     "type": "string"
                 },
-                "provAppCores": {
+                "provAppCpuCores": {
                     "type": "string"
+                },
+                "provAppCreditPlanned": {
+                    "type": "integer"
+                },
+                "provAppCreditUsed": {
+                    "type": "integer"
                 },
                 "provAppDiskSize": {
                     "type": "string"
@@ -17765,6 +17836,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppDockerImg": {
+                    "type": "string"
+                },
+                "provAppHighAvailability": {
                     "type": "string"
                 },
                 "provAppMemory": {
@@ -18912,6 +18986,9 @@ const docTemplate = `{
                 "cloud18ApplicationCreditsPrice": {
                     "type": "integer"
                 },
+                "cloud18ApplicationCreditsUsed": {
+                    "type": "integer"
+                },
                 "cloud18CostCurrency": {
                     "type": "string"
                 },
@@ -19959,10 +20036,13 @@ const docTemplate = `{
                 "provAppAgents": {
                     "type": "string"
                 },
-                "provAppCores": {
+                "provAppCpuCores": {
                     "type": "string"
                 },
                 "provAppDiskSize": {
+                    "type": "string"
+                },
+                "provAppHighAvailability": {
                     "type": "string"
                 },
                 "provAppMemory": {
