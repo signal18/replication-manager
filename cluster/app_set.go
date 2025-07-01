@@ -248,11 +248,11 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 	if err != nil {
 		return err
 	}
-	baseMemory, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppMem, true)
+	baseMemory, err := config.ParseUnitMeasurementToInt("M", app.ClusterGroup.Conf.ProvAppMem, true)
 	if err != nil {
 		return err
 	}
-	baseDisk, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppDisk, true)
+	baseDisk, err := config.ParseUnitMeasurementToInt("G", app.ClusterGroup.Conf.ProvAppDisk, true)
 	if err != nil {
 		return err
 	}
