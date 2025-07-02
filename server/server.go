@@ -1083,7 +1083,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1024", "Memory usage in M bytes. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name of the data files")
-	flags.StringVar(&conf.ProvAppHighAvailability, "prov-app-high-availability", "failover", "High availability mode for application. [failover|flex]")
+	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")

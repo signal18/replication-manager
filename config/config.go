@@ -628,7 +628,7 @@ type Config struct {
 	ProvAppVolumeData                         string                 `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
 	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
 	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppHighAvailability                   string                 `mapstructure:"prov-app-high-availability" toml:"prov-app-high-availability" json:"provAppHighAvailability"`
+	ProvAppHATopology                         string                 `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
 	TemplateVariableMaxDepth                  int                    `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool                   `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
@@ -839,30 +839,30 @@ type Config struct {
 }
 
 type AppConfig struct {
-	ProvAppType             string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
-	ProvAppMem              string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppCpuCores         string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
-	ProvAppDisk             string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppDiskType         string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
-	ProvAppVolumeData       string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
-	ProvAppDockerImg        string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
-	ProvAppRouteAddr        string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
-	ProvAppRoutePort        string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
-	ProvAppRouteMask        string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
-	ProvAppTemplate         string     `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
-	ProvAppAgents           string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppHighAvailability string     `mapstructure:"prov-app-high-availability" toml:"prov-app-high-availability" json:"provAppHighAvailability"`
-	ProvAppAgentsFailover   string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
-	ProvAppCreditUsed       int        `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
-	ProvAppCreditPlanned    int        `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
-	AppHost                 string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
-	AppHostsIPV6            string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
-	AppPort                 string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
-	AppDbUser               string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
-	AppDbPass               string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
-	AppDbPassClear          string     `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
-	AppDbSchema             string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
-	Deployment              Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+	ProvAppType           string     `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppMem            string     `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppCpuCores       string     `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppDisk           string     `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskType       string     `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppVolumeData     string     `mapstructure:"prov-app-volume-data" toml:"prov-app-volume-data" json:"provAppVolumeData"`
+	ProvAppDockerImg      string     `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppRouteAddr      string     `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort      string     `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask      string     `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppTemplate       string     `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
+	ProvAppAgents         string     `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppHATopology     string     `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
+	ProvAppAgentsFailover string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppCreditUsed     int        `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
+	ProvAppCreditPlanned  int        `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
+	AppHost               string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
+	AppHostsIPV6          string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppPort               string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
+	AppDbUser             string     `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
+	AppDbPass             string     `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
+	AppDbPassClear        string     `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
+	AppDbSchema           string     `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
+	Deployment            Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
 }
 
 func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {

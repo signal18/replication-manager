@@ -10,6 +10,11 @@ import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
 
+const haTopologyOptions = [
+  { value: 'failover', name: 'Failover' },
+  { value: 'flex', name: 'Flex' },
+];
+
 export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, user }) {
 
   const dispatch = useDispatch();
@@ -75,6 +80,19 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
           confirmTitle={`Confirm change 'prov-app-agents' to: `}
           onChange={(value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))} // Convert array to string (auto join with comma)
           parentStyles={styles}
+        />
+      )
+    },
+   {
+      key: 'OpenSVC HA Topology',
+      value: (
+        <Dropdown
+          confirmTitle="OpenSVC HA Topology Change"
+          confirmBody='Are you sure you want to change "prov-app-ha-topology" to: '
+          isMenuPortalTarget={false}
+          onChange={(option) => { setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: option.value }) }}
+          options={haTopologyOptions}
+          selectedValue={appConfig?.provAppHaTopology}
         />
       )
     },
