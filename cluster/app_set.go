@@ -280,14 +280,15 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 		return err
 	}
 
+	oldCredit := app.AppConfig.ProvAppCreditPlanned
 	app.AppConfig.ProvAppCreditPlanned = creditPlanSize
 	app.AppConfig.ProvAppCpuCores = strconv.Itoa(provCredit * baseCore)
 	app.AppConfig.ProvAppMem = strconv.Itoa(provCredit * baseMemory)
 	app.AppConfig.ProvAppDisk = strconv.Itoa(provCredit * baseDisk)
 
 	// only reduce available credits if the credit planned is greater than the old credit, else do nothing and will update the used credits when application is re-provisioned
-	if creditPlanSize >= app.AppConfig.ProvAppCreditUsed {
-		app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed - app.AppConfig.ProvAppCreditUsed + creditPlanSize
+	if creditPlanSize >= oldCredit {
+		app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed + (creditPlanSize - oldCredit)
 	}
 
 	app.SetReprovCookie()
