@@ -12,7 +12,7 @@ import Routes from "./Routes";
 import Paths from "./Paths";
 import Variables from "./Variables";
 
-const Deployment = ({ clusterName, config, appId, appName, appHost, appConfig, user }) => {
+const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user }) => {
     const dispatch = useDispatch();
     const deployment = useSelector((state) => state.cluster?.app?.deployment);
     const substitution = useSelector((state) => state.cluster?.app?.substitution);
@@ -133,4 +133,4 @@ const Deployment = ({ clusterName, config, appId, appName, appHost, appConfig, u
     );
 };
 
-export default Deployment;
+export default Overview;

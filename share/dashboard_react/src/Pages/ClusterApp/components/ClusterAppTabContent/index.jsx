@@ -3,7 +3,7 @@ import styles from './styles.module.scss'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AppMenu from '../../../Dashboard/components/Apps/AppMenu'
 import ServerName from '../../../../components/ServerName'
-import Deployment from '../Deployment'
+import Overview from '../Overview'
 import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
 import ServerStatus from '../../../../components/ServerStatus'
 
@@ -13,9 +13,9 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
   const appName = selectedApp?.name
   const appHost = selectedApp?.host
 
-  const deploymentComponent = useMemo(() => {
+  const overviewComponent = useMemo(() => {
     return (
-      <Deployment
+      <Overview
         clusterName={clusterName}
         appId={appId}
         appName={appName}
@@ -59,7 +59,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
           )}
         </HStack>
       </Flex>
-      {currentTab === "overview" ? (deploymentComponent) 
+      {currentTab === "overview" ? (overviewComponent) 
         : currentTab === "opensvc" ? (serviceOpenSvcComponent) 
         : null }
     </VStack>
