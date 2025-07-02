@@ -229,7 +229,7 @@ const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown w="100%" placeholder="Volume Dir" options={volumeDirs} value={gc.volumedir} onChange={(e) => handleArrayChange("volumedir", e.target.value)} />
+                    <Dropdown placeholder="Volume Dir" options={volumeDirs} value={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>

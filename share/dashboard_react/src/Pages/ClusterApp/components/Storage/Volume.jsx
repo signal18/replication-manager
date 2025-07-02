@@ -186,7 +186,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Select placeholder="Volume Dir" value={vol.volumedir} onChange={(e) => handleArrayChange("volumedir", e.target.value)} />
+                    <Dropdown placeholder="Volume Dir" options={volumeDirs} value={vol.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>
