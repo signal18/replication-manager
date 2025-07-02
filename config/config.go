@@ -855,7 +855,6 @@ type AppConfig struct {
 	ProvAppAgentsFailover   string     `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
 	ProvAppCreditUsed       int        `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
 	ProvAppCreditPlanned    int        `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
-	AppName                 string     `mapstructure:"app-name" toml:"app-name" json:"appName"`
 	AppHost                 string     `mapstructure:"app-host" toml:"app-host" json:"appHost"`
 	AppHostsIPV6            string     `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
 	AppPort                 string     `mapstructure:"app-port" toml:"app-port" json:"appPort"`
