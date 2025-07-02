@@ -232,7 +232,7 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 	provCredit := creditPlanSize
 	num_agents := len(app.GetAppAgents())
 
-	if app.AppConfig.ProvAppHighAvailability == config.OpenSVCTopologyFlex {
+	if app.AppConfig.ProvAppHATopology == config.OpenSVCTopologyFlex {
 		if num_agents == 0 {
 			return errors.New("no agents available for flex provisioning")
 		}

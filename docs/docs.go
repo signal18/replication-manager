@@ -2229,7 +2229,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree": {
+        "/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree": {
             "get": {
                 "description": "Retrieves the tree structure of a specified Git repository.",
                 "consumes": [
@@ -2267,8 +2267,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Volume Directory",
-                        "name": "volumedir",
+                        "description": "Git Name",
+                        "name": "gitName",
                         "in": "path",
                         "required": true
                     }
@@ -17805,9 +17805,6 @@ const docTemplate = `{
                 "appHostsIpv6": {
                     "type": "string"
                 },
-                "appName": {
-                    "type": "string"
-                },
                 "appPort": {
                     "type": "string"
                 },
@@ -17838,7 +17835,7 @@ const docTemplate = `{
                 "provAppDockerImg": {
                     "type": "string"
                 },
-                "provAppHighAvailability": {
+                "provAppHaTopology": {
                     "type": "string"
                 },
                 "provAppMemory": {
@@ -17955,12 +17952,6 @@ const docTemplate = `{
         "config.Deployment": {
             "type": "object",
             "properties": {
-                "gitClones": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.GitClone"
-                    }
-                },
                 "paths": {
                     "type": "array",
                     "items": {
@@ -17975,6 +17966,9 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/config.Route"
                     }
+                },
+                "storages": {
+                    "$ref": "#/definitions/config.StorageMapping"
                 },
                 "variables": {
                     "type": "array",
@@ -18015,7 +18009,7 @@ const docTemplate = `{
                 "branch": {
                     "type": "string"
                 },
-                "dest": {
+                "name": {
                     "type": "string"
                 },
                 "pass": {
@@ -18175,6 +18169,17 @@ const docTemplate = `{
                 }
             }
         },
+        "config.S3Mapping": {
+            "type": "object",
+            "properties": {
+                "bucket": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
         "config.ServicePlan": {
             "type": "object",
             "properties": {
@@ -18278,6 +18283,35 @@ const docTemplate = `{
                 }
             }
         },
+        "config.StorageMapping": {
+            "type": "object",
+            "properties": {
+                "gitClones": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.GitClone"
+                    }
+                },
+                "localDirectories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.VolumeMapping"
+                    }
+                },
+                "s3Directories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.S3Mapping"
+                    }
+                },
+                "sharedDirectories": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.VolumeMapping"
+                    }
+                }
+            }
+        },
         "config.StringsMap": {
             "type": "object"
         },
@@ -18359,6 +18393,20 @@ const docTemplate = `{
         },
         "config.VersionsMap": {
             "type": "object"
+        },
+        "config.VolumeMapping": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "volumeName": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                }
+            }
         },
         "config.WorkLoad": {
             "type": "object",
@@ -20042,7 +20090,7 @@ const docTemplate = `{
                 "provAppDiskSize": {
                     "type": "string"
                 },
-                "provAppHighAvailability": {
+                "provAppHaTopology": {
                     "type": "string"
                 },
                 "provAppMemory": {

@@ -994,8 +994,6 @@ definitions:
         type: string
       appHostsIpv6:
         type: string
-      appName:
-        type: string
       appPort:
         type: string
       deployment:
@@ -1016,7 +1014,7 @@ definitions:
         type: string
       provAppDockerImg:
         type: string
-      provAppHighAvailability:
+      provAppHaTopology:
         type: string
       provAppMemory:
         type: string
@@ -1093,10 +1091,6 @@ definitions:
     type: object
   config.Deployment:
     properties:
-      gitClones:
-        items:
-          $ref: '#/definitions/config.GitClone'
-        type: array
       paths:
         items:
           $ref: '#/definitions/config.PathMapping'
@@ -1107,6 +1101,8 @@ definitions:
         items:
           $ref: '#/definitions/config.Route'
         type: array
+      storages:
+        $ref: '#/definitions/config.StorageMapping'
       variables:
         items:
           $ref: '#/definitions/config.VariableMapping'
@@ -1132,7 +1128,7 @@ definitions:
     properties:
       branch:
         type: string
-      dest:
+      name:
         type: string
       pass:
         type: string
@@ -1237,6 +1233,13 @@ definitions:
       status:
         type: string
     type: object
+  config.S3Mapping:
+    properties:
+      bucket:
+        type: string
+      name:
+        type: string
+    type: object
   config.ServicePlan:
     properties:
       bp:
@@ -1311,6 +1314,25 @@ definitions:
       zone:
         type: string
     type: object
+  config.StorageMapping:
+    properties:
+      gitClones:
+        items:
+          $ref: '#/definitions/config.GitClone'
+        type: array
+      localDirectories:
+        items:
+          $ref: '#/definitions/config.VolumeMapping'
+        type: array
+      s3Directories:
+        items:
+          $ref: '#/definitions/config.S3Mapping'
+        type: array
+      sharedDirectories:
+        items:
+          $ref: '#/definitions/config.VolumeMapping'
+        type: array
+    type: object
   config.StringsMap:
     type: object
   config.TagResult:
@@ -1364,6 +1386,15 @@ definitions:
         type: string
     type: object
   config.VersionsMap:
+    type: object
+  config.VolumeMapping:
+    properties:
+      name:
+        type: string
+      volumeName:
+        type: string
+      volumedir:
+        type: string
     type: object
   config.WorkLoad:
     properties:
@@ -2487,7 +2518,7 @@ definitions:
         type: string
       provAppDiskSize:
         type: string
-      provAppHighAvailability:
+      provAppHaTopology:
         type: string
       provAppMemory:
         type: string
@@ -5044,7 +5075,7 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
-  /api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree:
+  /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree:
     get:
       consumes:
       - application/json
@@ -5066,9 +5097,9 @@ paths:
         name: appId
         required: true
         type: string
-      - description: Volume Directory
+      - description: Git Name
         in: path
-        name: volumedir
+        name: gitName
         required: true
         type: string
       produces:
