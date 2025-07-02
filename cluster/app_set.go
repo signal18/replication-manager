@@ -164,7 +164,7 @@ func (app *App) SetSetting(key, value string) error {
 				if value == "flex" {
 					app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned * numagents
 					if app.AppConfig.ProvAppCreditPlanned >= oldCredit {
-						app.ClusterGroup.ApplicationCreditsUsed = app.ClusterGroup.ApplicationCreditsUsed + (app.AppConfig.ProvAppCreditPlanned - oldCredit)
+						app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed + (app.AppConfig.ProvAppCreditPlanned - oldCredit)
 					}
 				} else {
 					if numagents > 0 {
@@ -289,7 +289,7 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 
 	// only reduce available credits if the credit planned is greater than the old credit, else do nothing and will update the used credits when application is re-provisioned
 	if creditPlanSize >= oldCredit {
-		app.ClusterGroup.ApplicationCreditsUsed = app.ClusterGroup.ApplicationCreditsUsed + (creditPlanSize - oldCredit)
+		app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed + (creditPlanSize - oldCredit)
 	}
 
 	app.SetReprovCookie()

@@ -197,8 +197,6 @@ definitions:
         items:
           type: string
         type: array
-      applicationCreditsUsed:
-        type: integer
       apps:
         items:
           $ref: '#/definitions/cluster.App'
@@ -1812,6 +1810,8 @@ definitions:
       cloud18ApplicationCredits:
         type: integer
       cloud18ApplicationCreditsPrice:
+        type: integer
+      cloud18ApplicationCreditsUsed:
         type: integer
       cloud18CostCurrency:
         type: string

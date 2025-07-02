@@ -247,7 +247,6 @@ type Cluster struct {
 	failSendCount             int                         `json:"-"`
 	MeetUserID                string                      `json:"-"` //To store meet user id
 	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	ApplicationCreditsUsed    int                         `json:"applicationCreditsUsed" groups:"web"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -1793,12 +1792,12 @@ func (c *Cluster) AddApp(app *App) {
 	c.Apps = append(c.Apps, app)
 
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
-		c.ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
+		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
 		if app.HasProvisionCookie() {
 			app.SetReprovCookie()
 		}
 	} else {
-		c.ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
+		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
 	}
 }
 

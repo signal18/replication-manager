@@ -16609,9 +16609,6 @@
                         "type": "string"
                     }
                 },
-                "applicationCreditsUsed": {
-                    "type": "integer"
-                },
                 "apps": {
                     "type": "array",
                     "items": {
@@ -19021,6 +19018,9 @@
                     "type": "integer"
                 },
                 "cloud18ApplicationCreditsPrice": {
+                    "type": "integer"
+                },
+                "cloud18ApplicationCreditsUsed": {
                     "type": "integer"
                 },
                 "cloud18CostCurrency": {
