@@ -105,7 +105,7 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbUser, "app-db-user", "", "App Database User")
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
-	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 1, "Planned App Credit for the application, default is 1. This will be the multiplier for the app provisioning resources.")
+	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 0, "Planned App Credit for the application, default is 0.")
 	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }
 

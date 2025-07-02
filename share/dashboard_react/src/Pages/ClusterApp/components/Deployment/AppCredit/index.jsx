@@ -101,7 +101,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                         minValue={creditStep}
                         maxValue={10000}
                         step={creditStep}
-                        defaultValue={appCredits}
+                        value={appCredits}
                         showConfirmModal={true}
                         confirmTitle={`Confirm change for 'prov-app-credit-planned'`}
                         confirmBody={`Are you sure you want to change the 'prov-app-credit-planned' value?`}

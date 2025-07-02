@@ -1792,11 +1792,7 @@ func (c *Cluster) AddApp(app *App) {
 	c.Apps = append(c.Apps, app)
 
 	if app.AppConfig.ProvAppCreditPlanned == 0 {
-		if app.AppConfig.ProvAppHATopology == "flex" {
-			app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
-		} else {
-			app.AppConfig.ProvAppCreditPlanned = 1
-		}
+		app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
 	}
 
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
