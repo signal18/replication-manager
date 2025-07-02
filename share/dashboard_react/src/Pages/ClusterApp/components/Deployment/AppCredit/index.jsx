@@ -21,7 +21,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
     const { isOpen, title, body, handler } = confirmState
 
     const creditStep = useMemo(() => {
-        return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 1
+        return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 0
     }, [appConfig?.provAppAgents])
 
     const closeConfirmModal = () => {
@@ -96,7 +96,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
             key: 'Credits',
             value: (
                 <Flex className={styles.resources}>
-                    <NumberInput
+                    { creditStep ? (<NumberInput
                         isDisabled={!allowEdit}
                         minValue={creditStep}
                         maxValue={10000}
@@ -123,7 +123,9 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                                 })
                             )
                         }}
-                    />
+                    />) : (
+                        <Text>No Agents Available</Text>
+                    )}
                 </Flex>
             )
         }
