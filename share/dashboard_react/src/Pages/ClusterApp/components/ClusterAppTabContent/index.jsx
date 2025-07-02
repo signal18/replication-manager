@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import styles from './styles.module.scss'
 import { Flex, HStack, VStack } from '@chakra-ui/react'
 import AppMenu from '../../../Dashboard/components/Apps/AppMenu'
-import AppStatus from '../../../Dashboard/components/Apps/AppStatus'
 import ServerName from '../../../../components/ServerName'
 import Deployment from '../Deployment'
 import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
@@ -11,6 +10,33 @@ import ServerStatus from '../../../../components/ServerStatus'
 function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
   const appConfig = selectedApp?.config
+  const appName = selectedApp?.name
+  const appHost = selectedApp?.host
+
+  const deploymentComponent = useMemo(() => {
+    return (
+      <Deployment
+        clusterName={clusterName}
+        appId={appId}
+        appName={appName}
+        appHost={appHost}
+        appConfig={appConfig}
+        config={config}
+        user={user}
+      />
+    )
+  }, [clusterName, appId, appName, appHost, appConfig, config, user])
+
+  const serviceOpenSvcComponent = useMemo(() => {
+    return (
+      <ServiceOpenSvc
+        clusterName={clusterName}
+        type="app"
+        id={appId}  
+        user={user}
+      />
+    )
+  }, [clusterName, appId, user])  
 
   useEffect(() => {
     setCurrentTab(tab)
@@ -33,11 +59,9 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
           )}
         </HStack>
       </Flex>
-      {currentTab === "overview" ? (
-        <Deployment clusterName={clusterName} appId={appId} appConfig={appConfig} config={config} user={user}/>
-      ) : currentTab === "opensvc" ? (
-        <ServiceOpenSvc clusterName={clusterName} type="app" id={appId} user={user}/>
-      ) : null }
+      {currentTab === "overview" ? (deploymentComponent) 
+        : currentTab === "opensvc" ? (serviceOpenSvcComponent) 
+        : null }
     </VStack>
   )
 }

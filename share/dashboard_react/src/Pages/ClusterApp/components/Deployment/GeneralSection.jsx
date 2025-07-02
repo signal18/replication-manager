@@ -10,7 +10,7 @@ import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
 
-export default function GeneralSection({ clusterName, appId, config, appConfig, dockerTemplates, user }) {
+export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, user }) {
 
   const dispatch = useDispatch();
 
@@ -19,29 +19,11 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
   const dataObject = [
     {
       key: 'App Name',
-      value: (
-        <TextForm
-          value={appConfig?.appName}
-          confirmTitle="App Name Change"
-          confirmBody='Are you sure you want to change "app-name" to: '
-          onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-name', value: value }))
-          }
-        />
-      )
+      value: (<Text>{appName}</Text>)
     },
     {
       key: 'App Host',
-      value: (
-        <TextForm
-          value={appConfig?.appHost}
-          confirmTitle="App Host Change"
-          confirmBody='Are you sure you want to change "app-host" to: '
-          onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-host', value: value }))
-          }
-        />
-      )
+      value: (<Text>{appHost}</Text>)
     },
     {
       key: 'Docker Image',
