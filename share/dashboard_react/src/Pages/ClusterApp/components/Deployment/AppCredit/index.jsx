@@ -7,6 +7,8 @@ import { convertSize } from '../../../../../utility/common'
 import { setAppSetting } from '../../../../../redux/settingsSlice'
 import TableType2 from '../../../../../components/TableType2'
 import ConfirmModal from '../../../../../components/Modals/ConfirmModal'
+import NumberInput from '../../../../../components/NumberInput'
+import { showErrorToast } from '../../../../../redux/toastSlice'
 
 function AppCredit({ clusterName, appId, config, appConfig, user }) {
     const dispatch = useDispatch()
@@ -19,12 +21,8 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
     const { isOpen, title, body, handler } = confirmState
 
     const creditStep = useMemo(() => {
-        if (appConfig?.provAppHaTopology === 'flex') {
-            return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 0
-        } else {
-            return 1
-        }
-    }, [appConfig?.provAppAgents, appConfig?.provAppHaTopology])
+        return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 1
+    }, [appConfig?.provAppAgents])
 
     const closeConfirmModal = () => {
         setConfirmState({
@@ -35,93 +33,101 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
         })
     }
 
-    const dataObject = [
+    const allowEdit = user?.grants['app-config-flag'] !== false
+    const clusterCredits = config?.cloud18ApplicationCredits || 0
+    const clusterCreditsUsed = config?.cloud18ApplicationCreditsUsed || 0
+    const clusterCreditsAvailable = clusterCredits - clusterCreditsUsed
+    const provAppMemory = convertSize(appConfig?.provAppMemory, "M", "M")
+    const provAppDiskSize = convertSize(appConfig?.provAppDiskSize, "G", "G")
+    const provAppCpuCores = appConfig?.provAppCpuCores || 0
+    const appCredits = appConfig?.provAppCreditPlanned || 0
+
+    const dataObject = useMemo(() => [
         {
             key: "Cloud18 Credits Available",
-            value: config?.cloud18ApplicationCredits ? (<Text>{config.cloud18ApplicationCredits - config.cloud18ApplicationCreditsUsed} / {config.cloud18ApplicationCredits}</Text>) : (<Text>{'Not set'}</Text>),
+            value: clusterCredits ? (<Text>{clusterCreditsAvailable} / {clusterCredits}</Text>) : (<Text>{'Not set'}</Text>),
         },
         {
             key: 'Resources',
             value: (
-                <Flex direction={"column"}>
-                    <Flex className={styles.resources}>
-                        <Gauge
-                            isDisabled={user?.grants['app-config-flag'] == false}
-                            minValue={256}
-                            maxValue={256 * 1024}
-                            value={convertSize(appConfig?.provAppMemory, "M", "M")}
-                            text={'Memory'}
-                            width={220}
-                            height={150}
-                            hideMinMax={false}
-                            isGaugeSizeCustomized={false}
-                            appendTextToValue='MB'
-                            textOverlayClassName={styles.textOverlay}
-                        />
-                        <Gauge
-                            isDisabled={user?.grants['app-config-flag'] == false}
-                            minValue={1}
-                            maxValue={10000}
-                            value={convertSize(appConfig?.provAppDiskSize, "G", "G")}
-                            text={'Disk size'}
-                            width={220}
-                            height={150}
-                            hideMinMax={false}
-                            isGaugeSizeCustomized={false}
-                            appendTextToValue='GB'
-                            textOverlayClassName={styles.textOverlay}
-                        />
-                        <Gauge
-                            isDisabled={user?.grants['app-config-flag'] == false}
-                            minValue={1}
-                            maxValue={256}
-                            value={appConfig?.provAppCpuCores}
-                            text={'Cores'}
-                            width={220}
-                            height={150}
-                            hideMinMax={false}
-                            isGaugeSizeCustomized={false}
-                            textOverlayClassName={styles.textOverlay}
-                        />
-                    </Flex>
-                    <Flex direction={"row"} justifyContent={"center"} alignItems={"center"}>
-                        <Gauge
-                            isDisabled={user?.grants['app-config-flag'] == false}
-                            minValue={1}
-                            maxValue={10000}
-                            value={appConfig?.provAppCreditPlanned}
-                            appendTextToValue={' Credits'}
-                            text={'Credits'}
-                            width={220}
-                            height={150}
-                            hideMinMax={false}
-                            isGaugeSizeCustomized={false}
-                            showStep={true}
-                            step={creditStep}
-                            textOverlayClassName={styles.textOverlay}
-                            handleStepChange={(value) => {
-                                setConfirmState({
-                                    isOpen: true,
-                                    title: `Confirm change for 'prov-app-credit-planned' to ${value}`,
-                                    body: `Are you sure you want to change the 'prov-app-credit-planned' to ${value}?`,
-                                    handler: () => {
-                                        dispatch(
-                                            setAppSetting({
-                                                clusterName: clusterName,
-                                                appId: appId,
-                                                setting: 'prov-app-credit-planned',
-                                                value: value
-                                            })
-                                        )
-                                    }
+                <Flex className={styles.resources}>
+                    <Gauge
+                        isDisabled={true}
+                        minValue={256}
+                        maxValue={256 * 1024}
+                        value={provAppMemory}
+                        text={'Memory'}
+                        width={220}
+                        height={150}
+                        hideMinMax={false}
+                        isGaugeSizeCustomized={false}
+                        appendTextToValue='MB'
+                        textOverlayClassName={styles.textOverlay}
+                    />
+                    <Gauge
+                        isDisabled={true}
+                        minValue={1}
+                        maxValue={10000}
+                        value={provAppDiskSize}
+                        text={'Disk size'}
+                        width={220}
+                        height={150}
+                        hideMinMax={false}
+                        isGaugeSizeCustomized={false}
+                        appendTextToValue='GB'
+                        textOverlayClassName={styles.textOverlay}
+                    />
+                    <Gauge
+                        isDisabled={true}
+                        minValue={1}
+                        maxValue={256}
+                        value={provAppCpuCores}
+                        text={'Cores'}
+                        width={220}
+                        height={150}
+                        hideMinMax={false}
+                        isGaugeSizeCustomized={false}
+                        textOverlayClassName={styles.textOverlay}
+                    />
+                </Flex>
+            )
+        },
+        {
+            key: 'Credits',
+            value: (
+                <Flex className={styles.resources}>
+                    <NumberInput
+                        isDisabled={!allowEdit}
+                        minValue={creditStep}
+                        maxValue={10000}
+                        step={creditStep}
+                        defaultValue={appCredits}
+                        showConfirmModal={true}
+                        confirmTitle={`Confirm change for 'prov-app-credit-planned'`}
+                        confirmBody={`Are you sure you want to change the 'prov-app-credit-planned' value?`}
+                        showEditButton={true}
+                        onConfirmValidator={(value) => {
+                            if (value % creditStep !== 0) {
+                                dispatch(showErrorToast(`Value must be a multiple of ${creditStep}`))
+                                return false
+                            }
+                            return true
+                        }}
+                        onConfirm={(value) => {
+                            dispatch(
+                                setAppSetting({
+                                    clusterName: clusterName,
+                                    appId: appId,
+                                    setting: 'prov-app-credit-planned',
+                                    value: value
                                 })
-                            }}
-                        />
-                    </Flex>
+                            )
+                        }}
+                    />
                 </Flex>
             )
         }
-    ]
+    ], [clusterCreditsAvailable, clusterCredits, provAppMemory, provAppDiskSize, provAppCpuCores, appCredits, creditStep, allowEdit, clusterName, appId, dispatch])
     return (
         <VStack>
             <TableType2 dataArray={dataObject} className={styles.table} />
