@@ -159,11 +159,12 @@ func (app *App) SetSetting(key, value string) error {
 		switch value {
 		case "flex", "failover":
 			if app.AppConfig.ProvAppHATopology != value {
+				oldCredit := app.AppConfig.ProvAppCreditPlanned
 				app.AppConfig.ProvAppHATopology = value
 				if value == "flex" {
 					app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned * numagents
-					if app.AppConfig.ProvAppCreditPlanned > app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed {
-						app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed - app.AppConfig.ProvAppCreditUsed + app.AppConfig.ProvAppCreditPlanned
+					if app.AppConfig.ProvAppCreditPlanned >= oldCredit {
+						app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed + (app.AppConfig.ProvAppCreditPlanned - oldCredit)
 					}
 				} else {
 					if numagents > 0 {
