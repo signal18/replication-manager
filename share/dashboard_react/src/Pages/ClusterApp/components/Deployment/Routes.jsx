@@ -1,14 +1,12 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import { HiTrash } from 'react-icons/hi'
-import TextForm from '../../../../../components/TextForm';
-import RMIconButton from '../../../../../components/RMIconButton';
-import RMButton from '../../../../../components/RMButton';
+import TextForm from '../../../../components/TextForm';
+import RMIconButton from '../../../../components/RMIconButton';
+import RMButton from '../../../../components/RMButton';
 import styles from './styles.module.scss';
 import { uniqueId } from 'lodash';
-import Dropdown from '../../../../../components/Dropdown';
-
-const defaultConfirmText = "Are you sure to change this field to: ";
+import Dropdown from '../../../../components/Dropdown';
 
 const protocolOptions = [
   { value: 'https', name: 'HTTPS' },
@@ -16,6 +14,7 @@ const protocolOptions = [
 ];
 
 export default React.memo(function Routes({
+  gateway = "",
   rows = [],
   fieldName = 'routes',
   onRowArrayChange,
@@ -62,6 +61,12 @@ export default React.memo(function Routes({
 
   return (
     <Flex direction="column" className={`${styles.sectionWrapper}`}>
+      <VStack spacing={3} align="stretch">
+        <Heading as="h3" size="md">
+          Domain Gateway
+        </Heading>
+        <Text fontWeight={"bold"}>{gateway}</Text>
+      </VStack>
       <VStack spacing={3} align="stretch">
         <Heading as="h3" size="md">
           Saved route mappings

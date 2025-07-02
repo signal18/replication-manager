@@ -1,0 +1,10 @@
+.resources {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: rem(32);
+  .textOverlay {
+    bottom: rem(10);
+  }
+  //  height: rem(120);
+}

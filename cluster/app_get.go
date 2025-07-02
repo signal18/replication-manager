@@ -255,25 +255,6 @@ func (p *App) GetSshEnv() string {
 	return "export REPLICATION_MANAGER_HOST_USER=\"" + p.GetUser() + "\";export REPLICATION_MANAGER_HOST_PASSWORD=\"" + p.GetPass() + "\";export REPLICATION_MANAGER_URL=\"https://" + p.ClusterGroup.Conf.MonitorAddress + ":" + p.ClusterGroup.Conf.APIPort + "\";export REPLICATION_MANAGER_USER=\"" + adminuser + "\";export REPLICATION_MANAGER_PASSWORD=\"" + adminpassword + "\";export REPLICATION_MANAGER_HOST_NAME=\"" + p.GetHost() + "\";export REPLICATION_MANAGER_HOST_PORT=\"" + p.GetPort() + "\";export REPLICATION_MANAGER_HOST_TYPE=\"" + p.Type + "\";export REPLICATION_MANAGER_CLUSTER_NAME=\"" + p.ClusterGroup.Name + "\"\n"
 }
 
-func (p *App) GetGitCloneFromVolumeDir(volumeDir string) *config.GitClone {
-	appcnf := p.GetAppConfig()
-	if appcnf == nil {
-		return nil
-	}
-
-	if appcnf.Deployment.GitClones == nil {
-		return nil
-	}
-
-	for _, gc := range appcnf.Deployment.GitClones {
-		if gc.VolumeDir == volumeDir {
-			return &gc
-		}
-	}
-
-	return nil
-}
-
 func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
 	result := make([]string, 0)
 
@@ -284,36 +265,6 @@ func (app *App) GetOpenSVCDeploymentAppEnv(vartype string) string {
 	}
 
 	return strings.Join(result, " ")
-}
-
-func (app *App) GetOpenSVCDeploymentGitEnv(gc config.GitClone, vartype string) string {
-	prefix := "GIT_CODE"
-	if gc.VolumeDir == "etc" {
-		return "GIT_CONFIG"
-	}
-
-	result := make([]string, 0)
-
-	replacer := strings.NewReplacer("-", "_", ".", "_", "/", "_")
-	prefix = prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest))
-
-	for _, s := range app.GetAppConfig().Deployment.Variables {
-		if s.Type == vartype && strings.HasPrefix(s.Name, prefix) {
-			result = append(result, app.Name+"/"+s.Name)
-		}
-	}
-
-	return strings.Join(result, " ")
-}
-
-func (app *App) GetOpenSVCDeplopymentGitPrefix(gc config.GitClone, envname string) string {
-	prefix := "GIT_CODE"
-	if gc.VolumeDir == "etc" {
-		return "GIT_CONFIG"
-	}
-
-	replacer := strings.NewReplacer("-", "_", ".", "_", "/", "_")
-	return prefix + "_" + strings.ToUpper(replacer.Replace(gc.Dest)) + "_" + envname
 }
 
 func (app *App) GetExternalFQDN() string {
@@ -340,4 +291,80 @@ func (app *App) GetAppAgents() []string {
 	}
 
 	return agents
+}
+
+func (app *App) GetGitClone(name string) (*config.GitClone, int) {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return nil, -1
+	}
+
+	if appcnf.Deployment.Storages.GitClones == nil {
+		return nil, -1
+	}
+
+	for i, gc := range appcnf.Deployment.Storages.GitClones {
+		if gc.Name == name {
+			return &gc, i
+		}
+	}
+
+	return nil, -1
+}
+
+func (app *App) GetLocalDirectory(name string) (*config.VolumeMapping, int) {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return nil, -1
+	}
+
+	if appcnf.Deployment.Storages.LocalDirectories == nil {
+		return nil, -1
+	}
+
+	for i, ld := range appcnf.Deployment.Storages.LocalDirectories {
+		if ld.Name == name {
+			return &ld, i
+		}
+	}
+
+	return nil, -1
+}
+
+func (app *App) GetSharedDirectory(name string) (*config.VolumeMapping, int) {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return nil, -1
+	}
+
+	if appcnf.Deployment.Storages.SharedDirectories == nil {
+		return nil, -1
+	}
+
+	for i, sd := range appcnf.Deployment.Storages.SharedDirectories {
+		if sd.Name == name {
+			return &sd, i
+		}
+	}
+
+	return nil, -1
+}
+
+func (app *App) GetS3Directory(name string) (*config.S3Mapping, int) {
+	appcnf := app.GetAppConfig()
+	if appcnf == nil {
+		return nil, -1
+	}
+
+	if appcnf.Deployment.Storages.S3Directories == nil {
+		return nil, -1
+	}
+
+	for i, s3d := range appcnf.Deployment.Storages.S3Directories {
+		if s3d.Name == name {
+			return &s3d, i
+		}
+	}
+
+	return nil, -1
 }

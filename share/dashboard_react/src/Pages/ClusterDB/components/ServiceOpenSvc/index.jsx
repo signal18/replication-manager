@@ -18,7 +18,7 @@ const useOpenSvcSelector = (type) => {
 };
 
 
-function ServiceOpenSvc({ clusterName, type, id }) {
+function ServiceOpenSvc({ clusterName, type, id, user }) {
   const dispatch = useDispatch()
   const serviceOpensvc = useOpenSvcSelector(type)
   const serviceName = 'service-opensvc'

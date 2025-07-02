@@ -214,8 +214,8 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
-	for i, gc := range app.AppConfig.Deployment.GitClones {
-		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Dest)
+	for i, gc := range app.AppConfig.Deployment.Storages.GitClones {
+		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Name)
 		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
 	}
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
@@ -388,18 +388,26 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc config
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
-		svccontainer["secrets_environment"] = app.GetOpenSVCDeploymentGitEnv(gc, "secret")
-		svccontainer["configs_environment"] = app.GetOpenSVCDeploymentGitEnv(gc, "env")
-		dirname := filepath.Join("/bootstrap", gc.VolumeDir, gc.Dest)
-		branch := app.GetOpenSVCDeplopymentGitPrefix(gc, "BRANCH")
-		gituser := app.GetOpenSVCDeplopymentGitPrefix(gc, "USER")
-		gitpass := app.GetOpenSVCDeplopymentGitPrefix(gc, "PASSWORD")
-		gitURL := app.GetOpenSVCDeplopymentGitPrefix(gc, "URL")
-		if strings.Contains(gc.GitRepo, "github.com") {
-			svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gitpass + "@$" + gitURL + " " + dirname + "'"
-		} else {
-			svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b $" + branch + " https://$" + gituser + ":$" + gitpass + "@$" + gitURL + " " + dirname + "'"
+		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
+		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
+		dirname := filepath.Join("/bootstrap", gc.VolumeDir, gc.Name)
+
+		prefix := gc.GetVariablePrefix()
+		branchKey := "$" + prefix + config.GitVarSuffixBranch
+		gituser := prefix + config.GitVarSuffixUser
+		gitpass := prefix + config.GitVarSuffixPass
+		gitURL := prefix + config.GitVarSuffixRepo
+
+		urlString := gitURL
+		if gc.GitPass != "" {
+			if strings.Contains(gc.GitRepo, "github.com") {
+				urlString = fmt.Sprintf("$%s@$%s", gitpass, gitURL)
+			} else {
+				urlString = fmt.Sprintf("$%s:$%s@$%s", gituser, gitpass, gitURL)
+			}
 		}
+
+		svccontainer["command"] = "-c 'rm -rf " + dirname + ";mkdir " + dirname + ";git clone -b " + branchKey + " https://" + urlString + " " + dirname + "'"
 	}
 
 	return svccontainer
@@ -463,6 +471,44 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to config: %s %s ", cdname, err)
 				}
 			}
+		}
+	}
+
+	for _, gc := range app.AppConfig.Deployment.Storages.GitClones {
+		prefix := gc.GetVariablePrefix()
+		envs := gc.GetEnvVariables()
+		for k, val := range envs {
+			if val == "" {
+				continue
+			}
+
+			vName := prefix + k
+
+			// Create the git clone config key
+			if k == config.GitVarSuffixRepo {
+				// If the git repo is a URL, we need to remove the protocol part
+				if strings.HasPrefix(val, "http://") || strings.HasPrefix(val, "https://") {
+					val = strings.TrimPrefix(val, "http://")
+					val = strings.TrimPrefix(val, "https://")
+				}
+			}
+			if k == config.GitVarSuffixBranch {
+				// If the git branch is not set, we use the default branch
+				if val == "" {
+					val = "master"
+				}
+			}
+
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, vName, val)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+			}
+		}
+
+		// Create the git clone secret key
+		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, gc.GitPass)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
 		}
 	}
 

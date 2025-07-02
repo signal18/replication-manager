@@ -66,6 +66,22 @@ function Gauge({
     return value
   }
 
+  const handleMinValue = (value, minValue) => {
+    let newValue = parseInt(value) - parseInt(step)
+    if (newValue < minValue) {
+      newValue = minValue
+    }
+    handleStepChange(newValue)
+  }
+
+  const handleMaxValue = (value, maxValue) => {
+    let newValue = parseInt(value) + parseInt(step)
+    if (newValue > maxValue) {
+      newValue = maxValue
+    }
+    handleStepChange(newValue)
+  }
+
   return (
     <Flex direction='column' justify='center' position='relative'>
       <Box width={width} height={height} className={`${styles.container} ${className}`} ref={svgRef}>
@@ -103,24 +119,12 @@ function Gauge({
             isDisabled={isDisabled}
             variant='outline'
             className={styles.decreaseButton}
-            onClick={() => {
-              let newValue = parseInt(value) - parseInt(step)
-              if (newValue < minValue) {
-                newValue = minValue
-              }
-              handleStepChange(newValue)
-            }}>{`-${step}`}</RMButton>
+            onClick={() => handleMinValue(value, minValue)}>{`-${step}`}</RMButton>
           <RMButton
             isDisabled={isDisabled}
             variant='outline'
             className={styles.increaseButton}
-            onClick={() => {
-              let newValue = parseInt(value) + parseInt(step)
-              if (newValue > maxValue) {
-                newValue = maxValue
-              }
-              handleStepChange(newValue)
-            }}>{`+${step}`}</RMButton>
+            onClick={() => handleMaxValue(value, maxValue)}>{`+${step}`}</RMButton>
         </HStack>
       )}
     </Flex>

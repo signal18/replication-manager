@@ -10,13 +10,39 @@ import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
 
-export default function GeneralSection({ clusterName, appId, config, appConfig, dockerTemplates }) {
+export default function GeneralSection({ clusterName, appId, config, appConfig, dockerTemplates, user }) {
 
   const dispatch = useDispatch();
 
   const templateOptions = useMemo(() => ([{ name: 'Select Template', value: '' }, ...dockerTemplates?.map(item => ({ name: item, value: item }))]), [dockerTemplates?.length]);
 
   const dataObject = [
+    {
+      key: 'App Name',
+      value: (
+        <TextForm
+          value={appConfig?.appName}
+          confirmTitle="App Name Change"
+          confirmBody='Are you sure you want to change "app-name" to: '
+          onSave={(value) =>
+            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-name', value: value }))
+          }
+        />
+      )
+    },
+    {
+      key: 'App Host',
+      value: (
+        <TextForm
+          value={appConfig?.appHost}
+          confirmTitle="App Host Change"
+          confirmBody='Are you sure you want to change "app-host" to: '
+          onSave={(value) =>
+            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-host', value: value }))
+          }
+        />
+      )
+    },
     {
       key: 'Docker Image',
       value: (
@@ -25,33 +51,7 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
           confirmTitle="Docker Image Change"
           confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
           onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value.length === 0 ? '{undefined}' : value }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Container Host',
-      value: (
-        <TextForm
-          value={appConfig?.appHost}
-          confirmTitle="Container Host Change"
-          confirmBody='Are you sure you want to change "app-host" to: '
-          onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-host', value: value.length === 0 ? '{undefined}' : value }))
-          }
-        />
-      )
-    },
-    {
-      key: 'Container Port',
-      value: (
-        <TextForm
-          value={appConfig?.appPort}
-          confirmTitle="Container Port Change"
-          confirmBody='Are you sure you want to change "app-port" to: '
-          onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'app-port', value: value.length === 0 ? '{undefined}' : value }))
+            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value }))
           }
         />
       )
@@ -83,10 +83,6 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
       )
     },
     {
-      key: 'Domain Gateway',
-      value: (<Text fontWeight={"bold"}>{config.cloud18GatewayDomainName}</Text>)
-    },
-    {
       key: 'OpenSVC Agents',
       value: (
         <Checkboxes
@@ -103,7 +99,7 @@ export default function GeneralSection({ clusterName, appId, config, appConfig, 
   ];
 
   return (
-    <Flex direction="column" className={`${styles.sectionWrapper}`} w={"100%"} gap="8px">
+    <Flex direction="column" className={`${styles.tableSectionWrapper}`} w={"100%"} gap="8px">
       <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )

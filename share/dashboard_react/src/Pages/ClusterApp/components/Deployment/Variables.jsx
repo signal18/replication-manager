@@ -1,18 +1,18 @@
 import { VStack, HStack, Text, Input, Select, Heading, Flex, Box } from '@chakra-ui/react'
 import { HiTrash } from 'react-icons/hi'
-import TextForm from '../../../../../components/TextForm';
-import Dropdown from '../../../../../components/Dropdown';
-import RMIconButton from '../../../../../components/RMIconButton';
-import RMButton from '../../../../../components/RMButton';
+import TextForm from '../../../../components/TextForm';
+import Dropdown from '../../../../components/Dropdown';
+import RMIconButton from '../../../../components/RMIconButton';
+import RMButton from '../../../../components/RMButton';
 import styles from './styles.module.scss';
 import React, { useCallback, useMemo, useState } from 'react';
-import { DataTable } from '../../../../../components/DataTable';
+import { DataTable } from '../../../../components/DataTable';
 import { createColumnHelper } from '@tanstack/react-table';
-import Checkboxes from '../../../../../components/Checkboxes/Checkboxes';
+import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
 import { uniqueId } from 'lodash';
-import PasswordControl from '../../../../../components/PasswordControl';
-import { useTheme } from '../../../../../ThemeProvider';
-import VariableInputArea from '../../../../../components/VariableTree/VariableInputArea';
+import PasswordControl from '../../../../components/PasswordControl';
+import { useTheme } from '../../../../ThemeProvider';
+import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 
 const variableTypes = [
   { value: 'secret', name: 'Secret' },

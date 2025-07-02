@@ -34,9 +34,9 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
         </HStack>
       </Flex>
       {currentTab === "overview" ? (
-        <Deployment clusterName={clusterName} appId={appId} appConfig={appConfig} config={config}/>
+        <Deployment clusterName={clusterName} appId={appId} appConfig={appConfig} config={config} user={user}/>
       ) : currentTab === "opensvc" ? (
-        <ServiceOpenSvc clusterName={clusterName} type="app" id={appId} />
+        <ServiceOpenSvc clusterName={clusterName} type="app" id={appId} user={user}/>
       ) : null }
     </VStack>
   )

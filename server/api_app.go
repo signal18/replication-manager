@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -111,7 +110,11 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/storage/{storageType}/add", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddStorage)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
@@ -498,8 +501,8 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				}
 			}
 
-			for gidx := range node.AppConfig.Deployment.GitClones {
-				dep, err = sjson.SetBytes(dep, fmt.Sprintf("gitClones.%d.pass", gidx), "*****")
+			for gidx := range node.AppConfig.Deployment.Storages.GitClones {
+				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 					http.Error(w, "Encoding error", 500)
@@ -544,8 +547,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-
-		replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
@@ -624,46 +625,6 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Invalid key for routes", 500)
 					return
 				}
-			case "gitClones":
-				if index >= len(node.AppConfig.Deployment.GitClones) {
-					http.Error(w, "Index out of range for gitClones", 500)
-					return
-				}
-				row := node.AppConfig.Deployment.GitClones[index]
-				prefix := "GIT_CODE"
-				if row.VolumeDir == "etc" {
-					prefix = "GIT_CONFIG"
-				}
-				prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
-
-				var v *config.VariableMapping
-				// Modify field based on key
-				switch vars["key"] {
-				case "dest":
-					node.AppConfig.Deployment.GitClones[index].Dest = newValue
-				case "repo":
-					// strip protocol if present
-					if strings.HasPrefix(newValue, "http://") || strings.HasPrefix(newValue, "https://") {
-						newValue = strings.TrimPrefix(newValue, "http://")
-						newValue = strings.TrimPrefix(newValue, "https://")
-					}
-					node.AppConfig.Deployment.GitClones[index].GitRepo = newValue
-					v = node.AppConfig.GetDeploymentVariables(prefix + "_URL")
-				case "branch":
-					node.AppConfig.Deployment.GitClones[index].GitBranch = newValue
-					v = node.AppConfig.GetDeploymentVariables(prefix + "_BRANCH")
-				case "pass":
-					node.AppConfig.Deployment.GitClones[index].GitPass = newValue
-					v = node.AppConfig.GetDeploymentVariables(prefix + "_PASSWORD")
-				case "user":
-					node.AppConfig.Deployment.GitClones[index].GitUser = newValue
-					v = node.AppConfig.GetDeploymentVariables(prefix + "_USER")
-				default:
-					http.Error(w, "Invalid key for gitClones", 500)
-					return
-				}
-
-				v.Value = newValue
 			case "variables":
 				if index >= len(node.AppConfig.Deployment.Variables) {
 					http.Error(w, "Index out of range for variables", 500)
@@ -765,7 +726,6 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 	field := vars["field"]
 	var affected bool
-	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
 
 	switch field {
 	case "routes":
@@ -783,47 +743,6 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
 			affected = true
 		}
-
-	case "gitClones":
-		var body []config.GitClone
-		if err := decodeBody(r, &body, "git clone", w); err != nil {
-			return
-		}
-
-		for _, row := range body {
-			if row.GitRepo == "" || row.GitBranch == "" || row.Dest == "" {
-				http.Error(w, "Git clone requires repo, branch, and dest fields", http.StatusInternalServerError)
-				return
-			}
-			if row.GitPass != "" && row.GitUser == "" {
-				http.Error(w, "Git clone requires user field when pass is provided", http.StatusInternalServerError)
-				return
-			}
-			// Strip protocol if present
-			if strings.HasPrefix(row.GitRepo, "http://") || strings.HasPrefix(row.GitRepo, "https://") {
-				row.GitRepo = strings.TrimPrefix(row.GitRepo, "http://")
-				row.GitRepo = strings.TrimPrefix(row.GitRepo, "https://")
-			}
-			// Only allow alphanumeric for dest
-			regexpDest := regexp.MustCompile(`^[a-zA-Z0-9]+$`)
-			if !regexpDest.MatchString(row.Dest) {
-				http.Error(w, "Invalid dest format. Only alphanumeric characters are allowed for directory name", http.StatusInternalServerError)
-				return
-			}
-
-			node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones, row)
-			prefix := "GIT_CODE"
-			if row.VolumeDir == "etc" {
-				prefix = "GIT_CONFIG"
-			}
-			prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
-			branch := config.VariableMapping{Name: prefix + "_BRANCH", Value: row.GitBranch, Type: "env", Locked: true}
-			url := config.VariableMapping{Name: prefix + "_URL", Value: row.GitRepo, Type: "env", Locked: true}
-			gituser := config.VariableMapping{Name: prefix + "_USER", Value: row.GitUser, Type: "env", Locked: true}
-			gitpassword := config.VariableMapping{Name: prefix + "_PASSWORD", Value: row.GitPass, Type: "secret", Locked: true}
-			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, branch, url, gituser, gitpassword)
-		}
-		affected = true
 
 	case "variables":
 		var body []config.VariableMapping
@@ -889,6 +808,109 @@ func isValidPortFormat(value string) bool {
 	return true
 }
 
+func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+
+	storages := &node.AppConfig.Deployment.Storages
+
+	failedNames := make([]string, 0)
+	appended := false
+	switch vars["storageType"] {
+	case "git":
+		var body []config.GitClone
+		if err := decodeBody(r, &body, "git clone", w); err != nil {
+			return
+		}
+
+		for _, row := range body {
+			old, _ := node.GetGitClone(row.Name)
+			if old != nil {
+				failedNames = append(failedNames, row.Name)
+				continue
+			}
+			storages.GitClones = append(storages.GitClones, row)
+			appended = true
+		}
+	case "local", "shared":
+		var body []config.VolumeMapping
+		if err := decodeBody(r, &body, "volume mapping", w); err != nil {
+			return
+		}
+		if vars["storageType"] == "local" {
+			for _, row := range body {
+				old, _ := node.GetLocalDirectory(row.Name)
+				if old != nil {
+					failedNames = append(failedNames, row.Name)
+					continue
+				}
+				storages.LocalDirectories = append(storages.LocalDirectories, row)
+				appended = true
+			}
+		} else {
+			for _, row := range body {
+				old, _ := node.GetSharedDirectory(row.Name)
+				if old != nil {
+					failedNames = append(failedNames, row.Name)
+					continue
+				}
+				storages.SharedDirectories = append(storages.SharedDirectories, row)
+				appended = true
+			}
+		}
+	case "s3":
+		var body []config.S3Mapping
+		if err := decodeBody(r, &body, "S3 bucket", w); err != nil {
+			return
+		}
+		for _, row := range body {
+			old, _ := node.GetS3Directory(row.Name)
+			if old != nil {
+				failedNames = append(failedNames, row.Name)
+				continue
+			}
+			storages.S3Directories = append(storages.S3Directories, row)
+			appended = true
+		}
+	default:
+		http.Error(w, "Invalid storage type", http.StatusInternalServerError)
+		return
+	}
+
+	if appended {
+		mycluster.ConfigManager.SaveConfig(mycluster, false)
+	}
+
+	if len(failedNames) > 0 {
+		http.Error(w, "Failed to add storage: "+strings.Join(failedNames, ", "), http.StatusInternalServerError)
+	}
+
+	if !appended && len(failedNames) == 0 {
+		http.Error(w, "No rows added to the storage", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("Storage added successfully"))
+	return
+}
+
 // @Summary Drop Deployment Field Row
 // @Description Drop a specific row from a field in a deployment for a given cluster and app
 // @Tags Apps
@@ -944,15 +966,6 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 			return
 		}
 		node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes[:index], node.AppConfig.Deployment.Routes[index+1:]...)
-	case "gitClones":
-		if index >= len(node.AppConfig.Deployment.GitClones) {
-			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
-			return
-		}
-		gc := node.AppConfig.Deployment.GitClones[index]
-		node.AppConfig.Deployment.GitClones = append(node.AppConfig.Deployment.GitClones[:index], node.AppConfig.Deployment.GitClones[index+1:]...)
-		node.AppConfig.DropGitVariables(gc)
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Git %s on app %s deleted with linked variables", gc.Dest, node.Name)
 	case "variables":
 		if index >= len(node.AppConfig.Deployment.Variables) {
 			http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
@@ -1137,12 +1150,12 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appId path string true "App ID"
-// @Param volumedir path string true "Volume Directory"
+// @Param gitName path string true "Git Name"
 // @Success 200 {object} treehelper.FileTreeCache "Git repository tree structure"
 // @Failure 400 {string} string "Invalid Git repository URL"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree"
-// @Router /api/clusters/{clusterName}/apps/{appId}/git/{volumedir}/actions/get-repo-tree [get]
+// @Router /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree [get]
 func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1159,7 +1172,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 			return
 		}
 
-		gc := app.GetGitCloneFromVolumeDir(vars["volumedir"])
+		gc, _ := app.GetGitClone(vars["volumedir"])
 		if gc == nil {
 			http.Error(w, "Git Clone Not Found", 500)
 			return

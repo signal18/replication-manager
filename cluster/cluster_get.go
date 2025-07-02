@@ -1556,8 +1556,17 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 			if cnf.Deployment.Routes == nil {
 				cnf.Deployment.Routes = make([]config.Route, 0)
 			}
-			if cnf.Deployment.GitClones == nil {
-				cnf.Deployment.GitClones = make([]config.GitClone, 0)
+			if cnf.Deployment.Storages.GitClones == nil {
+				cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
+			}
+			if cnf.Deployment.Storages.LocalDirectories == nil {
+				cnf.Deployment.Storages.LocalDirectories = make(config.Volumes, 0)
+			}
+			if cnf.Deployment.Storages.SharedDirectories == nil {
+				cnf.Deployment.Storages.SharedDirectories = make(config.Volumes, 0)
+			}
+			if cnf.Deployment.Storages.S3Directories == nil {
+				cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)
 			}
 			return cnf
 		}
@@ -1573,8 +1582,17 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	if cnf.Deployment.Routes == nil {
 		cnf.Deployment.Routes = make([]config.Route, 0)
 	}
-	if cnf.Deployment.GitClones == nil {
-		cnf.Deployment.GitClones = make([]config.GitClone, 0)
+	if cnf.Deployment.Storages.GitClones == nil {
+		cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
+	}
+	if cnf.Deployment.Storages.LocalDirectories == nil {
+		cnf.Deployment.Storages.LocalDirectories = make(config.Volumes, 0)
+	}
+	if cnf.Deployment.Storages.SharedDirectories == nil {
+		cnf.Deployment.Storages.SharedDirectories = make(config.Volumes, 0)
+	}
+	if cnf.Deployment.Storages.S3Directories == nil {
+		cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)
 	}
 	if cnf.ProvAppAgents == "" {
 		cnf.ProvAppAgents = cluster.Conf.ProvAgents

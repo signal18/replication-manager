@@ -1,15 +1,15 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex, InputGroup } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HiFolder, HiTrash } from 'react-icons/hi'
-import Dropdown from '../../../../../components/Dropdown';
-import TextForm from '../../../../../components/TextForm';
-import RMIconButton from '../../../../../components/RMIconButton';
-import RMButton from '../../../../../components/RMButton';
+import Dropdown from '../../../../components/Dropdown';
+import TextForm from '../../../../components/TextForm';
+import RMIconButton from '../../../../components/RMIconButton';
+import RMButton from '../../../../components/RMButton';
 import styles from './styles.module.scss';
-import TreeView from '../../../../../components/Modals/TreeView/TreeView';
+import TreeView from '../../../../components/Modals/TreeView/TreeView';
 import { useDispatch, useSelector } from 'react-redux';
-import { showErrorToast } from '../../../../../redux/toastSlice';
-import { getDockerTree, getGitTree, hashMurmur } from '../../../../../redux/pathSlice';
+import { showErrorToast } from '../../../../redux/toastSlice';
+import { getDockerTree, getGitTree, hashMurmur } from '../../../../redux/pathSlice';
 import { uniqueId } from 'lodash';
 
 const volumeDirs = [

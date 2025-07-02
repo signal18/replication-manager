@@ -876,69 +876,6 @@ func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
 	return nil
 }
 
-func (appcnf *AppConfig) SetGitVariableValue(name, newValue string) error {
-	volumedir := "var"
-	parts := strings.Split(name, "_")
-	total := len(parts)
-	if parts[0] != "GIT" || total < 4 {
-		return fmt.Errorf("not found")
-	}
-
-	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
-
-	if parts[1] == "CONFIG" {
-		volumedir = "etc"
-	}
-	dest := strings.Join(parts[2:total-2], "_")
-
-	for i, gc := range appcnf.Deployment.GitClones {
-		if gc.VolumeDir == volumedir && strings.EqualFold(replacer.Replace(gc.Dest), dest) {
-			switch parts[total-1] {
-			case "URL":
-				gc.GitRepo = newValue
-			case "USER":
-				gc.GitUser = newValue
-			case "PASSWORD":
-				gc.GitPass = newValue
-			case "BRANCH":
-				gc.GitBranch = newValue
-			default:
-				return fmt.Errorf("invalid field")
-			}
-
-			appcnf.Deployment.GitClones[i] = gc
-
-			return nil
-		}
-	}
-
-	return fmt.Errorf("invalid variable name")
-}
-
-func (appcnf *AppConfig) DropGitVariables(row GitClone) int {
-	prefix := "GIT_CODE"
-	if row.VolumeDir == "etc" {
-		prefix = "GIT_CONFIG"
-	}
-	replacer := strings.NewReplacer(" ", "_", "/", "_", "\\", "_", ":", "_", ".", "_")
-	prefix = strings.ToUpper(prefix + "_" + replacer.Replace(row.Dest))
-	var newVariables []VariableMapping
-
-	dropped := 0
-	for _, v := range appcnf.Deployment.Variables {
-		if strings.HasPrefix(v.Name, prefix) && v.Locked {
-			dropped++
-			continue
-		}
-
-		newVariables = append(newVariables, v)
-	}
-
-	appcnf.Deployment.Variables = newVariables
-
-	return dropped
-}
-
 type AgentVariable struct {
 	Agent string `mapstructure:"agent" toml:"agent" json:"agent"`
 	Value string `mapstructure:"value" toml:"value" json:"value"`
@@ -992,6 +929,13 @@ type VariableMapping struct {
 	Conditional AVSlice `mapstructure:"conditional" toml:"conditional" json:"conditional" groups:"apps"` // This is used to set the variable value only if the agent matches
 }
 
+type StorageMapping struct {
+	GitClones         GitClones  `mapstructure:"git-clones" toml:"git-clones" json:"gitClones" groups:"apps"`
+	LocalDirectories  Volumes    `mapstructure:"local-directories" toml:"local-directories" json:"localDirectories" groups:"apps"`
+	SharedDirectories Volumes    `mapstructure:"shared-directories" toml:"shared-directories" json:"sharedDirectories" groups:"apps"`
+	S3Directories     S3Mappings `mapstructure:"s3-directories" toml:"s3-directories" json:"s3Directories" groups:"apps"`
+}
+
 type PathMapping struct {
 	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"` // This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}
 	From      string   `toml:"from" json:"from" groups:"apps"`
@@ -1000,14 +944,90 @@ type PathMapping struct {
 	Agents    []string `toml:"agents" json:"agents" example:"all" groups:"apps"`
 }
 
+type GitClones []GitClone
+
 type GitClone struct {
+	Name      string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
 	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo" groups:"apps"`
 	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch" groups:"apps"`
-	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"config|data" groups:"apps"`
-	Dest      string `mapstructure:"dest" toml:"dest" json:"dest" groups:"apps"`
+	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"`
 	GitUser   string `mapstructure:"user" toml:"user" json:"user" groups:"apps"`
 	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass" groups:"apps"`
 	Timeout   int    `mapstructure:"timeout" toml:"timeout" json:"timeout" groups:"apps"`
+}
+
+var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
+
+const GitVarSuffixRepo = "REPO"
+const GitVarSuffixBranch = "BRANCH"
+const GitVarSuffixUser = "USER"
+const GitVarSuffixPass = "PASS"
+
+// GetVariablePrefix returns the environment variable prefix for the given key. If key is not empty, it must be one of the predefined suffixes.
+func (gc *GitClone) GetVariablePrefix() string {
+	return "GIT_" + strings.ToUpper(gitVariableReplacer.Replace(gc.Name)) + "_"
+}
+
+func GetGitEnvKeys() []string {
+	return []string{
+		GitVarSuffixRepo,
+		GitVarSuffixBranch,
+		GitVarSuffixUser,
+	}
+}
+
+func GetGitSecretKeys() []string {
+	return []string{
+		GitVarSuffixPass,
+	}
+}
+
+func (gc *GitClone) GetEnvVariables() map[string]string {
+	envVars := make(map[string]string)
+	envVars[GitVarSuffixRepo] = gc.GitRepo
+	envVars[GitVarSuffixBranch] = gc.GitBranch
+	envVars[GitVarSuffixUser] = gc.GitUser
+	return envVars
+}
+
+func (gc *GitClone) GetSecretVariables() map[string]string {
+	secretVars := make(map[string]string)
+	secretVars[GitVarSuffixPass] = gc.GitPass
+	return secretVars
+}
+
+func (gc *GitClone) GetVariableKeys(appName string, vartype string) string {
+	result := make([]string, 0)
+	prefix := gc.GetVariablePrefix()
+	if vartype == "env" {
+		for _, key := range GetGitEnvKeys() {
+			result = append(result, appName+"/"+prefix+key)
+		}
+	} else if vartype == "secret" {
+		for _, key := range GetGitSecretKeys() {
+			result = append(result, appName+"/"+prefix+key)
+		}
+	} else {
+		// If vartype is not env or secret, return an empty string
+		return ""
+	}
+
+	return strings.Join(result, " ")
+}
+
+type Volumes []VolumeMapping
+
+type VolumeMapping struct {
+	Name       string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumeName" groups:"apps"`
+	VolumeDir  string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
+}
+
+type S3Mappings []S3Mapping
+
+type S3Mapping struct {
+	Name   string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	Bucket string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
 }
 
 type Route struct {
@@ -1027,13 +1047,18 @@ type Deployment struct {
 	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
 	Paths        []PathMapping     `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
 	Routes       []Route           `mapstructure:"routes"  toml:"routes" json:"routes" groups:"apps"`
-	GitClones    []GitClone        `mapstructure:"git-clones"  toml:"git-clones" json:"gitClones" groups:"apps"`
+	Storages     StorageMapping    `mapstructure:"storages"  toml:"storages" json:"storages" groups:"apps"`
 }
 
 func NewDeploymentConfig() *Deployment {
 	return &Deployment{
-		Routes:    []Route{},
-		GitClones: []GitClone{},
+		Routes: []Route{},
+		Storages: StorageMapping{
+			GitClones:         GitClones{},
+			LocalDirectories:  Volumes{},
+			SharedDirectories: Volumes{},
+			S3Directories:     S3Mappings{},
+		},
 		Variables: []VariableMapping{},
 		Paths:     []PathMapping{},
 	}

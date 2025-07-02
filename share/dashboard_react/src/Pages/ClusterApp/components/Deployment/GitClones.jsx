@@ -1,11 +1,11 @@
 import { VStack, HStack, Input, Heading, Text, Flex, Select } from '@chakra-ui/react'
 import { HiTrash } from 'react-icons/hi'
 import React, { useState } from 'react'
-import TextForm from '../../../../../components/TextForm'
-import RMIconButton from '../../../../../components/RMIconButton';
-import RMButton from '../../../../../components/RMButton';
+import TextForm from '../../../../components/TextForm'
+import RMIconButton from '../../../../components/RMIconButton';
+import RMButton from '../../../../components/RMButton';
 import styles from './styles.module.scss';
-import Dropdown from '../../../../../components/Dropdown';
+import Dropdown from '../../../../components/Dropdown';
 import { uniqueId } from 'lodash';
 
 const volumeDirs = [

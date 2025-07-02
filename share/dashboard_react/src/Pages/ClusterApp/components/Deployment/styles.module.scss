@@ -124,9 +124,17 @@
   }
 }
 
+.tableSectionWrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
 .sectionWrapper {
     display: flex;
     flex-direction: column;
+    padding: 16px;
     gap: 16px;
     width: 100%;
 }
