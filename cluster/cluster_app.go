@@ -25,6 +25,7 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 		ProvAppDisk:       cluster.GetAppDisk(nil),
 		ProvAppAgents:     cluster.GetAppAgents(nil),
 		ProvAppVolumeData: cluster.GetAppVolumeData(nil),
+		ProvAppHATopology: cluster.GetAppHATopology(nil),
 	}
 }
 
@@ -489,6 +490,21 @@ func (cluster *Cluster) GetAppCores(appcnf *config.AppConfig) string {
 	}
 
 	return cores
+}
+
+func (cluster *Cluster) GetAppHATopology(appcnf *config.AppConfig) string {
+	if appcnf != nil && appcnf.ProvAppHATopology != "" {
+		// If the app config has HA topology, return it
+		return appcnf.ProvAppHATopology
+	}
+
+	// If the app config does not have HA topology, return the cluster HA topology
+	haTopology := cluster.Conf.ProvAppHATopology
+	if haTopology != "" && appcnf != nil {
+		appcnf.ProvAppHATopology = haTopology
+	}
+
+	return haTopology
 }
 
 func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {

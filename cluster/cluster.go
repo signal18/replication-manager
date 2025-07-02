@@ -1791,6 +1791,14 @@ func (c *Cluster) AddApp(app *App) {
 	app.SetState(stateSuspect)
 	c.Apps = append(c.Apps, app)
 
+	if app.AppConfig.ProvAppCreditPlanned == 0 {
+		if app.AppConfig.ProvAppHATopology == "flex" {
+			app.AppConfig.ProvAppCreditPlanned = len(app.GetAppAgents())
+		} else {
+			app.AppConfig.ProvAppCreditPlanned = 1
+		}
+	}
+
 	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
 		c.Conf.Cloud18ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
 		if app.HasProvisionCookie() {
