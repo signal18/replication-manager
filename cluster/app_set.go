@@ -154,6 +154,29 @@ func (app *App) SetSetting(key, value string) error {
 		if err := app.SetAppProvisionByCredit(creditPlanSize); err != nil {
 			return err
 		}
+	case "prov-app-ha-topology":
+		numagents := len(app.GetAppAgents())
+		switch value {
+		case "flex", "failover":
+			if app.AppConfig.ProvAppHATopology != value {
+				app.AppConfig.ProvAppHATopology = value
+				if value == "flex" {
+					app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned * numagents
+					if app.AppConfig.ProvAppCreditPlanned > app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed {
+						app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed - app.AppConfig.ProvAppCreditUsed + app.AppConfig.ProvAppCreditPlanned
+					}
+				} else {
+					if numagents > 0 {
+						app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned / numagents
+					} else {
+						app.AppConfig.ProvAppCreditPlanned = 0
+					}
+				}
+				app.SetReprovCookie()
+			}
+		default:
+			return errors.New("invalid value for ha topology")
+		}
 	default:
 		return errors.New("unknown setting: " + key)
 	}
