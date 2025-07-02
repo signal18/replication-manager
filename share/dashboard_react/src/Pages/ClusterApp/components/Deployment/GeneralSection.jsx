@@ -3,25 +3,29 @@ import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch, useSelector } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
-import { setAppSetting } from '../../../../redux/settingsSlice';
+import { resetAppFromTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
 import { useMemo } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
 
-const haTopologyOptions = [
-  { value: 'failover', name: 'Failover' },
-  { value: 'flex', name: 'Flex' },
-];
-
 export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, user }) {
 
   const dispatch = useDispatch();
-
+  const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);  
   const templateOptions = useMemo(() => ([{ name: 'Select Template', value: '' }, ...dockerTemplates?.map(item => ({ name: item, value: item }))]), [dockerTemplates?.length]);
+  const { provAppDockerImg = '', provAppTemplate = '', provAppAgents = '', provAppHaTopology = '' } = appConfig;
+  const agentList = config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents;
+  const onSaveDockerImage = (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value }))
+  const onSaveDockerTemplate = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: value })) }
+  const onResetAppFromTemplate = () => dispatch(resetAppFromTemplate({ clusterName, appId }))
+  const onAgentsChange = (value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))
+  const onHATopologyChange = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }
 
-  const dataObject = [
+  const dataObject = useMemo(() => {
+    console.log(haTopologyOptions)
+    return [
     {
       key: 'App Name',
       value: (<Text>{appName}</Text>)
@@ -34,12 +38,10 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
       key: 'Docker Image',
       value: (
         <TextForm
-          value={appConfig?.provAppDockerImg}
+          value={provAppDockerImg}
           confirmTitle="Docker Image Change"
           confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
-          onSave={(value) =>
-            dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value }))
-          }
+          onSave={onSaveDockerImage}
         />
       )
     },
@@ -49,10 +51,10 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
         <Dropdown
           confirmTitle="Docker Template Change"
           confirmBody='Are you sure you want to change "prov-app-template" to: '
-          isMenuPortalTarget={false}
-          onChange={(option) => { setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: option.value }) }}
+          isMenuPortalTarget={true}
+          onChange={onSaveDockerTemplate}
           options={templateOptions}
-          selectedValue={appConfig?.provAppTemplate}
+          selectedValue={provAppTemplate}
         />
       )
     },
@@ -63,8 +65,8 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
           icon={HiRefresh}
           aria-label="Reset App From Template"
           tooltip="Reset App From Template"
-          onClick={() => dispatch(resetAppFromTemplate({ clusterName, appId }))}
-          isDisabled={!appConfig?.provAppTemplate}
+          onClick={onResetAppFromTemplate}
+          isDisabled={!provAppTemplate}
           confirmTitle="Reset App From Template"
         />
       )
@@ -73,30 +75,31 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
       key: 'OpenSVC Agents',
       value: (
         <Checkboxes
-          list={config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents}
-          values={appConfig?.provAppAgents}
+          list={agentList}
+          values={provAppAgents}
           confirm={true}
           splitConfirm={true}
           confirmTitle={`Confirm change 'prov-app-agents' to: `}
-          onChange={(value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))} // Convert array to string (auto join with comma)
+          onChange={onAgentsChange}
           parentStyles={styles}
         />
       )
     },
-   {
+    {
       key: 'OpenSVC HA Topology',
       value: (
         <Dropdown
           confirmTitle="OpenSVC HA Topology Change"
           confirmBody='Are you sure you want to change "prov-app-ha-topology" to: '
-          isMenuPortalTarget={false}
-          onChange={(option) => { setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: option.value }) }}
+          isMenuPortalTarget={true}
+          onChange={onHATopologyChange}
           options={haTopologyOptions}
-          selectedValue={appConfig?.provAppHaTopology}
+          selectedValue={provAppHaTopology}
         />
       )
     },
-  ];
+  ]}, [appName, appHost, provAppDockerImg, onSaveDockerImage, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
+
 
   return (
     <Flex direction="column" className={`${styles.tableSectionWrapper}`} w={"100%"} gap="8px">
