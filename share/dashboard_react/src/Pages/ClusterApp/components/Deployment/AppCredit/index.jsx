@@ -34,7 +34,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
     const dataObject = [
         {
             key: "Cloud18 Credits Available",
-            value: config?.cloud18ApplicationCredits ? (<Text>{config.cloud18ApplicationCredits - config.ApplicationCreditsUsed} / {config.cloud18ApplicationCredits}</Text>) : (<Text>{'Not set'}</Text>),
+            value: config?.cloud18ApplicationCredits ? (<Text>{config.cloud18ApplicationCredits - config.cloud18ApplicationCreditsUsed} / {config.cloud18ApplicationCredits}</Text>) : (<Text>{'Not set'}</Text>),
         },
         {
             key: 'Resources',
