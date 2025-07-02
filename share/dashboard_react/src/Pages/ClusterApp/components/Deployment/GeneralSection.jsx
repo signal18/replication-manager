@@ -24,7 +24,6 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
   const onHATopologyChange = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }
 
   const dataObject = useMemo(() => {
-    console.log(haTopologyOptions)
     return [
     {
       key: 'App Name',
