@@ -1568,6 +1568,50 @@ export const deploymentFieldIndexDrop = createAsyncThunk(
       }
     }
   )
+
+  export const storageFieldChange = createAsyncThunk(
+    'cluster/storageFieldChange',
+    async ({ clusterName, appId, field, index, key, value }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.storageFieldChange(clusterName, appId, field, index, key, value, baseURL)
+        showSuccessBanner('storage field updated!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while updating storage field', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+
+export const storageFieldIndexAdd = createAsyncThunk(
+    'cluster/storageFieldIndexAdd',
+    async ({ clusterName, appId, field, value }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.storageFieldIndexAdd(clusterName, appId, field, value, baseURL)
+        showSuccessBanner('New storage field row added!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while adding a new storage field row', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
+export const storageFieldIndexDrop = createAsyncThunk(
+    'cluster/storageFieldIndexDrop',
+    async ({ clusterName, appId, field, index }, thunkAPI) => {
+      try {
+        const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+        const { data, status } = await clusterService.storageFieldIndexDrop(clusterName, appId, field, index, baseURL)
+        showSuccessBanner('storage field row dropped!', status, thunkAPI)
+        return { data, status }
+      } catch (error) {
+        showErrorBanner('Error while dropping a storage field row', error, thunkAPI)
+        handleError(error, thunkAPI)
+      }
+    }
+  )
   
 
   export const connectDockerRegistry = createAsyncThunk(

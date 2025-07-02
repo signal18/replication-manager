@@ -130,6 +130,9 @@ export const clusterService = {
   deploymentFieldChange,
   deploymentFieldIndexAdd,
   deploymentFieldIndexDrop,
+  storageFieldChange,
+  storageFieldIndexAdd,
+  storageFieldIndexDrop,
 
   connectDockerRegistry,
   browseDockerImage
@@ -613,6 +616,16 @@ function deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL) {
 }
 function deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/drop`)
+}
+
+function storageFieldChange(clusterName, appId, field, index, key, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/${key}/modify`, { value })
+}
+function storageFieldIndexAdd(clusterName, appId, field, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/add`, value)
+}
+function storageFieldIndexDrop(clusterName, appId, field, index, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/drop`)
 }
 //#endregion App management APIs
 

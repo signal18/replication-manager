@@ -5998,6 +5998,174 @@ paths:
       summary: Reset App from Template
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/storages/{field}/add:
+    post:
+      consumes:
+      - application/json
+      description: Add a new storage to the deployment for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Field to add storage to (gitClones, localDirectories, sharedDirectories,
+          s3Directories)
+        in: path
+        name: field
+        required: true
+        type: string
+      - description: 'Array of objects depending on field: - git: []config.GitClone
+          - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping'
+        in: body
+        name: body
+        required: true
+        schema: {}
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Storage added successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error decoding JSON" "Server Not Found
+          schema:
+            type: string
+      summary: Add Storage to Deployment
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify:
+    post:
+      consumes:
+      - application/json
+      description: Modify a specific field in a storage for a given cluster and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Field to modify (gitClones, localDirectories, sharedDirectories,
+          s3Directories)
+        in: path
+        name: field
+        required: true
+        type: string
+      - description: Index of the field to modify
+        in: path
+        name: index
+        required: true
+        type: string
+      - description: Key of the field to modify
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: New value for the field
+        in: body
+        name: value
+        required: true
+        schema:
+          properties:
+            value: {}
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Storage field modified
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error decoding JSON" "Server Not Found
+          schema:
+            type: string
+      summary: Modify Storage Field
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/drop:
+    post:
+      consumes:
+      - application/json
+      description: Drop a specific row from a field in a storage for a given cluster
+        and app
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Field to drop a row from (gitClones, localDirectories, sharedDirectories,
+          s3Directories)
+        in: path
+        name: field
+        required: true
+        type: string
+      - description: Index of the row to drop
+        in: path
+        name: index
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Storage field row removed
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error decoding JSON" "Server Not Found
+          schema:
+            type: string
+      summary: Drop Storage Field Row
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/substitution:
     get:
       consumes:

@@ -6,6 +6,7 @@ import ServerName from '../../../../components/ServerName'
 import Overview from '../Overview'
 import ServiceOpenSvc from '../../../ClusterDB/components/ServiceOpenSvc'
 import ServerStatus from '../../../../components/ServerStatus'
+import StoragePage from '../Storage'
 
 function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, config }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -27,6 +28,16 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
     )
   }, [clusterName, appId, appName, appHost, appConfig, config, user])
 
+  const storagesComponent = useMemo(() => {
+    return (
+      <StoragePage
+        clusterName={clusterName}
+        appId={appId}
+        user={user}
+      />
+    )
+  }, [clusterName, appId, user])
+
   const serviceOpenSvcComponent = useMemo(() => {
     return (
       <ServiceOpenSvc
@@ -36,7 +47,9 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
         user={user}
       />
     )
-  }, [clusterName, appId, user])  
+  }, [clusterName, appId, user])
+
+
 
   useEffect(() => {
     setCurrentTab(tab)
@@ -60,6 +73,7 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
         </HStack>
       </Flex>
       {currentTab === "overview" ? (overviewComponent) 
+        : currentTab === "storages" ? (storagesComponent)
         : currentTab === "opensvc" ? (serviceOpenSvcComponent) 
         : null }
     </VStack>

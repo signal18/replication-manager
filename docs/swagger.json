@@ -3561,6 +3561,244 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/storages/{field}/add": {
+            "post": {
+                "description": "Add a new storage to the deployment for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Add Storage to Deployment",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Array of objects depending on field: - git: []config.GitClone - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {}
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Storage added successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error decoding JSON\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/drop": {
+            "post": {
+                "description": "Drop a specific row from a field in a storage for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Drop Storage Field Row",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index of the row to drop",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Storage field row removed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error decoding JSON\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify": {
+            "post": {
+                "description": "Modify a specific field in a storage for a given cluster and app",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Modify Storage Field",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Field to modify (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "name": "field",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Index of the field to modify",
+                        "name": "index",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Key of the field to modify",
+                        "name": "key",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New value for the field",
+                        "name": "value",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "value": {}
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Storage field modified",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error decoding JSON\" \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/substitution": {
             "get": {
                 "description": "Retrieves the substitution variables for a specific app in a cluster.",

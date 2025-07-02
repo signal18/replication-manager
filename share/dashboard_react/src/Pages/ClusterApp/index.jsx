@@ -62,6 +62,7 @@ function ClusterApp(props) {
           </>
         ]
         authorizedTabs.push('App Overview')
+        authorizedTabs.push('Storages')
         authorizedTabs.push('Service OpenSVC')
         tabs.current = authorizedTabs
         setUser(apiUser)
@@ -77,6 +78,9 @@ function ClusterApp(props) {
       if (tabs.current[selectedTabRef.current] === 'App Overview') {
         dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
         dispatch(getAppService({ clusterName, serviceName: 'substitution', appId }))
+      }
+      if (tabs.current[selectedTabRef.current] === 'Storages') {
+        dispatch(getAppService({ clusterName, serviceName: 'deployment', appId }))
       }
       if (tabs.current[selectedTabRef.current] === 'Service OpenSVC') {
         dispatch(getAppService({ clusterName, serviceName: 'service-opensvc', appId }))
@@ -104,6 +108,14 @@ function ClusterApp(props) {
             null,
             <ClusterAppTabContent
               tab='overview'
+              appId={appId}
+              clusterName={clusterName}
+              user={user}
+              selectedApp={selectedApp}
+              config={clusterData?.config}
+            />,
+            <ClusterAppTabContent
+              tab='storages'
               appId={appId}
               clusterName={clusterName}
               user={user}

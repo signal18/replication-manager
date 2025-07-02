@@ -110,9 +110,17 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appId}/storage/{storageType}/add", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyStorageField)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/storages/{field}/add", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddStorage)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropStorageFieldRow)),
 	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -808,109 +816,6 @@ func isValidPortFormat(value string) bool {
 	return true
 }
 
-func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster == nil {
-		http.Error(w, "No cluster", http.StatusInternalServerError)
-		return
-	}
-
-	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-		http.Error(w, "No valid ACL", http.StatusForbidden)
-		return
-	}
-
-	node := mycluster.GetAppFromName(vars["appName"])
-	if node == nil {
-		http.Error(w, "Server Not Found", http.StatusInternalServerError)
-		return
-	}
-
-	storages := &node.AppConfig.Deployment.Storages
-
-	failedNames := make([]string, 0)
-	appended := false
-	switch vars["storageType"] {
-	case "git":
-		var body []config.GitClone
-		if err := decodeBody(r, &body, "git clone", w); err != nil {
-			return
-		}
-
-		for _, row := range body {
-			old, _ := node.GetGitClone(row.Name)
-			if old != nil {
-				failedNames = append(failedNames, row.Name)
-				continue
-			}
-			storages.GitClones = append(storages.GitClones, row)
-			appended = true
-		}
-	case "local", "shared":
-		var body []config.VolumeMapping
-		if err := decodeBody(r, &body, "volume mapping", w); err != nil {
-			return
-		}
-		if vars["storageType"] == "local" {
-			for _, row := range body {
-				old, _ := node.GetLocalDirectory(row.Name)
-				if old != nil {
-					failedNames = append(failedNames, row.Name)
-					continue
-				}
-				storages.LocalDirectories = append(storages.LocalDirectories, row)
-				appended = true
-			}
-		} else {
-			for _, row := range body {
-				old, _ := node.GetSharedDirectory(row.Name)
-				if old != nil {
-					failedNames = append(failedNames, row.Name)
-					continue
-				}
-				storages.SharedDirectories = append(storages.SharedDirectories, row)
-				appended = true
-			}
-		}
-	case "s3":
-		var body []config.S3Mapping
-		if err := decodeBody(r, &body, "S3 bucket", w); err != nil {
-			return
-		}
-		for _, row := range body {
-			old, _ := node.GetS3Directory(row.Name)
-			if old != nil {
-				failedNames = append(failedNames, row.Name)
-				continue
-			}
-			storages.S3Directories = append(storages.S3Directories, row)
-			appended = true
-		}
-	default:
-		http.Error(w, "Invalid storage type", http.StatusInternalServerError)
-		return
-	}
-
-	if appended {
-		mycluster.ConfigManager.SaveConfig(mycluster, false)
-	}
-
-	if len(failedNames) > 0 {
-		http.Error(w, "Failed to add storage: "+strings.Join(failedNames, ", "), http.StatusInternalServerError)
-	}
-
-	if !appended && len(failedNames) == 0 {
-		http.Error(w, "No rows added to the storage", http.StatusInternalServerError)
-		return
-	}
-
-	w.Write([]byte("Storage added successfully"))
-	return
-}
-
 // @Summary Drop Deployment Field Row
 // @Description Drop a specific row from a field in a deployment for a given cluster and app
 // @Tags Apps
@@ -989,6 +894,438 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Deployment field row removed"))
+}
+
+// @Summary Add Storage to Deployment
+// @Description Add a new storage to the deployment for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param field path string true "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param body body any true "Array of objects depending on field: - git: []config.GitClone - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping"
+// @Success 200 {string} string "Storage added successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error decoding JSON" "Server Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/storages/{field}/add [post]
+// This endpoint adds a new storage to the deployment for a given cluster and app.
+func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+
+	storages := &node.AppConfig.Deployment.Storages
+
+	failedNames := make([]string, 0)
+	appended := false
+	switch vars["field"] {
+	case "gitClones":
+		var body []config.GitClone
+		if err := decodeBody(r, &body, "git clone", w); err != nil {
+			return
+		}
+
+		for _, row := range body {
+			old, _ := node.GetGitClone(row.Name)
+			if old != nil {
+				failedNames = append(failedNames, row.Name)
+				continue
+			}
+			storages.GitClones = append(storages.GitClones, row)
+			appended = true
+		}
+	case "localDirectories", "sharedDirectories":
+		var body []config.VolumeMapping
+		if err := decodeBody(r, &body, "volume mapping", w); err != nil {
+			return
+		}
+		if vars["field"] == "localDirectories" {
+			for _, row := range body {
+				old, _ := node.GetLocalDirectory(row.Name)
+				if old != nil {
+					failedNames = append(failedNames, row.Name)
+					continue
+				}
+				storages.LocalDirectories = append(storages.LocalDirectories, row)
+				appended = true
+			}
+		} else {
+			for _, row := range body {
+				old, _ := node.GetSharedDirectory(row.Name)
+				if old != nil {
+					failedNames = append(failedNames, row.Name)
+					continue
+				}
+				storages.SharedDirectories = append(storages.SharedDirectories, row)
+				appended = true
+			}
+		}
+	case "s3Directories":
+		var body []config.S3Mapping
+		if err := decodeBody(r, &body, "S3 bucket", w); err != nil {
+			return
+		}
+		for _, row := range body {
+			old, _ := node.GetS3Directory(row.Name)
+			if old != nil {
+				failedNames = append(failedNames, row.Name)
+				continue
+			}
+			storages.S3Directories = append(storages.S3Directories, row)
+			appended = true
+		}
+	default:
+		http.Error(w, "Invalid storage type", http.StatusInternalServerError)
+		return
+	}
+
+	if appended {
+		mycluster.ConfigManager.SaveConfig(mycluster, false)
+	}
+
+	if len(failedNames) > 0 {
+		http.Error(w, "Failed to add storage: "+strings.Join(failedNames, ", "), http.StatusInternalServerError)
+	}
+
+	if !appended && len(failedNames) == 0 {
+		http.Error(w, "No rows added to the storage", http.StatusInternalServerError)
+		return
+	}
+
+	w.Write([]byte("Storage added successfully"))
+	return
+}
+
+// @Summary Modify Storage Field
+// @Description Modify a specific field in a storage for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param field path string true "Field to modify (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param index path string true "Index of the field to modify"
+// @Param key path string true "Key of the field to modify"
+// @Param value body object{value=any} true "New value for the field"
+// @Success 200 {string} string "Storage field modified"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error decoding JSON" "Server Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify [post]
+// This endpoint modifies a specific field in a storage for a given cluster and app.
+func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			var newValue string
+
+			type FieldValue struct {
+				Value string `json:"value"`
+			}
+
+			var body FieldValue
+			err := json.NewDecoder(r.Body).Decode(&body)
+			if err != nil {
+				http.Error(w, "Error decoding JSON: "+err.Error(), 500)
+				return
+			}
+
+			newValue = body.Value
+
+			if vars["index"] == "" || vars["index"] == "undefined" {
+				http.Error(w, "Index not provided", 500)
+				return
+			}
+
+			index, err := strconv.Atoi(vars["index"])
+			if err != nil {
+				http.Error(w, "Error parsing index: "+err.Error(), 500)
+				return
+			}
+
+			if index < 0 {
+				http.Error(w, "Index cannot be negative", 500)
+				return
+			}
+
+			if vars["key"] == "" || vars["key"] == "undefined" {
+				// For gitClones, variables, and path, key is required
+				http.Error(w, "Key not provided", 500)
+				return
+			}
+
+			switch vars["field"] {
+			// fields which are arrays of objects
+			case "gitClones":
+				if index >= len(node.AppConfig.Deployment.Storages.GitClones) {
+					http.Error(w, "Index out of range for gitClones", 500)
+					return
+				}
+
+				// Get the git clone at the specified index
+				gitClone := &node.AppConfig.Deployment.Storages.GitClones[index]
+				if gitClone == nil {
+					http.Error(w, "Git clone not found at index "+vars["index"], 500)
+					return
+				}
+
+				// Modify field based on key
+				switch vars["key"] {
+				case "name":
+					// Do not allow changing the name of an existing git clone
+					http.Error(w, "Cannot change name of existing git clone. Please drop the git clone and create a new one.", 500)
+					return
+				case "repo":
+					if newValue == "" {
+						http.Error(w, "Repo cannot be empty", 500)
+						return
+					}
+					gitClone.GitRepo = newValue
+				case "branch":
+					if newValue == "" {
+						http.Error(w, "Branch cannot be empty", 500)
+						return
+					}
+					gitClone.GitBranch = newValue
+				case "volumedir":
+					if newValue == "" {
+						http.Error(w, "VolumeDir cannot be empty", 500)
+						return
+					}
+					gitClone.VolumeDir = newValue
+				case "user":
+					if newValue == "" {
+						http.Error(w, "User cannot be empty", 500)
+						return
+					}
+					gitClone.GitUser = newValue
+				case "pass":
+					if newValue == "" {
+						http.Error(w, "Pass cannot be empty", 500)
+						return
+					}
+					gitClone.GitPass = newValue
+				default:
+					http.Error(w, "Invalid key for gitClones", 500)
+					return
+				}
+			case "localDirectories":
+				if index >= len(node.AppConfig.Deployment.Storages.LocalDirectories) {
+					http.Error(w, "Index out of range for localDirectories", 500)
+					return
+				}
+
+				// Get the local directory at the specified index
+				localDir := &node.AppConfig.Deployment.Storages.LocalDirectories[index]
+				if localDir == nil {
+					http.Error(w, "Local directory not found at index "+vars["index"], 500)
+					return
+				}
+
+				// Modify field based on key
+				switch vars["key"] {
+				case "name":
+					// Do not allow changing the name of an existing local directory
+					http.Error(w, "Cannot change name of existing local directory. Please drop the local directory and create a new one.", 500)
+					return
+				case "volumename":
+					if newValue == "" {
+						http.Error(w, "VolumeName cannot be empty", 500)
+						return
+					}
+					localDir.VolumeName = newValue
+				case "volumedir":
+					if newValue == "" {
+						http.Error(w, "VolumeDir cannot be empty", 500)
+						return
+					}
+					localDir.VolumeDir = newValue
+				default:
+					http.Error(w, "Invalid key for localDirectories", 500)
+					return
+				}
+			case "sharedDirectories":
+				if index >= len(node.AppConfig.Deployment.Storages.SharedDirectories) {
+					http.Error(w, "Index out of range for sharedDirectories", 500)
+					return
+				}
+				sharedDir := &node.AppConfig.Deployment.Storages.SharedDirectories[index]
+				if sharedDir == nil {
+					http.Error(w, "Shared directory not found at index "+vars["index"], 500)
+					return
+				}
+				switch vars["key"] {
+				case "name":
+					http.Error(w, "Cannot change name of existing shared directory. Please drop the shared directory and create a new one.", 500)
+					return
+				case "volumename":
+					if newValue == "" {
+						http.Error(w, "VolumeName cannot be empty", 500)
+						return
+					}
+					sharedDir.VolumeName = newValue
+				case "volumedir":
+					if newValue == "" {
+						http.Error(w, "VolumeDir cannot be empty", 500)
+						return
+					}
+					sharedDir.VolumeDir = newValue
+				default:
+					http.Error(w, "Invalid key for sharedDirectories", 500)
+					return
+				}
+			case "s3Directories":
+				if index >= len(node.AppConfig.Deployment.Storages.S3Directories) {
+					http.Error(w, "Index out of range for s3Directories", 500)
+					return
+				}
+
+				s3Dir := &node.AppConfig.Deployment.Storages.S3Directories[index]
+				if s3Dir == nil {
+					http.Error(w, "S3 directory not found at index "+vars["index"], 500)
+					return
+				}
+
+				switch vars["key"] {
+				case "name":
+					// Do not allow changing the name of an existing S3 directory
+					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
+					return
+				case "bucket":
+					if newValue == "" {
+						http.Error(w, "Bucket cannot be empty", 500)
+						return
+					}
+					s3Dir.Bucket = newValue
+				default:
+					http.Error(w, "Invalid key for s3Directories", 500)
+					return
+				}
+
+			default:
+				http.Error(w, "Invalid field", 500)
+				return
+			}
+
+			mycluster.ConfigManager.SaveConfig(mycluster, false)
+			w.Write([]byte("Storage field modified"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Drop Storage Field Row
+// @Description Drop a specific row from a field in a storage for a given cluster and app
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param field path string true "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param index path string true "Index of the row to drop"
+// @Success 200 {string} string "Storage field row removed"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error decoding JSON" "Server Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/drop [post]
+// This endpoint drops a specific row from a field in a storage for a given cluster and app.
+func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	node := mycluster.GetAppFromName(vars["appName"])
+	if node == nil {
+		http.Error(w, "Server Not Found", http.StatusInternalServerError)
+		return
+	}
+
+	field := vars["field"]
+	indexStr := vars["index"]
+	if indexStr == "" || indexStr == "undefined" {
+		http.Error(w, "Index not provided", http.StatusInternalServerError)
+		return
+	}
+
+	index, err := strconv.Atoi(indexStr)
+	if err != nil || index < 0 {
+		http.Error(w, "Invalid index: "+indexStr, http.StatusInternalServerError)
+		return
+	}
+
+	switch field {
+	case "gitClones":
+		if index >= len(node.AppConfig.Deployment.Storages.GitClones) {
+			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
+			return
+		}
+		node.AppConfig.Deployment.Storages.GitClones = append(node.AppConfig.Deployment.Storages.GitClones[:index], node.AppConfig.Deployment.Storages.GitClones[index+1:]...)
+	case "localDirectories":
+		if index >= len(node.AppConfig.Deployment.Storages.LocalDirectories) {
+			http.Error(w, "Index out of range for localDirectories", http.StatusInternalServerError)
+			return
+		}
+		node.AppConfig.Deployment.Storages.LocalDirectories = append(node.AppConfig.Deployment.Storages.LocalDirectories[:index], node.AppConfig.Deployment.Storages.LocalDirectories[index+1:]...)
+	case "sharedDirectories":
+		if index >= len(node.AppConfig.Deployment.Storages.SharedDirectories) {
+			http.Error(w, "Index out of range for sharedDirectories", http.StatusInternalServerError)
+			return
+		}
+		node.AppConfig.Deployment.Storages.SharedDirectories = append(node.AppConfig.Deployment.Storages.SharedDirectories[:index], node.AppConfig.Deployment.Storages.SharedDirectories[index+1:]...)
+	case "s3Directories":
+		if index >= len(node.AppConfig.Deployment.Storages.S3Directories) {
+			http.Error(w, "Index out of range for s3Directories", http.StatusInternalServerError)
+			return
+		}
+		node.AppConfig.Deployment.Storages.S3Directories = append(node.AppConfig.Deployment.Storages.S3Directories[:index], node.AppConfig.Deployment.Storages.S3Directories[index+1:]...)
+	default:
+		http.Error(w, "Invalid field", http.StatusInternalServerError)
+		return
+	}
+	// If we reach here, the row was successfully removed
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
+	w.Write([]byte("Storage field row removed"))
 }
 
 // @Summary Set App Setting
