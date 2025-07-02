@@ -16620,6 +16620,9 @@ const docTemplate = `{
                         "type": "string"
                     }
                 },
+                "applicationCreditsUsed": {
+                    "type": "integer"
+                },
                 "apps": {
                     "type": "array",
                     "items": {
@@ -16653,9 +16656,6 @@ const docTemplate = `{
                 },
                 "configurator": {
                     "$ref": "#/definitions/configurator.Configurator"
-                },
-                "creditUsed": {
-                    "type": "integer"
                 },
                 "dbServers": {
                     "type": "array",
@@ -19032,9 +19032,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "cloud18ApplicationCreditsPrice": {
-                    "type": "integer"
-                },
-                "cloud18ApplicationCreditsUsed": {
                     "type": "integer"
                 },
                 "cloud18CostCurrency": {

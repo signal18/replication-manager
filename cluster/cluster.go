@@ -247,7 +247,7 @@ type Cluster struct {
 	failSendCount             int                         `json:"-"`
 	MeetUserID                string                      `json:"-"` //To store meet user id
 	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	CreditUsed                int                         `json:"creditUsed" groups:"web"`
+	ApplicationCreditsUsed    int                         `json:"applicationCreditsUsed" groups:"web"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -1791,6 +1791,15 @@ func (c *Cluster) AddApp(app *App) {
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New application monitored %s: %s:%s", app.GetType(), app.GetHost(), app.GetPort())
 	app.SetState(stateSuspect)
 	c.Apps = append(c.Apps, app)
+
+	if app.AppConfig.ProvAppCreditPlanned > app.AppConfig.ProvAppCreditUsed {
+		c.ApplicationCreditsUsed += app.AppConfig.ProvAppCreditPlanned
+		if app.HasProvisionCookie() {
+			app.SetReprovCookie()
+		}
+	} else {
+		c.ApplicationCreditsUsed += app.AppConfig.ProvAppCreditUsed
+	}
 }
 
 func (cluster *Cluster) ConfigDiscovery() error {

@@ -52,6 +52,7 @@ type appList []*App
 
 func (cluster *Cluster) newAppList() error {
 	cluster.Apps = make([]*App, 0)
+	cluster.ApplicationCreditsUsed = 0
 	for k, appcnf := range cluster.Conf.Apps {
 		app := NewApp(k, cluster, appcnf.AppHost+":"+appcnf.AppPort)
 		cluster.AddApp(app)
