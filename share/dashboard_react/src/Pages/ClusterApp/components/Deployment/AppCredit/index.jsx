@@ -18,9 +18,13 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
     })
     const { isOpen, title, body, handler } = confirmState
 
-    const numAgents = useMemo(() => {
-        return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 0
-    }, [appConfig?.provAppAgents])
+    const creditStep = useMemo(() => {
+        if (appConfig?.provAppHaTopology === 'flex') {
+            return appConfig?.provAppAgents?.split(",").filter(agent => agent.trim() !== '').length || 0
+        } else {
+            return 1
+        }
+    }, [appConfig?.provAppAgents, appConfig?.provAppHaTopology])
 
     const closeConfirmModal = () => {
         setConfirmState({
@@ -93,7 +97,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
                             hideMinMax={false}
                             isGaugeSizeCustomized={false}
                             showStep={true}
-                            step={numAgents}
+                            step={creditStep}
                             textOverlayClassName={styles.textOverlay}
                             handleStepChange={(value) => {
                                 setConfirmState({
