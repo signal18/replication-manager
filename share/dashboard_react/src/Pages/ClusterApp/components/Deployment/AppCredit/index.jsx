@@ -132,7 +132,7 @@ function AppCredit({ clusterName, appId, config, appConfig, user }) {
     ], [clusterCreditsAvailable, clusterCredits, provAppMemory, provAppDiskSize, provAppCpuCores, appCredits, creditStep, allowEdit, clusterName, appId, dispatch])
     return (
         <VStack>
-            <TableType2 dataArray={dataObject} className={styles.table} />
+            <TableType2 key={creditStep} dataArray={dataObject} className={styles.table} />
             <ConfirmModal
                 isOpen={isOpen}
                 closeModal={closeConfirmModal}
