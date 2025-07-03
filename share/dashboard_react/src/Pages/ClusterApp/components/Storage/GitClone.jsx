@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { VStack, Input, HStack, Heading, Flex, Select, Box, useTheme, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import PasswordControl from "../../../../components/PasswordControl";
@@ -49,7 +49,7 @@ export default React.memo(function GitCloneSection({
         onResumeAutoReload(); // Resume auto-reload after canceling
     };
 
-    const handleSaveAdd = (fieldName, formData) => {
+    const handleSaveAdd = useCallback((formData) => {
       onSaveAdd(fieldName, formData).then(() => {
         setIsVisible(false); // Hide the form after saving
         onResumeAutoReload(); // Resume auto-reload after saving
@@ -57,7 +57,7 @@ export default React.memo(function GitCloneSection({
       }, (error) => {
         return Promise.reject(error);
       });
-  }
+  },[fieldName, onSaveAdd, onResumeAutoReload]);
 
     const columnsRowForm = useMemo(
         () => [
