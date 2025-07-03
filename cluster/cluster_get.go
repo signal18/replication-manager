@@ -1559,11 +1559,8 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 			if cnf.Deployment.Storages.GitClones == nil {
 				cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
 			}
-			if cnf.Deployment.Storages.LocalDirectories == nil {
-				cnf.Deployment.Storages.LocalDirectories = make(config.Volumes, 0)
-			}
-			if cnf.Deployment.Storages.SharedDirectories == nil {
-				cnf.Deployment.Storages.SharedDirectories = make(config.Volumes, 0)
+			if cnf.Deployment.Storages.Volumes == nil {
+				cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
 			}
 			if cnf.Deployment.Storages.S3Directories == nil {
 				cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)
@@ -1585,11 +1582,8 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	if cnf.Deployment.Storages.GitClones == nil {
 		cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
 	}
-	if cnf.Deployment.Storages.LocalDirectories == nil {
-		cnf.Deployment.Storages.LocalDirectories = make(config.Volumes, 0)
-	}
-	if cnf.Deployment.Storages.SharedDirectories == nil {
-		cnf.Deployment.Storages.SharedDirectories = make(config.Volumes, 0)
+	if cnf.Deployment.Storages.Volumes == nil {
+		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
 	}
 	if cnf.Deployment.Storages.S3Directories == nil {
 		cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)

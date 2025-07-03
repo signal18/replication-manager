@@ -72,37 +72,24 @@ export default function StoragePage({ clusterName, appId, user }) {
   }, [clusterName, appId, field, index, dispatch]);
 
   const gitClones = storages?.gitClones || [];
-  const localDirectories = storages?.localDirectories || [];
-  const sharedDirectories = storages?.sharedDirectories || [];
+  const volumes = storages?.volumes || [];
   const s3Directories = storages?.s3Directories || [];
 
   const gitComponent = useMemo(() => (
       <GitCloneSection rows={gitClones} {...actionProps} />
   ), [gitClones, actionProps]);
 
-  const localComponent = useMemo(() => (
+  const volumeComponent = useMemo(() => (
       <VolumeSection
-        fieldName="localDirectories"
-        title="Saved Local Directories"
-        newTitle="Add New Local Directory"
-        addCaption="Add Local Directory"
-        saveCaption="Save Local Directory"
-        rows={localDirectories}
+        fieldName="volumes"
+        title="Saved Volumes"
+        newTitle="Add New Volume"
+        addCaption="Add Volume"
+        saveCaption="Save Volume"
+        rows={volumes}
         {...actionProps}
       />
-  ), [localDirectories, actionProps]);
-
-  const sharedComponent = useMemo(() => (
-      <VolumeSection
-        fieldName="sharedDirectories"
-        title="Saved Shared Directories"
-        newTitle="Add New Shared Directory"
-        addCaption="Add Shared Directory"
-        saveCaption="Save Shared Directory"
-        rows={sharedDirectories}
-        {...actionProps}
-      />
-  ), [sharedDirectories, actionProps]);
+  ), [volumes, actionProps]);
 
   const s3Component = useMemo(() => (
       <S3DirectorySection rows={s3Directories} {...actionProps} />
@@ -112,8 +99,7 @@ export default function StoragePage({ clusterName, appId, user }) {
     <Flex direction="column" className={styles.sectionWrapper}>
       <VStack spacing={3} align="stretch">
         <AccordionComponent heading={'Git Clones Section'} body={gitComponent} />
-        <AccordionComponent heading={'Local Directories Section'} body={localComponent} />
-        <AccordionComponent heading={'Shared Directories Section'} body={sharedComponent} />
+        <AccordionComponent heading={'Local Directories Section'} body={volumeComponent} />
         <AccordionComponent heading={'S3 Directories Section'} body={s3Component} />
       </VStack>
       <ConfirmModal

@@ -929,18 +929,44 @@ type VariableMapping struct {
 }
 
 type StorageMapping struct {
-	GitClones         GitClones  `mapstructure:"git-clones" toml:"git-clones" json:"gitClones" groups:"apps"`
-	LocalDirectories  Volumes    `mapstructure:"local-directories" toml:"local-directories" json:"localDirectories" groups:"apps"`
-	SharedDirectories Volumes    `mapstructure:"shared-directories" toml:"shared-directories" json:"sharedDirectories" groups:"apps"`
-	S3Directories     S3Mappings `mapstructure:"s3-directories" toml:"s3-directories" json:"s3Directories" groups:"apps"`
+	GitClones     GitClones  `mapstructure:"git-clones" toml:"git-clones" json:"gitClones" groups:"apps"`
+	Volumes       Volumes    `mapstructure:"volumes" toml:"volumes" json:"volumes" groups:"apps"`
+	S3Directories S3Mappings `mapstructure:"s3-directories" toml:"s3-directories" json:"s3Directories" groups:"apps"`
 }
 
+type PathMaps []PathMapping
+
 type PathMapping struct {
-	VolumeDir string   `toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"` // This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}
-	From      string   `toml:"from" json:"from" groups:"apps"`
-	To        string   `toml:"to" json:"to" groups:"apps"`
-	Type      string   `toml:"type" json:"type" options:"shm|direct" groups:"apps"`
-	Agents    []string `toml:"agents" json:"agents" example:"all" groups:"apps"`
+	DockerPath string `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath" groups:"apps"`
+	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
+	VolumePath string `mapstructure:"volumepath" toml:"volumepath" json:"volumepath" groups:"apps"`
+}
+
+const VolumeTypeLocal = "local"
+const VolumeTypeShared = "shared"
+const VolumeTypeS3 = "s3"
+
+func (pm PathMaps) GetVolumeSubDirs() map[string]string {
+	result := make(map[string]string)
+	for _, p := range pm {
+		if _, exists := result[p.VolumeName]; !exists {
+			result[p.VolumeName] = p.VolumePath
+		} else {
+			result[p.VolumeName] += " " + p.VolumePath
+		}
+	}
+	return result
+}
+
+func (pm PathMaps) GroupByVolume() map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	for _, p := range pm {
+		if _, exists := result[p.VolumeName]; !exists {
+			result[p.VolumeName] = make(map[string]string)
+		}
+		result[p.VolumeName][p.VolumePath] = p.DockerPath
+	}
+	return result
 }
 
 type GitClones []GitClone
@@ -1022,6 +1048,17 @@ type VolumeMapping struct {
 	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 }
 
+func (vs Volumes) GroupByPool() map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	for _, v := range vs {
+		if _, exists := result[v.PoolName]; !exists {
+			result[v.PoolName] = make(map[string]string)
+		}
+		result[v.PoolName][v.Name] = v.VolumeDir
+	}
+	return result
+}
+
 type S3Mappings []S3Mapping
 
 type S3Mapping struct {
@@ -1042,21 +1079,20 @@ type RouteStatus struct {
 }
 
 type Deployment struct {
+	Paths        PathMaps          `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
 	PrimaryRoute Route             `mapstructure:"-"  toml:"-" json:"primaryRoute" groups:"apps"`
-	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
-	Paths        []PathMapping     `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
 	Routes       []Route           `mapstructure:"routes"  toml:"routes" json:"routes" groups:"apps"`
 	Storages     StorageMapping    `mapstructure:"storages"  toml:"storages" json:"storages" groups:"apps"`
+	Variables    []VariableMapping `mapstructure:"variables"  toml:"variables" json:"variables" groups:"apps"`
 }
 
 func NewDeploymentConfig() *Deployment {
 	return &Deployment{
 		Routes: []Route{},
 		Storages: StorageMapping{
-			GitClones:         GitClones{},
-			LocalDirectories:  Volumes{},
-			SharedDirectories: Volumes{},
-			S3Directories:     S3Mappings{},
+			GitClones:     GitClones{},
+			Volumes:       Volumes{},
+			S3Directories: S3Mappings{},
 		},
 		Variables: []VariableMapping{},
 		Paths:     []PathMapping{},

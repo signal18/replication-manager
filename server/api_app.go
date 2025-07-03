@@ -666,15 +666,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 				// Modify field based on key
 				switch vars["key"] {
-				case "volumedir":
-					node.AppConfig.Deployment.Paths[index].VolumeDir = newValue
-				case "from":
-					node.AppConfig.Deployment.Paths[index].From = newValue
-				case "to":
-					node.AppConfig.Deployment.Paths[index].To = newValue
-				case "type":
-					node.AppConfig.Deployment.Paths[index].Type = newValue
-
+				case "dockerpath":
+					node.AppConfig.Deployment.Paths[index].DockerPath = newValue
+				case "volumename":
+					node.AppConfig.Deployment.Paths[index].VolumeName = newValue
+				case "volumepath":
+					node.AppConfig.Deployment.Paths[index].VolumePath = newValue
 				default:
 					http.Error(w, "Invalid key for path", 500)
 					return
@@ -966,28 +963,20 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 		storages.GitClones = append(storages.GitClones, *row)
-	case "localDirectories", "sharedDirectories":
+	case "volumes":
 		var row *config.VolumeMapping
-		row, err = decodeStruct[config.VolumeMapping](r, w, "local/shared directory")
+		row, err = decodeStruct[config.VolumeMapping](r, w, "volume mapping")
 		if err != nil {
-			http.Error(w, "Error decoding local/shared directory: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Error decoding volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if vars["field"] == "localDirectories" {
-			old, _ := node.GetLocalDirectory(row.Name)
-			if old != nil {
-				http.Error(w, "Cannot duplicate local directory with same name", http.StatusInternalServerError)
-				return
-			}
-			storages.LocalDirectories = append(storages.LocalDirectories, *row)
-		} else {
-			old, _ := node.GetSharedDirectory(row.Name)
-			if old != nil {
-				http.Error(w, "Cannot duplicate shared directory with same name", http.StatusInternalServerError)
-				return
-			}
-			storages.SharedDirectories = append(storages.SharedDirectories, *row)
+
+		old, _ := node.GetAppVolume(row.Name)
+		if old != nil {
+			http.Error(w, "Cannot duplicate local directory with same name", http.StatusInternalServerError)
+			return
 		}
+		storages.Volumes = append(storages.Volumes, *row)
 	case "s3Directories":
 		var row *config.S3Mapping
 		row, err = decodeStruct[config.S3Mapping](r, w, "S3 directory")
@@ -1133,69 +1122,39 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					http.Error(w, "Invalid key for gitClones", 500)
 					return
 				}
-			case "localDirectories":
-				if index >= len(node.AppConfig.Deployment.Storages.LocalDirectories) {
-					http.Error(w, "Index out of range for localDirectories", 500)
+			case "volumes":
+				if index >= len(node.AppConfig.Deployment.Storages.Volumes) {
+					http.Error(w, "Index out of range for volumes", 500)
 					return
 				}
 
-				// Get the local directory at the specified index
-				localDir := &node.AppConfig.Deployment.Storages.LocalDirectories[index]
-				if localDir == nil {
-					http.Error(w, "Local directory not found at index "+vars["index"], 500)
+				// Get the volume at the specified index
+				volume := &node.AppConfig.Deployment.Storages.Volumes[index]
+				if volume == nil {
+					http.Error(w, "Volume not found at index "+vars["index"], 500)
 					return
 				}
 
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing local directory
-					http.Error(w, "Cannot change name of existing local directory. Please drop the local directory and create a new one.", 500)
+					// Do not allow changing the name of an existing volume
+					http.Error(w, "Cannot change name of existing volume. Please drop the volume and create a new one.", 500)
 					return
 				case "poolname":
 					if newValue == "" {
 						http.Error(w, "PoolName cannot be empty", 500)
 						return
 					}
-					localDir.PoolName = newValue
+					volume.PoolName = newValue
 				case "volumedir":
 					if newValue == "" {
 						http.Error(w, "VolumeDir cannot be empty", 500)
 						return
 					}
-					localDir.VolumeDir = newValue
+					volume.VolumeDir = newValue
 				default:
-					http.Error(w, "Invalid key for localDirectories", 500)
-					return
-				}
-			case "sharedDirectories":
-				if index >= len(node.AppConfig.Deployment.Storages.SharedDirectories) {
-					http.Error(w, "Index out of range for sharedDirectories", 500)
-					return
-				}
-				sharedDir := &node.AppConfig.Deployment.Storages.SharedDirectories[index]
-				if sharedDir == nil {
-					http.Error(w, "Shared directory not found at index "+vars["index"], 500)
-					return
-				}
-				switch vars["key"] {
-				case "name":
-					http.Error(w, "Cannot change name of existing shared directory. Please drop the shared directory and create a new one.", 500)
-					return
-				case "poolname":
-					if newValue == "" {
-						http.Error(w, "PoolName cannot be empty", 500)
-						return
-					}
-					sharedDir.PoolName = newValue
-				case "volumedir":
-					if newValue == "" {
-						http.Error(w, "VolumeDir cannot be empty", 500)
-						return
-					}
-					sharedDir.VolumeDir = newValue
-				default:
-					http.Error(w, "Invalid key for sharedDirectories", 500)
+					http.Error(w, "Invalid key for volumes", 500)
 					return
 				}
 			case "s3Directories":
@@ -1299,18 +1258,12 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 			return
 		}
 		node.AppConfig.Deployment.Storages.GitClones = append(node.AppConfig.Deployment.Storages.GitClones[:index], node.AppConfig.Deployment.Storages.GitClones[index+1:]...)
-	case "localDirectories":
-		if index >= len(node.AppConfig.Deployment.Storages.LocalDirectories) {
-			http.Error(w, "Index out of range for localDirectories", http.StatusInternalServerError)
+	case "volumes":
+		if index >= len(node.AppConfig.Deployment.Storages.Volumes) {
+			http.Error(w, "Index out of range for volumes", http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Storages.LocalDirectories = append(node.AppConfig.Deployment.Storages.LocalDirectories[:index], node.AppConfig.Deployment.Storages.LocalDirectories[index+1:]...)
-	case "sharedDirectories":
-		if index >= len(node.AppConfig.Deployment.Storages.SharedDirectories) {
-			http.Error(w, "Index out of range for sharedDirectories", http.StatusInternalServerError)
-			return
-		}
-		node.AppConfig.Deployment.Storages.SharedDirectories = append(node.AppConfig.Deployment.Storages.SharedDirectories[:index], node.AppConfig.Deployment.Storages.SharedDirectories[index+1:]...)
+		node.AppConfig.Deployment.Storages.Volumes = append(node.AppConfig.Deployment.Storages.Volumes[:index], node.AppConfig.Deployment.Storages.Volumes[index+1:]...)
 	case "s3Directories":
 		if index >= len(node.AppConfig.Deployment.Storages.S3Directories) {
 			http.Error(w, "Index out of range for s3Directories", http.StatusInternalServerError)

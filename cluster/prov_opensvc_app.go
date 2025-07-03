@@ -212,7 +212,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = cluster.OpenSVCGetAppDefaultSection(app)
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
-	svcsection["volume#01"] = cluster.OpenSVCGetAppVolumeDataSection(app)
+	svcsection = cluster.OpenSVCGetAppVolumeSections(svcsection, app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
 	for i, gc := range app.AppConfig.Deployment.Storages.GitClones {
 		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Name)
@@ -230,13 +230,41 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 
 }
 
-func (cluster *Cluster) OpenSVCGetAppVolumeDataSection(app *App) map[string]string {
-	svcvol := make(map[string]string)
-	svcvol["name"] = "{name}"
-	svcvol["pool"] = cluster.GetAppVolumeData(app.AppConfig)
-	svcvol["size"] = "{env.size}"
-	svcvol["directories"] = "var etc log"
-	return svcvol
+func (cluster *Cluster) GetAppVolumeName(pool string) string {
+	return fmt.Sprintf("{name}-%s", pool)
+}
+
+func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[string]string, app *App) map[string]map[string]string {
+
+	appcnf := app.AppConfig
+	if appcnf == nil {
+		return basemap
+	}
+
+	volumemap := appcnf.Deployment.Storages.Volumes.GroupByPool()
+	pathmap := appcnf.Deployment.Paths.GetVolumeSubDirs()
+	seq := 1
+	for pool, volumes := range volumemap {
+		svcvol := make(map[string]string)
+		svcvol["name"] = cluster.GetAppVolumeName(pool)
+		svcvol["pool"] = pool
+		svcvol["size"] = "{env.size}"
+		svcvol["directories"] = ""
+		for name, volumedir := range volumes {
+			if volumedir != "" {
+				svcvol["directories"] += volumedir + " "
+			}
+
+			if pathmap[name] != "" {
+				svcvol["directories"] += pathmap[name] + " "
+			}
+		}
+		svcvol["directories"] = strings.TrimSpace(svcvol["directories"])
+		basemap["volume#"+strconv.Itoa(seq)] = svcvol
+		seq++
+	}
+
+	return basemap
 }
 
 func (cluster *Cluster) OpenSVCFoundAppAgent(app *App) (opensvc.Host, error) {
@@ -420,9 +448,19 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 		return ""
 	}
 
-	for _, p := range appcnf.Deployment.Paths {
-		from := filepath.Join("{name}", p.VolumeDir, p.From)
-		results = append(results, from+":"+p.To)
+	volumemap := appcnf.Deployment.Storages.Volumes.GroupByPool()
+	pathmap := appcnf.Deployment.Paths.GroupByVolume()
+
+	for pool, volumes := range volumemap {
+		for name := range volumes {
+			volumename := cluster.GetAppVolumeName(pool)
+			if len(pathmap) > 0 && len(pathmap[name]) > 0 {
+				for volumepath, dockerpath := range pathmap[name] {
+					from := filepath.Join(volumename, volumepath)
+					results = append(results, from+":"+dockerpath)
+				}
+			}
+		}
 	}
 
 	return strings.Join(results, " ")

@@ -312,38 +312,19 @@ func (app *App) GetGitClone(name string) (*config.GitClone, int) {
 	return nil, -1
 }
 
-func (app *App) GetLocalDirectory(name string) (*config.VolumeMapping, int) {
+func (app *App) GetAppVolume(name string) (*config.VolumeMapping, int) {
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return nil, -1
 	}
 
-	if appcnf.Deployment.Storages.LocalDirectories == nil {
+	if appcnf.Deployment.Storages.Volumes == nil {
 		return nil, -1
 	}
 
-	for i, ld := range appcnf.Deployment.Storages.LocalDirectories {
+	for i, ld := range appcnf.Deployment.Storages.Volumes {
 		if ld.Name == name {
 			return &ld, i
-		}
-	}
-
-	return nil, -1
-}
-
-func (app *App) GetSharedDirectory(name string) (*config.VolumeMapping, int) {
-	appcnf := app.GetAppConfig()
-	if appcnf == nil {
-		return nil, -1
-	}
-
-	if appcnf.Deployment.Storages.SharedDirectories == nil {
-		return nil, -1
-	}
-
-	for i, sd := range appcnf.Deployment.Storages.SharedDirectories {
-		if sd.Name == name {
-			return &sd, i
 		}
 	}
 
