@@ -738,7 +738,8 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	switch field {
 	case "routes":
 		var body []config.Route
-		if err := decodeBody(r, &body, "routes", w); err != nil {
+		body, err := decodeSlice[config.Route](r, w, "route")
+		if err != nil {
 			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -754,9 +755,12 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 	case "variables":
 		var body []config.VariableMapping
-		if err := decodeBody(r, &body, "variable", w); err != nil {
+		body, err := decodeSlice[config.VariableMapping](r, w, "variable")
+		if err != nil {
+			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+
 		for _, row := range body {
 			old := node.AppConfig.GetDeploymentVariables(row.Name)
 			if old != nil {
@@ -769,7 +773,9 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 	case "paths":
 		var body []config.PathMapping
-		if err := decodeBody(r, &body, "path", w); err != nil {
+		body, err := decodeSlice[config.PathMapping](r, w, "path")
+		if err != nil {
+			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths, body...)
@@ -789,17 +795,28 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
 
-func decodeBody[T any](r *http.Request, out *[]T, typename string, w http.ResponseWriter) error {
-	err := json.NewDecoder(r.Body).Decode(out)
+func decodeStruct[T any](r *http.Request, w http.ResponseWriter, typename string) (*T, error) {
+	var out T
+	err := json.NewDecoder(r.Body).Decode(&out)
 	if err != nil {
-		http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
-		return err
+		http.Error(w, "Error decoding "+typename+": "+err.Error(), http.StatusBadRequest)
+		return nil, err
 	}
-	if len(*out) == 0 {
-		http.Error(w, "No "+typename+" provided", http.StatusInternalServerError)
-		return fmt.Errorf("empty %s", typename)
+	return &out, nil
+}
+
+func decodeSlice[T any](r *http.Request, w http.ResponseWriter, typename string) ([]T, error) {
+	var out []T
+	err := json.NewDecoder(r.Body).Decode(&out)
+	if err != nil {
+		http.Error(w, "Error decoding "+typename+": "+err.Error(), http.StatusBadRequest)
+		return nil, err
 	}
-	return nil
+	if len(out) == 0 {
+		http.Error(w, "No "+typename+" provided", http.StatusBadRequest)
+		return nil, fmt.Errorf("empty %s", typename)
+	}
+	return out, nil
 }
 
 func isValidPortFormat(value string) bool {
@@ -912,6 +929,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 // @Router /api/clusters/{clusterName}/apps/{appName}/storages/{field}/add [post]
 // This endpoint adds a new storage to the deployment for a given cluster and app.
 func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r *http.Request) {
+	var err error
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 
@@ -933,83 +951,63 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 	}
 
 	storages := &node.AppConfig.Deployment.Storages
-
-	failedNames := make([]string, 0)
-	appended := false
 	switch vars["field"] {
 	case "gitClones":
-		var body []config.GitClone
-		if err := decodeBody(r, &body, "git clone", w); err != nil {
+		var row *config.GitClone
+		row, err = decodeStruct[config.GitClone](r, w, "git clone")
+		if err != nil {
+			http.Error(w, "Error decoding git clone: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		for _, row := range body {
-			old, _ := node.GetGitClone(row.Name)
-			if old != nil {
-				failedNames = append(failedNames, row.Name)
-				continue
-			}
-			storages.GitClones = append(storages.GitClones, row)
-			appended = true
+		old, _ := node.GetGitClone(row.Name)
+		if old != nil {
+			http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
+			return
 		}
+		storages.GitClones = append(storages.GitClones, *row)
 	case "localDirectories", "sharedDirectories":
-		var body []config.VolumeMapping
-		if err := decodeBody(r, &body, "volume mapping", w); err != nil {
+		var row *config.VolumeMapping
+		row, err = decodeStruct[config.VolumeMapping](r, w, "local/shared directory")
+		if err != nil {
+			http.Error(w, "Error decoding local/shared directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if vars["field"] == "localDirectories" {
-			for _, row := range body {
-				old, _ := node.GetLocalDirectory(row.Name)
-				if old != nil {
-					failedNames = append(failedNames, row.Name)
-					continue
-				}
-				storages.LocalDirectories = append(storages.LocalDirectories, row)
-				appended = true
+			old, _ := node.GetLocalDirectory(row.Name)
+			if old != nil {
+				http.Error(w, "Cannot duplicate local directory with same name", http.StatusInternalServerError)
+				return
 			}
+			storages.LocalDirectories = append(storages.LocalDirectories, *row)
 		} else {
-			for _, row := range body {
-				old, _ := node.GetSharedDirectory(row.Name)
-				if old != nil {
-					failedNames = append(failedNames, row.Name)
-					continue
-				}
-				storages.SharedDirectories = append(storages.SharedDirectories, row)
-				appended = true
+			old, _ := node.GetSharedDirectory(row.Name)
+			if old != nil {
+				http.Error(w, "Cannot duplicate shared directory with same name", http.StatusInternalServerError)
+				return
 			}
+			storages.SharedDirectories = append(storages.SharedDirectories, *row)
 		}
 	case "s3Directories":
-		var body []config.S3Mapping
-		if err := decodeBody(r, &body, "S3 bucket", w); err != nil {
+		var row *config.S3Mapping
+		row, err = decodeStruct[config.S3Mapping](r, w, "S3 directory")
+		if err != nil {
+			http.Error(w, "Error decoding S3 directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		for _, row := range body {
-			old, _ := node.GetS3Directory(row.Name)
-			if old != nil {
-				failedNames = append(failedNames, row.Name)
-				continue
-			}
-			storages.S3Directories = append(storages.S3Directories, row)
-			appended = true
+
+		old, _ := node.GetS3Directory(row.Name)
+		if old != nil {
+			http.Error(w, "Cannot duplicate S3 directory with same name", http.StatusInternalServerError)
+			return
 		}
+		storages.S3Directories = append(storages.S3Directories, *row)
 	default:
 		http.Error(w, "Invalid storage type", http.StatusInternalServerError)
 		return
 	}
 
-	if appended {
-		mycluster.ConfigManager.SaveConfig(mycluster, false)
-	}
-
-	if len(failedNames) > 0 {
-		http.Error(w, "Failed to add storage: "+strings.Join(failedNames, ", "), http.StatusInternalServerError)
-	}
-
-	if !appended && len(failedNames) == 0 {
-		http.Error(w, "No rows added to the storage", http.StatusInternalServerError)
-		return
-	}
-
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage added successfully"))
 	return
 }
