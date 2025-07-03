@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { VStack, Input, HStack, Heading, Flex, Select, Box, useTheme, Text } from "@chakra-ui/react";
+import { VStack, Input, HStack, Heading, Flex, Select, Box, Text } from "@chakra-ui/react";
 import styles from "./styles.module.scss";
 import PasswordControl from "../../../../components/PasswordControl";
 import TextForm from "../../../../components/TextForm";
@@ -9,6 +9,7 @@ import RMIconButton from "../../../../components/RMIconButton";
 import Dropdown from "../../../../components/Dropdown";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
+import { useTheme } from "../../../../ThemeProvider";
 
 const defaultGit = {
     name: "",
@@ -153,6 +154,7 @@ export default React.memo(function GitCloneSection({
 
 const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
     const gc = gitClone || defaultGit;
+    const { theme } = useTheme();
 
     const onRowArrayChange = (fieldName, index, key, value) => {
         onChange(fieldName, index, key, value);
