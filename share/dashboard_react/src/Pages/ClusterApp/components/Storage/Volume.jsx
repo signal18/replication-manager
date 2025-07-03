@@ -10,7 +10,7 @@ import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
 
 
-const defaultVol = { name: "", volumename: "", volumedir: "" };
+const defaultVol = { name: "", poolname: "", volumedir: "" };
 
 const volumeDirs = ["etc", "var", "log"].map((dir) => ({ value: dir, name: dir }));
 
@@ -60,7 +60,7 @@ const VolumeSection = ({
             columnHelper.accessor((row) => row.name, {
                 header: 'Name'
             }),
-            columnHelper.accessor((row) => row.volumename, {
+            columnHelper.accessor((row) => row.poolname, {
                 header: 'Volume Name',
             }),
             columnHelper.accessor((row) => row.volumedir, {
@@ -140,7 +140,7 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Name:</Text>
-                    <TextForm placeholder="Volume Name" value={vol.volumename} onSave={(value) => onRowArrayChange(fieldName, index, "volumename", value)} />
+                    <TextForm placeholder="Volume Name" value={vol.poolname} onSave={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
@@ -182,7 +182,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Name:</Text>
-                    <Input placeholder="Volume Name" value={vol.volumename} onChange={(e) => handleArrayChange("volumename", e.target.value)} />
+                    <Input placeholder="Volume Name" value={vol.poolname} onChange={(e) => handleArrayChange("poolname", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>

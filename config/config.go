@@ -1017,9 +1017,9 @@ func (gc *GitClone) GetVariableKeys(appName string, vartype string) string {
 type Volumes []VolumeMapping
 
 type VolumeMapping struct {
-	Name       string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
-	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumeName" groups:"apps"`
-	VolumeDir  string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
+	Name      string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	PoolName  string `mapstructure:"poolname" toml:"poolname" json:"poolname" groups:"apps"`
+	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var|data" groups:"apps"`
 }
 
 type S3Mappings []S3Mapping

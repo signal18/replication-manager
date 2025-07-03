@@ -1152,12 +1152,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					// Do not allow changing the name of an existing local directory
 					http.Error(w, "Cannot change name of existing local directory. Please drop the local directory and create a new one.", 500)
 					return
-				case "volumename":
+				case "poolname":
 					if newValue == "" {
-						http.Error(w, "VolumeName cannot be empty", 500)
+						http.Error(w, "PoolName cannot be empty", 500)
 						return
 					}
-					localDir.VolumeName = newValue
+					localDir.PoolName = newValue
 				case "volumedir":
 					if newValue == "" {
 						http.Error(w, "VolumeDir cannot be empty", 500)
@@ -1182,12 +1182,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				case "name":
 					http.Error(w, "Cannot change name of existing shared directory. Please drop the shared directory and create a new one.", 500)
 					return
-				case "volumename":
+				case "poolname":
 					if newValue == "" {
-						http.Error(w, "VolumeName cannot be empty", 500)
+						http.Error(w, "PoolName cannot be empty", 500)
 						return
 					}
-					sharedDir.VolumeName = newValue
+					sharedDir.PoolName = newValue
 				case "volumedir":
 					if newValue == "" {
 						http.Error(w, "VolumeDir cannot be empty", 500)
