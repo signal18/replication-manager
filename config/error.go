@@ -11,6 +11,14 @@
 package config
 
 var ClusterError = map[string]string{
+	"APPERR001": "Error connecting to application %s. Err: %s",
+	"APPERR002": "Unexpected status for application %s. Code: %d Err: %s",
+	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
+	"APPERR004": "Unsupported protocol %s for application %s",
+	"CREDIT01":  "Cluster has exceeded available credits. Credits: (%d), Total Usage: (%d). Additional charge may apply.",
+	"CREDIT02":  "Application %s has negative planned credit (%d). Please check the configuration.",
+	"CREDIT03":  "Application %s has negative used credit (%d). Please check the configuration.",
+	"CREDIT04":  "Application %s has planned credit (%d) not equal to used credit (%d). Please provision the application again to implement the changes.",
 	"ERR00001":  "Monitor freeze while running critical section",
 	"ERR00002":  "Waiting for a user manual failover",
 	"ERR00004":  "Database %s access denied: %s",
@@ -212,16 +220,4 @@ var ClusterError = map[string]string{
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",
 }
 
-var AppError = map[string]string{
-	"APPERR001": "Error connecting to application %s. Err: %s",
-	"APPERR002": "Unexpected status for application %s. Code: %d Err: %s",
-	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
-	"APPERR004": "Unsupported protocol %s for application %s",
-}
-
-var Credit = map[string]string{
-	"CREDIT01": "Cluster has exceeded available credits. Credits: (%d), Total Usage: (%d). Additional charge may apply.",
-	"CREDIT02": "Application %s has negative planned credit (%d). Please check the configuration.",
-	"CREDIT03": "Application %s has negative used credit (%d). Please check the configuration.",
-	"CREDIT04": "Application %s has planned credit (%d) not equal to used credit (%d). Please provision the application again to implement the changes.",
-}
+var AppError = map[string]string{}

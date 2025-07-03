@@ -29,9 +29,9 @@ func (app *App) GetMonitoringStatus() string {
 			httpStatus, _, err := app.GetAppHTTPStatus(route, false)
 			if err != nil {
 				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.AppError["APPERR002"], app.GetId(), httpStatus)})
+					app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus)})
 				} else {
-					app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.AppError["APPERR001"], app.GetId(), err)})
+					app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err)})
 				}
 
 				routeStatus.Status = stateFailed
@@ -45,7 +45,7 @@ func (app *App) GetMonitoringStatus() string {
 		} else if route.Protocol == "tcp" {
 			// For TCP routes, we assume the app is running if it can connect
 			if err := app.GetAppTCPStatus(route); err != nil {
-				app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.AppError["APPERR003"], app.GetId(), err)})
+				app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err)})
 				routeStatus.Status = stateFailed
 
 				if route.Primary {
@@ -55,7 +55,7 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		} else {
-			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.AppError["APPERR004"], app.GetId(), route.Protocol)})
+			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR004"], app.GetId(), route.Protocol)})
 			routeStatus.Status = stateFailed
 
 			if route.Primary {
@@ -149,12 +149,12 @@ func (app *App) CheckPrimaryRoute() {
 
 func (app *App) CheckAppCredits() {
 	if app.AppConfig.ProvAppCreditPlanned < 0 {
-		app.ClusterGroup.SetState("CREDIT02", state.State{ErrType: "WARN", ErrKey: "CREDIT02", ErrDesc: fmt.Sprintf(config.AppError["CREDIT02"], app.GetId(), app.AppConfig.ProvAppCreditPlanned)})
+		app.ClusterGroup.SetState("CREDIT02", state.State{ErrType: "WARN", ErrKey: "CREDIT02", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT02"], app.GetId(), app.AppConfig.ProvAppCreditPlanned)})
 	}
 	if app.AppConfig.ProvAppCreditUsed < 0 {
-		app.ClusterGroup.SetState("CREDIT03", state.State{ErrType: "WARN", ErrKey: "CREDIT03", ErrDesc: fmt.Sprintf(config.AppError["CREDIT03"], app.GetId(), app.AppConfig.ProvAppCreditUsed)})
+		app.ClusterGroup.SetState("CREDIT03", state.State{ErrType: "WARN", ErrKey: "CREDIT03", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT03"], app.GetId(), app.AppConfig.ProvAppCreditUsed)})
 	}
 	if app.AppConfig.ProvAppCreditPlanned != app.AppConfig.ProvAppCreditUsed {
-		app.ClusterGroup.SetState("CREDIT04", state.State{ErrType: "WARN", ErrKey: "CREDIT04", ErrDesc: fmt.Sprintf(config.AppError["CREDIT04"], app.GetId(), app.AppConfig.ProvAppCreditPlanned, app.AppConfig.ProvAppCreditUsed)})
+		app.ClusterGroup.SetState("CREDIT04", state.State{ErrType: "WARN", ErrKey: "CREDIT04", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT04"], app.GetId(), app.AppConfig.ProvAppCreditPlanned, app.AppConfig.ProvAppCreditUsed)})
 	}
 }
