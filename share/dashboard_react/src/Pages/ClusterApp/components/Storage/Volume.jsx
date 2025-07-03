@@ -144,7 +144,7 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} value={vol.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
+                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} selectedValue={vol.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
                 </Flex>
             </Flex>
         </Flex>
@@ -186,7 +186,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" options={volumeDirs} value={vol.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
+                    <Dropdown placeholder="Volume Dir" options={volumeDirs} selectedValue={vol.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>

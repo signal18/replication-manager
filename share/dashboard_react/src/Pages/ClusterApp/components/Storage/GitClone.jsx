@@ -167,7 +167,7 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} value={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
+                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
@@ -229,7 +229,7 @@ const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" options={volumeDirs} value={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
+                    <Dropdown placeholder="Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
