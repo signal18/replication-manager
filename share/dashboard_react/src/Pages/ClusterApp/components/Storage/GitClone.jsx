@@ -64,9 +64,6 @@ export default React.memo(function GitCloneSection({
             columnHelper.accessor((row) => row.name, {
                 header: 'Name'
             }),
-            columnHelper.accessor((row) => row.volumedir, {
-                header: 'Volume Dir',
-            }),
             columnHelper.accessor((row) => row.repo, {
                 header: 'Repo',
                 cell: (info) => {
@@ -94,6 +91,9 @@ export default React.memo(function GitCloneSection({
                     const pass = info.getValue();
                     return pass ? maskString(pass) : "N/A";
                 },
+            }),
+            columnHelper.accessor((row) => row.volumedir, {
+                header: 'Volume Dir',
             }),
             columnHelper.display({
                 id: 'actions',
@@ -166,10 +166,6 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
                     <TextForm placeholder="Name" value={gc.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
-                </Flex>
-                <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
                     <TextForm placeholder="Repo" value={gc.repo} onSave={(value) => onRowArrayChange(fieldName, index, "repo", value)} />
                 </Flex>
@@ -191,6 +187,10 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
                         placeholder="Password"
                         value={gc.pass}
                         onSave={(value) => onRowArrayChange(fieldName, index, "pass", value)} />
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Volume Dir:</Text>
+                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
                 </Flex>
             </Flex>
         </Flex>
@@ -228,10 +228,6 @@ const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => 
                     <Input placeholder="Name" value={gc.name} onChange={(e) => handleArrayChange("name", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
-                </Flex>
-                <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
                     <Input placeholder="Repo" value={gc.repo} onChange={(e) => handleArrayChange("repo", e.target.value)} />
                 </Flex>
@@ -252,6 +248,10 @@ const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => 
                         placeholder="Password"
                         value={gc.pass}
                         onChange={(e) => handleArrayChange("pass", e.target.value)} />
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Volume Dir:</Text>
+                    <Dropdown placeholder="Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>
