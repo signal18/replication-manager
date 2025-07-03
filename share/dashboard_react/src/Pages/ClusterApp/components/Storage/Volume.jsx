@@ -61,10 +61,10 @@ const VolumeSection = ({
                 header: 'Name'
             }),
             columnHelper.accessor((row) => row.poolname, {
-                header: 'Volume Name',
+                header: 'Pool Name'
             }),
             columnHelper.accessor((row) => row.volumedir, {
-                header: 'Volume Dir',
+                header: 'Volume Dir'
             }),
             columnHelper.display({
                 id: 'actions',
@@ -139,8 +139,8 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
                     <TextForm placeholder="Name" value={vol.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Name:</Text>
-                    <TextForm placeholder="Volume Name" value={vol.poolname} onSave={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
+                    <Text mb={1}>Pool Name:</Text>
+                    <TextForm placeholder="Pool Name" value={vol.poolname} onSave={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
@@ -181,8 +181,8 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                     <Input placeholder="Name" value={vol.name} onChange={(e) => handleArrayChange("name", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Name:</Text>
-                    <Input placeholder="Volume Name" value={vol.poolname} onChange={(e) => handleArrayChange("poolname", e.target.value)} />
+                    <Text mb={1}>Pool Name:</Text>
+                    <Input placeholder="Pool Name" value={vol.poolname} onChange={(e) => handleArrayChange("poolname", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
