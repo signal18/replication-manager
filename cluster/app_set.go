@@ -155,29 +155,7 @@ func (app *App) SetSetting(key, value string) error {
 			return err
 		}
 	case "prov-app-ha-topology":
-		numagents := len(app.GetAppAgents())
-		switch value {
-		case "flex", "failover":
-			if app.AppConfig.ProvAppHATopology != value {
-				oldCredit := app.AppConfig.ProvAppCreditPlanned
-				app.AppConfig.ProvAppHATopology = value
-				if value == "flex" {
-					app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned * numagents
-					if app.AppConfig.ProvAppCreditPlanned >= oldCredit {
-						app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed = app.ClusterGroup.Conf.Cloud18ApplicationCreditsUsed + (app.AppConfig.ProvAppCreditPlanned - oldCredit)
-					}
-				} else {
-					if numagents > 0 {
-						app.AppConfig.ProvAppCreditPlanned = app.AppConfig.ProvAppCreditPlanned / numagents
-					} else {
-						app.AppConfig.ProvAppCreditPlanned = 0
-					}
-				}
-				app.SetReprovCookie()
-			}
-		default:
-			return errors.New("invalid value for ha topology")
-		}
+		app.AppConfig.ProvAppHATopology = value
 	default:
 		return errors.New("unknown setting: " + key)
 	}
@@ -256,17 +234,15 @@ func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 	provCredit := creditPlanSize
 	num_agents := len(app.GetAppAgents())
 
-	if app.AppConfig.ProvAppHATopology == config.OpenSVCTopologyFlex {
-		if num_agents == 0 {
-			return errors.New("no agents available for flex provisioning")
-		}
-		if creditPlanSize%num_agents != 0 {
-			return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
-		}
-
-		// For flex provisioning, we divide the credit planned by the number of agents
-		provCredit = creditPlanSize / num_agents
+	if num_agents == 0 {
+		return errors.New("no agents available for flex provisioning")
 	}
+	if creditPlanSize%num_agents != 0 {
+		return errors.New("credit planned must be a multiple of the number of agents for flex provisioning")
+	}
+
+	// For flex provisioning, we divide the credit planned by the number of agents
+	provCredit = creditPlanSize / num_agents
 
 	baseCore, err := config.ParseUnitMeasurementToInt("0", app.ClusterGroup.Conf.ProvAppCpuCores, true)
 	if err != nil {
