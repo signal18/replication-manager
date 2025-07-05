@@ -2846,7 +2846,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-pushover-user-token":
 		mycluster.SetAlertPushoverUserToken(value)
 	case "alert-script":
-		mycluster.SetAlertScript(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertScript(string(val))
 	case "alert-slack-channel":
 		mycluster.SetAlertSlackChannel(value)
 	case "alert-slack-url":
@@ -3076,13 +3080,29 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.Conf.Cloud18DbOps = value
 		}
 	case "backup-save-script":
-		mycluster.Conf.BackupSaveScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupSaveScript = string(val)
 	case "backup-load-script":
-		mycluster.Conf.BackupLoadScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupLoadScript = string(val)
 	case "topology-staging-refresh-script":
-		mycluster.Conf.TopologyStagingRefreshScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.TopologyStagingRefreshScript = string(val)
 	case "topology-staging-post-detach-script":
-		mycluster.Conf.TopologyStagingPostDetachScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.TopologyStagingPostDetachScript = string(val)
 	case "replication-multisource-head-clusters":
 		mycluster.Conf.ReplicationMultisourceHeadClusters = value
 	case "replication-source-name":
