@@ -22,6 +22,7 @@ const maskString = (str, mask = '*') => {
 
 const VolumeSection = ({
     rows = [],
+    volumePools = "",
     fieldName = "volumes",
     title = "Saved Volumes",
     newTitle = "Add New Volume",
@@ -34,6 +35,21 @@ const VolumeSection = ({
     onResumeAutoReload = () => { },
 }) => {
     const [isVisible, setIsVisible] = useState(false);
+
+    const poolOptions = useMemo(() => {
+        if (!volumePools) {
+            return [];
+        }
+        // The source will be a comma-separated string of pool names with characteristics
+        // Example: "tank:local,drbd:shared:failover"
+        return volumePools.split(',').map((pool) => {
+            const parts = pool.trim().split(':');
+            return {
+                value: parts[0].trim(),
+                name: parts[0].trim() + (parts.length > 1 ? ` (${parts.slice(1).join(':').trim()})` : ''),
+            };
+        });
+    }, [volumePools]);
 
     const handleAddItem = () => {
         setIsVisible(true);
@@ -81,7 +97,7 @@ const VolumeSection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<VolumeRowForm fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<VolumeRowForm poolOptions={poolOptions} fieldName={fieldName} volume={row.original} index={row.index} onChange={onRowArrayChange} />);
                     },
                 },
                 cell: () => null,
@@ -106,7 +122,7 @@ const VolumeSection = ({
                         {newTitle}
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} />
+                        <VolumeNewForm onSave={handleSaveAdd} onCancel={handleCancel} saveCaption={saveCaption} poolOptions={poolOptions} />
                     </Box>
                 </VStack>
             ) : (
@@ -124,7 +140,7 @@ const VolumeSection = ({
 
 export default React.memo(VolumeSection);
 
-const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
+const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], onChange }) => {
     const vol = volume || defaultVol;
 
     const onRowArrayChange = (fieldName, index, key, value) => {
@@ -140,7 +156,10 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <TextForm placeholder="Pool Name" value={vol.poolname} onSave={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
+                    <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
+                    <Text fontSize="xs" color="gray.500" mt={1}>
+                        {poolInfo}
+                    </Text>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
@@ -151,7 +170,7 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, onChange }) => {
     )
 })
 
-const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, onCancel = () => { } }) => {
+const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => { }, poolOptions = [], onCancel = () => { } }) => {
     const [vol, setVol] = useState(defaultVol);
 
     const valid = useMemo(() => {
@@ -182,7 +201,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
-                    <Input placeholder="Pool Name" value={vol.poolname} onChange={(e) => handleArrayChange("poolname", e.target.value)} />
+                    <Dropdown placeholder="Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(option) => handleArrayChange("poolname", option.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>

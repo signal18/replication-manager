@@ -12,12 +12,19 @@ import { pauseAutoReload, storageFieldChange, storageFieldIndexAdd, storageField
 export default function StoragePage({ clusterName, appId, user }) {
   const dispatch = useDispatch();
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
+  const volumePools = useSelector((state) => state.cluster?.clusterData?.config?.provAppVolumePools);
 
   const [modalState, setModalState] = useState({
     isOpen: false,
     field: null,
     index: null,
   })
+
+  useMemo(() => {
+    if (!storages) {
+      return;
+    }
+  }, [storages]);
 
   const { isOpen: isConfirmOpen, field, index } = modalState;
 
@@ -81,6 +88,7 @@ export default function StoragePage({ clusterName, appId, user }) {
 
   const volumeComponent = useMemo(() => (
       <VolumeSection
+        volumePools={volumePools}
         fieldName="volumes"
         title="Saved Volumes"
         newTitle="Add New Volume"

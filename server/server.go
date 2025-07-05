@@ -1082,7 +1082,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
 	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1024", "Memory usage in M bytes. When cloud18 credit system is used, this is the base for 1 credit")
-	flags.StringVar(&conf.ProvAppVolumeData, "prov-app-volume-data", "tank", "Volume name of the data files")
+	flags.StringVar(&conf.ProvAppVolumePools, "prov-app-volume-pools", "tank:local,drbd:shared:active-passive", "List of volume pools to use for application, comma separated. Format: poolname:type:[additional description]. Type can be local or shared. Example of additional description, for shared can be active-passive.")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")

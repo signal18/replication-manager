@@ -24,7 +24,6 @@ func (cluster *Cluster) NewAppConfig(apphost, port string) *config.AppConfig {
 		ProvAppCpuCores:   cluster.GetAppCores(nil),
 		ProvAppDisk:       cluster.GetAppDisk(nil),
 		ProvAppAgents:     cluster.GetAppAgents(nil),
-		ProvAppVolumeData: cluster.GetAppVolumeData(nil),
 		ProvAppHATopology: cluster.GetAppHATopology(nil),
 	}
 }
@@ -429,26 +428,6 @@ func (cluster *Cluster) GetAppDisk(appcnf *config.AppConfig) string {
 	}
 
 	return disk
-}
-
-func (cluster *Cluster) GetAppVolumeData(appcnf *config.AppConfig) string {
-	if appcnf != nil && appcnf.ProvAppVolumeData != "" {
-		// If the app config has volume data, return it
-		return appcnf.ProvAppVolumeData
-	}
-
-	// If the app config does not have volume data, return the cluster volume data
-	volumeData := cluster.Conf.ProvAppVolumeData
-	if volumeData == "" {
-		// If the cluster does not have volume data, return the default volume data
-		volumeData = cluster.Conf.ProvVolumeData
-	}
-
-	if volumeData != "" && appcnf != nil {
-		appcnf.ProvAppVolumeData = volumeData
-	}
-
-	return volumeData
 }
 
 func (cluster *Cluster) GetAppMemory(appcnf *config.AppConfig) string {
