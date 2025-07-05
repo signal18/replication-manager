@@ -284,6 +284,9 @@ func (cg *ClusterGraphite) PopulateWhitelistRegexp() error {
 				if err != nil {
 					return err
 				}
+				if file, err = os.Open(fname); err != nil {
+					return err
+				}
 			} else {
 				return err
 			}
