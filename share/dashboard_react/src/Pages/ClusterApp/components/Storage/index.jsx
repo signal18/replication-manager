@@ -107,7 +107,7 @@ export default function StoragePage({ clusterName, appId, user }) {
     <Flex direction="column" className={styles.sectionWrapper}>
       <VStack spacing={3} align="stretch">
         <AccordionComponent heading={'Git Clones Section'} body={gitComponent} />
-        <AccordionComponent heading={'Local Directories Section'} body={volumeComponent} />
+        <AccordionComponent heading={'Volumes Section'} body={volumeComponent} />
         <AccordionComponent heading={'S3 Directories Section'} body={s3Component} />
       </VStack>
       <ConfirmModal
