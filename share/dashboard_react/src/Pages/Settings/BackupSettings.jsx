@@ -125,7 +125,7 @@ The script will be executed with the following parameters:
                 setSetting({
                   clusterName: selectedCluster?.name,
                   setting: 'backup-save-script',
-                  value: value
+                  value: btoa(value)
                 })
               )
             }
@@ -152,7 +152,7 @@ The script will be executed with the following parameters:
                 setSetting({
                   clusterName: selectedCluster?.name,
                   setting: 'backup-load-script',
-                  value: value
+                  value: btoa(value)
                 })
               )
             }
