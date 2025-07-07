@@ -203,7 +203,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
     if (gc && path.startsWith(gc.volumedir)) {
       path = path.substring(gc.volumedir.length);
     }
-    return path.startsWith("//") ? path.substring(2) : path; // Remove leading slash if exists
+    return path.startsWith("/") ? path.substring(1) : path; // Remove leading slash if exists
   }, [gc, p.volumepath]);
 
   const onSubPathChange = useCallback((value) => {
@@ -311,18 +311,27 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
     });
   };
 
+  const handleSubPathChange = (value) => {
+    let newvalue = value.trim();
+    if (gc) {
+      newvalue = `/${gc.volumedir}/${newvalue}`; // Prepend gc.volumedir to the subpath
+    }
+    setPath((prev) => ({ ...prev, subpath: value, volumepath: newvalue }));
+  };
+
+  const handleArrayChange = (key, value) => {
+    setPath((prev) => ({ ...prev, [key]: value }));
+  }
+
   const handleSelectPath = useCallback((newpath) => {
     // Update the formData with the selected path
-    if (selectedKey)
-    setPath(prev => {
-      const updated = { ...prev };
-      if (selectedKey === 'subpath' && gc) {
-        updated[selectedKey] = `/${gc.volumedir}/${newpath}`;
+    if (selectedKey) {
+      if (selectedKey === "subpath") {
+        handleSubPathChange(newpath);
       } else {
-        updated[selectedKey] = newpath;
+        handleArrayChange(selectedKey, newpath);
       }
-      return updated;
-    });
+    }
     // Close the modal after selection
     handleCloseBrowse();
   }, [gc, handleCloseBrowse, selectedKey]);
@@ -330,10 +339,6 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
   const valid = useMemo(() => {
     return dockerpath && volumename && !subpath.includes('..') && !dockerpath.includes('..');
   }, [dockerpath, volumename, subpath]);
-
-  const handleArrayChange = (key, value) => {
-    setPath((prev) => ({ ...prev, [key]: value }));
-  }
 
   const handleSaveAdd = () => {
     if (valid) {
@@ -367,7 +372,7 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
         <Flex direction="column" flex="1">
           <Text mb={1}>Subpath:</Text>
           <InputGroup>
-            <Input name={`newpath.subpath`} placeholder="Subpath" value={subpath} onChange={(e) => handleArrayChange(index, "subpath", e.target.value)} />
+            <Input name={`newpath.subpath`} placeholder="Subpath" value={subpath} onChange={(e) => handleSubPathChange(e.target.value)} />
             <RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={() => handleBrowseGit(gitclone)} />
           </InputGroup>
         </Flex>
