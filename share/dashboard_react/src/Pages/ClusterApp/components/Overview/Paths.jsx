@@ -357,7 +357,7 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
         <Flex direction="column" flex="1">
           <Text mb={1}>Destination:</Text>
           <InputGroup>
-            <Input name={`newpath.dockerpath`} placeholder="Path" value={dockerpath} onChange={(e) => handleArrayChange(index, "dockerpath", e.target.value)} />
+            <Input name={`newpath.dockerpath`} placeholder="Path" value={dockerpath} onChange={(e) => handleArrayChange("dockerpath", e.target.value)} />
             <RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={handleBrowseDocker} />
           </InputGroup>
         </Flex>
