@@ -373,7 +373,9 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
           <Text mb={1}>Subpath:</Text>
           <InputGroup>
             <Input name={`newpath.subpath`} placeholder="Subpath" value={subpath} onChange={(e) => handleSubPathChange(e.target.value)} />
+            { gc && gc.name && (
             <RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={() => handleBrowseGit(gitclone)} />
+            )}
           </InputGroup>
         </Flex>
         <Flex direction="column" flex="1">
