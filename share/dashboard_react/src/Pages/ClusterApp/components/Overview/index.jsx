@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload } from "../../../../redux/clusterSlice";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import Routes from "./Routes";
-import Paths from "./Paths";
+import PathSection from "./Paths";
 import Variables from "./Variables";
 
 const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, user }) => {
@@ -82,14 +82,15 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     const dockerImage = appConfig?.provAppDockerImg || '';
     const agentList = appConfig?.provAppAgents || [];
     const gateway = config?.cloud18GatewayDomainName || '';
+    const storages = deployment?.storages || {};
 
     const routeComponent = useMemo(() => {
         return <Routes rows={routes} fieldName={'routes'} user={user} gateway={gateway} {...actionProps} />
     }, [routes, actionProps, user, gateway]);
 
     const pathComponent = useMemo(() => {
-        return <Paths rows={paths} fieldName={'paths'} clusterName={clusterName} appId={appId} dockerImage={dockerImage} gitCloneRows={gitClones} user={user} {...actionProps} />;
-    }, [paths, clusterName, appId, dockerImage, gitClones, actionProps, user]);
+        return <PathSection storages={storages} rows={paths} fieldName={'paths'} clusterName={clusterName} appId={appId} dockerImage={dockerImage} gitCloneRows={gitClones} user={user} {...actionProps} />;
+    }, [paths, clusterName, appId, dockerImage, gitClones, actionProps, storages, user]);
 
     const variableComponent = useMemo(() => {
         return <Variables substitution={substitution} rows={variables} agentList={agentList} fieldName={'variables'} user={user} {...actionProps} />;

@@ -157,9 +157,6 @@ const VolumeRowForm = React.memo(({ fieldName, volume, index, poolOptions = [], 
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Pool Name:</Text>
                     <Dropdown placeholder="Pool Name" confirmTitle="Change Pool Name" options={poolOptions} selectedValue={vol.poolname} onChange={(value) => onRowArrayChange(fieldName, index, "poolname", value)} />
-                    <Text fontSize="xs" color="gray.500" mt={1}>
-                        {poolInfo}
-                    </Text>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>

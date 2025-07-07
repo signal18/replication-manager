@@ -1460,7 +1460,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 			return
 		}
 
-		gc, _ := app.GetGitClone(vars["volumedir"])
+		gc, _ := app.GetGitClone(vars["gitName"])
 		if gc == nil {
 			http.Error(w, "Git Clone Not Found", 500)
 			return

@@ -41,16 +41,16 @@ export const getDockerTree = createAsyncThunk('settings/getDockerTree', async ({
   }
 )
 
-export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clusterName, appId, volumedir, repoURL }, thunkAPI) => {
+export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clusterName, appId, gitName }, thunkAPI) => {
   try {
-    const gitRepoHash = hashMurmur(repoURL)
+    const gitRepoHash = hashMurmur(gitName)
     const oldState = thunkAPI.getState().paths
     if (oldState.gitTreeList[gitRepoHash] && oldState.timestamps.gitTree && oldState.timestamps.gitTree[gitRepoHash] && shouldUseCachedTree(oldState.timestamps.gitTree[gitRepoHash])) {
       return { data: oldState.gitTreeList[gitRepoHash], status: 200 }
     }
 
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await pathService.getGitDirectoryTree(clusterName, appId, volumedir, baseURL)
+    const { data, status } = await pathService.getGitDirectoryTree(clusterName, appId, gitName, baseURL)
     if (status === 200) {
       showSuccessBanner(`Fetching Git directory tree successful!`, status, thunkAPI)
       return { data: data?.tree, status }
