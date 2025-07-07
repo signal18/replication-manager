@@ -87,7 +87,10 @@ const initialState = {
     dockerTree: false,
     gitTree: false
   },
-  error: null
+  error: {
+    docker: null,
+    git: null
+  }
 }
 
 export const pathSlice = createSlice({
@@ -134,10 +137,11 @@ export const pathSlice = createSlice({
           state.current.dockerHash = dockerImageHash
         }
         state.loading.dockerTree = false
+        state.error.docker = null
       })
       .addCase(getDockerTree.rejected, (state, action) => {
         state.loading.dockerTree = false
-        state.error = action.payload?.errorMessage || action.error.message
+        state.error.docker = "Error getting git tree"
       })
       .addCase(getGitTree.pending, (state) => {
         state.loading.gitTree = true
@@ -157,10 +161,11 @@ export const pathSlice = createSlice({
           state.current.gitHash = gitRepoHash
         }
         state.loading.gitTree = false
+        state.error.git = null
       })
       .addCase(getGitTree.rejected, (state, action) => {
         state.loading.gitTree = false
-        state.error = action.payload?.errorMessage || action.error.message
+        state.error.git = "Error getting git tree"
       })
   }
 })

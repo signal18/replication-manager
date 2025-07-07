@@ -54,20 +54,18 @@ const PathSection = ({
   const gitRows = storages?.gitClones || [];
   const volumeRows = storages?.volumes || [];
   const s3Rows = storages?.s3Directories || [];
-
-  const gitOptions = useMemo(() => {
-    return gitRows.map(gc => ({ value: gc.name, name: gc.name }));
-  }, [gitRows]);
-
+  
   const volumeOptions = useMemo(() => {
-    return volumeRows.map(v => ({ value: v.name, name: v.name }));
+    return [{ value: "", name:"Select Volume"}, ...volumeRows.map(v => ({ value: v.name, name: v.name, volumedir: v.volumedir }))];
   }, [volumeRows]);
 
+  const gitOptions = useMemo(() => {
+    return [{ value: "", name:"Select Git"}, ...gitRows.map(gc => ({ value: gc.name, name: gc.name, volumedir: gc.volumedir }))];
+  }, [gitRows]);
+
   const s3Options = useMemo(() => {
-    return s3Rows.map(s3 => ({ value: s3.name, name: s3.name }));
+    return [{ value: "", name:"Select S3"}, ...s3Rows.map(s3 => ({ value: s3.name, name: s3.name }))];
   }, [s3Rows]);
-
-
 
   useEffect(() => {
     if (!dockerImage) {
@@ -132,7 +130,7 @@ const PathSection = ({
         cell: () => null,
       }
     ],
-    [fieldName, onRowArrayChange, onRowDropIndex]
+    [fieldName, onRowArrayChange, onRowDropIndex, gitRows, volumeOptions, gitOptions, s3Options]
   )
 
   return (
@@ -171,52 +169,54 @@ export default React.memo(PathSection);
 
 const EMPTY_OBJECT = {};
 
-const PathRow = React.memo(({ clusterName, appId, fieldName, row, index, onRowArrayChange, onRowDropIndex, sources, gitCloneRows, dockerTree, nodeToString, nodeToValue }) => {
+const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, onChange }) => {  
   const dispatch = useDispatch();
-  const gc = gitCloneRows.find(gc => gc.volumedir + "/" + gc.dest === row.volumedir);
-  
-  
-
-  
-
-  return (
-    <HStack key={`row_${row.to}`}>
-      <Dropdown confirmTitle={"Volumedir changed"} selectedValue={row.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} options={sources} isDisabled={true} />
-      {!!gc && (
-        <TextForm confirmTitle={"From changed"} name={`row_${index}.from`} placeholder="From" value={row.from} onSave={(value) => onRowArrayChange(fieldName, index, "from", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={gitTree} />
-      )}
-
-      <RMIconButton icon={HiTrash} aria-label="Delete Path" onClick={() => onRowDropIndex(fieldName, index)} />
-    </HStack>
-  )
-});
-
-const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitRows, gitOptions, volumeOptions, s3Options, onChange }) => {  
   const p = path || defaultPath;
-  const gc = gitRows.find(gc => gc.name === p.gitclone);
+  const vol = volumeOptions.find(vol => vol.name === p.volumename);
+  const gc = gitOptions.find(gc => gc.value === p.gitclone);
   const hash = useMemo(() => (gc?.repo ? hashMurmur(gc.repo) : null), [gc?.repo]);
   const gitTree = useSelector(state => (hash ? state.paths.gitTreeList[hash] : EMPTY_OBJECT));
   const dockerTree = useSelector(state => state.paths.current.dockerTree || EMPTY_OBJECT);
 
   const { dockerpath, volumename, gitclone, volumepath } = p;
 
+  const gitList = useMemo(() => {
+    if(vol){
+      return gitOptions.filter((gi) => gi.volumedir === vol.volumedir)
+    } else {
+      return gitOptions
+    }
+  }, [vol, gitOptions]);
+
   const subpath = useMemo(() => {
     let path = p.volumepath
     // Remove the leading /gc.volumedir from volumepath to get the subpath
     if (gc && path.startsWith(gc.volumedir)) {
       path = path.substring(gc.volumedir.length);
+
+      if (path.includes("//")) {
+        path = path.replace("//", "/");
+      }
     }
-    return path.startsWith("/") ? path.substring(1) : path; // Remove leading slash if exists
+    return path;
   }, [gc, p.volumepath]);
 
   const onSubPathChange = useCallback((value) => {
     if (gc) {
       value = `/${gc.volumedir}/${value}`; // Prepend gc.volumedir to the subpath
+      // trim double //
+      if (value.includes("//")) {
+        value = value.replace("//", "/");
+      }
     }
     onChange(fieldName, index, "volumepath", value);
   }, [fieldName, index, onChange, gc]);
 
   const onRowArrayChange = (fieldName, index, key, value) => {
+    if (value.includes("..")) {
+      dispatch(showErrorToast(`Invalid path: ${value}`));
+      return;
+    }
     onChange(fieldName, index, key, value);
   };
 
@@ -242,7 +242,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Git Clone:</Text>
-          <Dropdown placeholder="Git Clone" options={gitOptions} selectedValue={gitclone} onChange={(option) => onRowArrayChange(fieldName, index, "gitclone", option.value)} />
+          <Dropdown placeholder="Git Clone" options={gitList} selectedValue={gitclone} onChange={(option) => onRowArrayChange(fieldName, index, "gitclone", option.value)} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Subpath:</Text>
@@ -269,7 +269,16 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
   });
   const {isOpen, selectedPath, selectedKey} = browseState;
   const { gitclone, subpath, volumename, volumepath, dockerpath } = path;
-  const gc = gitRows.find(gc => gc.name === gitclone);
+  const vol = volumeOptions.find(vol => vol.name === volumename);
+  const gc = gitOptions.find(gc => gc.name === gitclone);
+
+  const gitList = useMemo(() => {
+    if(vol){
+      return gitOptions.filter((gi) => gi.volumedir === vol.volumedir)
+    } else {
+      return gitOptions
+    }
+  }, [vol, gitOptions]);
 
   const treeData = useMemo(() => {
     if (selectedKey === 'subpath' && gc) {
@@ -318,6 +327,9 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
     let newvalue = value.trim();
     if (gc) {
       newvalue = `/${gc.volumedir}/${newvalue}`; // Prepend gc.volumedir to the subpath
+    }
+    if (value.includes("//")) {
+      value = value.replace("//", "/");
     }
     setPath((prev) => ({ ...prev, subpath: value, volumepath: newvalue }));
   };
@@ -370,7 +382,7 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Git Clone:</Text>
-          <Dropdown placeholder="Git Clone" options={gitOptions} selectedValue={gitclone} onChange={(option) => handleArrayChange("gitclone", option.value)} />
+          <Dropdown placeholder="Git Clone" options={gitList} selectedValue={gitclone} onChange={(option) => handleArrayChange("gitclone", option.value)} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Subpath:</Text>
