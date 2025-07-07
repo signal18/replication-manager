@@ -99,14 +99,17 @@ const PathSection = ({
 
   const columnsRowForm = useMemo(
     () => [
-      columnHelper.accessor((row) => row.name, {
-        header: 'Name'
+      columnHelper.accessor((row) => row.dockerpath, {
+        header: 'Path'
       }),
-      columnHelper.accessor((row) => row.poolname, {
-        header: 'Pool Name'
+      columnHelper.accessor((row) => row.volumename, {
+        header: 'Volume'
       }),
-      columnHelper.accessor((row) => row.volumedir, {
-        header: 'Volume Dir'
+      columnHelper.accessor((row) => row.gitclone, {
+        header: 'Git Clone'
+      }),
+      columnHelper.accessor((row) => row.volumepath, {
+        header: 'Volume Path'
       }),
       columnHelper.display({
         id: 'actions',
