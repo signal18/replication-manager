@@ -42,7 +42,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal, monitor }) {
           value={selectedCluster?.config?.topologyStagingRefreshScript}
           confirmTitle={`Confirm staging refresh script to `}
           onSave={(value) => {
-            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'topology-staging-refresh-script', value }))
+            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'topology-staging-refresh-script', value: btoa(value) }))
           }}
         />
       )
@@ -54,7 +54,7 @@ function StagingSettings({ selectedCluster, user, openConfirmModal, monitor }) {
           value={selectedCluster?.config?.topologyStagingPostDetachScript}
           confirmTitle={`Confirm staging post-detach script to `}
           onSave={(value) => {
-            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'topology-staging-post-detach-script', value }))
+            dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'topology-staging-post-detach-script', value: btoa(value) }))
           }}
         />
       )

@@ -173,7 +173,7 @@ function AlertSettings({ selectedCluster, user, openConfirmModal }) {
               setSetting({
                 clusterName: selectedCluster?.name,
                 setting: 'alert-script',
-                value: value
+                value: btoa(value)
               })
             )
           }

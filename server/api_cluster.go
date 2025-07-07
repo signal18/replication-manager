@@ -2611,9 +2611,34 @@ func (repman *ReplicationManager) handlerMuxSetCron(w http.ResponseWriter, r *ht
 	}
 }
 
+func setIsActive(value string) *bool {
+	val := strings.ToLower(value)
+
+	switch val {
+	case "on", "true":
+		b := true
+		return &b
+	case "off", "false":
+		b := false
+		return &b
+	case "":
+		return nil // nil means no change
+	default:
+		return nil // any other value also means no change
+	}
+}
+
+func applyIsActive(oldValue bool, isactive *bool) bool {
+	if isactive == nil {
+		return oldValue
+	}
+	return *isactive
+}
+
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
-	var isactive bool = strings.ToLower(value) == "on"
+	var isactive *bool = setIsActive(value)
 	var err error
+
 	//not immutable
 	if !mycluster.Conf.IsVariableImmutable(name) {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
@@ -2924,7 +2949,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-pushover-user-token":
 		mycluster.SetAlertPushoverUserToken(value)
 	case "alert-script":
-		mycluster.SetAlertScript(value)
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.SetAlertScript(string(val))
 	case "alert-slack-channel":
 		mycluster.SetAlertSlackChannel(value)
 	case "alert-slack-url":
@@ -2936,8 +2965,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-slack-user":
 		mycluster.SetAlertSlackUser(value)
 	case "cloud18-alert":
-		if mycluster.Conf.Cloud18Alert != isactive {
-			mycluster.Conf.Cloud18Alert = isactive
+		oldValue := mycluster.Conf.Cloud18Alert
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.Cloud18Alert = newValue
 			if mycluster.Conf.Cloud18Alert {
 				mycluster.LogSlack.Activate("cloud18", true)
 			} else {
@@ -3154,13 +3185,29 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.Conf.Cloud18DbOps = value
 		}
 	case "backup-save-script":
-		mycluster.Conf.BackupSaveScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupSaveScript = string(val)
 	case "backup-load-script":
-		mycluster.Conf.BackupLoadScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupLoadScript = string(val)
 	case "topology-staging-refresh-script":
-		mycluster.Conf.TopologyStagingRefreshScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.TopologyStagingRefreshScript = string(val)
 	case "topology-staging-post-detach-script":
-		mycluster.Conf.TopologyStagingPostDetachScript = value
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.TopologyStagingPostDetachScript = string(val)
 	case "replication-multisource-head-clusters":
 		mycluster.Conf.ReplicationMultisourceHeadClusters = value
 	case "replication-source-name":
@@ -3170,170 +3217,192 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 
 	// Switches
 	case "verbose":
-		mycluster.Conf.Verbose = isactive
+		mycluster.Conf.Verbose = applyIsActive(mycluster.Conf.Verbose, isactive)
 	case "failover-mode":
-		mycluster.SetInteractive(strings.ToLower(value) == "on")
+		mycluster.SetInteractive(applyIsActive(mycluster.Conf.Interactive, isactive))
 	case "failover-readonly-state":
-		mycluster.SetReadOnly(strings.ToLower(value) == "on")
+		mycluster.SetReadOnly(applyIsActive(mycluster.Conf.ReadOnly, isactive))
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "failover-restart-unsafe":
-		mycluster.Conf.FailRestartUnsafe = isactive
+		mycluster.Conf.FailRestartUnsafe = applyIsActive(mycluster.Conf.FailRestartUnsafe, isactive)
 	case "failover-at-sync":
-		mycluster.Conf.FailSync = isactive
+		mycluster.Conf.FailSync = applyIsActive(mycluster.Conf.FailSync, isactive)
 	case "force-slave-no-gtid-mode":
-		mycluster.Conf.ForceSlaveNoGtid = isactive
+		mycluster.Conf.ForceSlaveNoGtid = applyIsActive(mycluster.Conf.ForceSlaveNoGtid, isactive)
 	case "switchover-lower-release":
-		mycluster.Conf.SwitchLowerRelease = isactive
+		mycluster.Conf.SwitchLowerRelease = applyIsActive(mycluster.Conf.SwitchLowerRelease, isactive)
 	case "failover-event-status":
-		mycluster.Conf.FailEventStatus = isactive
+		mycluster.Conf.FailEventStatus = applyIsActive(mycluster.Conf.FailEventStatus, isactive)
 	case "failover-event-scheduler":
-		mycluster.Conf.FailEventScheduler = isactive
+		mycluster.Conf.FailEventScheduler = applyIsActive(mycluster.Conf.FailEventScheduler, isactive)
 	case "delay-stat-capture":
-		mycluster.Conf.DelayStatCapture = isactive
+		mycluster.Conf.DelayStatCapture = applyIsActive(mycluster.Conf.DelayStatCapture, isactive)
 		if !mycluster.Conf.DelayStatCapture {
 			mycluster.Conf.FailoverCheckDelayStat = false
 			mycluster.Conf.PrintDelayStat = false
 			mycluster.Conf.PrintDelayStatHistory = false
 		}
 	case "print-delay-stat":
-		mycluster.Conf.PrintDelayStat = isactive
+		mycluster.Conf.PrintDelayStat = applyIsActive(mycluster.Conf.PrintDelayStat, isactive)
 	case "print-delay-stat-history":
-		mycluster.Conf.PrintDelayStatHistory = isactive
+		mycluster.Conf.PrintDelayStatHistory = applyIsActive(mycluster.Conf.PrintDelayStatHistory, isactive)
 	case "failover-check-delay-stat":
-		mycluster.Conf.FailoverCheckDelayStat = isactive
+		mycluster.Conf.FailoverCheckDelayStat = applyIsActive(mycluster.Conf.FailoverCheckDelayStat, isactive)
 	case "autorejoin":
-		mycluster.Conf.Autorejoin = isactive
+		mycluster.Conf.Autorejoin = applyIsActive(mycluster.Conf.Autorejoin, isactive)
 	case "autoseed":
-		mycluster.Conf.Autoseed = isactive
+		mycluster.Conf.Autoseed = applyIsActive(mycluster.Conf.Autoseed, isactive)
 	case "autorejoin-backup-binlog":
-		mycluster.Conf.AutorejoinBackupBinlog = isactive
+		mycluster.Conf.AutorejoinBackupBinlog = applyIsActive(mycluster.Conf.AutorejoinBackupBinlog, isactive)
 	case "autorejoin-flashback":
-		mycluster.Conf.AutorejoinFlashback = isactive
+		mycluster.Conf.AutorejoinFlashback = applyIsActive(mycluster.Conf.AutorejoinFlashback, isactive)
 	case "autorejoin-flashback-on-sync":
-		mycluster.Conf.AutorejoinSemisync = isactive
+		mycluster.Conf.AutorejoinSemisync = applyIsActive(mycluster.Conf.AutorejoinSemisync, isactive)
 	case "autorejoin-slave-positional-heartbeat":
-		mycluster.Conf.AutorejoinSlavePositionalHeartbeat = isactive
+		mycluster.Conf.AutorejoinSlavePositionalHeartbeat = applyIsActive(mycluster.Conf.AutorejoinSlavePositionalHeartbeat, isactive)
 	case "autorejoin-zfs-flashback":
-		mycluster.Conf.AutorejoinZFSFlashback = isactive
+		mycluster.Conf.AutorejoinZFSFlashback = applyIsActive(mycluster.Conf.AutorejoinZFSFlashback, isactive)
 	case "autorejoin-mysqldump":
-		mycluster.Conf.AutorejoinMysqldump = isactive
+		mycluster.Conf.AutorejoinMysqldump = applyIsActive(mycluster.Conf.AutorejoinMysqldump, isactive)
 	case "autorejoin-logical-backup":
-		mycluster.Conf.AutorejoinLogicalBackup = isactive
+		mycluster.Conf.AutorejoinLogicalBackup = applyIsActive(mycluster.Conf.AutorejoinLogicalBackup, isactive)
 	case "autorejoin-physical-backup":
-		mycluster.Conf.AutorejoinPhysicalBackup = isactive
+		mycluster.Conf.AutorejoinPhysicalBackup = applyIsActive(mycluster.Conf.AutorejoinPhysicalBackup, isactive)
 	case "autorejoin-force-restore":
-		mycluster.Conf.AutorejoinForceRestore = isactive
+		mycluster.Conf.AutorejoinForceRestore = applyIsActive(mycluster.Conf.AutorejoinForceRestore, isactive)
 	case "switchover-at-sync":
-		mycluster.Conf.SwitchSync = isactive
+		mycluster.Conf.SwitchSync = applyIsActive(mycluster.Conf.SwitchSync, isactive)
 	case "switchover-lock-user-on-freeze":
-		mycluster.Conf.SwitchLockUserOnFreeze = isactive
+		mycluster.Conf.SwitchLockUserOnFreeze = applyIsActive(mycluster.Conf.SwitchLockUserOnFreeze, isactive)
 	case "check-replication-filters":
-		mycluster.Conf.CheckReplFilter = isactive
+		mycluster.Conf.CheckReplFilter = applyIsActive(mycluster.Conf.CheckReplFilter, isactive)
 	case "check-replication-state":
-		mycluster.Conf.RplChecks = isactive
+		mycluster.Conf.RplChecks = applyIsActive(mycluster.Conf.RplChecks, isactive)
 	case "scheduler-db-servers-logical-backup":
-		if mycluster.Conf.SchedulerBackupLogical != isactive {
-			mycluster.Conf.SchedulerBackupLogical = isactive
+		oldValue := mycluster.Conf.SchedulerBackupLogical
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerBackupLogical = newValue
 			mycluster.SetSchedulerBackupLogical()
 		}
 	case "scheduler-db-servers-physical-backup":
-		if mycluster.Conf.SchedulerBackupPhysical != isactive {
-			mycluster.Conf.SchedulerBackupPhysical = isactive
+		oldValue := mycluster.Conf.SchedulerBackupPhysical
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerBackupPhysical = newValue
 			mycluster.SetSchedulerBackupPhysical()
 		}
 	case "scheduler-db-servers-logs":
-		if mycluster.Conf.SchedulerDatabaseLogs != isactive {
-			mycluster.Conf.SchedulerDatabaseLogs = isactive
+		oldValue := mycluster.Conf.SchedulerDatabaseLogs
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerDatabaseLogs = newValue
 			mycluster.SetSchedulerBackupLogs()
 		}
 	case "scheduler-jobs-ssh":
-		if mycluster.Conf.SchedulerJobsSSH != isactive {
-			mycluster.Conf.SchedulerJobsSSH = isactive
+		oldValue := mycluster.Conf.SchedulerJobsSSH
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerJobsSSH = newValue
 			mycluster.SetSchedulerDbJobsSsh()
 		}
 	case "scheduler-db-servers-logs-table-rotate":
-		if mycluster.Conf.SchedulerDatabaseLogsTableRotate != isactive {
-			mycluster.Conf.SchedulerDatabaseLogsTableRotate = isactive
+		oldValue := mycluster.Conf.SchedulerDatabaseLogsTableRotate
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerDatabaseLogsTableRotate = newValue
 			mycluster.SetSchedulerLogsTableRotate()
 		}
 	case "scheduler-rolling-restart":
-		if mycluster.Conf.SchedulerRollingRestart != isactive {
-			mycluster.Conf.SchedulerRollingRestart = isactive
+		oldValue := mycluster.Conf.SchedulerRollingRestart
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerRollingRestart = newValue
 			mycluster.SetSchedulerRollingRestart()
 		}
 	case "scheduler-rolling-reprov":
-		if mycluster.Conf.SchedulerRollingReprov != isactive {
-			mycluster.Conf.SchedulerRollingReprov = isactive
+		oldValue := mycluster.Conf.SchedulerRollingReprov
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerRollingReprov = newValue
 			mycluster.SetSchedulerRollingReprov()
 		}
 	case "scheduler-db-servers-optimize":
-		if mycluster.Conf.SchedulerDatabaseOptimize != isactive {
-			mycluster.Conf.SchedulerDatabaseOptimize = isactive
+		oldValue := mycluster.Conf.SchedulerDatabaseOptimize
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerDatabaseOptimize = newValue
 			mycluster.SetSchedulerOptimize()
 		}
 	case "scheduler-db-servers-analyze":
-		if mycluster.Conf.SchedulerDatabaseAnalyze != isactive {
-			mycluster.Conf.SchedulerDatabaseAnalyze = isactive
+		oldValue := mycluster.Conf.SchedulerDatabaseAnalyze
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.SchedulerDatabaseAnalyze = newValue
 			mycluster.SetSchedulerAnalyze()
 		}
 	case "scheduler-alert-disable":
-		mycluster.Conf.SchedulerAlertDisable = isactive
+		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
 	case "graphite-metrics":
-		mycluster.Conf.GraphiteMetrics = isactive
+		mycluster.Conf.GraphiteMetrics = applyIsActive(mycluster.Conf.GraphiteMetrics, isactive)
 	case "graphite-embedded":
-		mycluster.Conf.GraphiteEmbedded = isactive
+		mycluster.Conf.GraphiteEmbedded = applyIsActive(mycluster.Conf.GraphiteEmbedded, isactive)
 	case "graphite-whitelist":
-		mycluster.Conf.GraphiteWhitelist = isactive
+		mycluster.Conf.GraphiteWhitelist = applyIsActive(mycluster.Conf.GraphiteWhitelist, isactive)
 	case "graphite-blacklist":
-		mycluster.Conf.GraphiteBlacklist = isactive
+		mycluster.Conf.GraphiteBlacklist = applyIsActive(mycluster.Conf.GraphiteBlacklist, isactive)
 	case "shardproxy-copy-grants":
-		mycluster.Conf.MdbsProxyCopyGrants = isactive
+		mycluster.Conf.MdbsProxyCopyGrants = applyIsActive(mycluster.Conf.MdbsProxyCopyGrants, isactive)
 	case "proxysql-copy-grants", "proxysql-bootstrap-users":
-		mycluster.Conf.ProxysqlCopyGrants = isactive
+		mycluster.Conf.ProxysqlCopyGrants = applyIsActive(mycluster.Conf.ProxysqlCopyGrants, isactive)
 	case "proxysql-bootstrap-variables":
-		mycluster.Conf.ProxysqlBootstrapVariables = isactive
+		mycluster.Conf.ProxysqlBootstrapVariables = applyIsActive(mycluster.Conf.ProxysqlBootstrapVariables, isactive)
 	case "proxysql-bootstrap-hostgroups":
-		mycluster.Conf.ProxysqlBootstrapHG = isactive
+		mycluster.Conf.ProxysqlBootstrapHG = applyIsActive(mycluster.Conf.ProxysqlBootstrapHG, isactive)
 	case "proxysql-bootstrap", "proxysql-bootstrap-servers":
-		mycluster.Conf.ProxysqlBootstrap = isactive
+		mycluster.Conf.ProxysqlBootstrap = applyIsActive(mycluster.Conf.ProxysqlBootstrap, isactive)
 	case "proxysql-bootstrap-query-rules":
-		mycluster.Conf.ProxysqlBootstrapQueryRules = isactive
+		mycluster.Conf.ProxysqlBootstrapQueryRules = applyIsActive(mycluster.Conf.ProxysqlBootstrapQueryRules, isactive)
 	case "proxysql":
-		mycluster.Conf.ProxysqlOn = isactive
+		mycluster.Conf.ProxysqlOn = applyIsActive(mycluster.Conf.ProxysqlOn, isactive)
 	case "proxy-servers-read-on-master":
-		mycluster.Conf.PRXServersReadOnMaster = isactive
+		mycluster.Conf.PRXServersReadOnMaster = applyIsActive(mycluster.Conf.PRXServersReadOnMaster, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-read-on-master-no-slave":
-		mycluster.Conf.PRXServersReadOnMasterNoSlave = isactive
+		mycluster.Conf.PRXServersReadOnMasterNoSlave = applyIsActive(mycluster.Conf.PRXServersReadOnMasterNoSlave, isactive)
 		mycluster.Configurator.Init(*mycluster.Conf, mycluster.Logrus)
 	case "proxy-servers-backend-compression":
-		mycluster.Conf.PRXServersBackendCompression = isactive
+		mycluster.Conf.PRXServersBackendCompression = applyIsActive(mycluster.Conf.PRXServersBackendCompression, isactive)
 	case "database-heartbeat":
-		mycluster.Conf.TestInjectTraffic = isactive
+		mycluster.Conf.TestInjectTraffic = applyIsActive(mycluster.Conf.TestInjectTraffic, isactive)
 	case "database-heartbeat-staging":
-		mycluster.Conf.TestInjectTrafficStaging = isactive
+		mycluster.Conf.TestInjectTrafficStaging = applyIsActive(mycluster.Conf.TestInjectTrafficStaging, isactive)
 	case "test":
-		mycluster.Conf.Test = isactive
+		mycluster.Conf.Test = applyIsActive(mycluster.Conf.Test, isactive)
 	case "prov-net-cni":
-		mycluster.Conf.ProvNetCNI = isactive
+		mycluster.Conf.ProvNetCNI = applyIsActive(mycluster.Conf.ProvNetCNI, isactive)
 	case "prov-db-config-preserve":
-		mycluster.Conf.ProvDBConfigPreserve = isactive
+		mycluster.Conf.ProvDBConfigPreserve = applyIsActive(mycluster.Conf.ProvDBConfigPreserve, isactive)
 	case "prov-db-start-fetch-config":
-		mycluster.Conf.ProvDbStartFetchConfig = isactive
+		mycluster.Conf.ProvDbStartFetchConfig = applyIsActive(mycluster.Conf.ProvDbStartFetchConfig, isactive)
 	case "prov-db-apply-dynamic-config":
-		mycluster.Conf.ProvDBApplyDynamicConfig = isactive
+		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-docker-daemon-private":
-		mycluster.Conf.ProvDockerDaemonPrivate = isactive
+		mycluster.Conf.ProvDockerDaemonPrivate = applyIsActive(mycluster.Conf.ProvDockerDaemonPrivate, isactive)
 	case "backup-restic-aws":
-		mycluster.Conf.BackupResticAws = isactive
+		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
 	case "backup-restic":
-		if mycluster.Conf.BackupRestic != isactive {
-			mycluster.Conf.BackupRestic = isactive
+		oldValue := mycluster.Conf.BackupRestic
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.BackupRestic = newValue
 			mycluster.CheckResticInstallation()
 		}
 	case "backup-binlogs":
-		if mycluster.Conf.BackupBinlogs != isactive {
-			mycluster.Conf.BackupBinlogs = isactive
+		oldValue := mycluster.Conf.BackupBinlogs
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.BackupBinlogs = newValue
 			if mycluster.Conf.BackupBinlogs {
 				for _, sv := range mycluster.GetServers() {
 					go sv.CheckBinaryLogs(true)
@@ -3341,266 +3410,310 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			}
 		}
 	case "compress-backups":
-		mycluster.Conf.CompressBackups = isactive
+		mycluster.Conf.CompressBackups = applyIsActive(mycluster.Conf.CompressBackups, isactive)
 	case "backup-split-mysql-user":
-		mycluster.Conf.BackupSplitMysqlUser = isactive
+		mycluster.Conf.BackupSplitMysqlUser = applyIsActive(mycluster.Conf.BackupSplitMysqlUser, isactive)
 	case "backup-restore-mysql-user":
-		mycluster.Conf.BackupRestoreMysqlUser = isactive
+		mycluster.Conf.BackupRestoreMysqlUser = applyIsActive(mycluster.Conf.BackupRestoreMysqlUser, isactive)
 	case "backup-check-free-space":
-		mycluster.Conf.BackupCheckFreeSpace = isactive
+		mycluster.Conf.BackupCheckFreeSpace = applyIsActive(mycluster.Conf.BackupCheckFreeSpace, isactive)
 	case "backup-estimate-size":
-		mycluster.Conf.BackupEstimateSize = isactive
+		mycluster.Conf.BackupEstimateSize = applyIsActive(mycluster.Conf.BackupEstimateSize, isactive)
 	case "monitoring-pause":
-		mycluster.Conf.MonitorPause = isactive
+		mycluster.Conf.MonitorPause = applyIsActive(mycluster.Conf.MonitorPause, isactive)
 	case "monitoring-save-config":
-		mycluster.Conf.ConfRewrite = isactive
+		mycluster.Conf.ConfRewrite = applyIsActive(mycluster.Conf.ConfRewrite, isactive)
 	case "monitoring-queries":
-		mycluster.Conf.MonitorQueries = isactive
+		mycluster.Conf.MonitorQueries = applyIsActive(mycluster.Conf.MonitorQueries, isactive)
 	case "monitoring-scheduler":
-		mycluster.SetMonitoringScheduler(isactive)
+		mycluster.SetMonitoringScheduler(applyIsActive(mycluster.Conf.MonitorScheduler, isactive))
 	case "monitoring-schema-change":
-		mycluster.Conf.MonitorSchemaChange = isactive
+		mycluster.Conf.MonitorSchemaChange = applyIsActive(mycluster.Conf.MonitorSchemaChange, isactive)
 	case "monitoring-capture":
-		mycluster.Conf.MonitorCapture = isactive
+		mycluster.Conf.MonitorCapture = applyIsActive(mycluster.Conf.MonitorCapture, isactive)
 	case "monitoring-innodb-status":
-		mycluster.Conf.MonitorInnoDBStatus = isactive
+		mycluster.Conf.MonitorInnoDBStatus = applyIsActive(mycluster.Conf.MonitorInnoDBStatus, isactive)
 	case "monitoring-variable-diff":
-		mycluster.Conf.MonitorVariableDiff = isactive
+		mycluster.Conf.MonitorVariableDiff = applyIsActive(mycluster.Conf.MonitorVariableDiff, isactive)
 	case "monitoring-processlist":
-		mycluster.Conf.MonitorProcessList = isactive
+		mycluster.Conf.MonitorProcessList = applyIsActive(mycluster.Conf.MonitorProcessList, isactive)
 	case "force-slave-readonly":
-		mycluster.Conf.ForceSlaveReadOnly = isactive
+		mycluster.Conf.ForceSlaveReadOnly = applyIsActive(mycluster.Conf.ForceSlaveReadOnly, isactive)
 	case "force-binlog-row":
-		mycluster.Conf.ForceBinlogRow = isactive
+		mycluster.Conf.ForceBinlogRow = applyIsActive(mycluster.Conf.ForceBinlogRow, isactive)
 	case "force-slave-semisync":
-		mycluster.Conf.ForceSlaveSemisync = isactive
+		mycluster.Conf.ForceSlaveSemisync = applyIsActive(mycluster.Conf.ForceSlaveSemisync, isactive)
 	case "force-slave-Heartbeat":
-		mycluster.Conf.ForceSlaveHeartbeat = isactive
+		mycluster.Conf.ForceSlaveHeartbeat = applyIsActive(mycluster.Conf.ForceSlaveHeartbeat, isactive)
 	case "force-slave-gtid":
-		mycluster.Conf.ForceSlaveGtid = isactive
+		mycluster.Conf.ForceSlaveGtid = applyIsActive(mycluster.Conf.ForceSlaveGtid, isactive)
 	case "force-slave-gtid-mode-strict":
-		mycluster.Conf.ForceSlaveGtidStrict = isactive
+		mycluster.Conf.ForceSlaveGtidStrict = applyIsActive(mycluster.Conf.ForceSlaveGtidStrict, isactive)
 	case "force-slave-idempotent":
-		mycluster.Conf.ForceSlaveIdempotent = isactive
+		mycluster.Conf.ForceSlaveIdempotent = applyIsActive(mycluster.Conf.ForceSlaveIdempotent, isactive)
 	case "force-slave-strict":
-		mycluster.Conf.ForceSlaveStrict = isactive
+		mycluster.Conf.ForceSlaveStrict = applyIsActive(mycluster.Conf.ForceSlaveStrict, isactive)
 	case "force-slave-serialized":
-		if isactive {
-			mycluster.Conf.ForceSlaveParallelMode = "SERIALIZED"
-		} else {
-			mycluster.Conf.ForceSlaveParallelMode = ""
+		if isactive != nil {
+			if *isactive {
+				mycluster.Conf.ForceSlaveParallelMode = "SERIALIZED"
+			} else if mycluster.Conf.ForceSlaveParallelMode == "SERIALIZED" {
+				mycluster.Conf.ForceSlaveParallelMode = ""
+			}
 		}
 	case "force-slave-minimal":
-		if isactive {
-			mycluster.Conf.ForceSlaveParallelMode = "MINIMAL"
-		} else {
-			mycluster.Conf.ForceSlaveParallelMode = ""
+		if isactive != nil {
+			if *isactive {
+				mycluster.Conf.ForceSlaveParallelMode = "MINIMAL"
+			} else if mycluster.Conf.ForceSlaveParallelMode == "MINIMAL" {
+				mycluster.Conf.ForceSlaveParallelMode = ""
+			}
 		}
 	case "force-slave-conservative":
-		if isactive {
-			mycluster.Conf.ForceSlaveParallelMode = "CONSERVATIVE"
-		} else {
-			mycluster.Conf.ForceSlaveParallelMode = ""
+		if isactive != nil {
+			if *isactive {
+				mycluster.Conf.ForceSlaveParallelMode = "CONSERVATIVE"
+			} else if mycluster.Conf.ForceSlaveParallelMode == "CONSERVATIVE" {
+				mycluster.Conf.ForceSlaveParallelMode = ""
+			}
 		}
 	case "force-slave-optimistic":
-		if isactive {
-			mycluster.Conf.ForceSlaveParallelMode = "OPTIMISTIC"
-		} else {
-			mycluster.Conf.ForceSlaveParallelMode = ""
+		if isactive != nil {
+			if *isactive {
+				mycluster.Conf.ForceSlaveParallelMode = "OPTIMISTIC"
+			} else if mycluster.Conf.ForceSlaveParallelMode == "OPTIMISTIC" {
+				mycluster.Conf.ForceSlaveParallelMode = ""
+			}
 		}
 	case "force-slave-aggressive":
-		if isactive {
-			mycluster.Conf.ForceSlaveParallelMode = "AGGRESSIVE"
-		} else {
-			mycluster.Conf.ForceSlaveParallelMode = ""
+		if isactive != nil {
+			if *isactive {
+				mycluster.Conf.ForceSlaveParallelMode = "AGGRESSIVE"
+			} else if mycluster.Conf.ForceSlaveParallelMode == "AGGRESSIVE" {
+				mycluster.Conf.ForceSlaveParallelMode = ""
+			}
 		}
 	case "force-binlog-compress":
-		mycluster.Conf.ForceBinlogCompress = isactive
+		mycluster.Conf.ForceBinlogCompress = applyIsActive(mycluster.Conf.ForceBinlogCompress, isactive)
 	case "force-binlog-annotate":
-		mycluster.Conf.ForceBinlogAnnotate = isactive
+		mycluster.Conf.ForceBinlogAnnotate = applyIsActive(mycluster.Conf.ForceBinlogAnnotate, isactive)
 	case "force-binlog-slow-queries":
-		mycluster.Conf.ForceBinlogSlowqueries = isactive
+		mycluster.Conf.ForceBinlogSlowqueries = applyIsActive(mycluster.Conf.ForceBinlogSlowqueries, isactive)
 	case "log-sql-in-monitoring":
-		if mycluster.Conf.LogSQLInMonitoring != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogSQLInMonitoring
+		newValue := applyIsActive(mycluster.Conf.LogSQLInMonitoring, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogSQLLevel = 1
 			} else {
 				mycluster.Conf.LogSQLLevel = 0
 			}
-			mycluster.Conf.LogSQLInMonitoring = isactive
+			mycluster.Conf.LogSQLInMonitoring = newValue
 		}
 	case "log-writer-election":
-		if mycluster.Conf.LogWriterElection != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogWriterElection
+		newValue := applyIsActive(mycluster.Conf.LogWriterElection, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogWriterElectionLevel = 1
 			} else {
 				mycluster.Conf.LogWriterElectionLevel = 0
 			}
-			mycluster.Conf.LogWriterElection = isactive
+			mycluster.Conf.LogWriterElection = newValue
 		}
 	case "log-sst":
-		if mycluster.Conf.LogSST != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogSST
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogSSTLevel = 1
 			} else {
 				mycluster.Conf.LogSSTLevel = 0
 			}
-			mycluster.Conf.LogSST = isactive
+			mycluster.Conf.LogSST = newValue
 		}
 	case "log-heartbeat":
-		if mycluster.Conf.LogHeartbeat != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogHeartbeat
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogHeartbeatLevel = 1
 			} else {
 				mycluster.Conf.LogHeartbeatLevel = 0
 			}
-			mycluster.Conf.LogHeartbeat = isactive
+			mycluster.Conf.LogHeartbeat = newValue
 		}
 	case "log-config-load":
-		if mycluster.Conf.LogConfigLoad != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogConfigLoad
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogConfigLoadLevel = 1
 			} else {
 				mycluster.Conf.LogConfigLoadLevel = 0
 			}
-			mycluster.Conf.LogConfigLoad = isactive
+			mycluster.Conf.LogConfigLoad = newValue
 		}
 	case "log-git":
-		if mycluster.Conf.LogGit != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogGit
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogGitLevel = 1
 			} else {
 				mycluster.Conf.LogGitLevel = 0
 			}
-			mycluster.Conf.LogGit = isactive
+			mycluster.Conf.LogGit = newValue
 		}
 	case "log-support":
-		if mycluster.Conf.LogSupport != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogSupport
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogSupportLevel = 1
 			} else {
 				mycluster.Conf.LogSupportLevel = 0
 			}
-			mycluster.Conf.LogSupport = isactive
+			mycluster.Conf.LogSupport = newValue
 		}
 	case "log-backup-stream":
-		if mycluster.Conf.LogBackupStream != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogBackupStream
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogBackupStreamLevel = 1
 			} else {
 				mycluster.Conf.LogBackupStreamLevel = 0
 			}
-			mycluster.Conf.LogBackupStream = isactive
+			mycluster.Conf.LogBackupStream = newValue
 		}
 	case "log-orchestrator":
-		if mycluster.Conf.LogOrchestrator != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogOrchestrator
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogOrchestratorLevel = 1
 			} else {
 				mycluster.Conf.LogOrchestratorLevel = 0
 			}
-			mycluster.Conf.LogOrchestrator = isactive
+			mycluster.Conf.LogOrchestrator = newValue
 		}
 	case "log-vault":
-		if mycluster.Conf.LogVault != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogVault
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogVaultLevel = 1
 			} else {
 				mycluster.Conf.LogVaultLevel = 0
 			}
-			mycluster.Conf.LogVault = isactive
+			mycluster.Conf.LogVault = newValue
 		}
 	case "log-topology":
-		if mycluster.Conf.LogTopology != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogTopology
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogTopologyLevel = 1
 			} else {
 				mycluster.Conf.LogTopologyLevel = 0
 			}
-			mycluster.Conf.LogTopology = isactive
+			mycluster.Conf.LogTopology = newValue
 		}
 	case "log-proxy":
-		if mycluster.Conf.LogProxy != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.LogProxy
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.LogProxyLevel = 1
 			} else {
 				mycluster.Conf.LogProxyLevel = 0
 			}
-			mycluster.Conf.LogProxy = isactive
+			mycluster.Conf.LogProxy = newValue
 		}
 	case "proxysql-debug":
-		if mycluster.Conf.ProxysqlDebug != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.ProxysqlDebug
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.ProxysqlLogLevel = 1
 			} else {
 				mycluster.Conf.ProxysqlLogLevel = 0
 			}
-			mycluster.Conf.ProxysqlDebug = isactive
+			mycluster.Conf.ProxysqlDebug = newValue
 		}
 	case "haproxy-debug":
-		if mycluster.Conf.HaproxyDebug != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.HaproxyDebug
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.HaproxyLogLevel = 1
 			} else {
 				mycluster.Conf.HaproxyLogLevel = 0
 			}
-			mycluster.Conf.HaproxyDebug = isactive
+			mycluster.Conf.HaproxyDebug = newValue
 		}
 	case "proxyjanitor-debug":
-		if mycluster.Conf.ProxyJanitorDebug != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.ProxyJanitorDebug
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.ProxyJanitorLogLevel = 1
 			} else {
 				mycluster.Conf.ProxyJanitorLogLevel = 0
 			}
-			mycluster.Conf.ProxyJanitorDebug = isactive
+			mycluster.Conf.ProxyJanitorDebug = newValue
 		}
 	case "maxscale-debug":
-		if mycluster.Conf.MxsDebug != isactive {
-			if isactive {
+		oldValue := mycluster.Conf.MxsDebug
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			if newValue {
 				mycluster.Conf.MxsLogLevel = 1
 			} else {
 				mycluster.Conf.MxsLogLevel = 0
 			}
-			mycluster.Conf.MxsDebug = isactive
+			mycluster.Conf.MxsDebug = newValue
 		}
 	case "force-binlog-purge":
-		mycluster.Conf.ForceBinlogPurge = isactive
+		mycluster.Conf.ForceBinlogPurge = applyIsActive(mycluster.Conf.ForceBinlogPurge, isactive)
 	case "force-binlog-purge-on-restore":
-		mycluster.Conf.ForceBinlogPurgeOnRestore = isactive
+		mycluster.Conf.ForceBinlogPurgeOnRestore = applyIsActive(mycluster.Conf.ForceBinlogPurgeOnRestore, isactive)
 	case "force-binlog-purge-replicas":
-		mycluster.Conf.ForceBinlogPurgeReplicas = isactive
+		mycluster.Conf.ForceBinlogPurgeReplicas = applyIsActive(mycluster.Conf.ForceBinlogPurgeReplicas, isactive)
 	case "multi-master-concurrent-write":
-		mycluster.Conf.MultiMasterConcurrentWrite = isactive
+		mycluster.Conf.MultiMasterConcurrentWrite = applyIsActive(mycluster.Conf.MultiMasterConcurrentWrite, isactive)
 	case "multi-master-ring-unsafe":
-		mycluster.Conf.MultiMasterRingUnsafe = isactive
+		mycluster.Conf.MultiMasterRingUnsafe = applyIsActive(mycluster.Conf.MultiMasterRingUnsafe, isactive)
 	case "dynamic-topology":
-		mycluster.Conf.DynamicTopology = isactive
+		mycluster.Conf.DynamicTopology = applyIsActive(mycluster.Conf.DynamicTopology, isactive)
 	case "replication-no-relay":
-		mycluster.Conf.ReplicationNoRelay = isactive
+		mycluster.Conf.ReplicationNoRelay = applyIsActive(mycluster.Conf.ReplicationNoRelay, isactive)
 	case "prov-db-force-write-config":
-		if mycluster.Conf.ProvDBForceWriteConfig != isactive {
-			mycluster.Conf.ProvDBForceWriteConfig = isactive
-			if isactive {
+		oldValue := mycluster.Conf.ProvDBForceWriteConfig
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.Conf.ProvDBForceWriteConfig = newValue
+			if newValue {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files activated. Will replace config files on next provision.")
 			} else {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Configurator force write config files de-activated. Will create config files with suffix (.new) for conflicting files on next provision.")
 			}
 		}
 	case "backup-keep-until-valid":
-		mycluster.Conf.BackupKeepUntilValid = isactive
+		mycluster.Conf.BackupKeepUntilValid = applyIsActive(mycluster.Conf.BackupKeepUntilValid, isactive)
 	case "mail-smtp-tls-skip-verify":
-		mycluster.Conf.MailSMTPTLSSkipVerify = isactive
+		mycluster.Conf.MailSMTPTLSSkipVerify = applyIsActive(mycluster.Conf.MailSMTPTLSSkipVerify, isactive)
 	case "cloud18-shared":
-		mycluster.Conf.Cloud18Shared = isactive
+		mycluster.Conf.Cloud18Shared = applyIsActive(mycluster.Conf.Cloud18Shared, isactive)
 	case "cloud18-open-dbops":
-		mycluster.Conf.Cloud18OpenDbops = isactive
+		mycluster.Conf.Cloud18OpenDbops = applyIsActive(mycluster.Conf.Cloud18OpenDbops, isactive)
 	case "cloud18-open-sysops":
-		mycluster.Conf.Cloud18OpenSysops = isactive
+		mycluster.Conf.Cloud18OpenSysops = applyIsActive(mycluster.Conf.Cloud18OpenSysops, isactive)
 	case "topology-staging":
-		mycluster.Conf.TopologyStaging = isactive
+		mycluster.Conf.TopologyStaging = applyIsActive(mycluster.Conf.TopologyStaging, isactive)
 	case "analyze-use-persistent":
-		mycluster.Conf.AnalyzeUsePersistent = isactive
+		mycluster.Conf.AnalyzeUsePersistent = applyIsActive(mycluster.Conf.AnalyzeUsePersistent, isactive)
 	default:
 		return errors.New("Setting not found")
 	}

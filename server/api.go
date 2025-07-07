@@ -597,7 +597,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			//	swapp the current user with email if needed
 			email, err := githelper.GetGitLabUserEmail(tok, true)
 			if email != "" {
-				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch fromm gitlab user to email  : %s", email)
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email  : %s", email)
 				user.Username = email
 			} else {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %e", err)
@@ -1221,13 +1221,6 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	vars := mux.Vars(r)
 
 	var userform cluster.UserForm
-	//decode request into UserCredentials struct
-	err := json.NewDecoder(r.Body).Decode(&userform)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "Error in request")
-		return
-	}
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
@@ -1248,7 +1241,10 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 		return
 	}
 
-	tok, _ := githelper.GetGitLabTokenBasicAuth(uinfomap["User"], repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"]), false)
+	userform.Username = uinfomap["User"]
+	userform.Password = repman.Conf.GetDecryptedPassword("peer-login", uinfomap["Password"])
+
+	tok, _ := githelper.GetGitLabTokenBasicAuth(userform.Username, userform.Password, false)
 	if tok == "" {
 		http.Error(w, "Error logging in to gitlab: Token credentials is not valid", http.StatusUnauthorized)
 		return
