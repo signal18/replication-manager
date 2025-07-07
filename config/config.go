@@ -939,7 +939,7 @@ type PathMapping struct {
 	DockerPath string `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath" groups:"apps"`
 	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 	VolumePath string `mapstructure:"volumepath" toml:"volumepath" json:"volumepath" groups:"apps"`
-	GitClone   string `mapstructure:"git" toml:"git" json:"git" groups:"apps"`
+	GitClone   string `mapstructure:"gitclone" toml:"gitclone" json:"gitclone" groups:"apps"`
 }
 
 const VolumeTypeLocal = "local"

@@ -328,8 +328,8 @@ const PathNewForm = React.memo(({ clusterName, appId, gitRows, gitOptions, volum
   }, [gc, handleCloseBrowse, selectedKey]);
 
   const valid = useMemo(() => {
-    return dockerpath && volumename && gitclone && subpath && !subpath.includes('..') && !dockerpath.includes('..');
-  }, [dockerpath, volumename, gitclone, subpath]);
+    return dockerpath && volumename && !subpath.includes('..') && !dockerpath.includes('..');
+  }, [dockerpath, volumename, subpath]);
 
   const handleArrayChange = (key, value) => {
     setPath((prev) => ({ ...prev, [key]: value }));
