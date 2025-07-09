@@ -1026,8 +1026,6 @@ definitions:
         type: string
       provAppTemplate:
         type: string
-      provAppVolumeData:
-        type: string
     type: object
   config.BackupMetaMap:
     type: object
@@ -1089,10 +1087,6 @@ definitions:
     type: object
   config.Deployment:
     properties:
-      paths:
-        items:
-          $ref: '#/definitions/config.PathMapping'
-        type: array
       primaryRoute:
         $ref: '#/definitions/config.Route'
       routes:
@@ -1172,21 +1166,11 @@ definitions:
     type: object
   config.PathMapping:
     properties:
-      agents:
-        example:
-        - all
-        items:
-          type: string
-        type: array
-      from:
+      dockerpath:
         type: string
-      to:
+      srcname:
         type: string
-      type:
-        type: string
-      volumedir:
-        description: 'This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from}
-          : {to}'
+      srcpath:
         type: string
     type: object
   config.PointInTimeMeta:
@@ -1233,9 +1217,18 @@ definitions:
     type: object
   config.S3Mapping:
     properties:
+      accessKey:
+        description: Optional fields for authentication
+        type: string
       bucket:
         type: string
+      endpoint:
+        type: string
       name:
+        type: string
+      region:
+        type: string
+      secretKey:
         type: string
     type: object
   config.ServicePlan:
@@ -1312,23 +1305,42 @@ definitions:
       zone:
         type: string
     type: object
+  config.SourceType:
+    enum:
+    - volume
+    - git
+    - s3
+    type: string
+    x-enum-varnames:
+    - SourceVolume
+    - SourceGit
+    - SourceS3
   config.StorageMapping:
     properties:
       gitClones:
         items:
           $ref: '#/definitions/config.GitClone'
         type: array
-      localDirectories:
+      mutex:
+        allOf:
+        - $ref: '#/definitions/sync.RWMutex'
+        description: Use sync.RWMutex to protect concurrent access to Volumes and
+          VolumeMappings
+      paths:
         items:
-          $ref: '#/definitions/config.VolumeMapping'
+          $ref: '#/definitions/config.PathMapping'
         type: array
       s3Directories:
         items:
           $ref: '#/definitions/config.S3Mapping'
         type: array
-      sharedDirectories:
+      volumeMappings:
         items:
           $ref: '#/definitions/config.VolumeMapping'
+        type: array
+      volumes:
+        items:
+          $ref: '#/definitions/config.Volume'
         type: array
     type: object
   config.StringsMap:
@@ -1385,13 +1397,30 @@ definitions:
     type: object
   config.VersionsMap:
     type: object
+  config.Volume:
+    properties:
+      name:
+        type: string
+      poolname:
+        type: string
+      volumedir:
+        type: string
+    type: object
   config.VolumeMapping:
     properties:
       name:
         type: string
-      volumeName:
+      parent:
         type: string
-      volumedir:
+      sourceName:
+        type: string
+      sourceType:
+        allOf:
+        - $ref: '#/definitions/config.SourceType'
+        description: Source information
+      subPath:
+        type: string
+      volume:
         type: string
     type: object
   config.WorkLoad:
@@ -2520,7 +2549,7 @@ definitions:
         type: string
       provAppMemory:
         type: string
-      provAppVolumeData:
+      provAppVolumePools:
         type: string
       provDBApplyDynamicConfig:
         type: boolean
@@ -3801,6 +3830,8 @@ definitions:
         type: boolean
     type: object
   sync.Mutex:
+    type: object
+  sync.RWMutex:
     type: object
   treehelper.FileEntry:
     properties:
@@ -6027,7 +6058,7 @@ paths:
         required: true
         type: string
       - description: 'Array of objects depending on field: - git: []config.GitClone
-          - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping'
+          - local: []config.Volume - shared: []config.Volume - s3: []config.S3Mapping'
         in: body
         name: body
         required: true

@@ -659,7 +659,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 			case "paths":
-				if index >= len(node.AppConfig.Deployment.Paths) {
+				if node.AppConfig.Deployment.Storages == nil {
+					node.AppConfig.Deployment.Storages = config.NewStorageMapping()
+				}
+
+				storage := node.AppConfig.Deployment.Storages
+				if index >= len(storage.Paths) {
 					http.Error(w, "Index out of range for path", 500)
 					return
 				}
@@ -667,11 +672,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "dockerpath":
-					node.AppConfig.Deployment.Paths[index].DockerPath = newValue
-				case "volumename":
-					node.AppConfig.Deployment.Paths[index].VolumeName = newValue
-				case "volumepath":
-					node.AppConfig.Deployment.Paths[index].VolumePath = newValue
+					storage.Paths[index].DockerPath = newValue
+				case "srcname":
+					storage.Paths[index].SourceName = newValue
+				case "srcpath":
+					storage.Paths[index].SourcePath = newValue
 				default:
 					http.Error(w, "Invalid key for path", 500)
 					return
@@ -775,8 +780,37 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths, body...)
-		affected = true
+		if node.AppConfig.Deployment.Storages == nil {
+			node.AppConfig.Deployment.Storages = config.NewStorageMapping()
+		}
+		errors := make([]error, 0)
+
+		storage := node.AppConfig.Deployment.Storages
+		for _, row := range body {
+			if row.DockerPath == "" || row.SourceName == "" || row.SourcePath == "" {
+				http.Error(w, "All fields (dockerPath, sourceName, sourcePath) must be provided for path", http.StatusInternalServerError)
+				return
+			}
+			err := storage.InsertPath(row)
+			if err != nil {
+				errors = append(errors, err)
+			} else {
+				affected = true
+			}
+		}
+
+		if affected {
+			node.AppConfig.Deployment.Storages.SortPaths()
+		}
+
+		if len(errors) > 0 {
+			errorMessages := make([]string, len(errors))
+			for i, err := range errors {
+				errorMessages[i] = err.Error()
+			}
+			http.Error(w, "Error adding paths: "+strings.Join(errorMessages, ", "), http.StatusInternalServerError)
+			return
+		}
 
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
@@ -896,11 +930,18 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
 	case "paths":
-		if index >= len(node.AppConfig.Deployment.Paths) {
+		if node.AppConfig.Deployment.Storages == nil {
+			http.Error(w, "No storage mapping found", http.StatusInternalServerError)
+			return
+		}
+
+		if index >= len(node.AppConfig.Deployment.Storages.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths[:index], node.AppConfig.Deployment.Paths[index+1:]...)
+
+		node.AppConfig.Deployment.Storages.Paths = append(node.AppConfig.Deployment.Storages.Paths[:index], node.AppConfig.Deployment.Storages.Paths[index+1:]...)
+		node.AppConfig.Deployment.Storages.SortPaths()
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
@@ -919,7 +960,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
 // @Param field path string true "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Directories)"
-// @Param body body any true "Array of objects depending on field: - git: []config.GitClone - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping"
+// @Param body body any true "Array of objects depending on field: - git: []config.GitClone - local: []config.Volume - shared: []config.Volume - s3: []config.S3Mapping"
 // @Success 200 {string} string "Storage added successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error decoding JSON" "Server Not Found"
@@ -947,7 +988,11 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		return
 	}
 
-	storages := &node.AppConfig.Deployment.Storages
+	if node.AppConfig.Deployment.Storages == nil {
+		node.AppConfig.Deployment.Storages = config.NewStorageMapping()
+	}
+
+	storages := node.AppConfig.Deployment.Storages
 	switch vars["field"] {
 	case "gitClones":
 		var row *config.GitClone
@@ -962,21 +1007,24 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
 			return
 		}
-		storages.GitClones = append(storages.GitClones, *row)
+		err := storages.InsertGitClone(row)
+		if err != nil {
+			http.Error(w, "Error inserting git clone: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "volumes":
-		var row *config.VolumeMapping
-		row, err = decodeStruct[config.VolumeMapping](r, w, "volume mapping")
+		var row *config.Volume
+		row, err = decodeStruct[config.Volume](r, w, "volume mapping")
 		if err != nil {
 			http.Error(w, "Error decoding volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		old, _ := node.GetAppVolume(row.Name)
-		if old != nil {
-			http.Error(w, "Cannot duplicate local directory with same name", http.StatusInternalServerError)
+		err := storages.InsertVolume(row)
+		if err != nil {
+			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		storages.Volumes = append(storages.Volumes, *row)
 	case "s3Directories":
 		var row *config.S3Mapping
 		row, err = decodeStruct[config.S3Mapping](r, w, "S3 directory")
@@ -985,12 +1033,24 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		old, _ := node.GetS3Directory(row.Name)
-		if old != nil {
-			http.Error(w, "Cannot duplicate S3 directory with same name", http.StatusInternalServerError)
+		err := storages.InsertS3Mapping(row)
+		if err != nil {
+			http.Error(w, "Error inserting S3 mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		storages.S3Directories = append(storages.S3Directories, *row)
+	case "volumeMappings":
+		var row *config.VolumeMapping
+		row, err = decodeStruct[config.VolumeMapping](r, w, "volume mapping")
+		if err != nil {
+			http.Error(w, "Error decoding volume mapping: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		err := storages.InsertVolumeMapping(row)
+		if err != nil {
+			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	default:
 		http.Error(w, "Invalid storage type", http.StatusInternalServerError)
 		return
@@ -1076,7 +1136,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				}
 
 				// Get the git clone at the specified index
-				gitClone := &node.AppConfig.Deployment.Storages.GitClones[index]
+				gitClone := node.AppConfig.Deployment.Storages.GitClones[index]
 				if gitClone == nil {
 					http.Error(w, "Git clone not found at index "+vars["index"], 500)
 					return
@@ -1129,7 +1189,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				}
 
 				// Get the volume at the specified index
-				volume := &node.AppConfig.Deployment.Storages.Volumes[index]
+				volume := node.AppConfig.Deployment.Storages.Volumes[index]
 				if volume == nil {
 					http.Error(w, "Volume not found at index "+vars["index"], 500)
 					return
@@ -1163,7 +1223,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					return
 				}
 
-				s3Dir := &node.AppConfig.Deployment.Storages.S3Directories[index]
+				s3Dir := node.AppConfig.Deployment.Storages.S3Directories[index]
 				if s3Dir == nil {
 					http.Error(w, "S3 directory not found at index "+vars["index"], 500)
 					return
@@ -1175,16 +1235,86 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
 					return
 				case "bucket":
-					if newValue == "" {
-						http.Error(w, "Bucket cannot be empty", 500)
-						return
-					}
 					s3Dir.Bucket = newValue
+				case "region":
+					s3Dir.Region = newValue
+				case "accessKey":
+					s3Dir.AccessKey = newValue
+				case "secretKey":
+					s3Dir.SecretKey = newValue
+				case "endpoint":
+					s3Dir.Endpoint = newValue
 				default:
 					http.Error(w, "Invalid key for s3Directories", 500)
 					return
 				}
 
+			case "volumeMappings":
+				if index >= len(node.AppConfig.Deployment.Storages.VolumeMappings) {
+					http.Error(w, "Index out of range for volumeMappings", 500)
+					return
+				}
+
+				storages := node.AppConfig.Deployment.Storages
+
+				vm := storages.VolumeMappings[index]
+				if vm == nil {
+					http.Error(w, "Volume mapping not found at index "+vars["index"], 500)
+					return
+				}
+
+				switch vars["key"] {
+				case "name":
+					// Do not allow changing the name of an existing volume mapping
+					http.Error(w, "For safety reason, we cannot change name or parent of existing volume mapping. Please drop the volume mapping and create a new one.", 500)
+					return
+				case "parent":
+					if newValue == "" {
+						vm.VolumeName = vm.Parent.VolumeName
+						vm.Volume = vm.Parent.Volume
+						vm.ParentName = ""
+						vm.Parent = nil
+					} else {
+						// Get the new parent volume mapping
+						newParent, err := storages.GetVolumeMapping(newValue)
+						if err != nil {
+							http.Error(w, "Error getting parent volume mapping: "+err.Error(), 500)
+							return
+						}
+						vm.VolumeName = newParent.VolumeName
+						vm.Volume = newParent.Volume
+						vm.ParentName = newParent.Name
+						vm.Parent = newParent
+					}
+				case "volume":
+					if newValue == "" {
+						http.Error(w, "Volume cannot be empty", 500)
+						return
+					} else if newValue != "" {
+						// Get the new volume mapping
+						newVolume, err := storages.GetVolumeByName(newValue)
+						if err != nil {
+							http.Error(w, "Error getting volume mapping: "+err.Error(), 500)
+							return
+						}
+						vm.VolumeName = newValue
+						vm.Volume = newVolume
+					}
+				case "subPath":
+					vm.SubPath = newValue
+				case "sourceType":
+					if config.IsValidSourceType(newValue) {
+						vm.SourceType = config.SourceType(newValue)
+					}
+				case "sourceName":
+					if vm.SourceType != config.SourceVolume && newValue == "" {
+						http.Error(w, "SourceName cannot be empty for non-volume source types", 500)
+						return
+					}
+				default:
+					http.Error(w, "Invalid key for volumeMappings", 500)
+					return
+				}
 			default:
 				http.Error(w, "Invalid field", 500)
 				return
@@ -1251,25 +1381,55 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 		return
 	}
 
+	if node.AppConfig.Deployment.Storages == nil {
+		http.Error(w, "No storage mapping found", http.StatusInternalServerError)
+		return
+	}
+
+	storages := node.AppConfig.Deployment.Storages
+
 	switch field {
 	case "gitClones":
-		if index >= len(node.AppConfig.Deployment.Storages.GitClones) {
+		if index >= len(storages.GitClones) {
 			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Storages.GitClones = append(node.AppConfig.Deployment.Storages.GitClones[:index], node.AppConfig.Deployment.Storages.GitClones[index+1:]...)
+		err := storages.DropGitClone(storages.GitClones[index])
+		if err != nil {
+			http.Error(w, "Error dropping git clone: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "volumes":
-		if index >= len(node.AppConfig.Deployment.Storages.Volumes) {
+		if index >= len(storages.Volumes) {
 			http.Error(w, "Index out of range for volumes", http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Storages.Volumes = append(node.AppConfig.Deployment.Storages.Volumes[:index], node.AppConfig.Deployment.Storages.Volumes[index+1:]...)
+		err := storages.DropVolume(storages.Volumes[index])
+		if err != nil {
+			http.Error(w, "Error dropping volume: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 	case "s3Directories":
-		if index >= len(node.AppConfig.Deployment.Storages.S3Directories) {
+		if index >= len(storages.S3Directories) {
 			http.Error(w, "Index out of range for s3Directories", http.StatusInternalServerError)
 			return
 		}
-		node.AppConfig.Deployment.Storages.S3Directories = append(node.AppConfig.Deployment.Storages.S3Directories[:index], node.AppConfig.Deployment.Storages.S3Directories[index+1:]...)
+		err := storages.DropS3Mapping(storages.S3Directories[index])
+		if err != nil {
+			http.Error(w, "Error dropping S3 mapping: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	case "volumeMappings":
+		if index >= len(storages.VolumeMappings) {
+			http.Error(w, "Index out of range for volumeMappings", http.StatusInternalServerError)
+			return
+		}
+		err := storages.DropVolumeMapping(storages.VolumeMappings[index])
+		if err != nil {
+			http.Error(w, "Error dropping volume mapping: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	// Add more cases for other storage fields as needed
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return

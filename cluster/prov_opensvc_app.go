@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -241,25 +242,44 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		return basemap
 	}
 
-	volumemap := appcnf.Deployment.Storages.Volumes.GroupByPool()
-	pathmap := appcnf.Deployment.Paths.GetVolumeSubDirs()
+	storages := appcnf.Deployment.Storages
+	if storages == nil || len(storages.Volumes) == 0 {
+		return basemap
+	}
+
+	storages.VolumeMappings.Sort()
+	volumemap := storages.Volumes.GroupByPool()
+	pathmap := appcnf.Deployment.Storages.VolumeMappings.GetVolumePaths()
+
 	seq := 1
 	for pool, volumes := range volumemap {
 		svcvol := make(map[string]string)
 		svcvol["name"] = cluster.GetAppVolumeName(pool)
 		svcvol["pool"] = pool
 		svcvol["size"] = "{env.size}"
-		svcvol["directories"] = ""
-		for name, volumedir := range volumes {
-			if volumedir != "" {
-				svcvol["directories"] += volumedir + " "
-			}
 
-			if pathmap[name] != "" {
-				svcvol["directories"] += pathmap[name] + " "
+		// Use set to avoid duplicate directories
+		directorySet := make(map[string]struct{})
+
+		for volName, baseDir := range volumes {
+			if baseDir != "" {
+				directorySet[baseDir] = struct{}{}
+			}
+			if mappedPaths, ok := pathmap[volName]; ok {
+				for _, path := range strings.Fields(mappedPaths) {
+					directorySet[path] = struct{}{}
+				}
 			}
 		}
-		svcvol["directories"] = strings.TrimSpace(svcvol["directories"])
+
+		// Join unique directory list
+		dirs := make([]string, 0, len(directorySet))
+		for dir := range directorySet {
+			dirs = append(dirs, dir)
+		}
+
+		sort.Strings(dirs) // Optional: consistent order
+		svcvol["directories"] = strings.Join(dirs, " ")
 		basemap["volume#"+strconv.Itoa(seq)] = svcvol
 		seq++
 	}
@@ -412,7 +432,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]
 	return svccontainer
 }
 
-func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc config.GitClone) map[string]string {
+func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *config.GitClone) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
@@ -448,19 +468,18 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 		return ""
 	}
 
-	volumemap := appcnf.Deployment.Storages.Volumes.GroupByPool()
-	pathmap := appcnf.Deployment.Paths.GroupByVolume()
+	storages := appcnf.Deployment.Storages
+	storages.SortPaths()
 
-	for pool, volumes := range volumemap {
-		for name := range volumes {
-			volumename := cluster.GetAppVolumeName(pool)
-			if len(pathmap) > 0 && len(pathmap[name]) > 0 {
-				for volumepath, dockerpath := range pathmap[name] {
-					from := filepath.Join(volumename, volumepath)
-					results = append(results, from+":"+dockerpath)
-				}
-			}
+	if len(storages.Paths) == 0 {
+		return ""
+	}
+
+	for _, path := range storages.Paths {
+		if path.Source == nil {
+			continue
 		}
+		results = append(results, path.GetDockerMapping())
 	}
 
 	return strings.Join(results, " ")

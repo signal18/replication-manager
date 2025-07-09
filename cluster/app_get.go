@@ -305,14 +305,14 @@ func (app *App) GetGitClone(name string) (*config.GitClone, int) {
 
 	for i, gc := range appcnf.Deployment.Storages.GitClones {
 		if gc.Name == name {
-			return &gc, i
+			return gc, i
 		}
 	}
 
 	return nil, -1
 }
 
-func (app *App) GetAppVolume(name string) (*config.VolumeMapping, int) {
+func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return nil, -1
@@ -324,7 +324,7 @@ func (app *App) GetAppVolume(name string) (*config.VolumeMapping, int) {
 
 	for i, ld := range appcnf.Deployment.Storages.Volumes {
 		if ld.Name == name {
-			return &ld, i
+			return ld, i
 		}
 	}
 
@@ -343,7 +343,7 @@ func (app *App) GetS3Directory(name string) (*config.S3Mapping, int) {
 
 	for i, s3d := range appcnf.Deployment.Storages.S3Directories {
 		if s3d.Name == name {
-			return &s3d, i
+			return s3d, i
 		}
 	}
 

@@ -3616,7 +3616,7 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Array of objects depending on field: - git: []config.GitClone - local: []config.VolumeMapping - shared: []config.VolumeMapping - s3: []config.S3Mapping",
+                        "description": "Array of objects depending on field: - git: []config.GitClone - local: []config.Volume - shared: []config.Volume - s3: []config.S3Mapping",
                         "name": "body",
                         "in": "body",
                         "required": true,
@@ -18090,9 +18090,6 @@ const docTemplate = `{
                 },
                 "provAppTemplate": {
                     "type": "string"
-                },
-                "provAppVolumeData": {
-                    "type": "string"
                 }
             }
         },
@@ -18187,12 +18184,6 @@ const docTemplate = `{
         "config.Deployment": {
             "type": "object",
             "properties": {
-                "paths": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.PathMapping"
-                    }
-                },
                 "primaryRoute": {
                     "$ref": "#/definitions/config.Route"
                 },
@@ -18315,26 +18306,13 @@ const docTemplate = `{
         "config.PathMapping": {
             "type": "object",
             "properties": {
-                "agents": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "example": [
-                        "all"
-                    ]
-                },
-                "from": {
+                "dockerpath": {
                     "type": "string"
                 },
-                "to": {
+                "srcname": {
                     "type": "string"
                 },
-                "type": {
-                    "type": "string"
-                },
-                "volumedir": {
-                    "description": "This will be used to create the volume mount path, e.g. {volume}/deploy01/etc/{from} : {to}",
+                "srcpath": {
                     "type": "string"
                 }
             }
@@ -18407,10 +18385,23 @@ const docTemplate = `{
         "config.S3Mapping": {
             "type": "object",
             "properties": {
+                "accessKey": {
+                    "description": "Optional fields for authentication",
+                    "type": "string"
+                },
                 "bucket": {
                     "type": "string"
                 },
+                "endpoint": {
+                    "type": "string"
+                },
                 "name": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "secretKey": {
                     "type": "string"
                 }
             }
@@ -18518,6 +18509,19 @@ const docTemplate = `{
                 }
             }
         },
+        "config.SourceType": {
+            "type": "string",
+            "enum": [
+                "volume",
+                "git",
+                "s3"
+            ],
+            "x-enum-varnames": [
+                "SourceVolume",
+                "SourceGit",
+                "SourceS3"
+            ]
+        },
         "config.StorageMapping": {
             "type": "object",
             "properties": {
@@ -18527,10 +18531,18 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.GitClone"
                     }
                 },
-                "localDirectories": {
+                "mutex": {
+                    "description": "Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sync.RWMutex"
+                        }
+                    ]
+                },
+                "paths": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/config.VolumeMapping"
+                        "$ref": "#/definitions/config.PathMapping"
                     }
                 },
                 "s3Directories": {
@@ -18539,10 +18551,16 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.S3Mapping"
                     }
                 },
-                "sharedDirectories": {
+                "volumeMappings": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.VolumeMapping"
+                    }
+                },
+                "volumes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Volume"
                     }
                 }
             }
@@ -18629,16 +18647,44 @@ const docTemplate = `{
         "config.VersionsMap": {
             "type": "object"
         },
+        "config.Volume": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string"
+                },
+                "poolname": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                }
+            }
+        },
         "config.VolumeMapping": {
             "type": "object",
             "properties": {
                 "name": {
                     "type": "string"
                 },
-                "volumeName": {
+                "parent": {
                     "type": "string"
                 },
-                "volumedir": {
+                "sourceName": {
+                    "type": "string"
+                },
+                "sourceType": {
+                    "description": "Source information",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/config.SourceType"
+                        }
+                    ]
+                },
+                "subPath": {
+                    "type": "string"
+                },
+                "volume": {
                     "type": "string"
                 }
             }
@@ -20331,7 +20377,7 @@ const docTemplate = `{
                 "provAppMemory": {
                     "type": "string"
                 },
-                "provAppVolumeData": {
+                "provAppVolumePools": {
                     "type": "string"
                 },
                 "provDBApplyDynamicConfig": {
@@ -22259,6 +22305,9 @@ const docTemplate = `{
             }
         },
         "sync.Mutex": {
+            "type": "object"
+        },
+        "sync.RWMutex": {
             "type": "object"
         },
         "treehelper.FileEntry": {
