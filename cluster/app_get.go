@@ -331,19 +331,19 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 	return nil, -1
 }
 
-func (app *App) GetS3Directory(name string) (*config.S3Mapping, int) {
+func (app *App) GetS3Mount(name string) (*config.S3Mount, int) {
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
 		return nil, -1
 	}
 
-	if appcnf.Deployment.Storages.S3Directories == nil {
+	if appcnf.Deployment.Storages.S3Mounts == nil {
 		return nil, -1
 	}
 
-	for i, s3d := range appcnf.Deployment.Storages.S3Directories {
-		if s3d.Name == name {
-			return s3d, i
+	for i, s3m := range appcnf.Deployment.Storages.S3Mounts {
+		if s3m.Name == name {
+			return s3m, i
 		}
 	}
 

@@ -247,9 +247,9 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		return basemap
 	}
 
-	storages.VolumeMappings.Sort()
+	storages.Paths.Sort()
 	volumemap := storages.Volumes.GroupByPool()
-	pathmap := appcnf.Deployment.Storages.VolumeMappings.GetVolumePaths()
+	pathmap := appcnf.Deployment.Storages.Paths.GetVolumePaths()
 
 	seq := 1
 	for pool, volumes := range volumemap {
@@ -266,7 +266,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 				directorySet[baseDir] = struct{}{}
 			}
 			if mappedPaths, ok := pathmap[volName]; ok {
-				for _, path := range strings.Fields(mappedPaths) {
+				for _, path := range mappedPaths {
 					directorySet[path] = struct{}{}
 				}
 			}
@@ -476,9 +476,6 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	}
 
 	for _, path := range storages.Paths {
-		if path.Source == nil {
-			continue
-		}
 		results = append(results, path.GetDockerMapping())
 	}
 

@@ -672,11 +672,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "dockerpath":
-					storage.Paths[index].DockerPath = newValue
-				case "srcname":
-					storage.Paths[index].SourceName = newValue
-				case "srcpath":
-					storage.Paths[index].SourcePath = newValue
+					storage.Paths[index].TargetPath = newValue
+				case "gitname":
+					storage.Paths[index].GitName = newValue
+				case "s3name":
+					storage.Paths[index].S3Name = newValue
 				default:
 					http.Error(w, "Invalid key for path", 500)
 					return
@@ -787,8 +787,8 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 		storage := node.AppConfig.Deployment.Storages
 		for _, row := range body {
-			if row.DockerPath == "" || row.SourceName == "" || row.SourcePath == "" {
-				http.Error(w, "All fields (dockerPath, sourceName, sourcePath) must be provided for path", http.StatusInternalServerError)
+			if row.TargetPath == "" || row.VolumeName == "" || row.VolumePath == "" {
+				http.Error(w, "All fields (targetPath, volumeName, volumePath) must be provided for path", http.StatusInternalServerError)
 				return
 			}
 			err := storage.InsertPath(row)
@@ -1026,29 +1026,16 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 	case "s3Directories":
-		var row *config.S3Mapping
-		row, err = decodeStruct[config.S3Mapping](r, w, "S3 directory")
+		var row *config.S3Mount
+		row, err = decodeStruct[config.S3Mount](r, w, "S3 directory")
 		if err != nil {
 			http.Error(w, "Error decoding S3 directory: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		err := storages.InsertS3Mapping(row)
+		err := storages.InsertS3Mount(row)
 		if err != nil {
 			http.Error(w, "Error inserting S3 mapping: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	case "volumeMappings":
-		var row *config.VolumeMapping
-		row, err = decodeStruct[config.VolumeMapping](r, w, "volume mapping")
-		if err != nil {
-			http.Error(w, "Error decoding volume mapping: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		err := storages.InsertVolumeMapping(row)
-		if err != nil {
-			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	default:
@@ -1217,15 +1204,15 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					http.Error(w, "Invalid key for volumes", 500)
 					return
 				}
-			case "s3Directories":
-				if index >= len(node.AppConfig.Deployment.Storages.S3Directories) {
-					http.Error(w, "Index out of range for s3Directories", 500)
+			case "s3Mounts":
+				if index >= len(node.AppConfig.Deployment.Storages.S3Mounts) {
+					http.Error(w, "Index out of range for s3Mounts", 500)
 					return
 				}
 
-				s3Dir := node.AppConfig.Deployment.Storages.S3Directories[index]
-				if s3Dir == nil {
-					http.Error(w, "S3 directory not found at index "+vars["index"], 500)
+				s3Mount := node.AppConfig.Deployment.Storages.S3Mounts[index]
+				if s3Mount == nil {
+					http.Error(w, "S3 mount not found at index "+vars["index"], 500)
 					return
 				}
 
@@ -1235,84 +1222,17 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
 					return
 				case "bucket":
-					s3Dir.Bucket = newValue
+					s3Mount.Bucket = newValue
 				case "region":
-					s3Dir.Region = newValue
+					s3Mount.Region = newValue
 				case "accessKey":
-					s3Dir.AccessKey = newValue
+					s3Mount.AccessKey = newValue
 				case "secretKey":
-					s3Dir.SecretKey = newValue
+					s3Mount.SecretKey = newValue
 				case "endpoint":
-					s3Dir.Endpoint = newValue
+					s3Mount.Endpoint = newValue
 				default:
-					http.Error(w, "Invalid key for s3Directories", 500)
-					return
-				}
-
-			case "volumeMappings":
-				if index >= len(node.AppConfig.Deployment.Storages.VolumeMappings) {
-					http.Error(w, "Index out of range for volumeMappings", 500)
-					return
-				}
-
-				storages := node.AppConfig.Deployment.Storages
-
-				vm := storages.VolumeMappings[index]
-				if vm == nil {
-					http.Error(w, "Volume mapping not found at index "+vars["index"], 500)
-					return
-				}
-
-				switch vars["key"] {
-				case "name":
-					// Do not allow changing the name of an existing volume mapping
-					http.Error(w, "For safety reason, we cannot change name or parent of existing volume mapping. Please drop the volume mapping and create a new one.", 500)
-					return
-				case "parent":
-					if newValue == "" {
-						vm.VolumeName = vm.Parent.VolumeName
-						vm.Volume = vm.Parent.Volume
-						vm.ParentName = ""
-						vm.Parent = nil
-					} else {
-						// Get the new parent volume mapping
-						newParent, err := storages.GetVolumeMapping(newValue)
-						if err != nil {
-							http.Error(w, "Error getting parent volume mapping: "+err.Error(), 500)
-							return
-						}
-						vm.VolumeName = newParent.VolumeName
-						vm.Volume = newParent.Volume
-						vm.ParentName = newParent.Name
-						vm.Parent = newParent
-					}
-				case "volume":
-					if newValue == "" {
-						http.Error(w, "Volume cannot be empty", 500)
-						return
-					} else if newValue != "" {
-						// Get the new volume mapping
-						newVolume, err := storages.GetVolumeByName(newValue)
-						if err != nil {
-							http.Error(w, "Error getting volume mapping: "+err.Error(), 500)
-							return
-						}
-						vm.VolumeName = newValue
-						vm.Volume = newVolume
-					}
-				case "subPath":
-					vm.SubPath = newValue
-				case "sourceType":
-					if config.IsValidSourceType(newValue) {
-						vm.SourceType = config.SourceType(newValue)
-					}
-				case "sourceName":
-					if vm.SourceType != config.SourceVolume && newValue == "" {
-						http.Error(w, "SourceName cannot be empty for non-volume source types", 500)
-						return
-					}
-				default:
-					http.Error(w, "Invalid key for volumeMappings", 500)
+					http.Error(w, "Invalid key for s3Mounts", 500)
 					return
 				}
 			default:
@@ -1409,24 +1329,14 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 			http.Error(w, "Error dropping volume: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-	case "s3Directories":
-		if index >= len(storages.S3Directories) {
-			http.Error(w, "Index out of range for s3Directories", http.StatusInternalServerError)
+	case "s3Mounts":
+		if index >= len(storages.S3Mounts) {
+			http.Error(w, "Index out of range for s3Mounts", http.StatusInternalServerError)
 			return
 		}
-		err := storages.DropS3Mapping(storages.S3Directories[index])
+		err := storages.DropS3Mount(storages.S3Mounts[index])
 		if err != nil {
-			http.Error(w, "Error dropping S3 mapping: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	case "volumeMappings":
-		if index >= len(storages.VolumeMappings) {
-			http.Error(w, "Index out of range for volumeMappings", http.StatusInternalServerError)
-			return
-		}
-		err := storages.DropVolumeMapping(storages.VolumeMappings[index])
-		if err != nil {
-			http.Error(w, "Error dropping volume mapping: "+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Error dropping S3 mount: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	// Add more cases for other storage fields as needed

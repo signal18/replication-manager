@@ -3,7 +3,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -50,21 +49,19 @@ type VariableMapping struct {
 
 func NewStorageMapping() *StorageMapping {
 	return &StorageMapping{
-		GitClones:      make(GitClones, 0),
-		S3Directories:  make(S3Mappings, 0),
-		Volumes:        make(Volumes, 0),
-		VolumeMappings: make(VolumeMappings, 0),
-		Paths:          make(PathMaps, 0),
-		Mutex:          sync.RWMutex{},
+		GitClones: make(GitClones, 0),
+		S3Mounts:  make(S3Mounts, 0),
+		Volumes:   make(Volumes, 0),
+		Paths:     make(PathMaps, 0),
+		Mutex:     sync.RWMutex{},
 	}
 }
 
 type StorageMapping struct {
-	GitClones      GitClones      `mapstructure:"git-clones" toml:"git-clones" json:"gitClones" groups:"apps"`
-	S3Directories  S3Mappings     `mapstructure:"s3-directories" toml:"s3-directories" json:"s3Directories" groups:"apps"`
-	Volumes        Volumes        `mapstructure:"volumes" toml:"volumes" json:"volumes" groups:"apps"`
-	VolumeMappings VolumeMappings `mapstructure:"volume-mappings" toml:"volume-mappings" json:"volumeMappings" groups:"apps"`
-	Paths          PathMaps       `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
+	GitClones GitClones `mapstructure:"git-clones" toml:"git-clones" json:"gitClones" groups:"apps"`
+	S3Mounts  S3Mounts  `mapstructure:"s3-mounts" toml:"s3-mounts" json:"s3Mounts" groups:"apps"`
+	Volumes   Volumes   `mapstructure:"volumes" toml:"volumes" json:"volumes" groups:"apps"`
+	Paths     PathMaps  `mapstructure:"paths"  toml:"paths" json:"paths" groups:"apps"`
 
 	// Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings
 	Mutex sync.RWMutex
@@ -138,19 +135,10 @@ func (sm *StorageMapping) DropVolume(vol *Volume) error {
 		return fmt.Errorf("volume %s not found", vol.Name)
 	}
 
-	// Check for dependencies in VolumeMappings
-	for _, p := range sm.VolumeMappings {
-		if p.SourceName == volume.Name && p.Name != volume.Name {
-			return fmt.Errorf("cannot drop volume %s, it is used in volume mappings", volume.Name)
-		}
-	}
-
-	// Remove the volume mapping for the given name.
-	// We iterate in reverse to avoid index shifting issues.
-	for i := len(sm.VolumeMappings) - 1; i >= 0; i-- {
-		if sm.VolumeMappings[i].SourceName == volume.Name {
-			// Remove the volume mapping
-			sm.VolumeMappings = append(sm.VolumeMappings[:i], sm.VolumeMappings[i+1:]...)
+	// Prevent dropping volumes that are used in PathMappings
+	for _, p := range sm.Paths {
+		if p.VolumeName == vol.Name {
+			return fmt.Errorf("cannot drop volume %s, it is used in path mappings", vol.Name)
 		}
 	}
 
@@ -158,101 +146,6 @@ func (sm *StorageMapping) DropVolume(vol *Volume) error {
 	sm.Volumes = append(sm.Volumes[:vindex], sm.Volumes[vindex+1:]...)
 
 	return nil
-}
-
-func (sm *StorageMapping) InsertVolumeMapping(vm *VolumeMapping) error {
-	// Use a mutex to protect concurrent access
-	sm.Mutex.Lock()
-	defer sm.Mutex.Unlock()
-
-	// Validate the volume mapping
-	if err := vm.Validate(); err != nil {
-		return err
-	}
-
-	// Check if the volume mapping already exists
-	for _, existingVM := range sm.VolumeMappings {
-		if existingVM.Name == vm.Name {
-			return fmt.Errorf("volume mapping already exists: %s", vm.Name)
-		}
-
-		if existingVM.Name == vm.ParentName {
-			vm.Parent = existingVM
-		}
-	}
-
-	// Resolve the source for the new volume mapping
-	if err := vm.Resolve(sm.Volumes, sm.GitClones, sm.S3Directories, sm.VolumeMappings); err != nil {
-		return err
-	}
-
-	// Add the new volume mapping
-	sm.VolumeMappings = append(sm.VolumeMappings, vm)
-
-	return nil
-}
-
-func (sm *StorageMapping) DropVolumeMapping(volmap *VolumeMapping) error {
-	// Use a mutex to protect concurrent access
-	sm.Mutex.Lock()
-	defer sm.Mutex.Unlock()
-
-	// Prevent dropping volume mappings that are used in paths or other mappings
-	for _, p := range sm.Paths {
-		if p.SourceName == volmap.Name {
-			return fmt.Errorf("cannot drop volume mapping %s, it is used in path mappings", volmap.Name)
-		}
-	}
-	for _, vm := range sm.VolumeMappings {
-		if vm.ParentName == volmap.Name {
-			return fmt.Errorf("cannot drop volume mapping %s, it is used in other volume mappings", volmap.Name)
-		}
-	}
-
-	// Find the volume mapping by name
-	var index int = -1
-	for i, vm := range sm.VolumeMappings {
-		if vm.Name == volmap.Name {
-			index = i
-			break
-		}
-	}
-
-	if index == -1 {
-		return fmt.Errorf("volume mapping %s not found", volmap.Name)
-	}
-
-	// Remove the volume mapping
-	sm.VolumeMappings = append(sm.VolumeMappings[:index], sm.VolumeMappings[index+1:]...)
-
-	return nil
-}
-
-func (sm *StorageMapping) ResolveVolumeMappings() {
-	// Use a mutex to protect concurrent access
-	sm.Mutex.Lock()
-	defer sm.Mutex.Unlock()
-
-	for i, vm := range sm.VolumeMappings {
-		if err := vm.Resolve(sm.Volumes, sm.GitClones, sm.S3Directories, sm.VolumeMappings); err != nil {
-			fmt.Printf("Error resolving volume mapping %s: %v\n", vm.Name, err)
-		} else {
-			sm.VolumeMappings[i] = vm // Update the resolved mapping
-		}
-	}
-}
-
-func (sm *StorageMapping) GetVolumeMapping(name string) (*VolumeMapping, error) {
-	// Use a mutex to protect concurrent access
-	sm.Mutex.RLock()
-	defer sm.Mutex.RUnlock()
-
-	for _, vm := range sm.VolumeMappings {
-		if vm.Name == name {
-			return vm, nil
-		}
-	}
-	return nil, fmt.Errorf("volume mapping %s not found", name)
 }
 
 func (sm *StorageMapping) InsertGitClone(gc *GitClone) error {
@@ -279,10 +172,10 @@ func (sm *StorageMapping) DropGitClone(gc *GitClone) error {
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
 
-	// Prevent dropping git clones that are used in volumes mappings
-	for _, p := range sm.VolumeMappings {
-		if p.SourceType == SourceGit && p.SourceName == gc.Name {
-			return fmt.Errorf("cannot drop git clone %s, it is used in volume mappings", gc.Name)
+	// Prevent dropping git clones that are used in path mappings
+	for _, p := range sm.Paths {
+		if p.GitName == gc.Name {
+			return fmt.Errorf("cannot drop git clone %s, it is used in path mappings", gc.Name)
 		}
 	}
 
@@ -311,16 +204,8 @@ func (sm *StorageMapping) InsertPath(p PathMapping) error {
 
 	// Check if the path already exists
 	for _, existingPath := range sm.Paths {
-		if existingPath.DockerPath == p.DockerPath {
-			return fmt.Errorf("path mapping already exists: %s -> %s:%s", p.DockerPath, p.SourceName, p.SourcePath)
-		}
-	}
-
-	// Resolve the source for the new path mapping
-	for _, vm := range sm.VolumeMappings {
-		if vm.Name == p.SourceName {
-			p.Source = vm
-			break
+		if existingPath.TargetPath == p.TargetPath {
+			return fmt.Errorf("path mapping already exists for target path: %s", p.TargetPath)
 		}
 	}
 
@@ -336,11 +221,15 @@ func (sm *StorageMapping) ResolvePaths() {
 	defer sm.Mutex.Unlock()
 
 	for i, p := range sm.Paths {
-		for _, vm := range sm.VolumeMappings {
-			if vm.Name == p.SourceName {
-				sm.Paths[i].Source = vm
-				break
-			}
+		// Resolve pointers for each path mapping
+		p.ResolvePointers(sm.Volumes, sm.GitClones, sm.S3Mounts)
+
+		// Update the path mapping in the slice
+		sm.Paths[i] = p
+
+		// If the path is not resolved, log a warning
+		if p.Volume == nil && p.GitSource == nil && p.S3Source == nil {
+			fmt.Printf("Warning: Path mapping %s could not be resolved\n", p.TargetPath)
 		}
 	}
 }
@@ -362,14 +251,14 @@ func (sm *StorageMapping) DropPath(p PathMapping) error {
 	// Find the path mapping by docker path
 	var index int = -1
 	for i, existingPath := range sm.Paths {
-		if existingPath.DockerPath == p.DockerPath {
+		if existingPath.TargetPath == p.TargetPath {
 			index = i
 			break
 		}
 	}
 
 	if index == -1 {
-		return fmt.Errorf("path mapping %s not found", p.DockerPath)
+		return fmt.Errorf("path mapping %s not found", p.TargetPath)
 	}
 
 	// Remove the path mapping
@@ -378,52 +267,52 @@ func (sm *StorageMapping) DropPath(p PathMapping) error {
 	return nil
 }
 
-func (sm *StorageMapping) GetPathMapping(dockerPath string) (*PathMapping, error) {
+func (sm *StorageMapping) GetPathMapping(targetPath string) (*PathMapping, error) {
 	// Use a mutex to protect concurrent access
 	sm.Mutex.RLock()
 	defer sm.Mutex.RUnlock()
 
 	for _, p := range sm.Paths {
-		if p.DockerPath == dockerPath {
+		if p.TargetPath == targetPath {
 			return p, nil
 		}
 	}
-	return nil, fmt.Errorf("path mapping %s not found", dockerPath)
+	return nil, fmt.Errorf("path mapping %s not found", targetPath)
 }
 
-func (sm *StorageMapping) InsertS3Mapping(s3 *S3Mapping) error {
+func (sm *StorageMapping) InsertS3Mount(s3 *S3Mount) error {
 	// Use a mutex to protect concurrent access
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
 
 	// Check if the S3 mapping already exists
-	for _, existingS3 := range sm.S3Directories {
+	for _, existingS3 := range sm.S3Mounts {
 		if existingS3.Name == s3.Name {
 			return fmt.Errorf("S3 mapping already exists: %s", s3.Name)
 		}
 	}
 
 	// Add the new S3 mapping
-	sm.S3Directories = append(sm.S3Directories, s3)
+	sm.S3Mounts = append(sm.S3Mounts, s3)
 
 	return nil
 }
 
-func (sm *StorageMapping) DropS3Mapping(s3 *S3Mapping) error {
+func (sm *StorageMapping) DropS3Mount(s3 *S3Mount) error {
 	// Use a mutex to protect concurrent access
 	sm.Mutex.Lock()
 	defer sm.Mutex.Unlock()
 
-	// Prevent dropping S3 mappings that are used in volume mappings
-	for _, p := range sm.VolumeMappings {
-		if p.SourceType == SourceS3 && p.SourceName == s3.Name {
-			return fmt.Errorf("cannot drop S3 mapping %s, it is used in volume mappings", s3.Name)
+	// Prevent dropping S3 mappings that are used in path mappings
+	for _, p := range sm.Paths {
+		if p.S3Name == s3.Name {
+			return fmt.Errorf("cannot drop S3 mapping %s, it is used in path mappings", s3.Name)
 		}
 	}
 
 	// Find the S3 mapping by name
 	var index int = -1
-	for i, existingS3 := range sm.S3Directories {
+	for i, existingS3 := range sm.S3Mounts {
 		if existingS3.Name == s3.Name {
 			index = i
 			break
@@ -435,25 +324,26 @@ func (sm *StorageMapping) DropS3Mapping(s3 *S3Mapping) error {
 	}
 
 	// Remove the S3 mapping
-	sm.S3Directories = append(sm.S3Directories[:index], sm.S3Directories[index+1:]...)
+	sm.S3Mounts = append(sm.S3Mounts[:index], sm.S3Mounts[index+1:]...)
 
 	return nil
 }
 
 type PathMapping struct {
-	DockerPath string         `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath" groups:"apps"`
-	SourceName string         `mapstructure:"srcname" toml:"srcname" json:"srcname" groups:"apps"`
-	SourcePath string         `mapstructure:"srcpath" toml:"srcpath" json:"srcpath" groups:"apps"`
-	Source     *VolumeMapping `mapstructure:"-" toml:"-" json:"-"`
+	TargetPath string `mapstructure:"targetpath" toml:"targetpath" json:"targetpath"`
+	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename"`
+	VolumePath string `mapstructure:"volumepath" toml:"volumepath" json:"volumepath"`
+	GitName    string `mapstructure:"gitname" toml:"gitname" json:"gitname"`
+	S3Name     string `mapstructure:"s3name" toml:"s3name" json:"s3name"`
+
+	Volume    *Volume   `toml:"-" json:"-" mapstructure:"-"`
+	GitSource *GitClone `toml:"-" json:"-" mapstructure:"-"`
+	S3Source  *S3Mount  `toml:"-" json:"-" mapstructure:"-"`
 }
 
 // GetDockerMapping returns the Docker path mapping for the given PathMapping.
 func (p PathMapping) GetDockerMapping() string {
-	if p.Source == nil {
-		return ""
-	}
-
-	return filepath.Join(p.Source.FullVolumePath(), p.SourcePath) + ":" + p.DockerPath
+	return p.VolumePath + ":" + p.TargetPath
 }
 
 type PathMaps []*PathMapping
@@ -461,26 +351,94 @@ type PathMaps []*PathMapping
 func (pm PathMaps) Sort() {
 	// Sort the path mappings by source name and then by full host path
 	sort.Slice(pm, func(i, j int) bool {
-		if pm[i].Source == nil {
-			return pm[i].SourceName < pm[j].SourceName
+		if pm[i].TargetPath == "" || pm[j].TargetPath == "" {
+			if pm[i].VolumeName == pm[j].VolumeName {
+				return pm[i].VolumePath < pm[j].VolumePath
+			} else if pm[i].VolumeName != "" && pm[j].VolumeName != "" {
+				return pm[i].VolumeName < pm[j].VolumeName
+			} else if pm[i].VolumeName != "" {
+				return true // pm[i] has a volume, pm[j] does not
+			} else {
+				return false // pm[j] has a volume, pm[i] does not
+			}
 		}
-		if pm[j].Source == nil {
-			return pm[i].SourceName < pm[j].SourceName
-		}
-		return pm[i].Source.FullVolumePath() < pm[j].Source.FullVolumePath()
+
+		return pm[i].TargetPath < pm[j].TargetPath
 	})
+}
+
+func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts) {
+	// Resolve Volume
+	if pm.Volume == nil && pm.VolumeName != "" {
+		for _, v := range volumes {
+			if v.Name == pm.VolumeName {
+				pm.Volume = v
+				break
+			}
+		}
+	}
+
+	// Resolve Git
+	if pm.GitSource == nil {
+		for _, g := range gits {
+			if g.Name == pm.GitName {
+				pm.GitSource = g
+				break
+			}
+		}
+	}
+
+	// Resolve S3
+	if pm.S3Source == nil {
+		for _, s := range s3s {
+			if s.Name == pm.S3Name {
+				pm.S3Source = s
+				break
+			}
+		}
+	}
+}
+
+func (pm *PathMaps) GetVolumePaths() map[string][]string {
+	// Create a map to hold the volume paths
+	volumePaths := make(map[string][]string)
+
+	// Iterate through each path mapping
+	for _, p := range *pm {
+		if p.Volume == nil {
+			continue // Skip if no volume is associated
+		}
+
+		// Get the volume name and path
+		volName := p.Volume.Name
+		path := p.VolumePath
+		if path == "" {
+			path = p.TargetPath // Use target path if volume path is not specified
+		}
+
+		// Initialize the slice for this volume if it doesn't exist
+		if _, exists := volumePaths[volName]; !exists {
+			volumePaths[volName] = make([]string, 0)
+		}
+		// Append the path to the volume's slice
+		volumePaths[volName] = append(volumePaths[volName], path)
+	}
+
+	return volumePaths
 }
 
 type GitClones []*GitClone
 
 type GitClone struct {
-	Name      string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
-	GitRepo   string `mapstructure:"repo" toml:"repo" json:"repo" groups:"apps"`
-	GitBranch string `mapstructure:"branch" toml:"branch" json:"branch" groups:"apps"`
-	VolumeDir string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"`
-	GitUser   string `mapstructure:"user" toml:"user" json:"user" groups:"apps"`
-	GitPass   string `mapstructure:"pass" toml:"pass" json:"pass" groups:"apps"`
-	Timeout   int    `mapstructure:"timeout" toml:"timeout" json:"timeout" groups:"apps"`
+	Name       string  `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	GitRepo    string  `mapstructure:"repo" toml:"repo" json:"repo" groups:"apps"`
+	GitBranch  string  `mapstructure:"branch" toml:"branch" json:"branch" groups:"apps"`
+	VolumeName string  `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
+	VolumeDir  string  `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" options:"etc|log|var" groups:"apps"`
+	GitUser    string  `mapstructure:"user" toml:"user" json:"user" groups:"apps"`
+	GitPass    string  `mapstructure:"pass" toml:"pass" json:"pass" groups:"apps"`
+	Timeout    int     `mapstructure:"timeout" toml:"timeout" json:"timeout" groups:"apps"`
+	Volume     *Volume `toml:"-" json:"-" mapstructure:"-"`
 }
 
 var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")
@@ -578,174 +536,12 @@ func IsValidSourceType(sourceType string) bool {
 	}
 }
 
-type VolumeMappings []*VolumeMapping
+type S3Mounts []*S3Mount
 
-func (vm VolumeMappings) Sort() {
-	// Sort the volume mappings by source name and then by full host path
-	sort.Slice(vm, func(i, j int) bool {
-		if vm[i].Volume == nil || vm[j].Volume == nil {
-			return vm[i].SourceName < vm[j].SourceName
-		}
-
-		if vm[i].Volume.PoolName == vm[j].Volume.PoolName {
-			return vm[i].FullVolumePath() < vm[j].FullVolumePath()
-		}
-
-		return vm[i].Volume.PoolName < vm[j].Volume.PoolName
-	})
-}
-
-func (vm VolumeMappings) GetVolumePaths() map[string]string {
-	// Create a map of volume names to their full host paths
-	volumePaths := make(map[string]string)
-	for _, mapping := range vm {
-		if mapping.Volume == nil {
-			continue
-		}
-		fullPath := mapping.FullVolumePath()
-		if fullPath == "" {
-			continue
-		}
-		if mpath, exists := volumePaths[mapping.Volume.Name]; !exists {
-			volumePaths[mapping.Volume.Name] = mapping.FullVolumePath()
-		} else {
-			// If the volume already exists, we can append the subpath to the existing path
-			volumePaths[mapping.Volume.Name] = mpath + " " + mapping.FullVolumePath()
-		}
-	}
-	return volumePaths
-}
-
-type VolumeMapping struct {
-	Name       string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
-	ParentName string `mapstructure:"parent" toml:"parent" json:"parent" groups:"apps"`
-	VolumeName string `mapstructure:"volume" toml:"volume" json:"volume" groups:"apps"`
-	SubPath    string `mapstructure:"subPath" toml:"subPath" json:"subPath" groups:"apps"`
-
-	// Source information
-	SourceType SourceType `mapstructure:"sourceType" toml:"sourceType" json:"sourceType" options:"git|s3" groups:"apps"`
-	SourceName string     `mapstructure:"sourceName" toml:"sourceName" json:"sourceName" groups:"apps"`
-
-	// Resolved information
-	Volume    *Volume        `mapstructure:"-" toml:"-" json:"-"`
-	SourceGit *GitClone      `mapstructure:"-" toml:"-" json:"-"`
-	SourceS3  *S3Mapping     `mapstructure:"-" toml:"-" json:"-"`
-	Parent    *VolumeMapping `mapstructure:"-" toml:"-" json:"-"`
-}
-
-func (p *VolumeMapping) FullVolumePath() string {
-	// If this mapping has a parent, use the parent's full path
-	if p.Parent != nil {
-		return filepath.Join(p.Parent.FullVolumePath(), p.SubPath)
-	} else if p.Volume != nil {
-		return filepath.Join(p.Volume.VolumeDir, p.SubPath)
-	} else {
-		return "" // If no parent or volume is set, return an empty string
-	}
-}
-
-func (sp *VolumeMapping) Validate() error {
-	if sp.Name == "" {
-		return errors.New("mapping name is required")
-	}
-	if sp.VolumeName == "" && sp.ParentName == "" {
-		return fmt.Errorf("either volumeName or parentName is required for mapping %q", sp.Name)
-	}
-	if sp.SourceType != SourceVolume && sp.SourceName == "" {
-		return fmt.Errorf("sourceName is required for mapping %q with sourceType %q", sp.Name, sp.SourceType)
-	}
-	if sp.SubPath == "" || strings.Contains(sp.SubPath, "..") {
-		return fmt.Errorf("invalid subPath %q for mapping %q", sp.SubPath, sp.Name)
-	}
-	return nil
-}
-
-func (sp *VolumeMapping) Resolve(volumes Volumes, gitClones GitClones, s3Dirs S3Mappings, placements VolumeMappings) error {
-	// Resolve parent mapping if it exists
-	if sp.ParentName != "" {
-		for _, p := range placements {
-			if p.Name == sp.ParentName {
-				sp.Parent = p
-				break
-			}
-		}
-		if sp.Parent == nil {
-			return fmt.Errorf("parent mapping %s not found for placement %s", sp.ParentName, sp.Name)
-		}
-	}
-
-	// resolve volume
-	for _, v := range volumes {
-		if v.Name == sp.VolumeName {
-			sp.Volume = v
-			break
-		}
-	}
-	if sp.Volume == nil {
-		return fmt.Errorf("volume %s not found for placement %s", sp.VolumeName, sp.Name)
-	}
-
-	switch sp.SourceType {
-	case SourceGit:
-		for _, g := range gitClones {
-			if g.Name == sp.SourceName {
-				sp.SourceGit = g
-				return nil
-			}
-		}
-		return fmt.Errorf("git source %s not found for placement %s", sp.SourceName, sp.Name)
-
-	case SourceS3:
-		for _, s := range s3Dirs {
-			if s.Name == sp.SourceName {
-				sp.SourceS3 = s
-				return nil
-			}
-		}
-		return fmt.Errorf("s3 source %s not found for placement %s", sp.SourceName, sp.Name)
-
-	default:
-		return fmt.Errorf("invalid source type %q for placement %s", sp.SourceType, sp.Name)
-	}
-}
-
-// DetectCycle checks for cyclic parent relationships.
-func (vm *VolumeMapping) DetectCycle(visited map[string]bool, mappings map[string]*VolumeMapping) error {
-	if visited[vm.Name] {
-		return fmt.Errorf("cycle detected at volume mapping %q", vm.Name)
-	}
-	visited[vm.Name] = true
-
-	if vm.ParentName != "" {
-		parent, ok := mappings[vm.ParentName]
-		if !ok {
-			return fmt.Errorf("parent mapping %q not found for %q", vm.ParentName, vm.Name)
-		}
-		return parent.DetectCycle(visited, mappings)
-	}
-
-	return nil
-}
-
-func (vm *VolumeMapping) UpdateVolumeMapping(field string, value interface{}) error {
-	switch field {
-	case "name":
-		return fmt.Errorf("name cannot be changed for volume mapping %q", vm.Name)
-
-	default:
-		return fmt.Errorf("unknown field %q", field)
-	}
-	return nil
-}
-
-type S3Mappings []*S3Mapping
-
-type S3Mapping struct {
-	Name   string `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
-	Bucket string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
-	Region string `mapstructure:"region" toml:"region" json:"region" groups:"apps"`
-
-	// Optional fields for authentication
+type S3Mount struct {
+	Name      string `mapstructure:"name" toml:"name" json:"name"`
+	Bucket    string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
+	Region    string `mapstructure:"region" toml:"region" json:"region" groups:"apps"`
 	AccessKey string `mapstructure:"accessKey" toml:"accessKey" json:"accessKey" groups:"apps"`
 	SecretKey string `mapstructure:"secretKey" toml:"secretKey" json:"secretKey" groups:"apps"`
 	Endpoint  string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint" groups:"apps"`

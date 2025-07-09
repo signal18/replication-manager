@@ -1556,14 +1556,11 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 			if cnf.Deployment.Storages.GitClones == nil {
 				cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
 			}
-			if cnf.Deployment.Storages.S3Directories == nil {
-				cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)
+			if cnf.Deployment.Storages.S3Mounts == nil {
+				cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
 			}
 			if cnf.Deployment.Storages.Volumes == nil {
 				cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
-			}
-			if cnf.Deployment.Storages.VolumeMappings == nil {
-				cnf.Deployment.Storages.VolumeMappings = make(config.VolumeMappings, 0)
 			}
 			if cnf.Deployment.Storages.Paths == nil {
 				cnf.Deployment.Storages.Paths = make(config.PathMaps, 0)
@@ -1585,14 +1582,11 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	if cnf.Deployment.Storages.Volumes == nil {
 		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
 	}
-	if cnf.Deployment.Storages.S3Directories == nil {
-		cnf.Deployment.Storages.S3Directories = make(config.S3Mappings, 0)
+	if cnf.Deployment.Storages.S3Mounts == nil {
+		cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
 	}
 	if cnf.Deployment.Storages.Volumes == nil {
 		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
-	}
-	if cnf.Deployment.Storages.VolumeMappings == nil {
-		cnf.Deployment.Storages.VolumeMappings = make(config.VolumeMappings, 0)
 	}
 	if cnf.Deployment.Storages.Paths == nil {
 		cnf.Deployment.Storages.Paths = make(config.PathMaps, 0)
