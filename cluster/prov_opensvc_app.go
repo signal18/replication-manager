@@ -243,7 +243,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	}
 
 	storages := appcnf.Deployment.Storages
-	if storages == nil || len(storages.Volumes) == 0 {
+	if len(storages.Volumes) == 0 {
 		return basemap
 	}
 
@@ -468,9 +468,8 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 		return ""
 	}
 
+	appcnf.Deployment.SortPaths()
 	storages := appcnf.Deployment.Storages
-	storages.SortPaths()
-
 	if len(storages.Paths) == 0 {
 		return ""
 	}

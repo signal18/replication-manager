@@ -659,8 +659,9 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 			case "paths":
-				if node.AppConfig.Deployment.Storages == nil {
-					node.AppConfig.Deployment.Storages = config.NewStorageMapping()
+				if index >= len(node.AppConfig.Deployment.Paths) {
+					http.Error(w, "Index out of range for variables", 500)
+					return
 				}
 
 				storage := node.AppConfig.Deployment.Storages
@@ -672,7 +673,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "dockerpath":
-					storage.Paths[index].TargetPath = newValue
+					storage.Paths[index].DockerPath = newValue
+				case "volume":
+					storage.Paths[index].VolumeName = newValue
+				case "volumepath":
+					storage.Paths[index].VolumePath = newValue
 				case "gitname":
 					storage.Paths[index].GitName = newValue
 				case "s3name":
@@ -780,18 +785,15 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 			http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-		if node.AppConfig.Deployment.Storages == nil {
-			node.AppConfig.Deployment.Storages = config.NewStorageMapping()
-		}
-		errors := make([]error, 0)
 
-		storage := node.AppConfig.Deployment.Storages
+		errors := make([]error, 0)
+		deployment := node.AppConfig.Deployment
 		for _, row := range body {
-			if row.TargetPath == "" || row.VolumeName == "" || row.VolumePath == "" {
-				http.Error(w, "All fields (targetPath, volumeName, volumePath) must be provided for path", http.StatusInternalServerError)
+			if row.DockerPath == "" || row.VolumeName == "" || row.VolumePath == "" {
+				http.Error(w, "All fields (dockerPath, volumeName, volumePath) must be provided for path", http.StatusInternalServerError)
 				return
 			}
-			err := storage.InsertPath(row)
+			err := deployment.InsertPath(row)
 			if err != nil {
 				errors = append(errors, err)
 			} else {
@@ -800,7 +802,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		}
 
 		if affected {
-			node.AppConfig.Deployment.Storages.SortPaths()
+			node.AppConfig.Deployment.SortPaths()
 		}
 
 		if len(errors) > 0 {
@@ -930,18 +932,13 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		}
 		node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables[:index], node.AppConfig.Deployment.Variables[index+1:]...)
 	case "paths":
-		if node.AppConfig.Deployment.Storages == nil {
-			http.Error(w, "No storage mapping found", http.StatusInternalServerError)
-			return
-		}
-
-		if index >= len(node.AppConfig.Deployment.Storages.Paths) {
+		if index >= len(node.AppConfig.Deployment.Paths) {
 			http.Error(w, "Index out of range for path", http.StatusInternalServerError)
 			return
 		}
 
-		node.AppConfig.Deployment.Storages.Paths = append(node.AppConfig.Deployment.Storages.Paths[:index], node.AppConfig.Deployment.Storages.Paths[index+1:]...)
-		node.AppConfig.Deployment.Storages.SortPaths()
+		node.AppConfig.Deployment.Paths = append(node.AppConfig.Deployment.Paths[:index], node.AppConfig.Deployment.Paths[index+1:]...)
+		node.AppConfig.Deployment.SortPaths()
 	default:
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
@@ -987,12 +984,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		http.Error(w, "Server Not Found", http.StatusInternalServerError)
 		return
 	}
-
-	if node.AppConfig.Deployment.Storages == nil {
-		node.AppConfig.Deployment.Storages = config.NewStorageMapping()
-	}
-
-	storages := node.AppConfig.Deployment.Storages
+	deployment := node.AppConfig.Deployment
 	switch vars["field"] {
 	case "gitClones":
 		var row *config.GitClone
@@ -1007,7 +999,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
 			return
 		}
-		err := storages.InsertGitClone(row)
+		err := deployment.InsertGitClone(row)
 		if err != nil {
 			http.Error(w, "Error inserting git clone: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -1020,7 +1012,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		err := storages.InsertVolume(row)
+		err := deployment.InsertVolume(row)
 		if err != nil {
 			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -1033,7 +1025,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		err := storages.InsertS3Mount(row)
+		err := deployment.InsertS3Mount(row)
 		if err != nil {
 			http.Error(w, "Error inserting S3 mapping: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -1301,40 +1293,34 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 		return
 	}
 
-	if node.AppConfig.Deployment.Storages == nil {
-		http.Error(w, "No storage mapping found", http.StatusInternalServerError)
-		return
-	}
-
-	storages := node.AppConfig.Deployment.Storages
-
+	deployment := node.AppConfig.Deployment
 	switch field {
 	case "gitClones":
-		if index >= len(storages.GitClones) {
+		if index >= len(deployment.Storages.GitClones) {
 			http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 			return
 		}
-		err := storages.DropGitClone(storages.GitClones[index])
+		err := deployment.DropGitClone(deployment.Storages.GitClones[index])
 		if err != nil {
 			http.Error(w, "Error dropping git clone: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	case "volumes":
-		if index >= len(storages.Volumes) {
+		if index >= len(deployment.Storages.Volumes) {
 			http.Error(w, "Index out of range for volumes", http.StatusInternalServerError)
 			return
 		}
-		err := storages.DropVolume(storages.Volumes[index])
+		err := deployment.DropVolume(deployment.Storages.Volumes[index])
 		if err != nil {
 			http.Error(w, "Error dropping volume: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	case "s3Mounts":
-		if index >= len(storages.S3Mounts) {
+		if index >= len(deployment.Storages.S3Mounts) {
 			http.Error(w, "Index out of range for s3Mounts", http.StatusInternalServerError)
 			return
 		}
-		err := storages.DropS3Mount(storages.S3Mounts[index])
+		err := deployment.DropS3Mount(deployment.Storages.S3Mounts[index])
 		if err != nil {
 			http.Error(w, "Error dropping S3 mount: "+err.Error(), http.StatusInternalServerError)
 			return
