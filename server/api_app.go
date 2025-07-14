@@ -664,24 +664,76 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					return
 				}
 
-				storage := node.AppConfig.Deployment.Storages
-				if index >= len(storage.Paths) {
+				deployment := node.AppConfig.Deployment
+				if index >= len(deployment.Paths) {
 					http.Error(w, "Index out of range for path", 500)
 					return
 				}
 
+				pm := deployment.Paths[index]
+
 				// Modify field based on key
 				switch vars["key"] {
+				case "name":
+					http.Error(w, "Cannot change name of path. Please drop the path and recreate it with the new name.", 500)
+					return
+				case "parent":
+					if newValue == "" {
+						pm.ParentName = ""
+						pm.Parent = nil
+					} else {
+						parent, err := deployment.GetPathMapping(newValue)
+						if err != nil {
+							http.Error(w, "Parent path not found: "+err.Error(), 500)
+							return
+						}
+
+						pm.ParentName = newValue
+						pm.Parent = parent
+					}
+
 				case "dockerpath":
-					storage.Paths[index].DockerPath = newValue
-				case "volume":
-					storage.Paths[index].VolumeName = newValue
-				case "volumepath":
-					storage.Paths[index].VolumePath = newValue
-				case "gitname":
-					storage.Paths[index].GitName = newValue
-				case "s3name":
-					storage.Paths[index].S3Name = newValue
+					pm.DockerPath = newValue
+				case "srctype":
+					switch newValue {
+					case string(config.SourceGit), string(config.SourceS3), string(config.SourceVolume):
+						pm.SourceType = config.SourceType(newValue)
+						pm.SourceName = "" // Reset source name if type changes
+					default:
+						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+						return
+					}
+				case "srcname":
+					if pm.SourceName != newValue {
+						pm.SourceName = newValue
+						pm.SourcePath = "" // Reset source path if source name changes
+						if newValue != "" {
+							switch pm.SourceType {
+							case config.SourceGit:
+								source, err := deployment.GetGitClone(newValue)
+								if err == nil {
+									pm.SourcePath = source.GetSourcePath()
+								}
+							case config.SourceS3:
+								source, err := deployment.GetS3Mount(newValue)
+								if err == nil {
+									pm.SourcePath = source.GetSourcePath()
+								}
+							case config.SourceVolume:
+								source, err := deployment.GetVolumeByName(newValue)
+								if err == nil {
+									pm.SourcePath = source.GetSourcePath()
+								}
+							default:
+								http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+								return
+							}
+						}
+						pm.SourcePath = "" // Reset source path if source name changes
+					}
+
+				case "srcpath":
+					pm.SourcePath = newValue
 				default:
 					http.Error(w, "Invalid key for path", 500)
 					return
@@ -789,9 +841,13 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		errors := make([]error, 0)
 		deployment := node.AppConfig.Deployment
 		for _, row := range body {
-			if row.DockerPath == "" || row.VolumeName == "" || row.VolumePath == "" {
-				http.Error(w, "All fields (dockerPath, volumeName, volumePath) must be provided for path", http.StatusInternalServerError)
+			if row.DockerPath == "" || row.SourceName == "" || row.SourcePath == "" {
+				http.Error(w, "All fields (destPath, sourceName, sourcePath) must be provided for path", http.StatusInternalServerError)
 				return
+			}
+			if row.Name == "" {
+				// Generate a unique name for the path if not provided
+				row.Name = fmt.Sprintf("path-%s-%s", row.SourceType, row.SourceName)
 			}
 			err := deployment.InsertPath(row)
 			if err != nil {
@@ -1106,17 +1162,19 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				return
 			}
 
+			deployment := node.AppConfig.Deployment
+
 			switch vars["field"] {
 			// fields which are arrays of objects
 			case "gitClones":
-				if index >= len(node.AppConfig.Deployment.Storages.GitClones) {
+				if index >= len(deployment.Storages.GitClones) {
 					http.Error(w, "Index out of range for gitClones", 500)
 					return
 				}
 
 				// Get the git clone at the specified index
-				gitClone := node.AppConfig.Deployment.Storages.GitClones[index]
-				if gitClone == nil {
+				gc := deployment.Storages.GitClones[index]
+				if gc == nil {
 					http.Error(w, "Git clone not found at index "+vars["index"], 500)
 					return
 				}
@@ -1132,44 +1190,62 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "Repo cannot be empty", 500)
 						return
 					}
-					gitClone.GitRepo = newValue
+					gc.GitRepo = newValue
 				case "branch":
 					if newValue == "" {
 						http.Error(w, "Branch cannot be empty", 500)
 						return
 					}
-					gitClone.GitBranch = newValue
+					gc.GitBranch = newValue
+				case "volumename":
+					if newValue == "" {
+						http.Error(w, "VolumeName cannot be empty", 500)
+						return
+					}
+					if newValue != gc.VolumeName {
+						newvol, err := deployment.GetVolumeByName(newValue)
+						if err != nil {
+							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							return
+						}
+						if deployment.HasDuplicateGitVolumePath(newValue, gc.VolumeDir) {
+							gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
+						}
+						gc.VolumeName = newValue
+					}
 				case "volumedir":
 					if newValue == "" {
-						http.Error(w, "VolumeDir cannot be empty", 500)
-						return
+						curvol, err := deployment.GetVolumeByName(gc.VolumeName)
+						if err != nil {
+							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							return
+						}
+						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
 					}
-					gitClone.VolumeDir = newValue
+					if newValue != gc.VolumeDir {
+						if deployment.HasDuplicateGitVolumePath(gc.VolumeName, newValue) {
+							http.Error(w, "Duplicate value for git volume path", 500)
+							return
+						}
+						gc.VolumeDir = newValue
+					}
 				case "user":
-					if newValue == "" {
-						http.Error(w, "User cannot be empty", 500)
-						return
-					}
-					gitClone.GitUser = newValue
+					gc.GitUser = newValue
 				case "pass":
-					if newValue == "" {
-						http.Error(w, "Pass cannot be empty", 500)
-						return
-					}
-					gitClone.GitPass = newValue
+					gc.GitPass = newValue
 				default:
 					http.Error(w, "Invalid key for gitClones", 500)
 					return
 				}
 			case "volumes":
-				if index >= len(node.AppConfig.Deployment.Storages.Volumes) {
+				if index >= len(deployment.Storages.Volumes) {
 					http.Error(w, "Index out of range for volumes", 500)
 					return
 				}
 
 				// Get the volume at the specified index
-				volume := node.AppConfig.Deployment.Storages.Volumes[index]
-				if volume == nil {
+				vol := deployment.Storages.Volumes[index]
+				if vol == nil {
 					http.Error(w, "Volume not found at index "+vars["index"], 500)
 					return
 				}
@@ -1185,24 +1261,24 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "PoolName cannot be empty", 500)
 						return
 					}
-					volume.PoolName = newValue
+					vol.PoolName = newValue
 				case "volumedir":
 					if newValue == "" {
 						http.Error(w, "VolumeDir cannot be empty", 500)
 						return
 					}
-					volume.VolumeDir = newValue
+					vol.VolumeDir = newValue
 				default:
 					http.Error(w, "Invalid key for volumes", 500)
 					return
 				}
 			case "s3Mounts":
-				if index >= len(node.AppConfig.Deployment.Storages.S3Mounts) {
+				if index >= len(deployment.Storages.S3Mounts) {
 					http.Error(w, "Index out of range for s3Mounts", 500)
 					return
 				}
 
-				s3Mount := node.AppConfig.Deployment.Storages.S3Mounts[index]
+				s3Mount := deployment.Storages.S3Mounts[index]
 				if s3Mount == nil {
 					http.Error(w, "S3 mount not found at index "+vars["index"], 500)
 					return
@@ -1215,14 +1291,38 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					return
 				case "bucket":
 					s3Mount.Bucket = newValue
-				case "region":
-					s3Mount.Region = newValue
-				case "accessKey":
-					s3Mount.AccessKey = newValue
-				case "secretKey":
-					s3Mount.SecretKey = newValue
-				case "endpoint":
-					s3Mount.Endpoint = newValue
+				case "volumename":
+					if newValue == "" {
+						http.Error(w, "VolumeName cannot be empty", 500)
+						return
+					}
+					if newValue != s3Mount.VolumeName {
+						newvol, err := deployment.GetVolumeByName(newValue)
+						if err != nil {
+							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							return
+						}
+						if deployment.HasDuplicateS3VolumePath(newValue, s3Mount.VolumeDir) {
+							s3Mount.VolumeDir = filepath.Join(newvol.VolumeDir, s3Mount.Name)
+						}
+						s3Mount.VolumeName = newValue
+					}
+				case "volumedir":
+					if newValue == "" {
+						curvol, err := deployment.GetVolumeByName(s3Mount.VolumeName)
+						if err != nil {
+							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							return
+						}
+						newValue = filepath.Join(curvol.VolumeDir, s3Mount.Name)
+					}
+					if newValue != s3Mount.VolumeDir {
+						if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
+							http.Error(w, "Duplicate value for S3 volume path", 500)
+							return
+						}
+						s3Mount.VolumeDir = newValue
+					}
 				default:
 					http.Error(w, "Invalid key for s3Mounts", 500)
 					return

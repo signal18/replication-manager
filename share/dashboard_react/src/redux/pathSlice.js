@@ -43,10 +43,9 @@ export const getDockerTree = createAsyncThunk('settings/getDockerTree', async ({
 
 export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clusterName, appId, gitName }, thunkAPI) => {
   try {
-    const gitRepoHash = hashMurmur(gitName)
     const oldState = thunkAPI.getState().paths
-    if (oldState.gitTreeList[gitRepoHash] && oldState.timestamps.gitTree && oldState.timestamps.gitTree[gitRepoHash] && shouldUseCachedTree(oldState.timestamps.gitTree[gitRepoHash])) {
-      return { data: oldState.gitTreeList[gitRepoHash], status: 200 }
+    if (oldState.gitTreeList[gitName] && oldState.timestamps.gitTree && oldState.timestamps.gitTree[gitName] && shouldUseCachedTree(oldState.timestamps.gitTree[gitName])) {
+      return { data: oldState.gitTreeList[gitName], status: 200 }
     }
 
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -73,23 +72,29 @@ export const getGitTree = createAsyncThunk('settings/getGitTree', async ({ clust
 const initialState = {
   dockerTreeList: {},
   gitTreeList: {},
+  s3TreeList: {},
   timestamps: {
     dockerTree: {},
-    gitTree: {}
+    gitTree: {},
+    s3Tree: {}
   },
   current: {
     dockerHash: '',
     dockerTree: {},
     gitHash: '',
     gitTree: {},
+    s3Hash: '',
+    s3Tree: {},
   },
   loading: {
     dockerTree: false,
-    gitTree: false
+    gitTree: false,
+    s3Tree: false
   },
   error: {
     docker: null,
-    git: null
+    git: null,
+    s3: null
   }
 }
 
@@ -104,6 +109,8 @@ export const pathSlice = createSlice({
         state.timestamps.dockerTree[hash] = Date.now()
       } else if (type === 'git') {
         state.timestamps.gitTree[hash] = Date.now()
+      } else if (type === 's3') {
+        state.timestamps.s3Tree[hash] = Date.now()
       }
     },
     clearCache: (state, action) => {
@@ -114,6 +121,9 @@ export const pathSlice = createSlice({
       } else if (type === 'git') {
         delete state.gitTreeList[hash]
         delete state.timestamps.gitTree[hash]
+      } else if (type === 's3') {
+        delete state.s3TreeList[hash]
+        delete state.timestamps.s3Tree[hash]
       }
     }
   },
@@ -141,7 +151,7 @@ export const pathSlice = createSlice({
       })
       .addCase(getDockerTree.rejected, (state, action) => {
         state.loading.dockerTree = false
-        state.error.docker = "Error getting git tree"
+        state.error.docker = "Error getting docker tree"
       })
       .addCase(getGitTree.pending, (state) => {
         state.loading.gitTree = true
@@ -150,15 +160,16 @@ export const pathSlice = createSlice({
         if (!action.payload) return
         const { data, status } = action.payload
         if (status === 200) {
-          const gitRepoHash = hashMurmur(action.meta.arg.repoURL)
-          if (!isEqual(state.gitTreeList[gitRepoHash], data)) {
-            state.gitTreeList[gitRepoHash] = data
-            state.timestamps.gitTree[gitRepoHash] = Date.now()
-          } else if (!state.timestamps.gitTree[gitRepoHash] || !shouldUseCachedTree(state.timestamps.gitTree[gitRepoHash])) {
-            state.timestamps.gitTree[gitRepoHash] = Date.now()
+          const gitName = action.meta.arg.gitName
+          console.log(`Git ${gitName} tree data:`, data)
+          if (!isEqual(state.gitTreeList[gitName], data)) {
+            state.gitTreeList[gitName] = data
+            state.timestamps.gitTree[gitName] = Date.now()
+          } else if (!state.timestamps.gitTree[gitName] || !shouldUseCachedTree(state.timestamps.gitTree[gitName])) {
+            state.timestamps.gitTree[gitName] = Date.now()
           }
           state.current.gitTree = data
-          state.current.gitHash = gitRepoHash
+          state.current.gitHash = gitName
         }
         state.loading.gitTree = false
         state.error.git = null

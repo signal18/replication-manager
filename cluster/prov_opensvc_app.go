@@ -242,14 +242,14 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		return basemap
 	}
 
-	storages := appcnf.Deployment.Storages
-	if len(storages.Volumes) == 0 {
+	deployment := appcnf.Deployment
+	if len(deployment.Storages.Volumes) == 0 {
 		return basemap
 	}
 
-	storages.Paths.Sort()
-	volumemap := storages.Volumes.GroupByPool()
-	pathmap := appcnf.Deployment.Storages.Paths.GetVolumePaths()
+	deployment.Paths.Sort()
+	volumemap := deployment.Storages.Volumes.GroupByPool()
+	pathmap := deployment.Paths.GetVolumeDirs()
 
 	seq := 1
 	for pool, volumes := range volumemap {
@@ -438,7 +438,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
 		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
 		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
-		dirname := filepath.Join("/bootstrap", gc.VolumeDir, gc.Name)
+		dirname := filepath.Join("/bootstrap", gc.GetSourcePath(), gc.Name)
 
 		prefix := gc.GetVariablePrefix()
 		branchKey := "$" + prefix + config.GitVarSuffixBranch
@@ -468,13 +468,13 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 		return ""
 	}
 
-	appcnf.Deployment.SortPaths()
-	storages := appcnf.Deployment.Storages
-	if len(storages.Paths) == 0 {
+	deployment := appcnf.Deployment
+	deployment.SortPaths()
+	if len(deployment.Paths) == 0 {
 		return ""
 	}
 
-	for _, path := range storages.Paths {
+	for _, path := range deployment.Paths {
 		results = append(results, path.GetDockerMapping())
 	}
 

@@ -14,6 +14,16 @@ function ClusterAppTabContent({ appId, tab, clusterName, user, selectedApp, conf
   const appName = selectedApp?.name
   const appHost = selectedApp?.host
 
+  if (!selectedApp) {
+    return (
+        <Flex className={styles.actions}>
+          <HStack>
+            <ServerName className={styles.appName} name="Loading selected app" />
+          </HStack>
+        </Flex>
+    )
+  }
+
   const overviewComponent = useMemo(() => {
     return (
       <Overview

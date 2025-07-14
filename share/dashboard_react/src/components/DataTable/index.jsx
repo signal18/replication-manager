@@ -76,6 +76,7 @@ export const DataTable = React.memo(function DataTable({
           const keys = Object.keys(newExpanded)
           const prevKeys = Object.keys(prevExpanded)
           if (accordionMode) {
+            console.log('Accordion mode enabled, setting last key as expanded')
             return keys.length > 0 ? { [keys[keys.length - 1]]: true } : prevKeys.length > 0 ? prevExpanded : {}
           } else {
             return newExpanded

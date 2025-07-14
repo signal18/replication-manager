@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react"
+import React, { useCallback, useEffect, useMemo, useState } from "react"
 import { normalizeProps, useMachine } from "@zag-js/react"
 import * as tree from "@zag-js/tree-view"
 import { useId } from "react"
@@ -21,6 +21,80 @@ const defaultTree = {
   }],
 }
 
+const TreeAPIContext = React.createContext(null)
+
+const useTreeAPI = () => {
+  const ctx = React.useContext(TreeAPIContext)
+  if (!ctx) throw new Error("TreeAPIContext not found")
+  return ctx
+}
+
+/**
+ * getTreeNodeData is a utility function that retrieves the data for a tree node. 
+ * It checks if the node is visible based on its state and the parent node's selection status.
+ * @param {Object} node - The tree node data.
+ * @param {Array} indexPath - The path to the node in the tree, used for indentation.
+ * @param {string} parentValue - The value of the parent node, used to determine visibility.
+ * @param {boolean} parentSelected - Indicates if the parent node is selected.
+ * @param {tree.Api} api - The Zag.js tree-view API for managing node state and interactions.
+ */
+const getTreeNodeData = (node, indexPath, parentValue, parentSelected, api) => {
+  const nodeProps = { indexPath, node }
+  const nodeState = api.getNodeState(nodeProps)
+
+  let equal = false, leaf = false, hasPrefix = false, root = false
+  
+  if (parentSelected) {
+    api.selectedValue.forEach(selected => {
+      if (!selected) return
+      const cleanSelected = selected.trim()
+      equal = cleanSelected === nodeState.value.trim() ? true : equal
+      hasPrefix = cleanSelected.startsWith(nodeState.value + "/") ? true : hasPrefix
+      leaf = cleanSelected === parentValue.trim() ? true : leaf
+      root = nodeState.value === "/" ? true : root
+    });
+  }
+
+  const isVisible = parentSelected ? (equal || hasPrefix || leaf || root) : false
+
+  console.log(`Debug visibility for ${nodeState.value}, parent ${parentValue} => root: ${root}, equal: ${equal}, hasPrefix: ${hasPrefix}, leaf: ${leaf}`)
+
+  if (!isVisible) {
+    return {
+      nodeProps,
+      nodeState,
+      isVisible: false,
+      isSelected: false,
+      getProps: {
+        branch: {},
+        branchControl: {},
+        branchText: {},
+        branchContent: {},
+        branchIndicator: {},
+        branchIndent: {},
+        item: {}
+      }
+    }
+  }
+
+  return {
+    nodeProps,
+    nodeState,
+    isVisible,
+    isSelected: hasPrefix || equal,
+    getProps: {
+      branch: api.getBranchProps(nodeProps),
+      branchControl: api.getBranchControlProps(nodeProps),
+      branchText: api.getBranchTextProps(nodeProps),
+      branchContent: api.getBranchContentProps(nodeProps),
+      branchIndicator: api.getBranchIndicatorProps(nodeProps),
+      branchIndent: api.getBranchIndentGuideProps(nodeProps),
+      item: api.getItemProps(nodeProps),
+    }
+  }
+}
+
+
 /**
  * TreeNode component renders a single node in the tree view.
  * It handles both branch nodes (folders) and leaf nodes (documents).
@@ -34,95 +108,155 @@ const defaultTree = {
  * @property {tree.Api} api - The Zag.js tree-view API for managing node state and interactions.
  * @description
  */
-const TreeNodeComponent = ({ node, indexPath, api, nodeToValue, nodeToString }) => {
-  const nodeProps = { indexPath, node }
-  const nodeState = api.getNodeState(nodeProps)
-  let parentValue = nodeState.value.split("/")
-  parentValue.pop() // Remove the current node's value to get the parent value
-  if (parentValue.length === 0) {
-    parentValue = ["/"]
-  } else if (parentValue.length === 1 && parentValue[0] === "") {
-    parentValue = ["/"]
-  }
-
-  const onBranchClick = () => {
-    api.collapse()
-    api.select([nodeState.value])
-    api.expandParent(nodeState.value)
-    api.expand([nodeState.value])
-  }
-
-  if (api.selectedValue.length == 0 || api.selectedValue.join(",").trim() == "" || nodeState.value == "/" || api.selectedValue.some((selected) => selected.includes(nodeState.value + "/") || selected === nodeState.value) || api.selectedValue.some((selected) => selected == parentValue.join("/"))) {
-    if (nodeState.isBranch) {
-      return (
-        <Flex {...api.getBranchProps(nodeProps)} direction="column">
-          <Flex {...{ ...api.getBranchControlProps(nodeProps), onClick: onBranchClick }} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row" >
-            <CustomIcon icon={HiFolder} />
-            <Text {...api.getBranchTextProps(nodeProps)}>{node.name}</Text>
-            <Box {...api.getBranchIndicatorProps(nodeProps)} className={`${parentStyles.folderToggle} ${nodeState.expanded ? parentStyles.folderToggleOpen : ""}`} >
-              <CustomIcon icon={HiChevronRight} />
-            </Box>
-          </Flex>
-          <Flex {...api.getBranchContentProps(nodeProps)}>
-            <Flex {...api.getBranchIndentGuideProps(nodeProps)} className={parentStyles.indentGuide} direction={"column"}>
-              {node.children?.map((childNode, index) => (
-                <TreeNode
-                  key={childNode.id}
-                  node={childNode}
-                  indexPath={[...indexPath, index]}
-                  api={api}
-                />
-              ))}
-            </Flex>
+export const TreeNode = React.memo(({ node, indexPath, parentIndex, nodeState, isSelected, getProps }) => {
+  const nodeIndex = indexPath.join("-")
+  if (nodeState.isBranch) {
+    return (
+      <Flex {...getProps.branch} direction="column">
+        <Flex {...getProps.branchControl} className={`${parentStyles.treeNode} ${isSelected ? parentStyles.treeNodeSelected : ""}`} direction="row" >
+          <CustomIcon icon={HiFolder} />
+          <Text {...getProps.branchText}>{node.name}</Text>
+          <Box {...getProps.branchIndicator} className={`${parentStyles.folderToggle} ${nodeState.expanded ? parentStyles.folderToggleOpen : ""}`} >
+            <CustomIcon icon={HiChevronRight} />
+          </Box>
+        </Flex>
+        <Flex {...getProps.branchContent}>
+          <Flex {...getProps.branchIndent} className={parentStyles.indentGuide} direction={"column"}>
+            {node.children?.map((childNode, index) => {
+              const childIndexPath = [...indexPath, index];
+              const childKey = parentIndex ? `tree-${parentIndex}-${index}` : `tree-${index}`;
+              return (
+                <TreeNodeWrapper key={childKey} node={childNode} indexPath={childIndexPath} parentIndex={nodeIndex} parentSelected={isSelected} parentValue={nodeState.value} />
+              );
+            })}
           </Flex>
         </Flex>
-      )
-    }
-
-    return (
-      <Flex {...api.getItemProps(nodeProps)} className={`${parentStyles.treeNode} ${api.selectedValue.includes(nodeState.value) ? parentStyles.treeNodeSelected : ""}`} direction="row">
-        <CustomIcon icon={HiDocument} />
-        <Text>{node.name}</Text>
       </Flex>
     )
   }
 
-  return (<></>)
+  return (
+    <Flex {...getProps.item} className={`${parentStyles.treeNode} ${isSelected ? parentStyles.treeNodeSelected : ""}`} direction="row">
+      <CustomIcon icon={HiDocument} />
+      <Text>{node.name}</Text>
+    </Flex>
+  )
+})
+
+export const TreeNodeWrapper = ({ node, indexPath, parentIndex, parentValue, parentSelected }) => {
+  const api = useTreeAPI() // ✅ pulls from context, not props
+  const treeNodeData = getTreeNodeData(node, indexPath, parentValue, parentSelected, api)
+
+  if (!treeNodeData.isVisible) return null
+
+  return (
+    <TreeNode
+      node={node}
+      indexPath={indexPath}
+      parentIndex={parentIndex}
+      nodeState={treeNodeData.nodeState}
+      isSelected={treeNodeData.isSelected}
+      getProps={treeNodeData.getProps}
+    />
+  )
 }
 
-export const TreeNode = React.memo(TreeNodeComponent)
 
-const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, nodeToValue, nodeToString, defaultValues = ["/"], asModal = false, isOpen, onClose, onSave }) => {
+const TreeViewContent = React.memo(({
+  asModal = false,
+  title = "Tree View",
+  selectedNode = "",
+  collection = { rootNode: { children: [] } },
+  rootProps,
+  labelProps,
+  treeProps
+}) => {
+  return (
+    <Flex key="treeview" {...rootProps} direction="column">
+      {!asModal && (
+        <Text fontWeight="bold" fontSize="lg" mb={2} {...labelProps}>
+          {title}
+        </Text>
+      )}
+      <Box key={"selected-box"} mb={4}>
+        <Text fontSize="sm" mb={1}>
+          Selected Node
+        </Text>
+        <Box
+          key={"input-box"}
+          as="input"
+          type="text"
+          readOnly
+          value={selectedNode || ""}
+          style={{
+            width: "100%",
+            padding: "6px",
+            borderRadius: "6px",
+            border: "1px solid #ccc",
+          }}
+        />
+      </Box>
+      <Box key={"tree-box"} {...treeProps}>
+        {collection.rootNode.children?.map((node, index) => {
+          const indexPath = [index];
+          return (
+            <TreeNodeWrapper
+              key={`tree-node-${node.id || index}`}
+              node={node}
+              indexPath={indexPath}
+              parentIndex={null}
+              parentValue={"/"}
+              parentSelected={true}
+            />
+          );
+        })}
+      </Box>
+    </Flex>
+  );
+});
+
+
+const TreeView = React.memo(({ title = "Browse Path", treeName="", treeData = defaultTree, nodeToValue = (a) => (a.id), nodeToString = (a) => (a.name), defaultValues = ["/"], asModal = false, isOpen, onClose, onSave }) => {
   const [selectedNode, setSelectedNode] = useState([...defaultValues])
   const { theme } = useTheme()
 
-  const defaultExpandedValues = useMemo(() => {
-    const expandedValues = []
+  useEffect(() => {
+    const newValues = []
     defaultValues.forEach((value) => {
-      const parts = value.split("/")
-      let currentPath = ""
-      parts.forEach((part, index) => {
-        if (part) {
-          currentPath += `/${part}`
-          if (index < parts.length - 1) {
-            expandedValues.push(currentPath)
-          }
-        }
-      })
+      if (value) newValues.push(value)
     })
-    return expandedValues
+    setSelectedNode(newValues)
   }, [defaultValues])
 
-  const collection = tree.collection({
-    nodeToValue: nodeToValue || ((node) => node.id),
-    nodeToString: nodeToString || ((node) => node.name),
+  const expandedValues = useMemo(() => {
+    const expanded = ["/"]
+    selectedNode.forEach((value) => {
+      if (value) {
+        const parts = value.split("/")
+        let currentPath = ""
+        parts.forEach((part, index) => {
+          if (part) {
+            currentPath += `/${part}`
+            if (index < parts.length) {
+              expanded.push(currentPath)
+            }
+          }
+        })
+      }
+    })
+    return expanded
+  },[selectedNode])
+
+  const collection = useMemo(() => tree.collection({
+    nodeToValue,
+    nodeToString,
     rootNode: treeData,
-  })
+  }), [treeData, nodeToValue, nodeToString])
 
   const handleSelect = (node) => {
+    console.log("Selected Node:", node)
     let selectedValue = node?.selectedValue || []
     setSelectedNode(selectedValue)
-    // console.log("Selected Node:", selectedValue)
   }
 
   const handleExpandedChange = (node) => {
@@ -132,13 +266,16 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
   const service = useMachine(tree.machine, {
     id: useId(),
     collection,
+    
     onSelectionChange: handleSelect,
-    onExpandedChange: handleExpandedChange,
-    defaultSelectedValue: defaultValues,
-    defaultExpandedValue: defaultExpandedValues,
+    selectedValue: selectedNode,
+    expandedValue: expandedValues,
   })
 
   const api = tree.connect(service, normalizeProps)
+  const rootProps = api.getRootProps()
+  const labelProps = api.getLabelProps()
+  const treeProps = api.getTreeProps()
 
   const handleSave = () => {
     if (selectedNode.length > 0) {
@@ -152,44 +289,47 @@ const TreeView = React.memo(({ title = "Browse Path", treeData = defaultTree, no
     if (onClose) onClose()
   }
 
-  const content = (
-    <Flex {...api.getRootProps()} direction={"column"} >
-      {!asModal && (<Text fontWeight="bold" fontSize="lg" mb={2} {...api.getLabelProps()}>
-        {title}
-      </Text>)}
-      <Box mb={4}>
-        <Text fontSize="sm" mb={1}>Selected Node</Text>
-        <Box as="input" type="text" readOnly value={selectedNode || ""} style={{ width: "100%", padding: "6px", borderRadius: "6px", border: "1px solid #ccc" }} />
-      </Box>
-      <Box {...api.getTreeProps()}>
-        {collection.rootNode.children?.map((node, index) => (
-          <TreeNode key={node.id} node={node} indexPath={[index]} api={api} nodeToValue={nodeToValue} nodeToString={nodeToString} />
-        ))}
-      </Box>
-    </Flex>
-  )
-
-  if (!asModal) return content
+  useEffect(() => {
+    console.log("selected values", api.selectedValue, "expanded values", api.expandedValue)
+  }, [api.selectedValue, api.expandedValue])
 
   return (
-    <Modal isOpen={isOpen} onClose={onCloseHandler} size="lg" closeOnOverlayClick={false}>
-      <ModalOverlay />
-      <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
-        <ModalHeader>{title}</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>{content}</ModalBody>
-        <ModalFooter>
-          <Box display="flex" justifyContent="flex-end" width="100%">
-            <RMButton onClick={onCloseHandler} variant="outline" mr={3}>
-              Cancel
-            </RMButton>
-            <RMButton onClick={handleSave} disabled={!selectedNode}>
-              Save
-            </RMButton>
-          </Box>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+    <TreeAPIContext.Provider value={api}>
+      {!asModal ? (
+        <TreeViewContent
+          key={treeName}
+          api={api}
+          asModal={asModal}
+          title={title}
+          selectedNode={selectedNode}
+          collection={collection}
+          rootProps={rootProps}
+          labelProps={labelProps}
+          treeProps={treeProps}
+        />
+      ) : (
+        <Modal isOpen={isOpen} onClose={onCloseHandler} size="lg" closeOnOverlayClick={false}>
+          <ModalOverlay />
+          <ModalContent className={theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}>
+            <ModalHeader>{title}</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <TreeViewContent key={treeName} asModal={asModal} title={title} selectedNode={selectedNode} collection={collection} rootProps={rootProps} labelProps={labelProps} treeProps={treeProps} />
+            </ModalBody>
+            <ModalFooter>
+              <Box display="flex" justifyContent="flex-end" width="100%">
+                <RMButton onClick={onCloseHandler} variant="outline" mr={3}>
+                  Cancel
+                </RMButton>
+                <RMButton onClick={handleSave} disabled={!selectedNode}>
+                  Save
+                </RMButton>
+              </Box>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      )}
+    </TreeAPIContext.Provider>
   )
 })
 

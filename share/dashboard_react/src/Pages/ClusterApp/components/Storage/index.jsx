@@ -82,9 +82,13 @@ export default function StoragePage({ clusterName, appId, user }) {
   const volumes = storages?.volumes || [];
   const s3Directories = storages?.s3Directories || [];
 
+  const volumeOptions = useMemo(() => {
+    return volumes.map((vol) => ({ value: vol.name, name: vol.name, volumedir: vol.volumedir }));
+  },[volumes])
+
   const gitComponent = useMemo(() => (
-      <GitCloneSection rows={gitClones} {...actionProps} />
-  ), [gitClones, actionProps]);
+      <GitCloneSection rows={gitClones} volumeOptions={volumeOptions} {...actionProps} />
+  ), [gitClones, volumeOptions, actionProps]);
 
   const volumeComponent = useMemo(() => (
       <VolumeSection
@@ -106,8 +110,8 @@ export default function StoragePage({ clusterName, appId, user }) {
   return (
     <Flex direction="column" className={styles.sectionWrapper}>
       <VStack spacing={3} align="stretch">
-        <AccordionComponent heading={'Git Clones Section'} body={gitComponent} />
         <AccordionComponent heading={'Volumes Section'} body={volumeComponent} />
+        <AccordionComponent heading={'Git Clones Section'} body={gitComponent} />
         <AccordionComponent heading={'S3 Directories Section'} body={s3Component} />
       </VStack>
       <ConfirmModal

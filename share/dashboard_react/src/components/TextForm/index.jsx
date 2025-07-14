@@ -8,7 +8,7 @@ import TreeView from '../Modals/TreeView/TreeView'
 
 function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, className, direction, confirmTitle,
   confirmBody = "Are you sure you want to change the value to: ",
-  regexPattern, isDisabled, isTree = false, treeData, nodeToValue, nodeToString, ...others }) {
+  regexPattern, isDisabled, isTree = false, treeData, treeNodeToValue = (node) => node.id, treeNodeToString = (node) => node.name, onTreeSelect, ...others }) {
   const [isEditable, setIsEditable] = useState(false)
   const inputRef = useRef(null)
   const { isOpen, onToggle } = useDisclosure()
@@ -50,6 +50,9 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
   }
 
   const handleTreeSelect = (selectedPath) => {
+    if(onTreeSelect){
+      selectedPath = onTreeSelect(selectedPath)
+    }
     // Check if selectedPath is an array, join it into a string
     if (Array.isArray(selectedPath)) {
       selectedPath = selectedPath.join(',')
@@ -167,6 +170,8 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
           title="Browse Path"
           asModal={true}
           treeData={treeData}
+          treePrefix={treePrefix}
+          treeBase={treeBase}
           nodeToValue={nodeToValue}
           nodeToString={nodeToString}
           defaultValues={treeValues}

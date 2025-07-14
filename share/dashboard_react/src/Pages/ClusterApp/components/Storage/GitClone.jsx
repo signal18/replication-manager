@@ -18,7 +18,9 @@ const defaultGit = {
     repo: "",
     timeout: 0,
     user: "",
+    volumename: "",
     volumedir: "",
+    subpath: "",
 };
 
 const volumeDirs = ["etc", "var", "log"].map((dir) => ({ value: dir, name: dir }));
@@ -31,6 +33,7 @@ const maskString = (str, mask = '*') => {
 
 export default React.memo(function GitCloneSection({
     rows = [],
+    volumeOptions = [],
     fieldName = "gitClones",
     onRowArrayChange,
     onRowDropIndex,
@@ -93,6 +96,9 @@ export default React.memo(function GitCloneSection({
                     return pass ? maskString(pass) : "N/A";
                 },
             }),
+            columnHelper.accessor((row) => row.volumename, {
+                header: 'Volume',
+            }),
             columnHelper.accessor((row) => row.volumedir, {
                 header: 'Volume Dir',
             }),
@@ -111,13 +117,13 @@ export default React.memo(function GitCloneSection({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<GitRowForm fieldName={fieldName} gitClone={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<GitRowForm key={row.index} fieldName={fieldName} volumeOptions={volumeOptions} gitClone={row.original} index={row.index} onChange={onRowArrayChange} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex]
+        [fieldName, onRowArrayChange, onRowDropIndex, volumeOptions]
     )
 
     return (
@@ -136,7 +142,7 @@ export default React.memo(function GitCloneSection({
                         Add New Git Clone
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <GitNewForm onSave={handleSaveAdd} onCancel={handleCancel} />
+                        <GitNewForm volumeOptions={volumeOptions} onSave={handleSaveAdd} onCancel={handleCancel} />
                     </Box>
                 </VStack>
             ) : (
@@ -152,32 +158,51 @@ export default React.memo(function GitCloneSection({
     )
 })
 
-const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
+const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange, volumeOptions }) => {
     const gc = gitClone || defaultGit;
     const { theme } = useTheme();
+    const { name, repo, branch, user, pass, volumename, volumedir } = gc;
 
-    const onRowArrayChange = (fieldName, index, key, value) => {
+    const vol = useMemo(() => volumeOptions.find((opt) => opt.value === volumename), [volumeOptions, volumename]);
+    const srcbasepath = vol ? vol.volumedir : "";
+    // Substract srcbasepath
+    const subpath = useMemo(() => volumedir.startsWith(srcbasepath) ? volumedir.substring(srcbasepath.length + 1) : volumedir, [volumedir, srcbasepath]);
+
+    const onRowArrayChange = useCallback((fieldName, index, key, value) => {
         onChange(fieldName, index, key, value);
-    };
+    }, [onChange]);
+
+    const handleVolume = useCallback((value) => {
+        const vol = volumeOptions.find((opt) => opt.value === value);
+        const newValue = vol ? vol.volumedir + (subpath.startsWith("/") ? subpath : "/" + subpath) : volumedir;
+        onRowArrayChange(fieldName, index, "volumename", vol ? vol.value : "");
+        onRowArrayChange(fieldName, index, "volumedir", newValue);
+    }, [fieldName, index, volumeOptions, subpath, onRowArrayChange]);
+
+    const handleSubPath = useCallback((value) => {
+        value = !value.trim() || value.trim() === "/" ? name : value;
+        const newValue = srcbasepath + (value.startsWith("/") ? value : "/" + value);
+        onRowArrayChange(fieldName, index, "volumedir", newValue);
+    }, [fieldName, index, name, srcbasepath, onRowArrayChange]);
 
     return (
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Name:</Text>
-                    <TextForm placeholder="Name" value={gc.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
+                    <TextForm placeholder="Name" value={name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
-                    <TextForm placeholder="Repo" value={gc.repo} onSave={(value) => onRowArrayChange(fieldName, index, "repo", value)} />
+                    <TextForm placeholder="Repo" value={repo} onSave={(value) => onRowArrayChange(fieldName, index, "repo", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Branch:</Text>
-                    <TextForm placeholder="Branch" value={gc.branch} onSave={(value) => onRowArrayChange(fieldName, index, "branch", value)} />
+                    <TextForm placeholder="Branch" value={branch} onSave={(value) => onRowArrayChange(fieldName, index, "branch", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>User:</Text>
-                    <TextForm placeholder="User" value={gc.user} onSave={(value) => onRowArrayChange(fieldName, index, "user", value)} />
+                    <TextForm placeholder="User" value={user} onSave={(value) => onRowArrayChange(fieldName, index, "user", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Password:</Text>
@@ -187,59 +212,85 @@ const GitRowForm = React.memo(({ fieldName, gitClone, index, onChange }) => {
                         inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
                         labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                         placeholder="Password"
-                        value={gc.pass}
+                        value={pass}
                         onSave={(value) => onRowArrayChange(fieldName, index, "pass", value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" confirmTitle="Change Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(value) => onRowArrayChange(fieldName, index, "volumedir", value)} />
+                    <Text mb={1}>Volume:</Text>
+                    <Dropdown key={`volume-${index}`} placeholder="Volume" confirmTitle="Change Volume" options={volumeOptions} selectedValue={volumename} onChange={(value) => handleVolume(value)} />
+                    {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+                </Flex>
+                <Flex direction="column" flex="1">
+                    <Text mb={1}>Sub Dir:</Text>
+                    <TextForm key={`volume-dir-${index}`} placeholder="Volume Sub Dir" confirmTitle="Change Volume Sub Dir" value={subpath} onSave={(value) => handleSubPath(value)} />
+                    <Text>Fullpath: {volumedir}</Text>
                 </Flex>
             </Flex>
         </Flex>
     )
 })
 
-const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => {
+const GitNewForm = React.memo(({ volumeOptions, onSave = () => { }, onCancel = () => { } }) => {
     const [gc, setGc] = useState(defaultGit);
     const { theme } = useTheme();
+    const { name, repo, branch, user, pass, volumename, volumedir, subpath } = gc;
+
+    const srcbasepath = useMemo(() => {
+        const vol = volumeOptions.find((opt) => opt.value === volumename);
+        return vol ? vol.volumedir : "";
+    }, [volumeOptions, volumename]);
 
     const valid = useMemo(() => {
-        return gc.name && gc.repo && gc.branch && gc.volumedir;
-    }, [gc]);
+        return name && repo && branch && volumedir;
+    }, [name, repo, branch, volumedir]);
 
-    const handleArrayChange = (key, value) => {
+    const handleArrayChange = useCallback((key, value) => {
         setGc((prev) => ({ ...prev, [key]: value }));
-    }
+    },[]);
 
-    const handleSaveAdd = () => {
+    const handleSaveAdd = useCallback(() => {
         if (valid) {
-            onSave(gc)
+            onSave(gc);
         }
-    };
+    }, [onSave, gc, valid]);
 
-    const handleCancel = () => {
+    const handleCancel = useCallback(() => {
         setGc(defaultGit); // Reset form on cancel
         onCancel();
-    };
+    }, [onCancel, setGc]);
+
+    const handleVolume = useCallback((option) => {
+        const newSubpath = !subpath.trim() || subpath.trim() === "/" ? name : subpath;
+        const newValue = option.volumedir + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
+        handleArrayChange("volumename", option.value);
+        handleArrayChange("volumedir", newValue);
+    }, [volumeOptions, name, subpath, handleArrayChange]);
+
+    const handleSubPath = useCallback((value) => {
+        handleArrayChange("subpath", value);
+        const newSubpath = !value.trim() || value.trim() === "/" ? name : value;
+        const newValue = srcbasepath + (newSubpath.startsWith("/") ? newSubpath : "/" + newSubpath);
+        handleArrayChange("volumedir", newValue);
+    }, [name, srcbasepath, handleArrayChange]);
 
     return (
         <Flex className={styles.gitRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Name:</Text>
-                    <Input placeholder="Name" value={gc.name} onChange={(e) => handleArrayChange("name", e.target.value)} />
+                    <Input placeholder="Name" value={name} onChange={(e) => handleArrayChange("name", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Repo:</Text>
-                    <Input placeholder="Repo" value={gc.repo} onChange={(e) => handleArrayChange("repo", e.target.value)} />
+                    <Input placeholder="Repo" value={repo} onChange={(e) => handleArrayChange("repo", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Branch:</Text>
-                    <Input placeholder="Branch" value={gc.branch} onChange={(e) => handleArrayChange("branch", e.target.value)} />
+                    <Input placeholder="Branch" value={branch} onChange={(e) => handleArrayChange("branch", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>User:</Text>
-                    <Input placeholder="User" value={gc.user} onChange={(e) => handleArrayChange("user", e.target.value)} />
+                    <Input placeholder="User" value={user} onChange={(e) => handleArrayChange("user", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Password:</Text>
@@ -248,12 +299,18 @@ const GitNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => 
                         inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
                         labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
                         placeholder="Password"
-                        value={gc.pass}
+                        value={pass}
                         onChange={(e) => handleArrayChange("pass", e.target.value)} />
                 </Flex>
                 <Flex direction="column" flex="1">
+                    <Text mb={1}>Volume:</Text>
+                    <Dropdown key={`volume-new`} placeholder="Volume" options={volumeOptions} selectedValue={volumename} onChange={(option) => handleVolume(option)} />
+                    {srcbasepath && (<Text key={volumename} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
+                </Flex>
+                <Flex direction="column" flex="1">
                     <Text mb={1}>Volume Dir:</Text>
-                    <Dropdown placeholder="Volume Dir" options={volumeDirs} selectedValue={gc.volumedir} onChange={(option) => handleArrayChange("volumedir", option.value)} />
+                    <Input key={`volume-dir-new`} placeholder="Volume Dir" value={subpath} onChange={(e) => handleSubPath(e.target.value)} />
+                    <Text>Fullpath: {volumedir}</Text>
                 </Flex>
                 <Flex direction="column" flex="1">
                     <HStack spacing={2} mt={4}>

@@ -1562,8 +1562,8 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 			if cnf.Deployment.Storages.Volumes == nil {
 				cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
 			}
-			if cnf.Deployment.Storages.Paths == nil {
-				cnf.Deployment.Storages.Paths = make(config.PathMaps, 0)
+			if cnf.Deployment.Paths == nil {
+				cnf.Deployment.Paths = make(config.PathMaps, 0)
 			}
 			return cnf
 		}
@@ -1588,8 +1588,8 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 	if cnf.Deployment.Storages.Volumes == nil {
 		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
 	}
-	if cnf.Deployment.Storages.Paths == nil {
-		cnf.Deployment.Storages.Paths = make(config.PathMaps, 0)
+	if cnf.Deployment.Paths == nil {
+		cnf.Deployment.Paths = make(config.PathMaps, 0)
 	}
 	if cnf.ProvAppAgents == "" {
 		cnf.ProvAppAgents = cluster.Conf.ProvAgents
