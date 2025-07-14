@@ -30,7 +30,14 @@ export const getClusterAlerts = createAsyncThunk('cluster/getClusterAlerts', asy
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.alerts) {
+      return false;
+    }
+  }
+});
 
 export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', async ({ clusterName }, thunkAPI) => {
   try {
