@@ -7,7 +7,7 @@ export const pathService = {
 }
 
 function getDockerDirectoryTree(clusterName, dockerImage, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/docker/images/${encodeURIComponent(dockerImage)}/browse`)
+  return getApi(baseURL).get(`clusters/${clusterName}/docker/browse/${encodeURIComponent(dockerImage)}`)
 }
 
 function getGitDirectoryTree(clusterName, appId, gitName, baseURL) {

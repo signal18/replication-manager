@@ -134,8 +134,7 @@ export const clusterService = {
   storageFieldIndexAdd,
   storageFieldIndexDrop,
 
-  connectDockerRegistry,
-  browseDockerImage
+  connectDockerRegistry
 }
 
 //#region Cluster data APIs
@@ -631,8 +630,4 @@ function storageFieldIndexDrop(clusterName, appId, field, index, baseURL) {
 
 function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/docker/actions/registry-connect`, { ...dockerRegistry })
-}
-
-function browseDockerImage(clusterName, imageRef, sourceDir, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/actions/docker/images/${imageRef}/browse/${sourceDir}`) 
 }

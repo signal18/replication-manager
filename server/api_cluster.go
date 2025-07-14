@@ -380,7 +380,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
 	))
-	router.Handle("/api/clusters/{clusterName}/docker/images/{imageRef}/browse", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/docker/browse/{imageRef:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerImageFilesystemDir)),
 	))
@@ -7277,7 +7277,7 @@ func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWr
 // @Failure 400 {string} string "Image reference or source directory not provided"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error listing files in image directory" or "Error encoding JSON"
-// @Router /api/clusters/{clusterName}/docker/images/{imageRef}/browse [get]
+// @Router /api/clusters/{clusterName}/docker/browse/{imageRef} [get]
 func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -7287,7 +7287,7 @@ func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.Respons
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		imageRef := vars["imageRef"]
+		imageRef := strings.TrimSpace(vars["imageRef"])
 		if imageRef == "" {
 			http.Error(w, "Image reference not provided", 400)
 			return
