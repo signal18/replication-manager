@@ -44,35 +44,27 @@ export default React.memo(function Variables({
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
 }) {
-  const [formData, setFormData] = useState([]);
-
-  const handleArrayChange = (index, key, value) => {
-    setFormData(prevState => (prevState.map((item, i) => i === index ? { ...item, [key]: value } : item)));
-  };
+  const [isVisible, setIsVisible] = useState(false);
 
   const handleAddItem = () => {
-    setFormData(prevState => ([...prevState, { ...initVariable, id: uniqueId() }]));
-    onPauseAutoReload(); // Pause auto-reload when adding a new item
-  };
-
-  const handleRemoveItem = (index) => {
-    setFormData(prevState => {
-      const newState = prevState.filter((_, i) => i !== index);
-      if (newState.length === 0) {
-        onResumeAutoReload(); // Resume auto-reload when no items left
-      }
-      return newState;
-    });
-  };
-
-  const handleSaveAdd = () => {
-    if (formData.length > 0) {
-      onSaveAdd(fieldName, formData).then(() => {
-        setFormData([]); // Clear the form after saving
-        onResumeAutoReload(); // Resume auto-reload after saving
-      })
-    }
-  }
+      setIsVisible(true);
+      onPauseAutoReload(); // Pause auto-reload when adding a new item
+    };
+  
+    const handleCancel = useCallback(() => {
+      setIsVisible(false);
+      onResumeAutoReload();
+    }, [onResumeAutoReload]);
+  
+    const handleSaveAdd = useCallback((formData) => {
+      return onSaveAdd(fieldName, formData).then(() => {
+        setIsVisible(false);
+        onResumeAutoReload();
+        return Promise.resolve();
+      }, (error) => {
+        return Promise.reject(error);
+      });
+    }, [onSaveAdd, fieldName, onResumeAutoReload]);
 
   const agentOptions = useMemo(() => {
     if (!agentList) {
@@ -92,7 +84,7 @@ export default React.memo(function Variables({
   }, [agentList]);
 
 
-  const baseColumns = useMemo(
+  const columnsRowForm = useMemo(
     () => [
       columnHelper.accessor((row) => row.name, {
         header: 'Name'
@@ -122,13 +114,6 @@ export default React.memo(function Variables({
           );
         }
       }),
-    ],
-    []
-  )
-
-  const columnsRowForm = useMemo(
-    () => [
-      ...baseColumns,
       columnHelper.display({
         id: 'actions',
         cell: ({ row }) => (
@@ -145,40 +130,13 @@ export default React.memo(function Variables({
         header: '',
         meta: {
           renderExpansion: (row) => {
-            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} substitution={substitution}/>);
+            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} substitution={substitution} />);
           },
         },
         cell: () => null,
       }
     ],
     [fieldName, agentOptions, onRowArrayChange, onRowDropIndex, substitution]
-  )
-
-  const columnsNewForm = useMemo(
-    () => [
-      ...baseColumns,
-      columnHelper.display({
-        id: 'actions',
-        cell: ({ row }) => (
-          <RMIconButton
-            icon={HiTrash}
-            aria-label="Delete Variable"
-            onClick={() => handleRemoveItem(row.index)}
-          />
-        ),
-      }),
-      {
-        id: 'expansion',
-        header: '',
-        meta: {
-          renderExpansion: (row) => {
-            return (<VariableNewForm variable={row.original} agentOptions={agentOptions} index={row.index} onChange={handleArrayChange} substitution={substitution}/>);
-          },
-        },
-        cell: () => null,
-      }
-    ],
-    [agentOptions, handleArrayChange, handleRemoveItem, substitution]
   )
 
   return (
@@ -191,29 +149,24 @@ export default React.memo(function Variables({
           <DataTable key="app-variables" data={rows} columns={columnsRowForm} className={styles.table} enableExpanding={true} enableExpandingNoSubRows={true} />
         </Box>
       </VStack>
-      {formData.length > 0 && (
+      {isVisible ? (
         <VStack spacing={3} align="stretch">
           <Heading as="h3" size="md">
-            Add New Variables
+            Add New Variable
           </Heading>
-          <Text>Enter variables to be used in the deployment. Choose type as Secret or Env.</Text>
           <Box className={styles.tableContainer}>
-            <DataTable key="new-app-variables" data={formData} columns={columnsNewForm} className={styles.table} enableExpanding={true} enableExpandingNoSubRows={true} />
+            <VariableNewForm agentOptions={agentOptions} substitution={substitution} onSave={handleSaveAdd} onCancel={handleCancel} />
           </Box>
         </VStack>
-      )}
-      <VStack spacing={3} align="stretch">
-        <HStack>
-          {formData.length > 0 && (
-            <RMButton onClick={handleSaveAdd}>
-              Save Variables
+      ) : (
+        <VStack spacing={3} align="stretch">
+          <HStack>
+            <RMButton onClick={handleAddItem}>
+              Add Variable
             </RMButton>
-          )}
-          <RMButton onClick={handleAddItem}>
-            Add Variable
-          </RMButton>
-        </HStack>
-      </VStack>
+          </HStack>
+        </VStack>
+      )}
     </Flex>
   )
 })
@@ -336,9 +289,14 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
   )
 })
 
-const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, substitution }) => {
-  const [v, setV] = useState(variable || { name: "", type: "secret", value: "", conditional: [], locked: false });
+const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCancel }) => {
+  const [v, setV] = useState(initVariable);
   const { theme } = useTheme();
+  const { name, type, value } = v;
+
+  const valid = useMemo(() => {
+    return name && type 
+  }, [name, type]);
 
   const conditional = useMemo(() => {
     if (!v.conditional || !Array.isArray(v.conditional)) {
@@ -347,13 +305,11 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
     return v.conditional;
   }, [v.conditional]);
 
-  const handleArrayChange = (index, key, value) => {
+  const handleArrayChange = useCallback((key, value) => {
     setV((prev) => ({ ...prev, [key]: value }));
-    // only send the change if the value is different and using debounce to avoid too many updates
-    onChange(index, key, value);
-  }
+  }, [])
 
-  const onAgentCheckboxChange = (checkeds, cstate) => {
+  const onAgentCheckboxChange = useCallback((checkeds, cstate) => {
     if (!Array.isArray(checkeds)) {
       checkeds = checkeds.split(",").map(agent => agent.trim());
     }
@@ -365,13 +321,13 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
         return existing ? existing : { agent, value: cstate.value };
       })
       : []; // If no agents checked, set to empty array
-    handleArrayChange(index, "conditional", updatedAgents);
-  };
+    handleArrayChange("conditional", updatedAgents);
+  }, [handleArrayChange]);
 
   const onConditionalValueChange = useCallback((agent, value) => {
     const updatedAgents = conditional.map(item => item.agent === agent ? { ...item, value } : item);
-    handleArrayChange(index, "conditional", updatedAgents);
-  }, [conditional, index, handleArrayChange]);
+    handleArrayChange("conditional", updatedAgents);
+  }, [conditional, handleArrayChange]);
 
   const renderAgentValue = useCallback((item) => {
     if (!conditional || !Array.isArray(conditional)) {
@@ -389,7 +345,7 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
           noControl={true}
           inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
           labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
-          name={`variables[${index}].conditional.${item.value}.secret`}
+          name={`variable.conditional.${item.value}.secret`}
           placeholder="Secret"
           value={agentExists.value}
           onChange={(e) => onConditionalValueChange(item.value, e.target.value)}
@@ -402,77 +358,99 @@ const VariableNewForm = React.memo(({ variable, agentOptions, index, onChange, s
       <VariableInputArea
         variables={substitution}
         alwaysEditable={true}
-        name={`variables[${index}].conditional.${item.value}.env`}
+        name={`variable.conditional.${item.value}.env`}
         placeholder="Env"
         value={agentExists.value}
         onChange={(value) => onConditionalValueChange(item.value, value)}
       />
     )
-  }, [index, onConditionalValueChange, conditional, substitution]);
+  }, [onConditionalValueChange, conditional, substitution]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
   }, [agentOptions, conditional, renderAgentValue, substitution]);
 
+  const handleSaveAdd = useCallback(() => {
+      if (valid) {
+        onSave([v]);
+      }
+    }, [onSave, valid, v]);
+  
+    const handleCancel = useCallback(() => {
+      setV(initVariable);
+      onCancel();
+    }, [onCancel]);
+
   return (
-    <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
-      <Flex direction="column" flex="1" minW="300px" gap={2}>
-        <Flex direction="column" flex="1">
-          <Text mb={1}>Variable Name:</Text>
-          <Input
-            name={`variables[${index}].name`}
-            placeholder="Name"
-            value={v.name}
-            onChange={(e) => handleArrayChange(index, "name", e.target.value)}
+    <Flex direction={"column"} gap={4}>
+      <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
+        <Flex direction="column" flex="1" minW="300px" gap={2}>
+          <Flex direction="column" flex="1">
+            <Text mb={1}>Variable Name:</Text>
+            <Input
+              name={`variable.name`}
+              placeholder="Name"
+              value={name}
+              onChange={(e) => handleArrayChange("name", e.target.value)}
+            />
+          </Flex>
+          <Flex direction="column" flex="1">
+            <Text mb={1}>Variable Type:</Text>
+            <Select
+              value={type}
+              onChange={(e) => handleArrayChange("type", e.target.value)}
+            >
+              {variableTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.name}
+                </option>
+              ))}
+            </Select>
+          </Flex>
+          <Flex direction="column" flex="1">
+            <Text mb={1}>Variable Value:</Text>
+            {v.type === "secret" ? (
+              <PasswordControl
+                noControl={true}
+                inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
+                name={`variable.secret`}
+                placeholder="Secret"
+                value={value}
+                onChange={(e) => handleArrayChange("value", e.target.value)}
+              />
+            ) : (
+              <VariableInputArea
+                variables={substitution}
+                alwaysEditable={true}
+                name={`variable.env`}
+                placeholder="Env"
+                value={value}
+                onChange={(value) => handleArrayChange("value", value)}
+              />
+            )}
+          </Flex>
+        </Flex>
+        <Flex direction="column" flex="1" minW="200px">
+          <Text mb={1}>Conditional:</Text>
+          <Checkboxes
+            list={agentList}
+            values={conditional.map(item => item.agent)}
+            onChange={(value) => onAgentCheckboxChange(value, v)}
+            parentStyles={styles}
+            direction="column"
           />
         </Flex>
-        <Flex direction="column" flex="1">
-          <Text mb={1}>Variable Type:</Text>
-          <Select
-            value={v.type}
-            onChange={(e) => handleArrayChange(index, "type", e.target.value)}
-          >
-            {variableTypes.map((type) => (
-              <option key={type.value} value={type.value}>
-                {type.name}
-              </option>
-            ))}
-          </Select>
-        </Flex>
-        <Flex direction="column" flex="1">
-          <Text mb={1}>Variable Value:</Text>
-          {v.type === "secret" ? (
-            <PasswordControl
-              noControl={true}
-              inputClassName={theme === 'dark' ? styles.darkLoginText : ""}
-              labelClassName={theme === 'dark' ? styles.darkLoginText : ""}
-              name={`variables[${index}].secret`}
-              placeholder="Secret"
-              value={v.value}
-              onChange={(e) => handleArrayChange(index, "value", e.target.value)}
-            />
-          ) : (
-            <VariableInputArea
-              variables={substitution}
-              alwaysEditable={true}
-              name={`variables[${index}].env`}
-              placeholder="Env"
-              value={v.value}
-              onChange={(value) => handleArrayChange(index, "value", value)}
-            />
-          )}
-        </Flex>
       </Flex>
-
-      <Flex direction="column" flex="1" minW="200px">
-        <Text mb={1}>Conditional:</Text>
-        <Checkboxes
-          list={agentList}
-          values={conditional.map(item => item.agent)}
-          onChange={(value) => onAgentCheckboxChange(value, v)}
-          parentStyles={styles}
-          direction="column"
-        />
+      <Flex direction="column" flex="1">
+        <HStack spacing={2} mt={4}>
+          <RMButton onClick={handleCancel}>
+            Clear Form
+          </RMButton>
+          <RMButton onClick={handleSaveAdd} isDisabled={!valid}>
+            Save Variables
+          </RMButton>
+        </HStack>
       </Flex>
     </Flex>
   )
