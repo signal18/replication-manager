@@ -171,7 +171,7 @@ const VolumeNewForm = React.memo(({ saveCaption = "Save Volume", onSave = () => 
     const [vol, setVol] = useState(defaultVol);
 
     const valid = useMemo(() => {
-        return vol.name && vol.repo && vol.branch && vol.volumedir;
+        return vol.name && vol.poolname && vol.volumedir;
     }, [vol]);
 
     const handleArrayChange = (key, value) => {
