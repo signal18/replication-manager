@@ -62,7 +62,7 @@ const VolumeSection = ({
     };
 
     const handleSaveAdd = () => {
-      onSaveAdd(fieldName, formData).then(() => {
+      onSaveAdd(formData).then(() => {
         setIsVisible(false); // Hide the form after saving
         onResumeAutoReload(); // Resume auto-reload after saving
         return Promise.resolve();
