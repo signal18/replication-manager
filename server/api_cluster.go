@@ -338,7 +338,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
