@@ -207,14 +207,11 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
       return
     }
 
-    let finalTag = tag
+    let finalTag = ""
     if (monitorType === 'app' && dockerImage && dockerImage.length > 0) {
-      const imageParts = dockerImage.split(':')
-      if (imageParts.length > 1) {
         finalTag = dockerImage
-      } else if (tag && tag.length > 0) {
+    } else if (tag && tag.length > 0) {
         finalTag = tag
-      }
     }
 
     dispatch(addServer({ clusterName, host, port, monitorType, tag: finalTag, dockerRegistry }))
