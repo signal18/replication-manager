@@ -138,3 +138,28 @@
     gap: 16px;
     width: 100%;
 }
+
+.variableInputArea {
+  gap: rem(8);
+  text-align: start;
+  width: 100%;
+  @include breakpoint('md', 'lg') {
+    width: 90%;
+  }
+  @include breakpoint('lg') {
+    width: 60%;
+  }
+  .label {
+    font-weight: 500;
+  }
+
+  .btnEdit {
+    background-color: transparent;
+    svg {
+      fill: var(--secondary-color);
+    }
+    &:hover {
+      background-color: transparent;
+    }
+  }
+}

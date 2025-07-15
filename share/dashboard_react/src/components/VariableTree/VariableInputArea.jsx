@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Box, Input, Textarea } from '@chakra-ui/react';
 import {
   HiPencilAlt,
@@ -28,6 +28,7 @@ const VariableInputArea = ({
   confirmTitle = 'Save confirmation',
   confirmBody = 'Are you sure you want to save this value? This action cannot be undone.',
   alwaysEditable = false,
+  className
 }) => {
   const inputRef = useRef(null);
   const [currentValue, setCurrentValue] = useState(value);
@@ -53,10 +54,7 @@ const VariableInputArea = ({
     return () => {
       debouncedOnChange.cancel();
     };
-  }, []);
-
-
-  
+  }, []);  
 
   const handleChange = (value) => {
     if (value === currentValue) return;
@@ -117,7 +115,7 @@ const VariableInputArea = ({
   }, [isConfirmModalOpen]);
 
   return (
-    <Box className={styles.variableInputArea}>
+    <Box className={`${styles.variableInputArea} ${className}`}>
       <Box className={styles.inputWrapper}>
         {multiline ? (
           <Textarea

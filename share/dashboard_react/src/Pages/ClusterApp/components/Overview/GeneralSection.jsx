@@ -9,15 +9,17 @@ import { useMemo } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
+import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 
 export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, user }) {
 
   const dispatch = useDispatch();
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);  
   const templateOptions = useMemo(() => ([{ name: 'Select Template', value: '' }, ...dockerTemplates?.map(item => ({ name: item, value: item }))]), [dockerTemplates?.length]);
-  const { provAppDockerImg = '', provAppTemplate = '', provAppAgents = '', provAppHaTopology = '' } = appConfig;
+  const { provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppAgents = '', provAppHaTopology = '' } = appConfig;
   const agentList = config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents;
   const onSaveDockerImage = (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value }))
+  const onSaveDockerCmd = (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value }))
   const onSaveDockerTemplate = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: value })) }
   const onResetAppFromTemplate = () => dispatch(resetAppFromTemplate({ clusterName, appId }))
   const onAgentsChange = (value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))
@@ -41,6 +43,18 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
           confirmTitle="Docker Image Change"
           confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
           onSave={onSaveDockerImage}
+        />
+      )
+    },
+    {
+      key: 'Docker Command',
+      value: (
+        <VariableInputArea
+          value={provAppDockerCmd}
+          confirmTitle="Docker Command Change"
+          confirmBody='Are you sure you want to change "prov-app-docker-cmd" to: '
+          onSave={onSaveDockerCmd}
+          className={styles.variableInputArea}
         />
       )
     },
@@ -97,7 +111,7 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
         />
       )
     },
-  ]}, [appName, appHost, provAppDockerImg, onSaveDockerImage, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
+  ]}, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
 
 
   return (

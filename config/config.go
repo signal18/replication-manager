@@ -845,6 +845,7 @@ type AppConfig struct {
 	ProvAppDisk           string      `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
 	ProvAppDiskType       string      `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
 	ProvAppDockerImg      string      `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppDockerCmd      string      `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
 	ProvAppRouteAddr      string      `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
 	ProvAppRoutePort      string      `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
 	ProvAppRouteMask      string      `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`

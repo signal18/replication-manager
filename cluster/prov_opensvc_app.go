@@ -355,6 +355,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["nodes"] = cluster.GetAppAgents(appcnf)
 	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
+	svcenv["app_cmd"], _ = app.ClusterGroup.ParseAppTemplate(appcnf.ProvAppDockerCmd, app.AppClusterSubstitute)
 	svcenv["app_host"] = appcnf.AppHost
 	svcenv["app_port"] = appcnf.AppPort
 	svcenv["app_fqdn"] = fqdn
@@ -399,6 +400,7 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.app_img}"
+		svccontainer["command"] = "{env.app_cmd}"
 		svccontainer["type"] = cluster.Conf.ProvType
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
