@@ -109,14 +109,17 @@ const PathSection = ({
       columnHelper.accessor((row) => row.dockerpath, {
         header: 'Path'
       }),
+      columnHelper.accessor((row) => row.srctype, {
+        header: 'Source Type'
+      }),
+      columnHelper.accessor((row) => row.srcname, {
+        header: 'Source Name'
+      }),
+      columnHelper.accessor((row) => row.srcpath, {
+        header: 'Source Path'
+      }),
       columnHelper.accessor((row) => row.volumename, {
         header: 'Volume'
-      }),
-      columnHelper.accessor((row) => row.gitclone, {
-        header: 'Git Clone'
-      }),
-      columnHelper.accessor((row) => row.volumedir, {
-        header: 'Volume Path'
       }),
       columnHelper.display({
         id: 'actions',
