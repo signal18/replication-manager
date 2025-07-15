@@ -460,13 +460,13 @@ type SourceInterface interface {
 }
 
 type PathMapping struct {
-	Name       string     `mapstructure:"name" toml:"name" json:"name"`
-	ParentName string     `mapstructure:"parentname" toml:"parentname" json:"parentname"`
-	DockerPath string     `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath"`
+	Name       string     `mapstructure:"name" toml:"name" json:"name" groups:"apps"`
+	ParentName string     `mapstructure:"parentname" toml:"parentname" json:"parentname" groups:"apps"`
+	DockerPath string     `mapstructure:"dockerpath" toml:"dockerpath" json:"dockerpath" groups:"apps"`
 	SourceType SourceType `mapstructure:"srctype" toml:"srctype" json:"srctype" options:"volume|git|s3" groups:"apps"`
-	SourceName string     `mapstructure:"srcname" toml:"srcname" json:"srcname"`
-	SourcePath string     `mapstructure:"srcpath" toml:"srcpath" json:"srcpath"`
-	VolumeName string     `mapstructure:"volumename" toml:"volumename" json:"volumename"`
+	SourceName string     `mapstructure:"srcname" toml:"srcname" json:"srcname" groups:"apps"`
+	SourcePath string     `mapstructure:"srcpath" toml:"srcpath" json:"srcpath" groups:"apps"`
+	VolumeName string     `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 
 	Parent *PathMapping    `mapstructure:"-" toml:"-" json:"-"`
 	Source SourceInterface `mapstructure:"-" toml:"-" json:"-"`
