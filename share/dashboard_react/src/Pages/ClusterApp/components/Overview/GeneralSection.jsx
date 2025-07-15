@@ -1,7 +1,7 @@
 import { Flex, Text } from '@chakra-ui/react'
 import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
 import { resetAppFromTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
@@ -11,10 +11,10 @@ import RMIconButton from '../../../../components/RMIconButton';
 import { HiRefresh } from 'react-icons/hi';
 import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 
-export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, user }) {
+export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) {
 
   const dispatch = useDispatch();
-  const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);  
+  const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
   const templateOptions = useMemo(() => ([{ name: 'Select Template', value: '' }, ...dockerTemplates?.map(item => ({ name: item, value: item }))]), [dockerTemplates?.length]);
   const { provAppDockerImg = '', provAppDockerCmd = '', provAppTemplate = '', provAppAgents = '', provAppHaTopology = '' } = appConfig;
   const agentList = config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents;
@@ -27,91 +27,95 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
 
   const dataObject = useMemo(() => {
     return [
-    {
-      key: 'App Name',
-      value: (<Text>{appName}</Text>)
-    },
-    {
-      key: 'App Host',
-      value: (<Text>{appHost}</Text>)
-    },
-    {
-      key: 'Docker Image',
-      value: (
-        <TextForm
-          value={provAppDockerImg}
-          confirmTitle="Docker Image Change"
-          confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
-          onSave={onSaveDockerImage}
-        />
-      )
-    },
-    {
-      key: 'Docker Command',
-      value: (
-        <VariableInputArea
-          value={provAppDockerCmd}
-          confirmTitle="Docker Command Change"
-          confirmBody='Are you sure you want to change "prov-app-docker-cmd" to: '
-          onSave={onSaveDockerCmd}
-          className={styles.variableInputArea}
-        />
-      )
-    },
-    {
-      key: 'Docker Template',
-      value: (
-        <Dropdown
-          confirmTitle="Docker Template Change"
-          confirmBody='Are you sure you want to change "prov-app-template" to: '
-          isMenuPortalTarget={true}
-          onChange={onSaveDockerTemplate}
-          options={templateOptions}
-          selectedValue={provAppTemplate}
-        />
-      )
-    },
-    {
-      key: 'Reset App From Template',
-      value: (
-        <RMIconButton
-          icon={HiRefresh}
-          aria-label="Reset App From Template"
-          tooltip="Reset App From Template"
-          onClick={onResetAppFromTemplate}
-          isDisabled={!provAppTemplate}
-          confirmTitle="Reset App From Template"
-        />
-      )
-    },
-    {
-      key: 'OpenSVC Agents',
-      value: (
-        <Checkboxes
-          list={agentList}
-          values={provAppAgents}
-          confirm={true}
-          splitConfirm={true}
-          confirmTitle={`Confirm change 'prov-app-agents' to: `}
-          onChange={onAgentsChange}
-          parentStyles={styles}
-        />
-      )
-    },
-    {
-      key: 'OpenSVC HA Topology',
-      value: (
-        <Dropdown
-          confirmTitle="OpenSVC HA Topology Change"
-          confirmBody='Are you sure you want to change "prov-app-ha-topology" to: '
-          isMenuPortalTarget={true}
-          onChange={onHATopologyChange}
-          options={haTopologyOptions}
-          selectedValue={provAppHaTopology}
-        />
-      )
-    },
-  ]}, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
+      {
+        key: 'App Name',
+        value: (<Text>{appName}</Text>)
+      },
+      {
+        key: 'App Host',
+        value: (<Text>{appHost}</Text>)
+      },
+      {
+        key: 'Docker Image',
+        value: (
+          <TextForm
+            value={provAppDockerImg}
+            confirmTitle="Docker Image Change"
+            confirmBody='Are you sure you want to change "prov-app-docker-img" to: '
+            onSave={onSaveDockerImage}
+          />
+        )
+      },
+      {
+        key: 'Docker Command',
+        value: (
+          <VariableInputArea
+            name={`docker-cmd`}
+            value={provAppDockerCmd}
+            useConfirmModal={true}
+            confirmTitle={"Docker command changed"}
+            variables={substitution}
+            placeholder="Docker cmd"
+            onSave={onSaveDockerCmd}
+            className={styles.variableInputArea}
+          />
+        )
+      },
+      {
+        key: 'Docker Template',
+        value: (
+          <Dropdown
+            confirmTitle="Docker Template Change"
+            confirmBody='Are you sure you want to change "prov-app-template" to: '
+            isMenuPortalTarget={true}
+            onChange={onSaveDockerTemplate}
+            options={templateOptions}
+            selectedValue={provAppTemplate}
+          />
+        )
+      },
+      {
+        key: 'Reset App From Template',
+        value: (
+          <RMIconButton
+            icon={HiRefresh}
+            aria-label="Reset App From Template"
+            tooltip="Reset App From Template"
+            onClick={onResetAppFromTemplate}
+            isDisabled={!provAppTemplate}
+            confirmTitle="Reset App From Template"
+          />
+        )
+      },
+      {
+        key: 'OpenSVC Agents',
+        value: (
+          <Checkboxes
+            list={agentList}
+            values={provAppAgents}
+            confirm={true}
+            splitConfirm={true}
+            confirmTitle={`Confirm change 'prov-app-agents' to: `}
+            onChange={onAgentsChange}
+            parentStyles={styles}
+          />
+        )
+      },
+      {
+        key: 'OpenSVC HA Topology',
+        value: (
+          <Dropdown
+            confirmTitle="OpenSVC HA Topology Change"
+            confirmBody='Are you sure you want to change "prov-app-ha-topology" to: '
+            isMenuPortalTarget={true}
+            onChange={onHATopologyChange}
+            options={haTopologyOptions}
+            selectedValue={provAppHaTopology}
+          />
+        )
+      },
+    ]
+  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
 
 
   return (

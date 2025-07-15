@@ -103,7 +103,7 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
                 <VStack spacing={3} align="stretch">
                     <AccordionComponent
                         heading={'General Section'}
-                        body={<GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} user={user} />}
+                        body={<GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} user={user} substitution={substitution} />}
                     />
                     <AccordionComponent
                         heading={'Infra Resources'}
