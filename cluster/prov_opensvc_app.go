@@ -477,7 +477,13 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	}
 
 	for _, path := range deployment.Paths {
-		results = append(results, path.GetDockerMapping())
+		vol, err := deployment.GetVolumeByName(path.VolumeName)
+		if err != nil {
+			continue
+		}
+
+		diskname := cluster.GetAppVolumeName(vol.PoolName)
+		results = append(results, path.GetDockerMapping(diskname))
 	}
 
 	return strings.Join(results, " ")

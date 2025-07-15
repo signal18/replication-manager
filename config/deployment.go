@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -473,8 +474,8 @@ type PathMapping struct {
 }
 
 // GetDockerMapping returns the Docker path mapping for the given PathMapping.
-func (p PathMapping) GetDockerMapping() string {
-	return p.SourcePath + ":" + p.DockerPath
+func (p PathMapping) GetDockerMapping(volname string) string {
+	return filepath.Join(volname, p.SourcePath) + ":" + p.DockerPath
 }
 
 func (pm *PathMapping) ResolvePointers(volumes Volumes, gits GitClones, s3s S3Mounts, parents PathMaps) error {
