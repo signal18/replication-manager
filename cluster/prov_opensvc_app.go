@@ -345,7 +345,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	domain := cluster.GetDomain()
 
 	appcnf := app.AppConfig
-	svcenv := cluster.GetTemplateData()
+	svcenv := make(map[string]string)
 
 	// Cluster values section
 	svcenv["base_dir"] = "/srv/{namespace}-{svcname}"

@@ -70,60 +70,60 @@ func (cluster *Cluster) ParseAppTemplate(template string, data string) (string, 
 }
 
 // GetTemplateData returns a map of template data for the cluster, including database and app information.
-func (cluster *Cluster) GetTemplateData() map[string]string {
-	basemap := make(map[string]string)
+// func (cluster *Cluster) GetTemplateData() map[string]string {
+// 	basemap := make(map[string]string)
 
-	domain := cluster.GetDomain()
+// 	domain := cluster.GetDomain()
 
-	proxies := make([]string, 0)
-	dbs := make([]string, 0)
+// 	proxies := make([]string, 0)
+// 	dbs := make([]string, 0)
 
-	// Add default template data from cluster configuration
-	for i, p := range cluster.Proxies {
-		if p != nil {
-			seq := strconv.Itoa(i + 1)
-			host := p.GetHost()
-			if !strings.Contains(host, domain) {
-				host = host + "." + domain
-			}
-			proxies = append(proxies, host)
-			basemap["database_proxy_"+seq+"_internal_fqdn_long"] = host
-			basemap["database_proxy_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
-		}
-	}
+// 	// Add default template data from cluster configuration
+// 	for i, p := range cluster.Proxies {
+// 		if p != nil {
+// 			seq := strconv.Itoa(i + 1)
+// 			host := p.GetHost()
+// 			if !strings.Contains(host, domain) {
+// 				host = host + "." + domain
+// 			}
+// 			proxies = append(proxies, host)
+// 			basemap["database_proxy_"+seq+"_internal_fqdn_long"] = host
+// 			basemap["database_proxy_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+// 		}
+// 	}
 
-	proxyHosts := strings.Join(proxies, ",")
-	basemap["database_proxies_internal_fqdn_long"] = proxyHosts
-	basemap["database_proxies_internal_fqdn_short"] = strings.ReplaceAll(proxyHosts, cluster.GetDomain(), "")
+// 	proxyHosts := strings.Join(proxies, ",")
+// 	basemap["database_proxies_internal_fqdn_long"] = proxyHosts
+// 	basemap["database_proxies_internal_fqdn_short"] = strings.ReplaceAll(proxyHosts, cluster.GetDomain(), "")
 
-	for i, db := range cluster.Servers {
-		if db != nil {
-			seq := strconv.Itoa(i + 1)
-			host := db.Host
-			if !strings.Contains(host, domain) {
-				host = host + "." + domain
-			}
-			dbs = append(dbs, host)
-			basemap["database_"+seq+"_internal_fqdn_long"] = host
-			basemap["database_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
-		}
-	}
+// 	for i, db := range cluster.Servers {
+// 		if db != nil {
+// 			seq := strconv.Itoa(i + 1)
+// 			host := db.Host
+// 			if !strings.Contains(host, domain) {
+// 				host = host + "." + domain
+// 			}
+// 			dbs = append(dbs, host)
+// 			basemap["database_"+seq+"_internal_fqdn_long"] = host
+// 			basemap["database_"+seq+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+// 		}
+// 	}
 
-	dbHosts := strings.Join(dbs, ",")
-	basemap["databases_internal_fqdn_long"] = dbHosts
-	basemap["databases_internal_fqdn_short"] = strings.ReplaceAll(dbHosts, cluster.GetDomain(), "")
+// 	dbHosts := strings.Join(dbs, ",")
+// 	basemap["databases_internal_fqdn_long"] = dbHosts
+// 	basemap["databases_internal_fqdn_short"] = strings.ReplaceAll(dbHosts, cluster.GetDomain(), "")
 
-	for _, app := range cluster.Apps {
-		if app != nil {
-			host := app.Host
-			if !strings.Contains(host, domain) {
-				host = host + "." + domain
-			}
-			basemap[app.Name+"_internal_fqdn_long"] = host
-			basemap[app.Name+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
-			basemap[app.Name+"_external_fqdn"] = app.GetExternalFQDN()
-		}
-	}
+// 	for _, app := range cluster.Apps {
+// 		if app != nil {
+// 			host := app.Host
+// 			if !strings.Contains(host, domain) {
+// 				host = host + "." + domain
+// 			}
+// 			basemap[app.Name+"_internal_fqdn_long"] = host
+// 			basemap[app.Name+"_internal_fqdn_short"] = strings.ReplaceAll(host, cluster.GetDomain(), "")
+// 			basemap[app.Name+"_external_fqdn"] = app.GetExternalFQDN()
+// 		}
+// 	}
 
-	return basemap
-}
+// 	return basemap
+// }
