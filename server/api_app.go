@@ -1212,6 +1212,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
 						}
 						gc.VolumeName = newValue
+						gc.Volume = newvol
 					}
 				case "volumedir":
 					if newValue == "" {
