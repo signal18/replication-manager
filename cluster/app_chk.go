@@ -91,7 +91,7 @@ func (app *App) GetMonitoringStatus() string {
 }
 
 func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
-	route.CName = app.GetHost()
+	route.CName = app.GetHost() + ":" + route.Port
 	a, b, err := app.GetAppHTTPStatus(route, getBody)
 	if err != nil {
 		route.Protocol = "http"
