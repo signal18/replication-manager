@@ -409,6 +409,9 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["image"] = "{env.app_img}"
 		svccontainer["command"] = "{env.app_cmd}"
 		svccontainer["type"] = cluster.Conf.ProvType
+		if app.AppConfig.ProvAppHATopology == "failover" {
+			svccontainer["shared"] = "true"
+		}
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
 			svccontainer["run_args"] = svccontainer["run_args"] + " --memory=" + cluster.GetAppMemory(app.AppConfig) + "m --memory-swap=" + cluster.GetAppMemory(app.AppConfig) + "m --cpus=" + cluster.GetAppCores(app.AppConfig) + ".0"
