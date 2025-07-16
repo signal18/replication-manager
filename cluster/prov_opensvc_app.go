@@ -393,7 +393,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 		svcdefault["rollback"] = "false"
 	}
 
-	svcdefault["app"] = "app"
+	svcdefault["app"] = cluster.Conf.ProvCodeApp
 	return svcdefault
 }
 
