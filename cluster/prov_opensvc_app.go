@@ -381,7 +381,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 	appcnf := app.AppConfig
 	svcdefault := make(map[string]string)
 
-	svcdefault["nodes"] = cluster.GetAppAgents(appcnf)
+	svcdefault["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	nodes := strings.Split(svcdefault["nodes"], ",")
 
 	if appcnf.ProvAppAgentsFailover != "" {
