@@ -184,6 +184,27 @@ func (d *Deployment) HasDuplicateGitVolumePath(volumename, volumedir string) boo
 	return false
 }
 
+func (d *Deployment) ResolveGitVolume(name string) (*GitClone, error) {
+	// Use a mutex to protect concurrent access
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	gc, err := d.GetGitClone(name)
+	if err == nil {
+		if gc.Volume == nil {
+			// If the volume is not set, try to resolve it
+			if vol, err := d.GetVolumeByName(gc.VolumeName); err == nil {
+				gc.Volume = vol
+				return gc, nil
+			} else {
+				return nil, fmt.Errorf("volume for git clone %s not found: %v", name, err)
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("git clone %s not found: %v", name, err)
+}
+
 func (d *Deployment) InsertPath(p PathMapping) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -558,6 +579,14 @@ func (gc *GitClone) GetSourceVolumeName() string {
 		return gc.Volume.Name
 	}
 	return gc.VolumeName
+}
+
+func (gc *GitClone) GetSourcePoolName() string {
+	// Return the volume name associated with the git clone
+	if gc.Volume != nil {
+		return gc.Volume.PoolName
+	}
+	return ""
 }
 
 var gitVariableReplacer = strings.NewReplacer("-", "_", ".", "_", "/", "_")

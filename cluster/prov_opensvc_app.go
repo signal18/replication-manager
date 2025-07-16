@@ -215,7 +215,14 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection = cluster.OpenSVCGetAppVolumeSections(svcsection, app)
 	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	var err error
 	for i, gc := range app.AppConfig.Deployment.Storages.GitClones {
+		if gc.Volume == nil {
+			gc, err = app.AppConfig.Deployment.ResolveGitVolume(gc.Name)
+			if err != nil {
+				continue
+			}
+		}
 		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Name)
 		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
 	}
@@ -431,11 +438,6 @@ func (cluster *Cluster) OpenSVCGetAppGitInitDefaultSection(app *App) map[string]
 		svccontainer["rm"] = "true"
 		svccontainer["start_timeout"] = "300s"
 		svccontainer["optional"] = "true"
-		if cluster.Conf.ProvDiskType != "volume" {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {env.base_dir}:/bootstrap"
-		} else {
-			svccontainer["volume_mounts"] = "/etc/localtime:/etc/localtime:ro {name}:/bootstrap"
-		}
 		svccontainer["entrypoint"] = "/bin/sh"
 	}
 	return svccontainer
@@ -445,6 +447,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
+		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", cluster.GetAppVolumeName(gc.GetSourcePoolName()))
 		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
 		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath(), gc.Name)
