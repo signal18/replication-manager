@@ -3911,3 +3911,40 @@ func ParseUnitMeasurementToInt(tag, vstr string, clampToLimit bool) (int, error)
 
 	return val, nil
 }
+
+type VolumePool struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Mode        string `json:"mode"`
+	Description string `json:"description"`
+}
+
+func (conf *Config) GetAppVolumePools() map[string]VolumePool {
+	pools := make(map[string]VolumePool)
+
+	vols := strings.Split(conf.ProvAppVolumePools, ",")
+	for _, vol := range vols {
+		parts := strings.SplitN(vol, ":", 4)
+		name := strings.TrimSpace(parts[0])
+		poolType := strings.TrimSpace(parts[1])
+		mode := strings.TrimSpace(parts[2])
+		description := strings.TrimSpace(parts[3])
+
+		if name == "" {
+			continue
+		}
+
+		if poolType != "local" && poolType != "shared" {
+			poolType = "local"
+		}
+
+		pools[name] = VolumePool{
+			Name:        name,
+			Type:        poolType,
+			Mode:        mode,
+			Description: description,
+		}
+	}
+
+	return pools
+}

@@ -250,6 +250,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	deployment.Paths.Sort()
 	volumemap := deployment.Storages.Volumes.GroupByPool()
 	pathmap := deployment.Paths.GetVolumeDirs()
+	pools := cluster.Conf.GetAppVolumePools()
 
 	seq := 1
 	for pool, volumes := range volumemap {
@@ -257,6 +258,12 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 		svcvol["name"] = cluster.GetAppVolumeName(pool)
 		svcvol["pool"] = pool
 		svcvol["size"] = "{env.size}"
+
+		if poolConfig, ok := pools[pool]; ok {
+			if poolConfig.Type == "shared" {
+				svcvol["shared"] = "true"
+			}
+		}
 
 		// Use set to avoid duplicate directories
 		directorySet := make(map[string]struct{})
