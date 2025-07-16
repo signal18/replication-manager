@@ -630,7 +630,7 @@ backend ` + backend + `
     cookie SERVER insert indirect nocache dynamic
     balance roundrobin
     dynamic-cookie-key mysecretphrase
-    server-template srv 2 ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + app.Port + ` resolvers cluster check init-addr none
+    server-template srv 2 ` + app.Name + `.` + cluster.Name + `.svc.` + cluster.Conf.ProvOrchestratorCluster + `:` + route.Port + ` resolvers cluster check init-addr none
 `
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating app route fragment %s %s %s %s", cloud18GatewayServiceConfig[0], cloud18GatewayServiceConfig[2], "haproxy.cfg.d/"+backend, haproxyfragment)
 
