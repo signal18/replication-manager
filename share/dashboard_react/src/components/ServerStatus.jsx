@@ -49,7 +49,7 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
           setColorScheme('blue')
           break
         case 'AppWarning':
-          setColorScheme('orang')
+          setColorScheme('orange')
           break
         default:
           setStateValue(state.toUpperCase())
