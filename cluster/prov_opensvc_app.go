@@ -274,7 +274,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 			}
 			if mappedPaths, ok := pathmap[volName]; ok {
 				for _, path := range mappedPaths {
-					directorySet[path] = struct{}{}
+					directorySet[filepath.Join(path)] = struct{}{}
 				}
 			}
 		}
