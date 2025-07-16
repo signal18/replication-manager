@@ -42,24 +42,16 @@ const VariableInputArea = ({
   const editable = alwaysEditable || isEditable;
 
   useEffect(() => {
-    setCurrentValue(value);
-    setPreviousValue(value);
+    if (!alwaysEditable && !isEditable) {
+      setCurrentValue(value);
+      setPreviousValue(value);
+    }
   }, [value]);
-
-  const debouncedOnChange = debounce((newValue) => {
-    onChange(newValue);
-  }, 300);
-
-  useEffect(() => {
-    return () => {
-      debouncedOnChange.cancel();
-    };
-  }, []);  
 
   const handleChange = (value) => {
     if (value === currentValue) return;
     setCurrentValue(value);
-    if (alwaysEditable) debouncedOnChange(value);
+    if (alwaysEditable) onChange(value);
   };
 
   const handleInsert = (variable) => {
