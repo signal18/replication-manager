@@ -92,7 +92,13 @@ func (app *App) GetMonitoringStatus() string {
 
 func (app *App) GetAppLocalHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
 	route.CName = app.GetHost()
-	return app.GetAppHTTPStatus(route, getBody)
+	a, b, err := app.GetAppHTTPStatus(route, getBody)
+	if err != nil {
+		route.Protocol = "http"
+		return app.GetAppHTTPStatus(route, getBody)
+	} else {
+		return a, b, nil
+	}
 }
 
 func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte, error) {
@@ -105,6 +111,10 @@ func (app *App) GetAppHTTPStatus(route config.Route, getBody bool) (int, []byte,
 	client := &http.Client{Transport: tr}
 
 	urlpost := "https://" + route.CName
+	if route.Protocol == "http" {
+		urlpost = "http://" + route.CName
+		client.Transport = &http.Transport{} // Reset transport for HTTP
+	}
 
 	// Create a request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, urlpost, nil)
