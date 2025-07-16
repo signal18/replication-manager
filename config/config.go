@@ -3924,18 +3924,20 @@ func (conf *Config) GetAppVolumePools() map[string]VolumePool {
 
 	vols := strings.Split(conf.ProvAppVolumePools, ",")
 	for _, vol := range vols {
+		var name, poolType, mode, description string
 		parts := strings.SplitN(vol, ":", 4)
-		name := strings.TrimSpace(parts[0])
-		poolType := strings.TrimSpace(parts[1])
-		mode := strings.TrimSpace(parts[2])
-		description := strings.TrimSpace(parts[3])
-
-		if name == "" {
-			continue
+		name = strings.TrimSpace(parts[0])
+		poolType = "local"
+		if len(parts) > 1 {
+			poolType = strings.TrimSpace(parts[1])
 		}
 
-		if poolType != "local" && poolType != "shared" {
-			poolType = "local"
+		if len(parts) > 2 {
+			mode = strings.TrimSpace(parts[2])
+		}
+
+		if len(parts) > 3 {
+			description = strings.TrimSpace(parts[3])
 		}
 
 		pools[name] = VolumePool{
