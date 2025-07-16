@@ -383,16 +383,13 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 
 	svcdefault["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	nodes := strings.Split(svcdefault["nodes"], " ")
+	svcdefault["rollback"] = "false"
 
 	if appcnf.ProvAppAgentsFailover != "" {
-		svcdefault["cluster_type"] = "failover"
-		svcdefault["rollback"] = "true"
-		svcdefault["orchestrate"] = "start"
-	} else {
 		svcdefault["orchestrate"] = "ha"
+	} else {
 		svcdefault["flex_primary"] = nodes[0]
 		svcdefault["topology"] = "flex"
-		svcdefault["rollback"] = "false"
 		svcdefault["flex_target"] = strconv.Itoa(len(nodes))
 	}
 
