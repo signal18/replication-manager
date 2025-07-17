@@ -12,7 +12,7 @@ package config
 
 var ClusterError = map[string]string{
 	"APPERR001": "Error connecting to application %s. Err: %s",
-	"APPERR002": "Unexpected status for application %s. Code: %d Err: %s",
+	"APPERR002": "Unexpected status for application %s. Code: %d",
 	"APPERR003": "Error connecting to application %s via TCP. Err: %s",
 	"APPERR004": "Unsupported protocol %s for application %s",
 	"CREDIT01":  "Cluster has exceeded available credits. Credits: (%d), Total Usage: (%d). Additional charge may apply.",

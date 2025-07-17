@@ -31,17 +31,17 @@ func (app *App) GetMonitoringStatus() string {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
 				if strings.HasPrefix(err.Error(), "unexpected status code") {
-					app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus)})
+					app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus), ServerUrl: app.Host})
 				} else {
-					app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err)})
+					app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err), ServerUrl: app.Host})
 				}
 
 				httpStatus, _, err := app.GetAppLocalHTTPStatus(route, false)
 				if err != nil {
 					if strings.HasPrefix(err.Error(), "unexpected status code") {
-						app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus)})
+						app.ClusterGroup.SetState("APPERR002", state.State{ErrType: "WARN", ErrKey: "APPERR002", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR002"], app.GetId(), httpStatus), ServerUrl: app.Host})
 					} else {
-						app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err)})
+						app.ClusterGroup.SetState("APPERR001", state.State{ErrType: "WARN", ErrKey: "APPERR001", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR001"], app.GetId(), err), ServerUrl: app.Host})
 					}
 
 					routeStatus.Status = stateFailed
@@ -59,10 +59,10 @@ func (app *App) GetMonitoringStatus() string {
 				routeStatus.Status = stateAppWarning
 				primaryStatus = stateAppWarning
 
-				app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err)})
+				app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err), ServerUrl: app.Host})
 
 				if err := app.GetAppLocalTCPStatus(route); err != nil {
-					app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err)})
+					app.ClusterGroup.SetState("APPERR003", state.State{ErrType: "WARN", ErrKey: "APPERR003", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR003"], app.GetId(), err), ServerUrl: app.Host})
 					routeStatus.Status = stateFailed
 					if route.Primary {
 						primaryStatus = stateFailed
@@ -70,7 +70,7 @@ func (app *App) GetMonitoringStatus() string {
 				}
 			}
 		} else {
-			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR004"], app.GetId(), route.Protocol)})
+			app.ClusterGroup.SetState("APPERR004", state.State{ErrType: "WARN", ErrKey: "APPERR004", ErrDesc: fmt.Sprintf(config.ClusterError["APPERR004"], app.GetId(), route.Protocol), ServerUrl: app.Host})
 			routeStatus.Status = stateFailed
 
 			if route.Primary {
