@@ -532,7 +532,7 @@ func (server *Proxy) OpenSVCGetProxyDefaultSection() map[string]string {
 	svcdefault := make(map[string]string)
 	svcdefault["nodes"] = server.Agent
 	if cluster.Conf.ProvProxDiskPool == "zpool" && cluster.Conf.ProvProxAgentsFailover != "" {
-		svcdefault["nodes"] = server.Agent + "," + cluster.Conf.ProvProxAgentsFailover
+		svcdefault["nodes"] = server.Agent + " " + cluster.Conf.ProvProxAgentsFailover
 		svcdefault["cluster_type"] = "failover"
 		svcdefault["rollback"] = "true"
 		svcdefault["orchestrate"] = "start"
