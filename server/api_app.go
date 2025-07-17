@@ -826,6 +826,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				http.Error(w, "Cannot duplicate variable with same name", 400)
 				return
 			}
+			row.Value, _ = mycluster.ParseAppTemplate(row.Value, node.AppClusterSubstitute)
 			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, row)
 		}
 		affected = true
