@@ -366,7 +366,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 		fqdn = fqdn + "." + domain
 	}
 
-	svcenv["nodes"] = cluster.GetAppAgents(appcnf)
+	svcenv["nodes"] = strings.ReplaceAll(cluster.GetAppAgents(appcnf), ",", " ")
 	svcenv["size"] = cluster.GetAppDisk(appcnf) + "g"
 	svcenv["app_img"] = appcnf.ProvAppDockerImg
 	svcenv["app_cmd"], _ = app.ClusterGroup.ParseAppTemplate(appcnf.ProvAppDockerCmd, app.AppClusterSubstitute)
