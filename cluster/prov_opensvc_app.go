@@ -37,10 +37,14 @@ func (cluster *Cluster) OpenSVCUnprovisionAppService(app *App) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app service:  %s ", err)
 			cluster.errorChan <- err
 		}
-		err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+app.GetName(), app.GetAgent())
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
-			cluster.errorChan <- err
+
+		// Unprovision volumes
+		for _, volumename := range app.GetVolumes() {
+			err = opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/vol/"+volumename, app.GetAgent())
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision app volume:  %s ", err)
+				cluster.errorChan <- err
+			}
 		}
 	} else {
 		node, _ := cluster.OpenSVCFoundAppAgent(app)
@@ -238,10 +242,6 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 
 }
 
-func (cluster *Cluster) GetAppVolumeName(pool string) string {
-	return fmt.Sprintf("{name}-%s", pool)
-}
-
 func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[string]string, app *App) map[string]map[string]string {
 
 	appcnf := app.AppConfig
@@ -262,7 +262,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	seq := 1
 	for pool, volumes := range volumemap {
 		svcvol := make(map[string]string)
-		svcvol["name"] = cluster.GetAppVolumeName(pool)
+		svcvol["name"] = app.GetAppVolumeName(pool)
 		svcvol["pool"] = pool
 		svcvol["size"] = "{env.size}"
 
@@ -447,7 +447,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
 		svccontainer = cluster.OpenSVCGetAppGitInitDefaultSection(app)
-		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", cluster.GetAppVolumeName(gc.GetSourcePoolName()))
+		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", app.GetAppVolumeName(gc.GetSourcePoolName()))
 		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
 		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
 		dirname := filepath.Join("/bootstrap", gc.GetSourcePath(), gc.Name)
@@ -492,7 +492,7 @@ func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 			continue
 		}
 
-		diskname := cluster.GetAppVolumeName(vol.PoolName)
+		diskname := app.GetAppVolumeName(vol.PoolName)
 		results = append(results, path.GetDockerMapping(diskname))
 	}
 

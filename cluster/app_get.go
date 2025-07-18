@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -331,6 +332,10 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 	return nil, -1
 }
 
+func (app *App) GetAppVolumeName(pool string) string {
+	return fmt.Sprintf("{name}-%s", pool)
+}
+
 func (app *App) GetS3Mount(name string) (*config.S3Mount, int) {
 	appcnf := app.GetAppConfig()
 	if appcnf == nil {
@@ -348,4 +353,25 @@ func (app *App) GetS3Mount(name string) (*config.S3Mount, int) {
 	}
 
 	return nil, -1
+}
+
+func (app *App) GetVolumes() []string {
+	volumes := make([]string, 0)
+	distinctVolumes := make(map[string]bool)
+
+	if app.AppConfig == nil {
+		return volumes
+	}
+
+	for _, v := range app.AppConfig.Deployment.Storages.Volumes {
+		if v.Name != "" {
+			volumeName := app.GetAppVolumeName(v.Name)
+			if _, exists := distinctVolumes[volumeName]; !exists {
+				volumes = append(volumes, volumeName)
+				distinctVolumes[volumeName] = true
+			}
+		}
+	}
+
+	return volumes
 }
