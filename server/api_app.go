@@ -805,9 +805,28 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 
 		for _, row := range body {
 			if !isValidPortFormat(row.Port) {
-				http.Error(w, "Invalid port format. Expected hostPort[:containerPort] with valid port numbers", http.StatusInternalServerError)
+				http.Error(w, "Invalid port format. Expected hostPort with valid port numbers", http.StatusInternalServerError)
 				return
 			}
+
+			if row.CName == "" {
+				http.Error(w, "CName must be provided for route", http.StatusInternalServerError)
+				return
+			}
+
+			if row.Protocol != "tcp" && row.Protocol != "https" {
+				http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
+				return
+			}
+
+			// Check for duplicate route
+			for _, existing := range node.AppConfig.Deployment.Routes {
+				if existing.CName == row.CName {
+					http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
+					return
+				}
+			}
+
 			node.AppConfig.Deployment.Routes = append(node.AppConfig.Deployment.Routes, row)
 			affected = true
 		}
