@@ -94,7 +94,7 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppNeedReprov)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/set/{setting}/{value}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/set/{setting}/{value:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSetSetting)),
 	))
@@ -620,6 +620,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "cname":
+					for _, existing := range node.AppConfig.Deployment.Routes {
+						if existing.CName == newValue {
+							http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
+							return
+						}
+					}
 					node.AppConfig.Deployment.Routes[index].CName = newValue
 				case "port":
 					node.AppConfig.Deployment.Routes[index].Port = newValue
