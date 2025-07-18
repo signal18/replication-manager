@@ -372,7 +372,7 @@ func (cluster *Cluster) OpenSVCGetAppEnvSection(app *App) map[string]string {
 	svcenv["app_cmd"], _ = app.ClusterGroup.ParseAppTemplate(appcnf.ProvAppDockerCmd, app.AppClusterSubstitute)
 	svcenv["app_host"] = appcnf.AppHost
 	svcenv["app_port"] = appcnf.AppPort
-	svcenv["app_fqdn"] = fqdn
+	svcenv["fqdn"] = fqdn
 
 	svcenv["ip_pod01"] = app.GetHost()
 	svcenv["port_pod01"] = app.GetPort()
@@ -407,6 +407,7 @@ func (cluster *Cluster) OpenSVCGetAppDefaultSection(app *App) map[string]string 
 func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]string {
 	svccontainer := make(map[string]string)
 	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
+		svccontainer["hostname"] = "{fqdn}"
 		svccontainer["tags"] = ""
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
