@@ -365,7 +365,7 @@ func (app *App) GetVolumes() []string {
 
 	for _, v := range app.AppConfig.Deployment.Storages.Volumes {
 		if v.Name != "" {
-			volumeName := app.GetAppVolumeName(v.Name)
+			volumeName := app.GetAppVolumeName(v.PoolName)
 			if _, exists := distinctVolumes[volumeName]; !exists {
 				volumes = append(volumes, volumeName)
 				distinctVolumes[volumeName] = true
