@@ -332,7 +332,10 @@ func (app *App) GetAppVolume(name string) (*config.Volume, int) {
 	return nil, -1
 }
 
-func (app *App) GetAppVolumeName(pool string) string {
+func (app *App) GetAppVolumeName(pool string, resolved bool) string {
+	if resolved {
+		return fmt.Sprintf("%s-%s", app.Name, pool)
+	}
 	return fmt.Sprintf("{name}-%s", pool)
 }
 
@@ -355,7 +358,7 @@ func (app *App) GetS3Mount(name string) (*config.S3Mount, int) {
 	return nil, -1
 }
 
-func (app *App) GetVolumes() []string {
+func (app *App) GetVolumes(resolved bool) []string {
 	volumes := make([]string, 0)
 	distinctVolumes := make(map[string]bool)
 
@@ -365,7 +368,7 @@ func (app *App) GetVolumes() []string {
 
 	for _, v := range app.AppConfig.Deployment.Storages.Volumes {
 		if v.Name != "" {
-			volumeName := app.GetAppVolumeName(v.PoolName)
+			volumeName := app.GetAppVolumeName(v.PoolName, resolved)
 			if _, exists := distinctVolumes[volumeName]; !exists {
 				volumes = append(volumes, volumeName)
 				distinctVolumes[volumeName] = true
