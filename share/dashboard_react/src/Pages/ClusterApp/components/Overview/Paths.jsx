@@ -226,6 +226,14 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
     }
   }, [srctype, gitTree, s3Tree, dockerTree]);
 
+  const subpath = useMemo(() => {
+    if (srcpath.startsWith(srcbasepath)) {
+      return srcpath.replace(srcbasepath, "").replace("//", "/");
+    } else {
+      return srcpath;
+    }
+  }, [srcpath, srcbasepath]);
+
   const onRowArrayChange = useCallback((fieldName, index, key, value) => {
     if (value.includes("..")) {
       dispatch(showErrorToast(`Invalid path: ${value}`));
@@ -320,7 +328,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
           {srcname && (
             <Flex direction="column" flex="1">
               <Text mb={1}>Source Path:</Text>
-              <TextForm confirmTitle={"Source path changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
+              <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
             </Flex>
           )}
         </>)}
