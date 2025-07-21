@@ -281,7 +281,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
     return (
       <Flex direction="column" flex="1">
         <Text mb={1}>{srcLabel}</Text>
-        <Dropdown key={srctype} placeholder="Source" options={srcOptions} selectedValue={srcname} onChange={(option) => handleArrayChange("srcname", option.value)} />
+        <Dropdown key={srctype} placeholder="Source" options={srcOptions} selectedValue={srcname} onSave={(option) => onRowArrayChange(fieldName, index, "srcname", option.value)} />
         {srcbasepath && (<Text key={srcname} mb={1} fontSize="sm" color="gray.500">Basepath: {srcbasepath}</Text>)}
       </Flex>
     );
