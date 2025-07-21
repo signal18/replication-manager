@@ -96,7 +96,7 @@ func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 	})
 
 	for _, entry := range tree.Entries {
-		treehelper.AddToFileTree(root, strings.Split(entry.GetPath(), "/"), entry.GetSHA(), entry.GetType())
+		treehelper.AddToFileTree(root, strings.Split(entry.GetPath(), "/"), entry.GetType())
 	}
 
 	cache = &treehelper.FileTreeCache{

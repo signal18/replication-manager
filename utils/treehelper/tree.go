@@ -28,7 +28,7 @@ type FileTreeCache struct {
 	LastUpdate time.Time  `json:"lastUpdate,omitempty"` // Last update time of the cache
 }
 
-func AddToFileTree(parent *FileEntry, parts []string, fileID string, fileType string) {
+func AddToFileTree(parent *FileEntry, parts []string, fileType string) {
 	// If parts is empty or contains only an empty string, return
 	if len(parts) == 0 || (len(parts) == 1 && parts[0] == "") {
 		return
@@ -54,10 +54,9 @@ func AddToFileTree(parent *FileEntry, parts []string, fileID string, fileType st
 
 	if len(parts) > 1 {
 		child.Type = "directory" // Ensure the child is a directory if there are more parts
-		AddToFileTree(child, parts[1:], fileID, fileType)
+		AddToFileTree(child, parts[1:], fileType)
 	} else {
 		// If this is the last part, set the ID and type
-		child.ID = fileID
 		if child.Type == "" {
 			child.Type = fileType
 		}

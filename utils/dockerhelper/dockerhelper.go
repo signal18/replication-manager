@@ -124,7 +124,7 @@ func GetFileTreeCache(cacheDir, imageRef string, options ...crane.Option) (*tree
 			} else if mode&os.ModeSymlink != 0 {
 				ftype = "symlink"
 			}
-			treehelper.AddToFileTree(root, strings.Split(hdr.Name, "/"), "", ftype)
+			treehelper.AddToFileTree(root, strings.Split(hdr.Name, "/"), ftype)
 		}
 		rc.Close()
 	}

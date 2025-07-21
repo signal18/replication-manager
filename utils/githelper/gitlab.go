@@ -92,7 +92,7 @@ func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 	})
 
 	for _, entry := range tree {
-		treehelper.AddToFileTree(root, strings.Split(entry.Path, "/"), entry.ID, entry.Type)
+		treehelper.AddToFileTree(root, strings.Split(entry.Path, "/"), entry.Type)
 	}
 
 	cache = &treehelper.FileTreeCache{
