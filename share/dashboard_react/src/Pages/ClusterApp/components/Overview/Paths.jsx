@@ -253,7 +253,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
       dispatch(showErrorToast(`Invalid subpath: ${value}`));
       return;
     }
-    const newSrcPath = (srcbasepath || "") + (value.startsWith("/") ? value : `/${value}`);
+    const newSrcPath = (value.startsWith("/") ? value : `/${value}`);
     onRowArrayChange(fieldName, index, "srcpath", newSrcPath);
   }, [fieldName, index, onRowArrayChange, srcbasepath]);
 
