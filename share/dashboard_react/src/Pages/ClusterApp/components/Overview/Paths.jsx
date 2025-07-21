@@ -309,7 +309,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Docker Path:</Text>
-          <TextForm confirmTitle={"Dockerpath changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => onRowArrayChange(fieldName, index, "dockerpath", value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={dstTree} />
+          <TextForm confirmTitle={"Dockerpath changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => onRowArrayChange(fieldName, index, "dockerpath", value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={dstTree} />
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Source Type:</Text>
@@ -320,7 +320,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
           {srcname && (
             <Flex direction="column" flex="1">
               <Text mb={1}>Source Path:</Text>
-              <TextForm confirmTitle={"Source path changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => handleSubPathChange(value)} isTree={true} nodeToValue={nodeToValue} nodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
+              <TextForm confirmTitle={"Source path changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
             </Flex>
           )}
         </>)}
