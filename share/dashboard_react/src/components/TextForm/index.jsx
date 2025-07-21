@@ -170,10 +170,8 @@ function TextForm({ onSave, id, type, label, value, loading, maxLength = 120, cl
           title="Browse Path"
           asModal={true}
           treeData={treeData}
-          treePrefix={treePrefix}
-          treeBase={treeBase}
-          nodeToValue={nodeToValue}
-          nodeToString={nodeToString}
+          nodeToValue={treeNodeToValue}
+          nodeToString={treeNodeToString}
           defaultValues={treeValues}
           onSave={handleTreeSelect}
         />
