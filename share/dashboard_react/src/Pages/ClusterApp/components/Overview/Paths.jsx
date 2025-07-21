@@ -288,6 +288,9 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
   }, [srctype, volumeOptions, gitOptions, s3Options]);
 
   const handleOnTreeSelect = useCallback((subpaths) => {
+    if (typeof subpaths === 'string') {
+      subpaths = subpaths.split(',').map(item => item.trim());
+    }
     return subpaths.map((subpath) => {
       if (subpath.startsWith("/")) {
         return (srcbasepath || "") + subpath;
