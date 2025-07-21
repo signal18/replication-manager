@@ -77,6 +77,22 @@ const PathSection = ({
     }))];
   }, [rows]);
 
+  const resolvedRows = useMemo(() => rows.map((row) => {
+    const { srctype, srcname, srcpath, parentname } = row;
+    const parent = parentOptions.find(opt => opt.value === parentname) || { dockerpath: "", srcpath: "" };
+    const vol = srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null;
+    const gc = srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null;
+    const s3 = srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null;
+    const srcbasepath = srctype === "volume" ? vol?.volumedir || "" : srctype === "git" ? gc?.volumedir || "" : srctype === "s3" ? s3?.volumedir || "" : "";
+    return {
+      ...row,
+      srcbasepath: srcbasepath,
+      subpath: srcbasepath && srcpath && srcpath.startsWith(srcbasepath) ? srcpath.replace(srcbasepath, "").replace("//", "/") : srcpath || "",
+      parentname: parentname || parent.value,
+      parentpath: parent.dockerpath || parent.srcpath,
+    };
+  }), [rows, parentOptions, volumeOptions, gitOptions, s3Options]);
+
   useEffect(() => {
     if (!dockerImage) {
       return;
@@ -116,7 +132,10 @@ const PathSection = ({
       columnHelper.accessor((row) => row.srcname, {
         header: 'Source Name'
       }),
-      columnHelper.accessor((row) => row.srcpath, {
+      columnHelper.accessor((row) => row.srcbasepath, {
+        header: 'Source Base Path'
+      }),
+      columnHelper.accessor((row) => row.subpath, {
         header: 'Source Path'
       }),
       columnHelper.accessor((row) => row.volumename, {
@@ -153,7 +172,7 @@ const PathSection = ({
           Saved Paths
         </Heading>
         <Box className={styles.tableContainer}>
-          <DataTable key="app-variables" data={rows} columns={columnsRowForm} className={styles.table} enableExpanding={true} enableExpandingNoSubRows={true} />
+          <DataTable key="app-variables" data={resolvedRows} columns={columnsRowForm} className={styles.table} enableExpanding={true} enableExpandingNoSubRows={true} />
         </Box>
       </VStack>
       {isVisible ? (
@@ -300,13 +319,9 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
       subpaths = subpaths.split(',').map(item => item.trim());
     }
     return subpaths.map((subpath) => {
-      if (subpath.startsWith("/")) {
-        return (srcbasepath || "") + subpath;
-      } else {
-        return (srcbasepath || "") + "/" + subpath;
-      }
+      return subpath.startsWith("/") ? subpath : "/" + subpath;
     });
-  }, [fieldName, index, srcbasepath, onRowArrayChange]);
+  }, [fieldName, index, onRowArrayChange]);
 
   return (
     <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
