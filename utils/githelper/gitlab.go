@@ -64,6 +64,7 @@ func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 	root := &treehelper.FileEntry{
 		Name:     "root",
 		Type:     "directory",
+		Path:     "/",
 		Children: make([]*treehelper.FileEntry, 0),
 	}
 

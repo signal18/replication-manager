@@ -48,7 +48,7 @@ func AddToFileTree(parent *FileEntry, parts []string, fileID string, fileType st
 	}
 
 	if child == nil {
-		child = &FileEntry{Name: head, Path: filepath.Join(parent.Path, head)}
+		child = &FileEntry{Name: head, Path: filepath.Join("/", parent.Path, head)}
 		parent.Children = append(parent.Children, child)
 	}
 

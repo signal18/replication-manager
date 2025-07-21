@@ -22,12 +22,12 @@ const sourceTypes = [
 
 const defaultPath = {
   dockerpath: "",
-  dockersubpath: "",
+  dockersubpath: "/",
   parentname: "",
   parentpath: "",
   srctype: "",
   srcname: "",
-  srcpath: "",
+  srcpath: "/",
   srcbasepath: "",
   subpath: "/",
 }
