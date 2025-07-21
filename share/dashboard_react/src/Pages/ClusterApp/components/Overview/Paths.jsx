@@ -227,7 +227,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
   }, [srctype, gitTree, s3Tree, dockerTree]);
 
   const subpath = useMemo(() => {
-    if (srcpath.startsWith(srcbasepath)) {
+    if (srcbasepath != "" && srcpath.startsWith(srcbasepath)) {
       return srcpath.replace(srcbasepath, "").replace("//", "/");
     } else {
       return srcpath;
@@ -253,7 +253,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
       dispatch(showErrorToast(`Invalid subpath: ${value}`));
       return;
     }
-    const newSrcPath = (value.startsWith("/") ? value : `/${value}`);
+    const newSrcPath = !srcbasepath || value.startsWith(srcbasepath) ? value : (srcbasepath || "") + (value.startsWith("/") ? value : `/${value}`);
     onRowArrayChange(fieldName, index, "srcpath", newSrcPath);
   }, [fieldName, index, onRowArrayChange, srcbasepath]);
 
