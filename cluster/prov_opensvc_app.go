@@ -214,21 +214,48 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 		return []byte(""), errors.New("App image is not defined in app config")
 	}
 
+	deployment := app.AppConfig.Deployment
+
+	containernum := 1
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = cluster.OpenSVCGetAppDefaultSection(app)
 	svcsection["ip#01"] = cluster.OpenSVCGetNetSection()
 	svcsection = cluster.OpenSVCGetAppVolumeSections(svcsection, app)
-	svcsection["container#01"] = cluster.OpenSVCGetNamespaceContainerSection()
+	svcsection[fmt.Sprintf("container#%02d", containernum)] = cluster.OpenSVCGetNamespaceContainerSection()
 	var err error
-	for i, gc := range app.AppConfig.Deployment.Storages.GitClones {
+	for _, gc := range deployment.Storages.GitClones {
 		if gc.Volume == nil {
-			gc, err = app.AppConfig.Deployment.ResolveGitVolume(gc.Name)
-			if err != nil {
+			// If the volume is not set, try to resolve it
+			if vol, err := deployment.GetVolumeByName(gc.VolumeName); err == nil {
+				gc.Volume = vol
+			} else {
 				continue
 			}
 		}
-		sectionName := fmt.Sprintf("container#%02dinit%s", i+2, gc.Name)
+		containernum++
+		sectionName := fmt.Sprintf("container#%02dinit%s", containernum, gc.Name)
 		svcsection[sectionName] = cluster.OpenSVCGetAppGitInitContainerSection(app, gc)
+	}
+
+	for _, s3m := range deployment.Storages.S3Mounts {
+		if s3m.Volume == nil {
+			// If the volume is not set, try to resolve it
+			if vol, err := deployment.GetVolumeByName(s3m.VolumeName); err == nil {
+				s3m.Volume = vol
+			} else {
+				continue // Skip if volume resolution fails
+			}
+		}
+
+		// Only allow internal S3 mounts for now
+		s3_app, appidx := cluster.GetAppByURL(s3m.Endpoint)
+		if s3_app == nil || appidx < 0 {
+			continue
+		}
+
+		containernum++
+		sectionName := fmt.Sprintf("container#%02ds3%s", containernum, s3m.Name)
+		svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
 	}
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
 	svcsection["env"] = cluster.OpenSVCGetAppEnvSection(app)
@@ -473,6 +500,25 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 	return svccontainer
 }
 
+func (cluster *Cluster) OpenSVCGetAppS3MountContainerSection(app *App, s3m *config.S3Mount) map[string]string {
+	svccontainer := make(map[string]string)
+	if cluster.Conf.ProvType == "docker" || cluster.Conf.ProvType == "podman" {
+		svccontainer["type"] = "docker"
+		svccontainer["rm"] = "true"
+		svccontainer["image"] = "signal18/nfsmixr:latest"
+		svccontainer["netns"] = "container#01"
+		svccontainer["privileged"] = "true"
+		svccontainer["secrets_environment"] = s3m.GetVariableKeys(app.Name, "secret")
+		svccontainer["configs_environment"] = s3m.GetVariableKeys(app.Name, "env")
+		diskname := app.GetAppVolumeName(s3m.GetSourcePoolName(), false)
+		svccontainer["volume_mounts"] = fmt.Sprintf("%s:/mnt:rw,rshared", filepath.Join(diskname, s3m.VolumeDir))
+		svccontainer["run_command"] = "-o allow_other -o nonempty --use-content-type --uid 33 --gid 33 -f"
+		svccontainer["blocking_post_provision"] = "sleep 3"
+		svccontainer["blocking_post_start"] = "sleep 3"
+	}
+	return svccontainer
+}
+
 func (cluster *Cluster) GetOpenSVCDeploymentPathMapping(app *App) string {
 	var results []string
 	appcnf := app.GetAppConfig()
@@ -549,10 +595,6 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		prefix := gc.GetVariablePrefix()
 		envs := gc.GetEnvVariables()
 		for k, val := range envs {
-			if val == "" {
-				continue
-			}
-
 			vName := prefix + k
 
 			// Create the git clone config key
@@ -580,6 +622,42 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, gc.GitPass)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
+		}
+	}
+
+	// Create the s3 mount config keys
+	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
+		prefix := s3m.GetVariablePrefix()
+		envs := s3m.GetEnvVariables()
+		for k, val := range envs {
+			vName := prefix + k
+			if k == config.S3VarSuffixMountDir {
+				// If the mount directory is not set, we use the default mount directory
+				if val == "" {
+					val = "/mnt"
+				}
+			} else if k == config.S3VarSuffixRegion {
+				// If the region is not set, we use the default region
+				if val == "" {
+					val = "fr-east-1"
+				}
+			} else if k == config.S3VarSuffixBucket {
+				// If the bucket is not set, we use the app name as the default bucket
+				if val == "" {
+					val = app.Name
+				}
+			}
+
+			err = svc.CreateConfigKeyValueV2(cluster.Name, app.Name, vName, val)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", vName, err)
+			}
+		}
+
+		// Create the s3 mount secret key
+		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, s3m.SecretKey)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
 		}
 	}
 

@@ -509,3 +509,31 @@ func (cluster *Cluster) refreshApps(wg *sync.WaitGroup) {
 		}
 	}
 }
+
+func (cluster *Cluster) GetAppByURL(url string) (*App, int) {
+	var host, port string
+	newURL := strings.TrimSpace(url)
+	if newURL == "" {
+		return nil, -1 // Return nil if the URL is empty
+	}
+
+	// Split the URL and strip the protocol if present
+	if strings.Contains(newURL, "://") {
+		parts := strings.SplitN(newURL, "://", 2)
+		if len(parts) == 2 {
+			newURL = parts[1] // Use the part after the protocol
+		}
+	}
+
+	// Split the URL into host and port
+	parts := strings.SplitN(newURL, ":", 2)
+	if len(parts) == 2 {
+		host = parts[0]
+		port = parts[1]
+	} else {
+		host = parts[0]
+		port = "80" // Default port if not specified
+	}
+
+	return cluster.GetAppByHostPort(host, port)
+}

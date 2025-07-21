@@ -706,11 +706,78 @@ type S3Mounts []*S3Mount
 
 type S3Mount struct {
 	Name       string `mapstructure:"name" toml:"name" json:"name"`
+	Endpoint   string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint" groups:"apps"`
 	Bucket     string `mapstructure:"bucket" toml:"bucket" json:"bucket" groups:"apps"`
+	Region     string `mapstructure:"region" toml:"region" json:"region" groups:"apps"`
+	AccessKey  string `mapstructure:"accesskey" toml:"accesskey" json:"accesskey" groups:"apps"`
+	SecretKey  string `mapstructure:"secretkey" toml:"secretkey" json:"secretkey" groups:"apps"`
+	MountDir   string `mapstructure:"mountdir" toml:"mountdir" json:"mountdir" groups:"apps"`
 	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 	VolumeDir  string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
 
 	Volume *Volume `mapstructure:"-" toml:"-" json:"-"`
+}
+
+const S3VarSuffixMountDir = "MOUNT_DIR"
+const S3VarSuffixEndpoint = "ENDPOINT"
+const S3VarSuffixBucket = "BUCKET"
+const S3VarSuffixRegion = "REGION"
+const S3VarSuffixAccessKey = "AWS_ACCESS_KEY"
+const S3VarSuffixSecretKey = "AWS_SECRET_KEY"
+
+func GetS3EnvKeys() []string {
+	return []string{
+		S3VarSuffixBucket,
+		S3VarSuffixRegion,
+		S3VarSuffixAccessKey,
+		S3VarSuffixMountDir,
+		S3VarSuffixEndpoint,
+	}
+}
+
+func GetS3SecretKeys() []string {
+	return []string{
+		S3VarSuffixSecretKey,
+	}
+}
+
+func (s *S3Mount) GetVariablePrefix() string {
+	return "S3_" + strings.ToUpper(gitVariableReplacer.Replace(s.Name)) + "_"
+}
+
+func (s *S3Mount) GetVariableKeys(appName string, vartype string) string {
+	result := make([]string, 0)
+	prefix := s.GetVariablePrefix()
+	if vartype == "env" {
+		for _, key := range GetS3EnvKeys() {
+			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+		}
+	} else if vartype == "secret" {
+		for _, key := range GetS3SecretKeys() {
+			result = append(result, fmt.Sprintf("%s=%s/%s\n", key, appName, prefix+key))
+		}
+	} else {
+		// If vartype is not env or secret, return an empty string
+		return ""
+	}
+
+	return strings.Join(result, " ")
+}
+
+func (s *S3Mount) GetEnvVariables() map[string]string {
+	envVars := make(map[string]string)
+	envVars[S3VarSuffixBucket] = s.Bucket
+	envVars[S3VarSuffixRegion] = s.Region
+	envVars[S3VarSuffixAccessKey] = s.AccessKey
+	envVars[S3VarSuffixMountDir] = s.MountDir
+	envVars[S3VarSuffixEndpoint] = s.Endpoint
+	return envVars
+}
+
+func (s *S3Mount) GetSecretVariables() map[string]string {
+	secretVars := make(map[string]string)
+	secretVars[S3VarSuffixSecretKey] = s.SecretKey
+	return secretVars
 }
 
 func (s *S3Mount) GetSourcePath() string {
@@ -732,4 +799,12 @@ func (s *S3Mount) GetSourceVolumeName() string {
 		return s.Volume.Name
 	}
 	return s.VolumeName
+}
+
+func (s *S3Mount) GetSourcePoolName() string {
+	// Return the volume name associated with the S3 mount
+	if s.Volume != nil {
+		return s.Volume.PoolName
+	}
+	return "" // Return an empty string if the volume is not set
 }
