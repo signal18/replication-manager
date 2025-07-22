@@ -531,7 +531,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
       });
     } else {
       let newselectedKey = "dockerpath";
-      let newselectedPath = dockerpath;
+      let newselectedPath = dockerpath || "/";
       if (parentpath) {
         newselectedKey = "dockersubpath";
         newselectedPath = dockersubpath || "/";
@@ -567,7 +567,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
 
 
   const valid = useMemo(() => {
-    if (!dockerpath || dockerpath.includes("..")) return false;
+    if (!dockerpath || dockerpath.includes("..") || dockerpath == "/") return false;
     if (subpath && subpath.includes("..")) return false;
 
     if (srctype === "volume") return !!vol?.name;
@@ -580,6 +580,8 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
   const handleSaveAdd = useCallback(() => {
     if (valid) {
       onSave([path]);
+    } else {
+      dispatch(showErrorToast({ message: "Invalid path configuration. Please check the inputs. make sure dockerpath is not root or containing parent relative paths (..)" }));
     }
   }, [onSave, valid, path]);
 
