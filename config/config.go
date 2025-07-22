@@ -623,12 +623,12 @@ type Config struct {
 	AppOn                                     bool                   `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
-	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
-	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
-	ProvAppVolumePools                        string                 `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools"`
-	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
-	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
-	ProvAppHATopology                         string                 `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
+	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
+	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
+	ProvAppVolumePools                        string                 `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
+	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
+	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
+	ProvAppHATopology                         string                 `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
 	TemplateVariableMaxDepth                  int                    `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
 	TemplateStrict                            bool                   `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
