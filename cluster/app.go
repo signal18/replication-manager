@@ -12,6 +12,7 @@ package cluster
 
 import (
 	"os"
+	"slices"
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
@@ -52,12 +53,21 @@ type appList []*App
 
 func (cluster *Cluster) newAppList() error {
 	cluster.Apps = make([]*App, 0)
+	news3providers := make([]string, 0)
 	cluster.Conf.Cloud18ApplicationCreditsUsed = 0
 	for k, appcnf := range cluster.Conf.Apps {
 		app := NewApp(k, cluster, appcnf.AppHost+":"+appcnf.AppPort)
 		cluster.AddApp(app)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "New HA App created: %s %s", app.GetHost(), app.GetPort())
+		if appcnf.AppS3Provider {
+			news3providers = append(news3providers, app.Name)
+			if !slices.Contains(cluster.AppS3Providers, app.Name) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Add app as S3 provider: %s", app.Name)
+			}
+		}
 	}
+
+	cluster.AppS3Providers = news3providers
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
 
@@ -105,6 +115,7 @@ func (app *App) AddFlags(flags *pflag.FlagSet, conf *config.AppConfig) {
 	flags.StringVar(&conf.AppDbUser, "app-db-user", "", "App Database User")
 	flags.StringVar(&conf.AppDbPass, "app-db-pass", "", "App Database Password")
 	flags.StringVar(&conf.AppDbSchema, "app-db-schema", "", "App Database Schema")
+	flags.BoolVar(&conf.AppS3Provider, "app-s3-provider", false, "Whether the app is an S3 provider, default is false.")
 	flags.IntVar(&conf.ProvAppCreditPlanned, "prov-app-credit-planned", 0, "Planned App Credit for the application, default is 0.")
 	flags.IntVar(&conf.ProvAppCreditUsed, "prov-app-credit-used", 0, "Used App Credit for the application, default is 0.")
 }

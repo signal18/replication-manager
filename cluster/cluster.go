@@ -148,6 +148,7 @@ type Cluster struct {
 	FSType                        map[string]bool        `json:"fsType" groups:"web"`
 	DiskType                      map[string]string      `json:"diskType" groups:"web"`
 	VMType                        map[string]bool        `json:"vmType" groups:"web"`
+	AppS3Providers                []string               `json:"appS3Providers" groups:"web"`
 	Agents                        []Agent                `json:"agents" groups:"web"`
 	AgentMaxFreq                  map[string]int64       `json:"-"`
 	hostList                      []string               `json:"-"`

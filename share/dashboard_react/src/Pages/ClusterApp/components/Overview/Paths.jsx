@@ -1,6 +1,7 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex, InputGroup, Box } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HiFolder, HiTrash } from 'react-icons/hi'
+import { TbLinkPlus } from 'react-icons/tb'
 import Dropdown from '../../../../components/Dropdown';
 import TextForm from '../../../../components/TextForm';
 import RMIconButton from '../../../../components/RMIconButton';
@@ -14,10 +15,10 @@ import { createColumnHelper } from '@tanstack/react-table';
 import { DataTable } from '../../../../components/DataTable';
 
 const sourceTypes = [
-  { value: '', name: 'Select Source' },
-  { value: 'volume', name: 'Volume' },
-  { value: 'git', name: 'Git' },
-  { value: 's3', name: 'S3' },
+  { value: '', name: 'Select Source', isChildOption: true },
+  { value: 'volume', name: 'Volume', isChildOption: true },
+  { value: 'git', name: 'Git', isChildOption: false },
+  { value: 's3', name: 'S3', isChildOption: true },
 ]
 
 const defaultPath = {
@@ -50,9 +51,10 @@ const PathSection = ({
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
 }) => {
-  const [isVisible, setIsVisible] = useState(false);
+  const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null });
   const dispatch = useDispatch();
 
+  const { isVisible, parentRow } = newForm;
   const gitRows = storages?.gitClones || [];
   const volumeRows = storages?.volumes || [];
   const s3Rows = storages?.s3Directories || [];
@@ -69,17 +71,9 @@ const PathSection = ({
     return [{ value: "", name: "Select S3" }, ...s3Rows.map(s3 => ({ ...s3, value: s3.name, name: s3.name }))];
   }, [s3Rows]);
 
-  const parentOptions = useMemo(() => {
-    return [{ value: "", name: "Select Parent" }, ...rows.map(row => ({
-      ...row,
-      value: row.name,
-      name: row.name,
-    }))];
-  }, [rows]);
-
   const resolvedRows = useMemo(() => rows.map((row) => {
     const { srctype, srcname, srcpath, parentname } = row;
-    const parent = parentOptions.find(opt => opt.value === parentname) || { dockerpath: "", srcpath: "" };
+    const parent = rows.find(r => r.name === row.name) || { dockerpath: "", srcpath: "", srctype: "", srcname: "" };
     const vol = srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null;
     const gc = srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null;
     const s3 = srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null;
@@ -90,8 +84,9 @@ const PathSection = ({
       subpath: srcbasepath && srcpath && srcpath.startsWith(srcbasepath) ? srcpath.replace(srcbasepath, "").replace("//", "/") : srcpath || "",
       parentname: parentname || parent.value,
       parentpath: parent.dockerpath || parent.srcpath,
+      parentRow: parent,
     };
-  }), [rows, parentOptions, volumeOptions, gitOptions, s3Options]);
+  }), [rows, volumeOptions, gitOptions, s3Options]);
 
   useEffect(() => {
     if (!dockerImage) {
@@ -101,19 +96,19 @@ const PathSection = ({
   }, [dockerImage, clusterName]);
 
 
-  const handleAddItem = () => {
-    setIsVisible(true);
+  const handleAddItem = (parent) => {
+    setNewForm({ isVisible: true, parentRow: parent });
     onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
   const handleCancel = useCallback(() => {
-    setIsVisible(false);
+    setNewForm({ isVisible: false, parentRow: null });
     onResumeAutoReload();
   }, [onResumeAutoReload]);
 
   const handleSaveAdd = useCallback((formData) => {
     return onSaveAdd(fieldName, formData).then(() => {
-      setIsVisible(false);
+      setNewForm({ isVisible: false, parentRow: null });
       onResumeAutoReload();
       return Promise.resolve();
     }, (error) => {
@@ -133,10 +128,10 @@ const PathSection = ({
         header: 'Source Name'
       }),
       columnHelper.accessor((row) => row.srcbasepath, {
-        header: 'Source Base Path'
+        header: 'Storage Base Path'
       }),
       columnHelper.accessor((row) => row.subpath, {
-        header: 'Source Path'
+        header: 'Storage Path'
       }),
       columnHelper.accessor((row) => row.volumename, {
         header: 'Volume'
@@ -144,11 +139,20 @@ const PathSection = ({
       columnHelper.display({
         id: 'actions',
         cell: ({ row }) => (
+          <Flex gap={2} align="center">
+          { row.original.srctype == "git" && (
+          <RMIconButton
+            icon={TbLinkPlus}
+            tooltip="Add Storage Mapping for Git"
+            onClick={() => handleAddItem(row.original)}
+          />
+          )}
           <RMIconButton
             icon={HiTrash}
-            aria-label="Delete Variable"
+            tooltip="Delete Variable"
             onClick={() => onRowDropIndex(fieldName, row.index)}
           />
+          </Flex>
         ),
       }),
       {
@@ -156,13 +160,13 @@ const PathSection = ({
         header: '',
         meta: {
           renderExpansion: (row) => {
-            return (<PathRowForm fieldName={fieldName} path={row.original} index={row.index} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentOptions={parentOptions} dockerImage={dockerImage} onChange={onRowArrayChange} />);
+            return (<PathRowForm fieldName={fieldName} path={row.original} index={row.index} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={row.original.parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} />);
           },
         },
         cell: () => null,
       }
     ],
-    [fieldName, onRowArrayChange, onRowDropIndex, gitRows, volumeOptions, gitOptions, s3Options, parentOptions]
+    [fieldName, onRowArrayChange, onRowDropIndex, gitRows, volumeOptions, gitOptions, s3Options]
   )
 
   return (
@@ -181,7 +185,7 @@ const PathSection = ({
             Add New Path
           </Heading>
           <Box className={styles.tableContainer}>
-            <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentOptions={parentOptions} onSave={handleSaveAdd} onCancel={handleCancel} />
+            <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
           </Box>
         </VStack>
       ) : (
@@ -201,7 +205,7 @@ export default React.memo(PathSection);
 
 const EMPTY_OBJECT = {};
 
-const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, parentOptions, gitOptions, volumeOptions, s3Options, onChange }) => {
+const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, parentRow, onChange }) => {
   const dispatch = useDispatch();
   const p = path || defaultPath;
   const { dockerpath, parentname, srctype, srcname, srcpath } = p;
@@ -209,8 +213,8 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
   const vol = useMemo(() => srctype === "volume" ? volumeOptions.find(opt => opt.name === srcname) : null, [srctype, srcname, volumeOptions]);
   const gc = useMemo(() => srctype === "git" ? gitOptions.find(opt => opt.value === srcname) : null, [srctype, srcname, gitOptions]);
   const s3 = useMemo(() => srctype === "s3" ? s3Options.find(opt => opt.value === srcname) : null, [srctype, srcname, s3Options]);
-  const parent = useMemo(() => parentOptions.find(opt => opt.value === parentname) || { dockerpath: "", srcpath: "" }, [parentname, parentOptions]);
-  const { dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
+  const parent = useMemo(() => parentRow || { dockerpath: "", srcpath: "", srctype: "", srcname: "" }, [parentRow]);
+  const { dockerpath: parentpath, srctype: parentsrctype, srcpath: parentsrcpath } = parent;
 
   const dockerTree = useSelector(state => state.paths.current.dockerTree || EMPTY_OBJECT);
   const parentGitTree = useSelector(state => (parentsrctype === "git" ? state.paths.gitTreeList[parentname] : EMPTY_OBJECT));
@@ -326,12 +330,13 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
   return (
     <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
       <Flex direction="column" flex="1" minW="300px" gap={2}>
+         {parentname && (
+          <Flex direction="column" flex="1">
+            <Text mb={1}>Base Path: {parentpath}</Text>
+          </Flex>
+        )}
         <Flex direction="column" flex="1">
-          <Text mb={1}>Parent:</Text>
-          <Dropdown placeholder="Parent" options={parentOptions} selectedValue={parentname} onChange={(option) => onRowArrayChange(fieldName, index, "parentname", option.value)} />
-        </Flex>
-        <Flex direction="column" flex="1">
-          <Text mb={1}>Docker Path:</Text>
+          <Text mb={1}>{parentname ? "Sub Path" : "Docker Path:"}</Text>
           <TextForm confirmTitle={"Dockerpath changed"} name={`row_${index}.dockerpath`} placeholder="To" value={dockerpath} onSave={(value) => onRowArrayChange(fieldName, index, "dockerpath", value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={dstTree} />
         </Flex>
         <Flex direction="column" flex="1">
@@ -342,7 +347,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
           {srcDropdown}
           {srcname && (
             <Flex direction="column" flex="1">
-              <Text mb={1}>Source Path:</Text>
+              <Text mb={1}>Storage Path:</Text>
               <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
             </Flex>
           )}
@@ -352,7 +357,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, pa
   )
 })
 
-const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions, volumeOptions, s3Options, onSave = () => { }, onCancel = () => { } }) => {
+const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, volumeOptions, s3Options, onSave = () => { }, onCancel = () => { } }) => {
   const dispatch = useDispatch();
 
   const [path, setPath] = useState(defaultPath);
@@ -362,7 +367,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
     selectedKey: '',
   });
 
-  const { dockerpath, dockersubpath, parentname, srctype, srcname, srcbasepath, srcpath, subpath } = path;
+  const { dockerpath, dockersubpath, srctype, srcname, srcbasepath, srcpath, subpath } = path;
   const { isOpen, selectedPath, selectedKey } = browseState;
   const defaultExpandedValues = useMemo(() => [selectedPath], [selectedPath]);
 
@@ -408,11 +413,13 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
     );
   }, [srctype, volumeOptions, gitOptions, s3Options]);
 
-  const parent = useMemo(
-    () => parentOptions.find(opt => opt.value === parentname) || { dockerpath: "", srcpath: "", srctype: "", srcname: "" },
-    [parentname, parentOptions]
-  );
-  const { dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
+  const parent = useMemo(() => (parentRow || { name: "", dockerpath: "", srcpath: "", srctype: "", srcname: "" }),[parentRow]);
+  const { name: parentname, dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
+
+  const newSourceTypes = useMemo(() => {
+    if (parentname) return sourceTypes.filter(type => type.isChildOption);
+    return sourceTypes;
+  }, [sourceTypes, parentname]);
 
   // Redux selectors - memoized by React-Redux
   const dockerTree = useSelector(state => state.paths.current.dockerTree || EMPTY_OBJECT);
@@ -453,7 +460,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
       if (key === "parentname") {
         newPath.dockersubpath = "/";
       } else if (key === "dockersubpath") {
-        newPath.dockersubpath = (prev.parentpath + (value.startsWith("/") ? value : `/${value}`)).replace("//", "/");
+        newPath.dockersubpath = (parentpath + (value.startsWith("/") ? value : `/${value}`)).replace("//", "/");
       } else if (key === "srcname") {
         if (prev.srctype === "volume") {
           const found = volumeOptions.find(opt => opt.name === value);
@@ -479,22 +486,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
 
       return newPath;
     });
-  }, []);
-
-  const handleParentChange = useCallback((value) => {
-    setPath(prev => {
-      const newPath = { ...prev, parentname: value }
-      const prevParent = parentOptions.find(opt => opt.value === prev.parentname);
-      const parent = parentOptions.find(opt => opt.value === value);
-      let newdockerpath = prevParent?.dockerpath ? prev.dockerpath.startsWith(prevParent.dockerpath) ? prev.dockerpath.replace(prevParent.dockerpath, parent?.dockerpath || "") : prev.dockerpath : prev.dockerpath;
-      newdockerpath = parent.dockerpath ? newdockerpath.startsWith(parent.dockerpath) ? newdockerpath : parent.dockerpath + newdockerpath : newdockerpath;
-      const newdockersubpath = newdockerpath.replace(parent?.dockerpath || "", "").replace("//", "/");
-      newPath.parentpath = parent?.dockerpath || "";
-      newPath.dockerpath = newdockerpath || "/";
-      newPath.dockersubpath = newdockersubpath || "/";
-      return newPath;
-    });
-  }, [parentOptions]);
+  }, [parentpath]);
 
   const handleDockerSubPathChange = useCallback((value) => {
     if (value.includes("..")) {
@@ -503,10 +495,10 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
     }
     setPath(prev => {
       const newPath = { ...prev, dockersubpath: value };
-      newPath.dockerpath = (prev.parentpath + (value.startsWith("/") ? value : `/${value}`)).replace("//", "/");
+      newPath.dockerpath = (parentpath + (value.startsWith("/") ? value : `/${value}`)).replace("//", "/");
       return newPath;
     });
-  }, [dispatch]);
+  }, [dispatch, parentpath]);
 
   const handleBrowseSource = useCallback(() => {
     if (srctype !== "git") return;
@@ -593,13 +585,9 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
   return (
     <Flex className={styles.VolumeRowForm} w="100%" align="flex-start" gap={4}>
       <Flex direction="column" flex="1" minW="300px" gap={2}>
-        <Flex direction="column" flex="1">
-          <Text mb={1}>Parent:</Text>
-          <Dropdown placeholder="Parent" options={parentOptions} selectedValue={parentname} onChange={(option) => handleParentChange(option.value)} />
-        </Flex>
         {parentname && (
           <Flex direction="column" flex="1">
-            <Text mb={1}>Parent Path: {parentpath}</Text>
+            <Text mb={1}>Base Path: {parentpath}</Text>
           </Flex>
         )}
         <Flex direction="column" flex="1">
@@ -616,13 +604,13 @@ const PathNewForm = React.memo(({ clusterName, appId, parentOptions, gitOptions,
         </Flex>
         <Flex direction="column" flex="1">
           <Text mb={1}>Source Type:</Text>
-          <Dropdown placeholder="Source Type" options={sourceTypes} selectedValue={srctype} onChange={(option) => handleChangeSourceType(option.value)} />
+          <Dropdown placeholder="Source Type" options={newSourceTypes} selectedValue={srctype} onChange={(option) => handleChangeSourceType(option.value)} />
         </Flex>
         {srctype && (<>
           {srcDropdown}
           {srcname && (
             <Flex direction="column" flex="1">
-              <Text mb={1}>Source Path:</Text>
+              <Text mb={1}>Storage Path:</Text>
               <InputGroup>
                 <Input key={`${srctype}-${srcname}`} name={`newpath.subpath`} placeholder="Subpath" value={subpath} onChange={(e) => handleArrayChange("subpath", e.target.value)} />
                 {srctype === "git" && (<RMIconButton icon={HiFolder} aria-label="Browse Path" onClick={handleBrowseSource} />)}

@@ -384,6 +384,21 @@ func (d *Deployment) HasDuplicateS3VolumePath(volumename, volumedir string) bool
 	return false
 }
 
+func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping, error) {
+	// Use a mutex to protect concurrent access
+	if lock {
+		d.Mutex.RLock()
+		defer d.Mutex.RUnlock()
+	}
+
+	for _, v := range d.Variables {
+		if v.Name == name {
+			return &v, nil
+		}
+	}
+	return nil, fmt.Errorf("variable %s not found", name)
+}
+
 type Routes []Route
 
 type Route struct {

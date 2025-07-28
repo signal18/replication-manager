@@ -862,6 +862,7 @@ type AppConfig struct {
 	AppDbPass             string      `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
 	AppDbPassClear        string      `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
 	AppDbSchema           string      `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
+	AppS3Provider         bool        `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
 	Deployment            *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
 }
 
