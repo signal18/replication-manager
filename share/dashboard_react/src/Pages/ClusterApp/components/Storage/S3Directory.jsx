@@ -35,7 +35,7 @@ const S3DirectorySection = ({
         onResumeAutoReload(); // Resume auto-reload after canceling
     };
 
-    const handleSaveAdd = () => {
+    const handleSaveAdd = (formData) => {
       onSaveAdd(fieldName, formData).then(() => {
         setIsVisible(false); // Hide the form after saving
         onResumeAutoReload(); // Resume auto-reload after saving
