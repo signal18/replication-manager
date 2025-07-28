@@ -17,8 +17,8 @@ export default function StoragePage({ clusterName, appId, user }) {
 
   const s3ProvOptions = useMemo(() => {
     return s3Providers?.map((prov) => ({
-      value: prov.name,
-      name: prov.name,
+      value: prov,
+      name: prov,
     })) || [];
   }, [s3Providers]);
 
