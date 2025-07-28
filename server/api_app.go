@@ -1038,7 +1038,7 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param field path string true "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param field path string true "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Mounts)"
 // @Param body body any true "Array of objects depending on field: - git: []config.GitClone - local: []config.Volume - shared: []config.Volume - s3: []config.S3Mapping"
 // @Success 200 {string} string "Storage added successfully"
 // @Failure 403 {string} string "No valid ACL"
@@ -1099,12 +1099,23 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			http.Error(w, "Error inserting volume mapping: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
-	case "s3Directories":
+	case "s3Mounts":
 		var row *config.S3Mount
 		row, err = decodeStruct[config.S3Mount](r, w, "S3 directory")
 		if err != nil {
 			http.Error(w, "Error decoding S3 directory: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+
+		if row.Name == "" && row.Bucket != "" && row.Endpoint != "" {
+			// Generate a unique name for the S3 mount if not provided
+			row.Name = fmt.Sprintf("s3-%s-%s", row.Endpoint, row.Bucket)
+		}
+
+		if row.VolumeName == "" {
+			row.Volume = mycluster.SetAppLocalMountVolume(node)
+			row.VolumeName = row.Volume.Name
+			row.VolumeDir = filepath.Join(row.Volume.VolumeDir, row.Name)
 		}
 
 		err := deployment.InsertS3Mount(row)
@@ -1130,7 +1141,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param field path string true "Field to modify (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param field path string true "Field to modify (gitClones, localDirectories, sharedDirectories, s3Mounts)"
 // @Param index path string true "Index of the field to modify"
 // @Param key path string true "Key of the field to modify"
 // @Param value body object{value=any} true "New value for the field"
@@ -1379,7 +1390,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param appName path string true "App Name"
-// @Param field path string true "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Directories)"
+// @Param field path string true "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Mounts)"
 // @Param index path string true "Index of the row to drop"
 // @Success 200 {string} string "Storage field row removed"
 // @Failure 403 {string} string "No valid ACL"

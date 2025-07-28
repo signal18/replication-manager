@@ -3920,7 +3920,10 @@ type VolumePool struct {
 	Description string `json:"description"`
 }
 
-func (conf *Config) GetAppVolumePools() map[string]VolumePool {
+const PoolTypeLocal = "local"
+const PoolTypeRemote = "shared"
+
+func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
 	pools := make(map[string]VolumePool)
 
 	vols := strings.Split(conf.ProvAppVolumePools, ",")
@@ -3928,9 +3931,13 @@ func (conf *Config) GetAppVolumePools() map[string]VolumePool {
 		var name, poolType, mode, description string
 		parts := strings.SplitN(vol, ":", 4)
 		name = strings.TrimSpace(parts[0])
-		poolType = "local"
+		poolType = PoolTypeLocal
 		if len(parts) > 1 {
 			poolType = strings.TrimSpace(parts[1])
+		}
+
+		if pooltype != "" && poolType != pooltype {
+			continue
 		}
 
 		if len(parts) > 2 {

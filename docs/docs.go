@@ -3610,7 +3610,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "description": "Field to add storage to (gitClones, localDirectories, sharedDirectories, s3Mounts)",
                         "name": "field",
                         "in": "path",
                         "required": true
@@ -3683,7 +3683,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "description": "Field to drop a row from (gitClones, localDirectories, sharedDirectories, s3Mounts)",
                         "name": "field",
                         "in": "path",
                         "required": true
@@ -3756,7 +3756,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Field to modify (gitClones, localDirectories, sharedDirectories, s3Directories)",
+                        "description": "Field to modify (gitClones, localDirectories, sharedDirectories, s3Mounts)",
                         "name": "field",
                         "in": "path",
                         "required": true
@@ -18545,7 +18545,7 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.PathMapping"
                     }
                 },
-                "s3Directories": {
+                "s3Mounts": {
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/config.S3Mapping"

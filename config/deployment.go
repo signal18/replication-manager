@@ -319,6 +319,10 @@ func (d *Deployment) InsertS3Mount(s3 *S3Mount) error {
 		if existingS3.Name == s3.Name {
 			return fmt.Errorf("S3 mapping already exists: %s", s3.Name)
 		}
+
+		if existingS3.Endpoint == s3.Endpoint && existingS3.Bucket == s3.Bucket {
+			return fmt.Errorf("S3 mapping with same endpoint and bucket already exists: %s", s3.Name)
+		}
 	}
 
 	// Add the new S3 mapping

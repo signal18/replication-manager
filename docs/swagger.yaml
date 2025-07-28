@@ -1330,7 +1330,7 @@ definitions:
         items:
           $ref: '#/definitions/config.PathMapping'
         type: array
-      s3Directories:
+      s3Mounts:
         items:
           $ref: '#/definitions/config.S3Mapping'
         type: array
@@ -6052,7 +6052,7 @@ paths:
         required: true
         type: string
       - description: Field to add storage to (gitClones, localDirectories, sharedDirectories,
-          s3Directories)
+          s3Mounts)
         in: path
         name: field
         required: true
@@ -6104,7 +6104,7 @@ paths:
         required: true
         type: string
       - description: Field to modify (gitClones, localDirectories, sharedDirectories,
-          s3Directories)
+          s3Mounts)
         in: path
         name: field
         required: true
@@ -6169,7 +6169,7 @@ paths:
         required: true
         type: string
       - description: Field to drop a row from (gitClones, localDirectories, sharedDirectories,
-          s3Directories)
+          s3Mounts)
         in: path
         name: field
         required: true

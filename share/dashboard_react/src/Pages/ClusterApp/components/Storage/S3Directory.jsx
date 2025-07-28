@@ -15,7 +15,7 @@ const columnHelper = createColumnHelper()
 
 const S3DirectorySection = ({
     rows = [],
-    fieldName = "s3Directories",
+    fieldName = "s3Mounts",
     s3ProvOptions = [],
     onRowArrayChange,
     onRowDropIndex,

@@ -1597,3 +1597,36 @@ func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
 
 	return cnf
 }
+
+func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) *config.Volume {
+	pools := cluster.Conf.GetAppVolumePools(config.PoolTypeLocal)
+	if len(pools) == 0 {
+		return nil
+	}
+
+	pool := pools[config.PoolTypeLocal]
+
+	for _, volume := range app.AppConfig.Deployment.Storages.Volumes {
+		if p, ok := pools[volume.PoolName]; ok {
+			pool = p
+			if strings.HasPrefix(volume.VolumeDir, dir) {
+				//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "GetAppLocalVolume %s %s", volume.VolumeDir, pools[volume.Pool].Path)
+				return volume
+			}
+		}
+	}
+
+	newVolume := &config.Volume{
+		Name:      "local-" + dir + "-directory",
+		VolumeDir: dir,
+		PoolName:  pool.Name,
+	}
+
+	app.AppConfig.Deployment.InsertVolume(newVolume)
+
+	return newVolume
+}
+
+func (cluster *Cluster) SetAppLocalMountVolume(app *App) *config.Volume {
+	return cluster.SetAppLocalVolume(app, "mnt")
+}

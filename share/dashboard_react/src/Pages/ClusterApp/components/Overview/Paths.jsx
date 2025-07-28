@@ -57,7 +57,7 @@ const PathSection = ({
   const { isVisible, parentRow } = newForm;
   const gitRows = storages?.gitClones || [];
   const volumeRows = storages?.volumes || [];
-  const s3Rows = storages?.s3Directories || [];
+  const s3Rows = storages?.s3Mounts || [];
 
   const volumeOptions = useMemo(() => {
     return [{ value: "", name: "Select Volume" }, ...volumeRows.map(v => ({ ...v, value: v.name, name: v.name, volumedir: v.volumedir }))];

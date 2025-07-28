@@ -88,7 +88,7 @@ export default function StoragePage({ clusterName, appId, user }) {
 
   const gitClones = storages?.gitClones || [];
   const volumes = storages?.volumes || [];
-  const s3Directories = storages?.s3Directories || [];
+  const s3Mounts = storages?.s3Mounts || [];
 
   const volumeOptions = useMemo(() => {
     return volumes.map((vol) => ({ value: vol.name, name: vol.name, volumedir: vol.volumedir }));
@@ -112,8 +112,8 @@ export default function StoragePage({ clusterName, appId, user }) {
   ), [volumes, actionProps]);
 
   const s3Component = useMemo(() => (
-      <S3DirectorySection rows={s3Directories} s3ProvOptions={s3ProvOptions} {...actionProps} />
-  ), [s3Directories, s3ProvOptions, actionProps]);
+      <S3DirectorySection rows={s3Mounts} s3ProvOptions={s3ProvOptions} {...actionProps} />
+  ), [s3Mounts, s3ProvOptions, actionProps]);
 
   return (
     <Flex direction="column" className={styles.sectionWrapper}>

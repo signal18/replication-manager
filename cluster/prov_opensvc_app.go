@@ -284,7 +284,7 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 	deployment.Paths.Sort()
 	volumemap := deployment.Storages.Volumes.GroupByPool()
 	pathmap := deployment.Paths.GetVolumeDirs()
-	pools := cluster.Conf.GetAppVolumePools()
+	pools := cluster.Conf.GetAppVolumePools("")
 
 	seq := 1
 	for pool, volumes := range volumemap {
