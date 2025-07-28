@@ -13,6 +13,14 @@ export default function StoragePage({ clusterName, appId, user }) {
   const dispatch = useDispatch();
   const storages = useSelector((state) => state.cluster?.app?.deployment?.storages);
   const volumePools = useSelector((state) => state.cluster?.clusterData?.config?.provAppVolumePools);
+  const s3Providers = useSelector((state) => state.cluster?.clusterData?.appS3Providers);
+
+  const s3ProvOptions = useMemo(() => {
+    return s3Providers?.map((prov) => ({
+      value: prov.name,
+      name: prov.name,
+    })) || [];
+  }, [s3Providers]);
 
   const [modalState, setModalState] = useState({
     isOpen: false,
@@ -104,8 +112,8 @@ export default function StoragePage({ clusterName, appId, user }) {
   ), [volumes, actionProps]);
 
   const s3Component = useMemo(() => (
-      <S3DirectorySection rows={s3Directories} {...actionProps} />
-  ), [s3Directories, actionProps]);
+      <S3DirectorySection rows={s3Directories} s3ProvOptions={s3ProvOptions} {...actionProps} />
+  ), [s3Directories, s3ProvOptions, actionProps]);
 
   return (
     <Flex direction="column" className={styles.sectionWrapper}>

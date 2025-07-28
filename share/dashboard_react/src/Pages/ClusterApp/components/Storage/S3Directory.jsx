@@ -7,14 +7,16 @@ import RMButton from "../../../../components/RMButton";
 import RMIconButton from "../../../../components/RMIconButton";
 import { DataTable } from "../../../../components/DataTable";
 import { HiTrash } from "react-icons/hi";
+import Dropdown from "../../../../components/Dropdown";
 
-const defaultS3 = { name: "", bucket: "" };
+const defaultS3 = { name: "", endpoint:"", bucket: "" };
 
 const columnHelper = createColumnHelper()
 
 const S3DirectorySection = ({
     rows = [],
     fieldName = "s3Directories",
+    s3ProvOptions = [],
     onRowArrayChange,
     onRowDropIndex,
     onSaveAdd,
@@ -48,6 +50,9 @@ const S3DirectorySection = ({
             columnHelper.accessor((row) => row.name, {
                 header: 'Name'
             }),
+            columnHelper.accessor((row) => row.endpoint, {
+                header: 'Endpoint'
+            }),
             columnHelper.accessor((row) => row.bucket, {
                 header: 'Bucket',
             }),
@@ -66,13 +71,13 @@ const S3DirectorySection = ({
                 header: '',
                 meta: {
                     renderExpansion: (row) => {
-                        return (<S3DirectoryRowForm fieldName={fieldName} s3directory={row.original} index={row.index} onChange={onRowArrayChange} />);
+                        return (<S3DirectoryRowForm fieldName={fieldName} s3ProvOptions={s3ProvOptions} s3directory={row.original} index={row.index} onChange={onRowArrayChange} />);
                     },
                 },
                 cell: () => null,
             }
         ],
-        [fieldName, onRowArrayChange, onRowDropIndex]
+        [fieldName, onRowArrayChange, onRowDropIndex, s3ProvOptions]
     )
 
     return (
@@ -91,7 +96,7 @@ const S3DirectorySection = ({
                         Add New S3 Directory
                     </Heading>
                     <Box className={styles.tableContainer}>
-                        <S3DirectoryNewForm onSave={handleSaveAdd} onCancel={handleCancel} />
+                        <S3DirectoryNewForm s3ProvOptions={s3ProvOptions} onSave={handleSaveAdd} onCancel={handleCancel} />
                     </Box>
                 </VStack>
             ) : (
@@ -109,7 +114,7 @@ const S3DirectorySection = ({
 
 export default React.memo(S3DirectorySection);
 
-const S3DirectoryRowForm = React.memo(({ fieldName, s3directory, index, onChange }) => {
+const S3DirectoryRowForm = React.memo(({ fieldName, s3ProvOptions, s3directory, index, onChange }) => {
     const s3 = s3directory || defaultS3;
 
     const onRowArrayChange = (fieldName, index, key, value) => {
@@ -120,8 +125,8 @@ const S3DirectoryRowForm = React.memo(({ fieldName, s3directory, index, onChange
         <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Name:</Text>
-                    <TextForm placeholder="Name" value={s3.name} onSave={(value) => onRowArrayChange(fieldName, index, "name", value)} />
+                    <Text mb={1}>Endpoint:</Text>
+                    <Dropdown confirmTitle={"Confirm endpoint change"} placeholder="Endpoint" selectedValue={s3.endpoint} onChange={(value) => onRowArrayChange(fieldName, index, "endpoint", value)} options={s3ProvOptions} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
@@ -132,11 +137,11 @@ const S3DirectoryRowForm = React.memo(({ fieldName, s3directory, index, onChange
     )
 })
 
-const S3DirectoryNewForm = React.memo(({ onSave = () => { }, onCancel = () => { } }) => {
+const S3DirectoryNewForm = React.memo(({ s3ProvOptions = [], onSave = () => { }, onCancel = () => { } }) => {
     const [s3, setS3] = useState(defaultS3);
 
     const valid = useMemo(() => {
-        return s3.name && s3.bucket;
+        return s3.endpoint && s3.bucket;
     }, [s3]);
 
     const handleArrayChange = (key, value) => {
@@ -158,8 +163,8 @@ const S3DirectoryNewForm = React.memo(({ onSave = () => { }, onCancel = () => { 
         <Flex className={styles.S3DirectoryRowForm} w="100%" align="flex-start" gap={4}>
             <Flex direction="column" flex="1" minW="300px" gap={2}>
                 <Flex direction="column" flex="1">
-                    <Text mb={1}>Name:</Text>
-                    <Input placeholder="Name" value={s3.name} onChange={(e) => handleArrayChange("name", e.target.value)} />
+                    <Text mb={1}>Endpoint:</Text>
+                    <Dropdown placeholder="Endpoint" selectedValue={s3.endpoint} onChange={(option) => handleArrayChange("endpoint", option.value)} options={s3ProvOptions} />
                 </Flex>
                 <Flex direction="column" flex="1">
                     <Text mb={1}>Bucket:</Text>
