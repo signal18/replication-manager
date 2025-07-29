@@ -51,10 +51,10 @@ const PathSection = ({
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
 }) => {
-  const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null });
+  const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null, rowdata: null });
   const dispatch = useDispatch();
 
-  const { isVisible, parentRow } = newForm;
+  const { isVisible, parentRow, rowdata } = newForm;
   const gitRows = storages?.gitClones || [];
   const volumeRows = storages?.volumes || [];
   const s3Rows = storages?.s3Mounts || [];
@@ -100,6 +100,10 @@ const PathSection = ({
     setNewForm({ isVisible: true, parentRow: parent });
     onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
+
+  const handleEditItem = useCallback((rows, row) => {
+    setNewForm({ isVisible: true, parentRow: rows?.find(r => r.name === row.parentname), rowdata: row });
+  }, []);
 
   const handleCancel = useCallback(() => {
     setNewForm({ isVisible: false, parentRow: null });
@@ -148,6 +152,11 @@ const PathSection = ({
           />
           )}
           <RMIconButton
+            icon={TbLinkPlus}
+            tooltip="Add Storage Mapping for Git"
+            onClick={() => handleEditItem(resolvedRows, row.original)}
+          />
+          <RMIconButton
             icon={HiTrash}
             tooltip="Delete Variable"
             onClick={() => onRowDropIndex(fieldName, row.index)}
@@ -155,18 +164,8 @@ const PathSection = ({
           </Flex>
         ),
       }),
-      {
-        id: 'expansion',
-        header: '',
-        meta: {
-          renderExpansion: (row) => {
-            return (<PathRowForm fieldName={fieldName} path={row.original} index={row.index} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={row.original.parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} />);
-          },
-        },
-        cell: () => null,
-      }
     ],
-    [fieldName, onRowArrayChange, onRowDropIndex, gitRows, volumeOptions, gitOptions, s3Options]
+    [fieldName, onRowArrayChange, onRowDropIndex, rows, gitRows, volumeOptions, gitOptions, s3Options]
   )
 
   return (
@@ -182,10 +181,14 @@ const PathSection = ({
       {isVisible ? (
         <VStack spacing={3} align="stretch">
           <Heading as="h3" size="md">
-            Add New Path
+            { rowdata ? `Edit Path: ${rowdata.dockerpath}` : "Add New Path" }
           </Heading>
           <Box className={styles.tableContainer}>
-            <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
+            { rowdata ? (
+              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} />
+            ) : (
+              <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
+            )}
           </Box>
         </VStack>
       ) : (
@@ -366,6 +369,18 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
     selectedPath: '',
     selectedKey: '',
   });
+
+  useEffect(() => {
+    if (parentRow) {
+      setPath(prev => ({
+        ...prev,
+        parentname: parentRow.name,
+        parentpath: parentRow.dockerpath || parentRow.srcpath,
+      }));
+    } else {
+      setPath(defaultPath);
+    }
+  }, [parentRow]);
 
   const { dockerpath, dockersubpath, srctype, srcname, srcbasepath, srcpath, subpath } = path;
   const { isOpen, selectedPath, selectedKey } = browseState;
