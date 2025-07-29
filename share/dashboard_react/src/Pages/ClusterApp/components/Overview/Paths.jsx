@@ -359,13 +359,13 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
             </Flex>
           )}
         </>)}
-      </Flex>
-      <Flex direction="column" flex="1">
-        <HStack spacing={2} mt={4}>
-          <RMButton onClick={onCancel}>
-            Close Form
-          </RMButton>
-        </HStack>
+        <Flex direction="column" flex="1">
+          <HStack spacing={2} mt={4}>
+            <RMButton onClick={onCancel}>
+              Close Form
+            </RMButton>
+          </HStack>
+        </Flex>
       </Flex>
     </Flex>
   )
