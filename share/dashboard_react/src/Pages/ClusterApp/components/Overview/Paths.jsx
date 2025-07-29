@@ -144,23 +144,23 @@ const PathSection = ({
         id: 'actions',
         cell: ({ row }) => (
           <Flex gap={2} align="center">
-          { row.original.srctype == "git" && (
-          <RMIconButton
-            icon={TbLinkPlus}
-            tooltip="Add Storage Mapping for Git"
-            onClick={() => handleAddItem(row.original)}
-          />
-          )}
-          <RMIconButton
-            icon={TbEdit}
-            tooltip="Edit Path"
-            onClick={() => handleEditItem(resolvedRows, row.original)}
-          />
-          <RMIconButton
-            icon={HiTrash}
-            tooltip="Delete Path"
-            onClick={() => onRowDropIndex(fieldName, row.index)}
-          />
+            {row.original.srctype == "git" && (
+              <RMIconButton
+                icon={TbLinkPlus}
+                tooltip="Add Storage Mapping for Git"
+                onClick={() => handleAddItem(row.original)}
+              />
+            )}
+            <RMIconButton
+              icon={TbEdit}
+              tooltip="Edit Path"
+              onClick={() => handleEditItem(resolvedRows, row.original)}
+            />
+            <RMIconButton
+              icon={HiTrash}
+              tooltip="Delete Path"
+              onClick={() => onRowDropIndex(fieldName, row.index)}
+            />
           </Flex>
         ),
       }),
@@ -181,11 +181,11 @@ const PathSection = ({
       {isVisible ? (
         <VStack spacing={3} align="stretch">
           <Heading as="h3" size="md">
-            { rowdata ? `Edit Path: ${rowdata.dockerpath}` : "Add New Path" }
+            {rowdata ? `Edit Path: ${rowdata.dockerpath}` : "Add New Path"}
           </Heading>
           <Box className={styles.tableContainer}>
-            { rowdata ? (
-              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} />
+            {rowdata ? (
+              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} onCancel={handleCancel} />
             ) : (
               <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
             )}
@@ -208,7 +208,7 @@ export default React.memo(PathSection);
 
 const EMPTY_OBJECT = {};
 
-const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, parentRow, onChange }) => {
+const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gitOptions, volumeOptions, s3Options, parentRow, onChange, onCancel = () => { } }) => {
   const dispatch = useDispatch();
   const p = path || defaultPath;
   const { dockerpath, parentname, srctype, srcname, srcpath } = p;
@@ -333,7 +333,7 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
   return (
     <Flex className={styles.variableRowForm} w="100%" align="flex-start" gap={4}>
       <Flex direction="column" flex="1" minW="300px" gap={2}>
-         {parentname && (
+        {parentname && (
           <Flex direction="column" flex="1">
             <Text mb={1}>Base Path: {parentpath}</Text>
           </Flex>
@@ -352,13 +352,20 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
             <Flex direction="column" flex="1">
               <Text mb={1}>Storage Path:</Text>
               {srctype === "git" ? (
-              <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
+                <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
               ) : (
                 <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} />
               )}
             </Flex>
           )}
         </>)}
+      </Flex>
+      <Flex direction="column" flex="1">
+        <HStack spacing={2} mt={4}>
+          <RMButton onClick={onCancel}>
+            Close Form
+          </RMButton>
+        </HStack>
       </Flex>
     </Flex>
   )
@@ -432,7 +439,7 @@ const PathNewForm = React.memo(({ clusterName, appId, parentRow, gitOptions, vol
     );
   }, [srctype, volumeOptions, gitOptions, s3Options]);
 
-  const parent = useMemo(() => (parentRow || { name: "", dockerpath: "", srcpath: "", srctype: "", srcname: "" }),[parentRow]);
+  const parent = useMemo(() => (parentRow || { name: "", dockerpath: "", srcpath: "", srctype: "", srcname: "" }), [parentRow]);
   const { name: parentname, dockerpath: parentpath, srctype: parentsrctype, srcname: parentsrcname, srcpath: parentsrcpath } = parent;
 
   const newSourceTypes = useMemo(() => {
