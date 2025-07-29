@@ -351,7 +351,11 @@ const PathRowForm = React.memo(({ fieldName, path, index, clusterName, appId, gi
           {srcname && (
             <Flex direction="column" flex="1">
               <Text mb={1}>Storage Path:</Text>
+              {srctype === "git" ? (
               <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} isTree={true} treeNodeToValue={nodeToValue} treeNodeToString={nodeToString} treeData={srcTree} onTreeSelect={handleOnTreeSelect} />
+              ) : (
+                <TextForm confirmTitle={"Source path changed"} name={`row_${index}.subpath`} placeholder="To" value={subpath} onSave={(value) => handleSubPathChange(value)} />
+              )}
             </Flex>
           )}
         </>)}
