@@ -1,7 +1,7 @@
 import { VStack, HStack, Text, Heading, Input, Select, Flex, InputGroup, Box } from '@chakra-ui/react'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { HiFolder, HiTrash } from 'react-icons/hi'
-import { TbLinkPlus } from 'react-icons/tb'
+import { TbEdit, TbLinkPlus } from 'react-icons/tb'
 import Dropdown from '../../../../components/Dropdown';
 import TextForm from '../../../../components/TextForm';
 import RMIconButton from '../../../../components/RMIconButton';
@@ -152,13 +152,13 @@ const PathSection = ({
           />
           )}
           <RMIconButton
-            icon={TbLinkPlus}
-            tooltip="Add Storage Mapping for Git"
+            icon={TbEdit}
+            tooltip="Edit Path"
             onClick={() => handleEditItem(resolvedRows, row.original)}
           />
           <RMIconButton
             icon={HiTrash}
-            tooltip="Delete Variable"
+            tooltip="Delete Path"
             onClick={() => onRowDropIndex(fieldName, row.index)}
           />
           </Flex>
