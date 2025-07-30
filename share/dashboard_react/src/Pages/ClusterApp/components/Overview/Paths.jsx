@@ -33,7 +33,7 @@ const defaultPath = {
   subpath: "/",
 }
 
-const nodeToValue = (node) => { console.log(`nodeToValue: ${JSON.stringify(node)}`); return node.path; };
+const nodeToValue = (node) => node.type === "directory" ? node.path + "/" : node.path;
 const nodeToString = (node) => node.name || node.path;
 
 const columnHelper = createColumnHelper()
