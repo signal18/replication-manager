@@ -489,7 +489,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 		gitpass := prefix + config.GitVarSuffixPass
 		gitURL := prefix + config.GitVarSuffixRepo
 
-		urlString := gitURL
+		urlString := "$" + gitURL
 		if gc.GitPass != "" {
 			if strings.Contains(gc.GitRepo, "github.com") {
 				urlString = fmt.Sprintf("$%s@$%s", gitpass, gitURL)
