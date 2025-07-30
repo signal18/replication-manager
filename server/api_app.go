@@ -1107,15 +1107,15 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		if row.Name == "" && row.Bucket != "" && row.Endpoint != "" {
-			// Generate a unique name for the S3 mount if not provided
-			row.Name = fmt.Sprintf("s3-%s-%s", row.Endpoint, row.Bucket)
-		}
-
-		s3node := mycluster.GetAppFromName(row.Endpoint)
+		s3node, _ := mycluster.GetAppByURL(row.Endpoint)
 		if s3node == nil {
 			http.Error(w, "S3 endpoint app not found: "+row.Endpoint, http.StatusInternalServerError)
 			return
+		}
+
+		if row.Name == "" && row.Bucket != "" && row.Endpoint != "" {
+			// Generate a unique name for the S3 mount if not provided
+			row.Name = fmt.Sprintf("s3-%s-%s", s3node.Name, row.Bucket)
 		}
 
 		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
@@ -1353,6 +1353,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					// Do not allow changing the name of an existing S3 directory
 					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
 					return
+				case "endpoint":
+					if newValue == "" {
+						http.Error(w, "Endpoint cannot be empty", 500)
+						return
+					}
+					s3Mount.Endpoint = newValue
 				case "bucket":
 					s3Mount.Bucket = newValue
 				case "volumename":
