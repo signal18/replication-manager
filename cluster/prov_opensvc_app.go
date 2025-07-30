@@ -308,6 +308,10 @@ func (cluster *Cluster) OpenSVCGetAppVolumeSections(basemap map[string]map[strin
 			}
 			if mappedPaths, ok := pathmap[volName]; ok {
 				for _, path := range mappedPaths {
+					// if path is not end with "/", get parent directory
+					if !strings.HasSuffix(path, "/") {
+						path = filepath.Dir(path) + "/"
+					}
 					directorySet[filepath.Join(path)] = struct{}{}
 				}
 			}

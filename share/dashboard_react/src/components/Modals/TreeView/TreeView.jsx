@@ -41,23 +41,25 @@ const useTreeAPI = () => {
 const getTreeNodeData = (node, indexPath, parentValue, parentSelected, api) => {
   const nodeProps = { indexPath, node }
   const nodeState = api.getNodeState(nodeProps)
+  const nodeValue = (nodeState.value.startsWith("/") ? nodeState.value : `/${nodeState.value}`).trim().replaceAll("//", "/")
+  const pValue = parentValue.startsWith("/") ? parentValue : `/${parentValue}`
 
   let equal = false, leaf = false, hasPrefix = false, root = false
   
   if (parentSelected) {
     api.selectedValue.forEach(selected => {
       if (!selected) return
-      const cleanSelected = selected.trim()
-      equal = cleanSelected === nodeState.value.trim() ? true : equal
-      hasPrefix = cleanSelected.startsWith(nodeState.value + "/") ? true : hasPrefix
-      leaf = cleanSelected === parentValue.trim() ? true : leaf
-      root = nodeState.value === "/" ? true : root
+      const cleanSelected = (selected.startsWith("/") ? selected : `/${selected}`).trim().replaceAll("//", "/")
+      equal = cleanSelected === nodeValue.trim() ? true : equal
+      hasPrefix = cleanSelected.startsWith(nodeValue) ? true : hasPrefix
+      leaf = cleanSelected === pValue.trim().replaceAll("//","/") ? true : leaf
+      root = nodeValue === "/" ? true : root
     });
   }
 
-  const isVisible = parentSelected ? (equal || hasPrefix || leaf || root) : false
+  const isVisible = root || parentSelected ? (equal || hasPrefix || leaf) : false
 
-  console.log(`Debug visibility for ${nodeState.value}, parent ${parentValue} => root: ${root}, equal: ${equal}, hasPrefix: ${hasPrefix}, leaf: ${leaf}`)
+  // console.log(`Debug tree visibility for ${nodeState.value}, parent ${parentValue} => root: ${root}, equal: ${equal}, hasPrefix: ${hasPrefix}, leaf: ${leaf}`)
 
   if (!isVisible) {
     return {
@@ -232,14 +234,15 @@ const TreeView = React.memo(({ title = "Browse Path", treeName="", treeData = de
     const expanded = ["/"]
     selectedNode.forEach((value) => {
       if (value) {
-        const parts = value.split("/")
-        let currentPath = ""
+        const parts = value.replaceAll("//", "/").split("/")
+        let currentPath = "/"
         parts.forEach((part, index) => {
           if (part) {
-            currentPath += `/${part}`
-            if (index < parts.length) {
-              expanded.push(currentPath)
+            currentPath += part
+            if (index < parts.length - 1) {
+              currentPath += "/"
             }
+            expanded.push(currentPath)
           }
         })
       }
@@ -254,9 +257,9 @@ const TreeView = React.memo(({ title = "Browse Path", treeName="", treeData = de
   }), [treeData, nodeToValue, nodeToString])
 
   const handleSelect = (node) => {
-    console.log("Selected Node:", node)
+    // console.log("Selected Tree Node:", node)
     let selectedValue = node?.selectedValue || []
-    setSelectedNode(selectedValue)
+    setSelectedNode(selectedValue.map((value) => value.replaceAll("//", "/")))
   }
 
   const handleExpandedChange = (node) => {
@@ -290,7 +293,7 @@ const TreeView = React.memo(({ title = "Browse Path", treeName="", treeData = de
   }
 
   useEffect(() => {
-    console.log("selected values", api.selectedValue, "expanded values", api.expandedValue)
+    // console.log("selected tree values", api.selectedValue, "expanded values", api.expandedValue)
   }, [api.selectedValue, api.expandedValue])
 
   return (
