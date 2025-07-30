@@ -51,10 +51,10 @@ const PathSection = ({
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
 }) => {
-  const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null, rowdata: null });
+  const [newForm, setNewForm] = useState({ isVisible: false, parentRow: null, rowdata: null, index: null });
   const dispatch = useDispatch();
 
-  const { isVisible, parentRow, rowdata } = newForm;
+  const { isVisible, parentRow, rowdata, index } = newForm;
   const gitRows = storages?.gitClones || [];
   const volumeRows = storages?.volumes || [];
   const s3Rows = storages?.s3Mounts || [];
@@ -101,8 +101,8 @@ const PathSection = ({
     onPauseAutoReload(); // Pause auto-reload when adding a new item
   };
 
-  const handleEditItem = useCallback((rows, row) => {
-    setNewForm({ isVisible: true, parentRow: rows?.find(r => r.name === row.parentname), rowdata: row });
+  const handleEditItem = useCallback((rows, row, index) => {
+    setNewForm({ isVisible: true, parentRow: rows?.find(r => r.name === row.parentname), rowdata: row, index: index });
   }, []);
 
   const handleCancel = useCallback(() => {
@@ -154,7 +154,7 @@ const PathSection = ({
             <RMIconButton
               icon={TbEdit}
               tooltip="Edit Path"
-              onClick={() => handleEditItem(resolvedRows, row.original)}
+              onClick={() => handleEditItem(resolvedRows, row.original, row.index)}
             />
             <RMIconButton
               icon={HiTrash}
@@ -185,7 +185,7 @@ const PathSection = ({
           </Heading>
           <Box className={styles.tableContainer}>
             {rowdata ? (
-              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} onCancel={handleCancel} />
+              <PathRowForm fieldName={fieldName} path={rowdata} clusterName={clusterName} appId={appId} gitRows={gitRows} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} dockerImage={dockerImage} onChange={onRowArrayChange} index={index} onCancel={handleCancel} />
             ) : (
               <PathNewForm clusterName={clusterName} appId={appId} gitOptions={gitOptions} volumeOptions={volumeOptions} s3Options={s3Options} parentRow={parentRow} onSave={handleSaveAdd} onCancel={handleCancel} />
             )}
