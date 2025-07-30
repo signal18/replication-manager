@@ -481,7 +481,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 		svccontainer["volume_mounts"] = fmt.Sprintf("/etc/localtime:/etc/localtime:ro %s:/bootstrap", app.GetAppVolumeName(gc.GetSourcePoolName(), false))
 		svccontainer["secrets_environment"] = gc.GetVariableKeys(app.Name, "secret")
 		svccontainer["configs_environment"] = gc.GetVariableKeys(app.Name, "env")
-		dirname := filepath.Join("/bootstrap", gc.GetSourcePath(), gc.Name)
+		dirname := filepath.Join("/bootstrap", gc.GetSourcePath())
 
 		prefix := gc.GetVariablePrefix()
 		branchKey := "$" + prefix + config.GitVarSuffixBranch
