@@ -628,7 +628,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 	// Create the s3 mount config keys
 	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
 		if s3m.Node == nil {
-			node := cluster.GetAppFromName(s3m.Endpoint)
+			node, _ := cluster.GetAppByURL(s3m.Endpoint)
 			if node == nil {
 				return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
 			}

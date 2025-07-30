@@ -57,11 +57,12 @@ func (cluster *Cluster) newAppList() error {
 	cluster.Conf.Cloud18ApplicationCreditsUsed = 0
 	for k, appcnf := range cluster.Conf.Apps {
 		app := NewApp(k, cluster, appcnf.AppHost+":"+appcnf.AppPort)
+		hostport := app.GetHost() + ":" + app.GetPort()
 		cluster.AddApp(app)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlDbg, "New HA App created: %s %s", app.GetHost(), app.GetPort())
 		if appcnf.AppS3Provider {
-			news3providers = append(news3providers, app.Name)
-			if !slices.Contains(cluster.AppS3Providers, app.Name) {
+			news3providers = append(news3providers, hostport)
+			if !slices.Contains(cluster.AppS3Providers, hostport) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Add app as S3 provider: %s", app.Name)
 			}
 		}
