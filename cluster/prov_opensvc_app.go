@@ -627,11 +627,20 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	// Create the s3 mount config keys
 	for _, s3m := range app.AppConfig.Deployment.Storages.S3Mounts {
+		if s3m.Node == nil {
+			node := cluster.GetAppFromName(s3m.Endpoint)
+			if node == nil {
+				return fmt.Errorf("S3 mount node %s not found in cluster %s", s3m.Endpoint, cluster.Name)
+			}
+			s3m.Node = node
+		}
 		prefix := s3m.GetVariablePrefix()
 		envs := s3m.GetEnvVariables()
 		for k, val := range envs {
 			vName := prefix + k
-			if k == config.S3VarSuffixMountDir {
+			if k == config.S3VarSuffixEndpoint {
+				val = s3m.Node.GetS3Endpoint()
+			} else if k == config.S3VarSuffixMountDir {
 				// If the mount directory is not set, we use the default mount directory
 				if val == "" {
 					val = "/mnt"

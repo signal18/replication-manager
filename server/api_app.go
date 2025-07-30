@@ -1112,13 +1112,39 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			row.Name = fmt.Sprintf("s3-%s-%s", row.Endpoint, row.Bucket)
 		}
 
+		s3node := mycluster.GetAppFromName(row.Endpoint)
+		if s3node == nil {
+			http.Error(w, "S3 endpoint app not found: "+row.Endpoint, http.StatusInternalServerError)
+			return
+		}
+
+		acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+		if err != nil || acckey == nil {
+			http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+			return
+		}
+		row.AccessKey = acckey.Value
+
+		secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+		if err != nil || secretkey == nil {
+			http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+			return
+		}
+
+		row.SecretKey = secretkey.Value
+
+		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+		if region != nil {
+			row.Region = region.Value
+		}
+
 		if row.VolumeName == "" {
 			row.Volume = mycluster.SetAppLocalMountVolume(node)
 			row.VolumeName = row.Volume.Name
 			row.VolumeDir = filepath.Join(row.Volume.VolumeDir, row.Name)
 		}
 
-		err := deployment.InsertS3Mount(row)
+		err = deployment.InsertS3Mount(row)
 		if err != nil {
 			http.Error(w, "Error inserting S3 mapping: "+err.Error(), http.StatusInternalServerError)
 			return

@@ -723,6 +723,10 @@ func IsValidSourceType(sourceType string) bool {
 
 type S3Mounts []*S3Mount
 
+type S3Node interface {
+	GetS3Endpoint() string
+}
+
 type S3Mount struct {
 	Name       string `mapstructure:"name" toml:"name" json:"name"`
 	Endpoint   string `mapstructure:"endpoint" toml:"endpoint" json:"endpoint" groups:"apps"`
@@ -734,6 +738,7 @@ type S3Mount struct {
 	VolumeName string `mapstructure:"volumename" toml:"volumename" json:"volumename" groups:"apps"`
 	VolumeDir  string `mapstructure:"volumedir" toml:"volumedir" json:"volumedir" groups:"apps"`
 
+	Node   S3Node  `mapstructure:"-" toml:"-" json:"-"`
 	Volume *Volume `mapstructure:"-" toml:"-" json:"-"`
 }
 
@@ -761,7 +766,7 @@ func GetS3SecretKeys() []string {
 }
 
 func (s *S3Mount) GetVariablePrefix() string {
-	return "S3_" + strings.ToUpper(gitVariableReplacer.Replace(s.Name)) + "_"
+	return strings.ToUpper(gitVariableReplacer.Replace(s.Name)) + "_"
 }
 
 func (s *S3Mount) GetVariableKeys(appName string, vartype string) string {

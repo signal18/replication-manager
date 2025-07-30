@@ -378,3 +378,7 @@ func (app *App) GetVolumes(resolved bool) []string {
 
 	return volumes
 }
+
+func (app *App) GetS3Endpoint() string {
+	return app.GetHost() + ":" + app.GetPort()
+}
