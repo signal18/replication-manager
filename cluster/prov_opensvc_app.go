@@ -643,7 +643,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		for k, val := range envs {
 			vName := prefix + k
 			if k == config.S3VarSuffixEndpoint {
-				val = s3m.Node.GetS3Endpoint()
+				val = "http://" + s3m.Node.GetS3Endpoint()
 			} else if k == config.S3VarSuffixMountDir {
 				// If the mount directory is not set, we use the default mount directory
 				if val == "" {
