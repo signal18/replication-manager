@@ -490,7 +490,7 @@ func (cluster *Cluster) OpenSVCGetAppGitInitContainerSection(app *App, gc *confi
 		gitURL := prefix + config.GitVarSuffixRepo
 
 		urlString := "$" + gitURL
-		if gc.GitPass != "" {
+		if cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass) != "" {
 			if strings.Contains(gc.GitRepo, "github.com") {
 				urlString = fmt.Sprintf("$%s@$%s", gitpass, gitURL)
 			} else {
@@ -567,14 +567,14 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 
 	for _, v := range app.AppConfig.Deployment.Variables {
 		if v.Type == "secret" {
-			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, v.Value)
+			err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, v.Name, cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", v.Name, err)
 			}
 
 			for _, cd := range v.Conditional {
 				cdname := fmt.Sprintf("%s@%s", v.Name, cd.Agent)
-				err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, cdname, cd.Value)
+				err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, cdname, cluster.Conf.GetDecryptedPassword(cdname, cd.Value))
 				if err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add conditional key to secret: %s %s ", cdname, err)
 				}
@@ -623,7 +623,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 
 		// Create the git clone secret key
-		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, gc.GitPass)
+		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.GitVarSuffixPass, cluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.GitVarSuffixPass, err)
 		}
@@ -668,7 +668,7 @@ func (cluster *Cluster) OpenSVCCreateAppVariableMaps(agent string, app *App) err
 		}
 
 		// Create the s3 mount secret key
-		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, s3m.SecretKey)
+		err = svc.CreateSecretKeyValueV2(cluster.Name, app.Name, prefix+config.S3VarSuffixSecretKey, cluster.Conf.GetDecryptedPassword(s3m.Name, s3m.SecretKey))
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", prefix+config.S3VarSuffixSecretKey, err)
 		}

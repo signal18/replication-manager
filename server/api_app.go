@@ -652,27 +652,49 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				}
 				// Modify field based on key
 				switch vars["key"] {
-				case "name", "value", "type":
-					err := node.UpdateVariable(index, vars["key"], newValue)
-					if err != nil {
-						http.Error(w, err.Error(), 500)
-						return
-					}
+				case "name":
+					row.Name = newValue
+				case "value":
+					newValue, _ = node.ClusterGroup.ParseAppTemplate(newValue, node.AppClusterSubstitute)
+					row.Value = newValue
+				case "type":
+					row.Type = newValue
 				case "conditional":
-					node.UpdateConditionalVariables(index, condValue)
+					old := row.Conditional
+					addFunc := func(new config.AgentVariable) config.AgentVariable {
+						new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
+						return new
+					}
+					updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
+						new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
+						return new
+					}
+
+					if row.Type == config.VariableTypeSecret {
+						for i, v := range condValue {
+							// Decrypt the value if it's a secret
+							condValue[i].Value = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name+"@"+v.Agent, v.Value))
+						}
+					}
+
+					row.Conditional = old.Merge(condValue, addFunc, updateFunc)
 				default:
 					http.Error(w, "Invalid key for variables", 500)
 					return
 				}
+				if row.Type == config.VariableTypeSecret {
+					row.Value = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, row.Value))
+				}
+				node.AppConfig.Deployment.Variables[index] = row
 			case "paths":
 				if index >= len(node.AppConfig.Deployment.Paths) {
-					http.Error(w, "Index out of range for variables", 500)
+					http.Error(w, "Index out of range for paths", 500)
 					return
 				}
 
 				deployment := node.AppConfig.Deployment
 				if index >= len(deployment.Paths) {
-					http.Error(w, "Index out of range for path", 500)
+					http.Error(w, "Index out of range for paths", 500)
 					return
 				}
 
@@ -852,7 +874,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				return
 			}
 			row.Value, _ = mycluster.ParseAppTemplate(row.Value, node.AppClusterSubstitute)
-			node.AppConfig.Deployment.Variables = append(node.AppConfig.Deployment.Variables, row)
+			mycluster.SetAppVariableValue(node, row)
 		}
 		affected = true
 
@@ -1081,6 +1103,11 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
 			return
 		}
+
+		if row.GitPass != "" {
+			row.GitPass = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, row.GitPass))
+		}
+
 		err := deployment.InsertGitClone(row)
 		if err != nil {
 			http.Error(w, "Error inserting git clone: "+err.Error(), http.StatusInternalServerError)
@@ -1131,7 +1158,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 			return
 		}
 
-		row.SecretKey = secretkey.Value
+		row.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(row.Name, secretkey.Value))
 
 		region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
 		if region != nil {
@@ -1296,7 +1323,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				case "user":
 					gc.GitUser = newValue
 				case "pass":
-					gc.GitPass = newValue
+					gc.GitPass = mycluster.Conf.GetEncryptedString(newValue)
 				default:
 					http.Error(w, "Invalid key for gitClones", 500)
 					return
@@ -1358,6 +1385,35 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "Endpoint cannot be empty", 500)
 						return
 					}
+
+					s3node, _ := mycluster.GetAppByURL(newValue)
+					if s3node == nil {
+						http.Error(w, "S3 endpoint app not found: "+newValue, http.StatusInternalServerError)
+						return
+					}
+
+					acckey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_USER", false)
+					if err != nil || acckey == nil {
+						http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
+						return
+					}
+					s3Mount.AccessKey = acckey.Value
+
+					secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
+					if err != nil || secretkey == nil {
+						http.Error(w, "S3 endpoint app does not have MINIO_ROOT_PASSWORD variable set", http.StatusInternalServerError)
+						return
+					}
+
+					s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
+
+					region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)
+					if region != nil {
+						s3Mount.Region = region.Value
+					} else {
+						s3Mount.Region = ""
+					}
+
 					s3Mount.Endpoint = newValue
 				case "bucket":
 					s3Mount.Bucket = newValue
@@ -1695,20 +1751,21 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		var err error
 		var gClient githelper.GitClientInterface
 		var baseURL, projectID string
+		gitpass := mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass)
 		if strings.Contains(gc.GitRepo, "github") {
 			_, projectID, err = githelper.ParseGitHubURL(gc.GitRepo)
 			if err != nil {
 				http.Error(w, "Invalid GitHub repository URL: "+err.Error(), 400)
 				return
 			}
-			gClient, err = githelper.NewGithubClient(gc.GitPass)
+			gClient, err = githelper.NewGithubClient(gitpass)
 		} else {
 			baseURL, projectID, err = githelper.ParseGitLabURL(gc.GitRepo)
 			if err != nil {
 				http.Error(w, "Invalid GitLab repository URL: "+err.Error(), 400)
 				return
 			}
-			gClient, err = githelper.NewGitlabClient(baseURL, gc.GitPass)
+			gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
 		}
 		if err != nil {
 			http.Error(w, "Error creating Git client: "+err.Error(), 500)

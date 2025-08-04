@@ -211,21 +211,6 @@ func (app *App) UpdateVariable(vIndex int, field, newValue string) error {
 	return nil
 }
 
-func (app *App) UpdateConditionalVariables(vIndex int, condValue config.AVSlice) error {
-	old := app.AppConfig.Deployment.Variables[vIndex].Conditional
-	addFunc := func(new config.AgentVariable) config.AgentVariable {
-		new.Value, _ = app.ClusterGroup.ParseAppTemplate(new.Value, app.AppClusterSubstitute)
-		return new
-	}
-	updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
-		new.Value, _ = app.ClusterGroup.ParseAppTemplate(new.Value, app.AppClusterSubstitute)
-		return new
-	}
-
-	app.AppConfig.Deployment.Variables[vIndex].Conditional = old.Merge(condValue, addFunc, updateFunc)
-	return nil
-}
-
 func (app *App) SetAppProvisionByCredit(creditPlanSize int) error {
 
 	if creditPlanSize == app.AppConfig.ProvAppCreditPlanned {

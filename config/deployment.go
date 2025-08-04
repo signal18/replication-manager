@@ -417,6 +417,9 @@ type RouteStatus struct {
 	Status string `mapstructure:"status"  toml:"status" json:"status"`
 }
 
+const VariableTypeEnv = "env"
+const VariableTypeSecret = "secret"
+
 type VariableMaps []VariableMapping
 
 type VariableMapping struct {
@@ -642,11 +645,11 @@ func (gc *GitClone) GetEnvVariables() map[string]string {
 	return envVars
 }
 
-func (gc *GitClone) GetSecretVariables() map[string]string {
-	secretVars := make(map[string]string)
-	secretVars[GitVarSuffixPass] = gc.GitPass
-	return secretVars
-}
+// func (gc *GitClone) GetSecretVariables() map[string]string {
+// 	secretVars := make(map[string]string)
+// 	secretVars[GitVarSuffixPass] = gc.GitPass
+// 	return secretVars
+// }
 
 func (gc *GitClone) GetVariableKeys(appName string, vartype string) string {
 	result := make([]string, 0)

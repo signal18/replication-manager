@@ -537,3 +537,47 @@ func (cluster *Cluster) GetAppByURL(url string) (*App, int) {
 
 	return cluster.GetAppByHostPort(host, port)
 }
+
+func (cluster *Cluster) GetAppDecryptedVariableValue(app *App, key string) (string, error) {
+	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return "", errors.New("app or app configuration is not initialized")
+	}
+
+	for _, variable := range app.AppConfig.Deployment.Variables {
+		if variable.Name == key {
+			return cluster.Conf.GetDecryptedPassword(key, variable.Value), nil
+		}
+	}
+
+	return "", errors.New("variable not found")
+}
+
+func (cluster *Cluster) GetAppEncryptedVariableValue(app *App, key string) (string, error) {
+	decrypted, err := cluster.GetAppDecryptedVariableValue(app, key)
+	if err != nil {
+		return "", err
+	}
+
+	return cluster.Conf.GetEncryptedString(decrypted), nil
+}
+
+func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) error {
+	if app == nil || app.AppConfig == nil || app.AppConfig.Deployment == nil {
+		return errors.New("app or app configuration is not initialized")
+	}
+	newValue := v.Value
+	if v.Type == config.VariableTypeSecret {
+		newValue = cluster.Conf.GetEncryptedString(cluster.Conf.GetDecryptedPassword(v.Name, v.Value))
+	}
+
+	for i, variable := range app.AppConfig.Deployment.Variables {
+		if variable.Name == v.Name {
+			app.AppConfig.Deployment.Variables[i].Value = newValue
+			return nil
+		}
+	}
+
+	// If the variable does not exist, add it
+	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, config.VariableMapping{Name: v.Name, Value: newValue})
+	return nil
+}
