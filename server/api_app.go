@@ -9,6 +9,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"path/filepath"
 	"sort"
@@ -37,6 +38,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/substitution", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSubstitutionVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/resolve-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResolveTemplate)),
 	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/deployment", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -655,20 +660,20 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				case "name":
 					row.Name = newValue
 				case "value":
-					newValue, _ = node.ClusterGroup.ParseAppTemplate(newValue, node.AppClusterSubstitute)
+					// newValue, _ = node.ClusterGroup.ParseAppTemplate(newValue, node.AppClusterSubstitute)
 					row.Value = newValue
 				case "type":
 					row.Type = newValue
 				case "conditional":
 					old := row.Conditional
-					addFunc := func(new config.AgentVariable) config.AgentVariable {
-						new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
-						return new
-					}
-					updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
-						new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
-						return new
-					}
+					// addFunc := func(new config.AgentVariable) config.AgentVariable {
+					// 	// new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
+					// 	return new
+					// }
+					// updateFunc := func(old, new config.AgentVariable) config.AgentVariable {
+					// 	// new.Value, _ = node.ClusterGroup.ParseAppTemplate(new.Value, node.AppClusterSubstitute)
+					// 	return new
+					// }
 
 					if row.Type == config.VariableTypeSecret {
 						for i, v := range condValue {
@@ -677,7 +682,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 						}
 					}
 
-					row.Conditional = old.Merge(condValue, addFunc, updateFunc)
+					row.Conditional = old.Merge(condValue, nil, nil)
 				default:
 					http.Error(w, "Invalid key for variables", 500)
 					return
@@ -873,7 +878,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 				http.Error(w, "Cannot duplicate variable with same name", 400)
 				return
 			}
-			row.Value, _ = mycluster.ParseAppTemplate(row.Value, node.AppClusterSubstitute)
+			// row.Value, _ = mycluster.ParseAppTemplate(row.Value, node.AppClusterSubstitute)
 			mycluster.SetAppVariableValue(node, row)
 		}
 		affected = true
@@ -1900,6 +1905,68 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			mycluster.LoadAppTemplate(node.AppConfig, node.AppConfig.ProvAppTemplate)
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("App template reloaded successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Resolve App Template Variable Values
+// @Description Resolves the template variables for a specific app in a cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param body body DecodedData true "Data to resolve in the template"
+// @Success 200 {string} string "Resolved template variables"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error parsing template" or "Server Not Found" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/resolve-template [post]
+// This endpoint resolves the template variables for a specific app in a cluster.
+func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		var decodedData DecodedData
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		err = json.Unmarshal(body, &decodedData)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			newData, err := mycluster.ParseAppTemplate(decodedData.Data, node.AppClusterSubstitute)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error parsing template: %s", err), 500)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			err = json.NewEncoder(w).Encode(newData)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error encoding response: %s", err.Error()), 500)
+				return
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

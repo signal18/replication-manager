@@ -125,6 +125,7 @@ export const clusterService = {
   startApp,
   stopApp,
   getAppService,
+  resolveTemplateVariables,
   addDeployment,
   dropDeployment,
   deploymentFieldChange,
@@ -597,6 +598,10 @@ function stopApp(clusterName, appId, baseURL) {
 
 function getAppService(clusterName, serviceName, appId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/${serviceName}`)
+}
+
+function resolveTemplateVariables(clusterName, appId, rawValue, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/resolve-template`, {data: rawValue})
 }
 
 function addDeployment(clusterName, appId, deployment, baseURL) {

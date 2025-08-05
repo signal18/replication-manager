@@ -41,6 +41,7 @@ export default React.memo(function Variables({
   onRowArrayChange,
   onRowDropIndex,
   onSaveAdd,
+  onResolveVariable = () => { },
   onPauseAutoReload = () => { },
   onResumeAutoReload = () => { },
 }) {
@@ -55,6 +56,10 @@ export default React.memo(function Variables({
       setIsVisible(false);
       onResumeAutoReload();
     }, [onResumeAutoReload]);
+
+    const handleResolve = useCallback((rawValue) => {
+      return onResolveVariable(rawValue)
+    }, [onResolveVariable]);
   
     const handleSaveAdd = useCallback((formData) => {
       return onSaveAdd(fieldName, formData).then(() => {
@@ -130,7 +135,7 @@ export default React.memo(function Variables({
         header: '',
         meta: {
           renderExpansion: (row) => {
-            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} substitution={substitution} />);
+            return (<VariableRowForm fieldName={fieldName} variable={row.original} agentOptions={agentOptions} index={row.index} onChange={onRowArrayChange} isDisabled={row.original.locked} substitution={substitution} onResolveVariable={handleResolve} />);
           },
         },
         cell: () => null,
@@ -155,7 +160,7 @@ export default React.memo(function Variables({
             Add New Variable
           </Heading>
           <Box className={styles.tableContainer}>
-            <VariableNewForm agentOptions={agentOptions} substitution={substitution} onSave={handleSaveAdd} onCancel={handleCancel} />
+            <VariableNewForm agentOptions={agentOptions} substitution={substitution} onSave={handleSaveAdd} onCancel={handleCancel} onResolveVariable={handleResolve} />
           </Box>
         </VStack>
       ) : (
@@ -187,7 +192,7 @@ function buildAgentCheckboxOptions(agentOptions, renderCheckedContent) {
   return agentOptions.map(item => ({ value: item.value, name: item.name, renderCheckedContent: renderCheckedContent })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled, substitution }) => {
+const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, onChange, isDisabled, substitution, onResolveVariable }) => {
   const v = variable || { name: "", type: "secret", value: "", conditional: [], locked: false };
 
   const onRowArrayChange = (fieldName, index, key, value) => {
@@ -238,9 +243,9 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
     }
 
     return (
-      <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} />
+      <VariableInputArea variables={substitution} key={`variables[${index}].conditional.${item.value}.env`} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].conditional.${item.value}.env`} placeholder="Env" value={agentExists.value} onSave={(value) => onConditionalValueChange(item.value, value)} onResolveVariable={onResolveVariable} />
     );
-  }, [index, onConditionalValueChange, conditional, substitution]);
+  }, [index, onConditionalValueChange, conditional, substitution, onResolveVariable]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
@@ -267,7 +272,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
           {v.type === "secret" ? (
             <TextForm confirmTitle={"Variable value changed"} name={`variables[${index}].secret`} type="password" placeholder="Secret" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
           ) : (
-            <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} />
+            <VariableInputArea variables={substitution} useConfirmModal={true} confirmTitle={"Variable value changed"} name={`variables[${index}].env`} placeholder="Env" value={v.value} onSave={(value) => onRowArrayChange(fieldName, index, "value", value)} onResolveVariable={onResolveVariable} />
           )}
         </Flex>
       </Flex>
@@ -289,7 +294,7 @@ const VariableRowForm = React.memo(({ fieldName, variable, agentOptions, index, 
   )
 })
 
-const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCancel }) => {
+const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCancel, onResolveVariable }) => {
   const [v, setV] = useState(initVariable);
   const { theme } = useTheme();
   const { name, type, value } = v;
@@ -304,6 +309,10 @@ const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCanc
     }
     return v.conditional;
   }, [v.conditional]);
+
+  const handleResolve = useCallback((rawValue) => {
+    return onResolveVariable(rawValue)
+  }, [onResolveVariable]);
 
   const handleArrayChange = useCallback((key, value) => {
     setV((prev) => ({ ...prev, [key]: value }));
@@ -362,9 +371,10 @@ const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCanc
         placeholder="Env"
         value={agentExists.value}
         onChange={(value) => onConditionalValueChange(item.value, value)}
+        onResolveVariable={handleResolve}
       />
     )
-  }, [onConditionalValueChange, conditional, substitution]);
+  }, [onConditionalValueChange, conditional, substitution, handleResolve]);
 
   const agentList = useMemo(() => {
     return buildAgentCheckboxOptions(agentOptions, renderAgentValue);
@@ -427,6 +437,7 @@ const VariableNewForm = React.memo(({ agentOptions, substitution, onSave, onCanc
                 placeholder="Env"
                 value={value}
                 onChange={(value) => handleArrayChange("value", value)}
+                onResolveVariable={handleResolve}
               />
             )}
           </Flex>

@@ -229,7 +229,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 			if vol, err := deployment.GetVolumeByName(gc.VolumeName); err == nil {
 				gc.Volume = vol
 			} else {
-				continue
+				return []byte(""), fmt.Errorf("Git clone volume %s not found in deployment", gc.VolumeName)
 			}
 		}
 		containernum++
@@ -243,14 +243,14 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 			if vol, err := deployment.GetVolumeByName(s3m.VolumeName); err == nil {
 				s3m.Volume = vol
 			} else {
-				continue // Skip if volume resolution fails
+				return []byte(""), fmt.Errorf("S3 mount volume %s not found in deployment", s3m.VolumeName)
 			}
 		}
 
 		// Only allow internal S3 mounts for now
 		s3_app, appidx := cluster.GetAppByURL(s3m.Endpoint)
 		if s3_app == nil || appidx < 0 {
-			continue
+			return []byte(""), fmt.Errorf("S3 mount app %s not found in cluster %s", s3m.Endpoint, cluster.Name)
 		}
 
 		containernum++

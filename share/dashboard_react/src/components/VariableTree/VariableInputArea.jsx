@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Input, Textarea } from '@chakra-ui/react';
 import {
   HiPencilAlt,
@@ -12,12 +12,12 @@ import styles from './variableInputArea.module.scss';
 import treeStyles from './variableTree.module.scss';
 import RMIconButton from '../RMIconButton';
 import ConfirmModal from '../Modals/ConfirmModal';
-import { debounce } from 'lodash';
 
 const VariableInputArea = ({
   value,
   onChange = () => { },
   onSave = () => { },
+  onResolveVariable,
   variables,
   placeholder = 'Enter value...',
   multiline = false,
@@ -32,9 +32,11 @@ const VariableInputArea = ({
 }) => {
   const inputRef = useRef(null);
   const [currentValue, setCurrentValue] = useState(value);
+  const [resolvedValue, setResolvedValue] = useState(value);
   const [previousValue, setPreviousValue] = useState(value);
   const [isEditable, setIsEditable] = useState(alwaysEditable ? true : false);
   const [isOpen, setIsOpen] = useState(false); // for password toggle
+  const [isResolved, setIsResolved] = useState(false); // for resolved state
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   const isPassword = type === 'password';
@@ -98,6 +100,18 @@ const VariableInputArea = ({
     setIsEditable(false);
   };
 
+  const handleResolve = useCallback(() => {
+    onResolveVariable(currentValue).then(
+      (state) => {
+        setResolvedValue(state?.payload?.data || currentValue);
+        setIsResolved(true);
+      }
+    ).catch((error) => {
+      console.error('Error resolving variables:', error);
+      setIsResolved(false);
+    });
+  }, [currentValue, onResolveVariable]);
+
   useEffect(() => {
     if (isConfirmModalOpen) {
       inputRef.current?.blur();
@@ -105,6 +119,31 @@ const VariableInputArea = ({
       inputRef.current?.focus();
     }
   }, [isConfirmModalOpen]);
+
+  const revealComponent = (
+    <RMIconButton
+      isDisabled={isDisabled}
+      icon={isOpen ? HiEyeOff : HiEye}
+      aria-label={isOpen ? 'Mask password' : 'Reveal password'}
+      onClick={() => setIsOpen(!isOpen)}
+    />
+  );
+
+  const resolveComponent = useMemo(() => (
+    <RMIconButton
+      isDisabled={isDisabled}
+      icon={isResolved ? HiEyeOff : HiEye}
+      tooltip={isResolved ? 'Close resolved value' : 'Resolve variables'}
+      onClick={() => {
+        if (isResolved) {
+          setIsResolved(false);
+          setResolvedValue(currentValue);
+        } else {
+          handleResolve(currentValue);
+        }
+      }}
+    />
+  ), [currentValue, isResolved, handleResolve, isDisabled]);
 
   return (
     <Box className={`${styles.variableInputArea} ${className}`}>
@@ -114,55 +153,53 @@ const VariableInputArea = ({
             ref={inputRef}
             className={styles.inputField}
             rows={rows}
-            value={currentValue}
+            value={isResolved ? resolvedValue : currentValue}
             onChange={(e) => handleChange(e.target.value)}
-            onBlur={() => { if (alwaysEditable) debouncedOnChange(currentValue) }}
+            onBlur={() => { if (alwaysEditable) onChange(currentValue) }}
             placeholder={placeholder}
             isDisabled={isDisabled}
-            isReadOnly={!editable && !isDisabled}
+            isReadOnly={!editable || isDisabled || isResolved}
           />
         ) : (
           <Input
             ref={inputRef}
             className={styles.inputField}
             type={isPassword && !isOpen ? 'password' : 'text'}
-            value={currentValue}
+            value={isResolved ? resolvedValue : currentValue}
             onChange={(e) => handleChange(e.target.value)}
-            onBlur={() => { if (alwaysEditable) debouncedOnChange(currentValue) }}
+            onBlur={() => { if (alwaysEditable) onChange(currentValue) }}
             placeholder={placeholder}
             isDisabled={isDisabled}
-            isReadOnly={!editable && !isDisabled}
+            isReadOnly={!editable || isDisabled || isResolved}
           />
         )}
 
-        {!alwaysEditable && (
-          <Box className={styles.buttonGroup}>
-            {isEditable ? (
-              <>
-                {isPassword && (
-                  <RMIconButton
-                    isDisabled={isDisabled}
-                    icon={isOpen ? HiEyeOff : HiEye}
-                    aria-label={isOpen ? 'Mask password' : 'Reveal password'}
-                    onClick={() => setIsOpen(!isOpen)}
-                  />
-                )}
-                <RMIconButton
-                  isDisabled={isDisabled}
-                  icon={HiX}
-                  tooltip="Cancel"
-                  colorScheme="red"
-                  onClick={handleCancel}
-                />
-                <RMIconButton
-                  icon={HiCheck}
-                  colorScheme="green"
-                  isDisabled={isDisabled || !valid || currentValue === previousValue}
-                  tooltip="Save"
-                  onClick={handleSave}
-                />
-              </>
-            ) : (
+        <Box className={styles.buttonGroup}>
+          {alwaysEditable ? (
+            <>
+              {isPassword ? revealComponent : resolveComponent}
+            </>
+          ) : isEditable ? (
+            <>
+              {isPassword ? revealComponent : resolveComponent}
+              <RMIconButton
+                isDisabled={isDisabled}
+                icon={HiX}
+                tooltip="Cancel"
+                colorScheme="red"
+                onClick={handleCancel}
+              />
+              <RMIconButton
+                icon={HiCheck}
+                colorScheme="green"
+                isDisabled={isDisabled || !valid || currentValue === previousValue}
+                tooltip="Save"
+                onClick={handleSave}
+              />
+            </>
+          ) : (
+            <>
+              {!isPassword && resolveComponent}
               <RMIconButton
                 isDisabled={isDisabled}
                 icon={HiPencilAlt}
@@ -173,9 +210,9 @@ const VariableInputArea = ({
                   setTimeout(() => inputRef.current?.focus(), 0);
                 }}
               />
-            )}
-          </Box>
-        )}
+            </>
+          )}
+        </Box>
       </Box>
 
       {editable && !isDisabled && (

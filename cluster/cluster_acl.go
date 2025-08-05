@@ -1021,6 +1021,9 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 		if strings.Contains(URL, "/substitution") {
 			return true
 		}
+		if strings.Contains(URL, "/resolve-template") {
+			return true
+		}
 		if strings.Contains(URL, "/settings/actions/reset-from-template") {
 			return true
 		}

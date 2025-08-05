@@ -6,7 +6,7 @@ import AccordionComponent from "../../../../components/AccordionComponent";
 import GeneralSection from "./GeneralSection";
 import AppCredit from "./AppCredit";
 import { useCallback, useMemo, useState } from "react";
-import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload } from "../../../../redux/clusterSlice";
+import { deploymentFieldChange, deploymentFieldIndexAdd, deploymentFieldIndexDrop, pauseAutoReload, resolveTemplateVariables } from "../../../../redux/clusterSlice";
 import ConfirmModal from "../../../../components/Modals/ConfirmModal";
 import Routes from "./Routes";
 import PathSection from "./Paths";
@@ -56,6 +56,14 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
         [dispatch]
     )
 
+    const handleResolveVariables = useCallback(
+        (rawValue) => {
+            console.log("Resolving variables for:", rawValue); 
+            return dispatch(resolveTemplateVariables({ clusterName, appId, rawValue }))
+        },
+        [clusterName, appId, dispatch]
+    )
+
     const actionProps = useMemo(() => ({
         onRowArrayChange: handleSaveArrayChange,
         onSaveAdd: handleSaveAddItem,
@@ -93,8 +101,8 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
     }, [paths, clusterName, appId, dockerImage, gitClones, actionProps, storages, user]);
 
     const variableComponent = useMemo(() => {
-        return <Variables substitution={substitution} rows={variables} agentList={agentList} fieldName={'variables'} user={user} {...actionProps} />;
-    }, [variables, substitution, agentList, actionProps, user]);
+        return <Variables substitution={substitution} rows={variables} agentList={agentList} fieldName={'variables'} user={user} onResolveVariable={handleResolveVariables} {...actionProps} />;
+    }, [variables, substitution, agentList, actionProps, handleResolveVariables, user]);
 
     return (
         <Flex direction="column" className={styles.contentContainer} w={"100%"} alignItems={"flex-start"} gap={4}>

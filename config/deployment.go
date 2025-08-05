@@ -109,6 +109,21 @@ func (d *Deployment) DropVolume(vol *Volume) error {
 	return nil
 }
 
+func (d *Deployment) GetVolumePaths(volumename string) []*PathMapping {
+	// Use a mutex to protect concurrent access
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	var paths []*PathMapping
+	for _, p := range d.Paths {
+		if p.VolumeName == volumename {
+			paths = append(paths, p)
+		}
+	}
+
+	return paths
+}
+
 func (d *Deployment) InsertGitClone(gc *GitClone) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -203,6 +218,21 @@ func (d *Deployment) ResolveGitVolume(name string) (*GitClone, error) {
 	}
 
 	return nil, fmt.Errorf("git clone %s not found: %v", name, err)
+}
+
+func (d *Deployment) GetGitPaths(name string) []*PathMapping {
+	// Use a mutex to protect concurrent access
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	var paths []*PathMapping
+	for _, p := range d.Paths {
+		if p.SourceType == SourceGit && p.SourceName == name {
+			paths = append(paths, p)
+		}
+	}
+
+	return paths
 }
 
 func (d *Deployment) InsertPath(p PathMapping) error {
@@ -373,6 +403,21 @@ func (d *Deployment) GetS3Mount(name string) (*S3Mount, error) {
 		}
 	}
 	return nil, fmt.Errorf("S3 mapping %s not found", name)
+}
+
+func (d *Deployment) GetS3MountPaths(name string) []*PathMapping {
+	// Use a mutex to protect concurrent access
+	d.Mutex.RLock()
+	defer d.Mutex.RUnlock()
+
+	var paths []*PathMapping
+	for _, p := range d.Paths {
+		if p.SourceType == SourceS3 && p.SourceName == name {
+			paths = append(paths, p)
+		}
+	}
+
+	return paths
 }
 
 func (d *Deployment) HasDuplicateS3VolumePath(volumename, volumedir string) bool {
