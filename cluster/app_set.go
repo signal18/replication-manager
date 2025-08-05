@@ -132,7 +132,7 @@ func (app *App) SetSetting(key, value string) error {
 	case "prov-app-docker-img":
 		app.AppConfig.ProvAppDockerImg = value
 	case "prov-app-docker-cmd":
-		app.AppConfig.ProvAppDockerCmd, _ = app.ClusterGroup.ParseAppTemplate(value, app.AppClusterSubstitute)
+		app.AppConfig.ProvAppDockerCmd = value
 	case "prov-app-agents":
 		app.AppConfig.ProvAppAgents = value
 	case "prov-app-template":

@@ -442,10 +442,13 @@ func (cluster *Cluster) OpenSVCGetAppContainerSection(app *App) map[string]strin
 		svccontainer["netns"] = "container#01"
 		svccontainer["rm"] = "true"
 		svccontainer["image"] = "{env.app_img}"
-		svccontainer["command"], _ = app.ClusterGroup.ParseAppTemplate(app.AppConfig.ProvAppDockerCmd, app.AppClusterSubstitute)
 		svccontainer["type"] = cluster.Conf.ProvType
 		if app.AppConfig.ProvAppHATopology == "failover" {
 			svccontainer["shared"] = "true"
+		}
+
+		if app.AppConfig.ProvAppDockerCmd != "" {
+			svccontainer["run_command"], _ = app.ClusterGroup.ParseAppTemplate(app.AppConfig.ProvAppDockerCmd, app.AppClusterSubstitute)
 		}
 
 		if cluster.Conf.ProvDBDockerRunArgsLimit {
