@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"bytes"
 	"errors"
 	"io/fs"
 	"os"
@@ -130,27 +131,27 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		return errors.New("app configuration not found")
 	}
 
-	if app.AppClusterSubstitute == "" {
-		// If the app cluster substitute is empty, generate it
-		app.AppClusterSubstitute, err = cluster.GetAppsSubstitutionJSon(app)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error getting app cluster substitute for %s:%s: %s", appcnf.AppHost, appcnf.AppPort, err)
-		}
-	}
+	// if app.AppClusterSubstitute == "" {
+	// 	// If the app cluster substitute is empty, generate it
+	// 	app.AppClusterSubstitute, err = cluster.GetAppsSubstitutionJSon(app)
+	// 	if err != nil {
+	// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error getting app cluster substitute for %s:%s: %s", appcnf.AppHost, appcnf.AppPort, err)
+	// 	}
+	// }
 
-	// If the app cluster substitute is still empty, use the template as is
-	var parsed string = string(content)
-	if app.AppClusterSubstitute != "" {
-		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file %s: %s", template, err)
-		}
-	}
+	// // If the app cluster substitute is still empty, use the template as is
+	// var parsed string = string(content)
+	// if app.AppClusterSubstitute != "" {
+	// 	parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
+	// 	if err != nil {
+	// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file %s: %s", template, err)
+	// 	}
+	// }
 
 	// read parsed content (toml format) and merge it into the app configuration
 	appViper := viper.New()
 	appViper.SetConfigType("toml")
-	err = appViper.ReadConfig(strings.NewReader(parsed))
+	err = appViper.ReadConfig(bytes.NewBuffer(content))
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading parsed template file %s: %s", template, err)
 		return err
