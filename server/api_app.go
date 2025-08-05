@@ -1397,7 +1397,6 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						http.Error(w, "S3 endpoint app does not have MINIO_ROOT_USER variable set", http.StatusInternalServerError)
 						return
 					}
-					s3Mount.AccessKey = acckey.Value
 
 					secretkey, err := s3node.AppConfig.Deployment.GetVariableByName("MINIO_ROOT_PASSWORD", false)
 					if err != nil || secretkey == nil {
@@ -1405,6 +1404,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 
+					s3Mount.AccessKey = acckey.Value
 					s3Mount.SecretKey = mycluster.Conf.GetEncryptedString(mycluster.Conf.GetDecryptedPassword(s3Mount.Name, secretkey.Value))
 
 					region, _ := s3node.AppConfig.Deployment.GetVariableByName("REGION", false)

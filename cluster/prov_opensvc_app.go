@@ -254,7 +254,7 @@ func (cluster *Cluster) OpenSVCGetAppTemplateV2(app *App) ([]byte, error) {
 		}
 
 		containernum++
-		sectionName := fmt.Sprintf("container#%02ds3%s", containernum, s3m.Name)
+		sectionName := fmt.Sprintf("container#%02dinit%s", containernum, s3m.Name)
 		svcsection[sectionName] = cluster.OpenSVCGetAppS3MountContainerSection(app, s3m)
 	}
 	svcsection["container#app"] = cluster.OpenSVCGetAppContainerSection(app)
