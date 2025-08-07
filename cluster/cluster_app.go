@@ -9,10 +9,12 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/pelletier/go-toml"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
+	"github.com/signal18/replication-manager/utils/githelper"
 	"github.com/spf13/viper"
 )
 
@@ -115,13 +117,52 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		return nil
 	}
 
-	template = "app/deployments/" + template + ".toml"
-
-	// Check if the template file exists within share
-	content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", template, err)
+	// Check if the template is local template
+	localPath := filepath.Join(cluster.WorkingDir, ".templates", "apps", template+".toml")
+	_, err = os.Stat(localPath)
+	if err == nil {
+		// If the template file exists in the local templates directory, read it
+		content, err = os.ReadFile(localPath)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading local template file %s: %s", template, err)
+			return err
+		}
+	} else if !os.IsNotExist(err) {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error checking local template file %s: %s", template, err)
 		return err
+	} else {
+
+		var gClient githelper.GitClientInterface
+		var baseURL, projectID string
+		gitpass := cluster.Conf.GetDecryptedPassword("template-repo", cluster.Conf.ProvAppTemplateRepoPassword)
+		if strings.Contains(cluster.Conf.ProvAppTemplateRepo, "github") {
+			_, projectID, err = githelper.ParseGitHubURL(cluster.Conf.ProvAppTemplateRepo)
+			if err == nil {
+				gClient, err = githelper.NewGithubClient(gitpass)
+			}
+		} else {
+			baseURL, projectID, err = githelper.ParseGitLabURL(cluster.Conf.ProvAppTemplateRepo)
+			if err == nil {
+				gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
+			}
+		}
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error creating git client for template repository %s: %s", cluster.Conf.ProvAppTemplateRepo, err)
+			return err
+		}
+
+		// Get the file content from the repository
+		content, err = gClient.DownloadFileFromRepo(projectID, cluster.Conf.ProvAppTemplateRepoUser, template+".toml", time.Duration(cluster.Conf.ProvAppTemplateRepoTimeout)*time.Second)
+		if err != nil {
+			template = "app/deployments/" + template + ".toml"
+
+			// Check if the template file exists within share
+			content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", template, err)
+				return err
+			}
+		}
 	}
 
 	// Parse the template content
@@ -227,7 +268,7 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 func (cluster *Cluster) SaveAppConfigs() (bool, error) {
 	var has_changed bool
 	for _, app := range cluster.Apps {
-		changed, err := cluster.SaveApp(app)
+		changed, err := cluster.SaveApp(app, "")
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error saving app %s: %s", app.Name, err)
 			// return err
@@ -240,15 +281,17 @@ func (cluster *Cluster) SaveAppConfigs() (bool, error) {
 	return has_changed, nil
 }
 
-func (cluster *Cluster) SaveApp(app *App) (bool, error) {
+func (cluster *Cluster) SaveApp(app *App, templatePath string) (bool, error) {
 	var has_changed bool
 	_, file, no, ok := runtime.Caller(1)
 	if ok {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Saved called from %s#%d\n", file, no)
 	}
 
+	filePath := cluster.WorkingDir + "/apps/" + app.Name + ".toml"
+
 	// Save the main configuration file
-	changed, err := cluster.SaveAppConfigFile(app)
+	changed, err := cluster.SaveAppConfigFile(app, filePath, templatePath)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
 		return false, err
@@ -258,22 +301,10 @@ func (cluster *Cluster) SaveApp(app *App) (bool, error) {
 		has_changed = true
 	}
 
-	// // Save the deployment configuration file
-	// changed, err = cluster.SaveAppDeploymentsFile(app)
-	// if err != nil {
-	// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "Error during save app config: %s", err)
-	// 	return has_changed, err
-	// }
-
-	if changed {
-		has_changed = true
-	}
-
 	return has_changed, nil
 }
 
-func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
-	filePath := cluster.WorkingDir + "/apps/" + app.Name + ".toml"
+func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath string) (bool, error) {
 
 	// Marshal and write TOML configuration
 	readconf, err := toml.Marshal(app.AppConfig)
@@ -301,8 +332,22 @@ func (cluster *Cluster) SaveAppConfigFile(app *App) (bool, error) {
 	}
 	defer file.Close()
 
-	// t.Delete("deployments")
 	t.WriteTo(file)
+
+	if templatePath != "" {
+		tfile, err := os.OpenFile(templatePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
+		if err != nil {
+			if os.IsPermission(err) {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlWarn, "File permission denied: %s", templatePath)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Error opening file: %s", err)
+			}
+			return false, err
+		}
+		defer tfile.Close()
+
+		t.WriteTo(tfile)
+	}
 
 	return true, nil
 }

@@ -3,6 +3,7 @@ package githelper
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 	"time"
@@ -118,6 +119,27 @@ func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 // GetProjectID retrieves the project ID for a given project path in GitLab.
 func (g *GitHubClient) GetProjectID(projectPath string, timeout time.Duration) (int, error) {
 	return 0, nil
+}
+
+func (g *GitHubClient) DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Split the path into components
+	parts := strings.SplitN(projectID, "/", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid project ID format: %s", projectID)
+	}
+	owner, reponame := parts[0], parts[1]
+
+	content, _, _, err := g.Client.Repositories.DownloadContentsWithMeta(ctx, owner, reponame, filePath, &github.RepositoryContentGetOptions{
+		Ref: branch,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to download file %s from branch %s: %w", filePath, branch, err)
+	}
+
+	return io.ReadAll(content)
 }
 
 func ParseGitHubURL(input string) (apiURL, projectID string, err error) {

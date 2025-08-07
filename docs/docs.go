@@ -3454,6 +3454,74 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/{appName}/resolve-template": {
+            "post": {
+                "description": "Resolves the template variables for a specific app in a cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Resolve App Template Variable Values",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Data to resolve in the template",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.DecodedData"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resolved template variables",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error parsing template\" or \"Server Not Found\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appName}/service-opensvc": {
             "get": {
                 "description": "Retrieves the OpenSVC service configuration for a specific app.",
@@ -3553,6 +3621,72 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "App template reloaded successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Server Not Found\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName}": {
+            "post": {
+                "description": "Saves the app configuration to a template directory for a specific app in a cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Save App to Template",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App Name",
+                        "name": "appName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Template Name",
+                        "name": "templateName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App template saved successfully",
                         "schema": {
                             "type": "string"
                         }
@@ -4600,7 +4734,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/docker/images/{imageRef}/browse": {
+        "/api/clusters/{clusterName}/docker/browse/{imageRef}": {
             "get": {
                 "description": "Lists files in a specified directory of a Docker image.",
                 "consumes": [
@@ -16852,6 +16986,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/cluster.APIUser"
                     }
                 },
+                "appS3Providers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "appServers": {
                     "type": "array",
                     "items": {
@@ -18043,6 +18183,9 @@ const docTemplate = `{
                 "appPort": {
                     "type": "string"
                 },
+                "appS3Provider": {
+                    "type": "boolean"
+                },
                 "deployment": {
                     "$ref": "#/definitions/config.Deployment"
                 },
@@ -18065,6 +18208,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppDiskType": {
+                    "type": "string"
+                },
+                "provAppDockerCmd": {
                     "type": "string"
                 },
                 "provAppDockerImg": {
@@ -18184,6 +18330,20 @@ const docTemplate = `{
         "config.Deployment": {
             "type": "object",
             "properties": {
+                "mutex": {
+                    "description": "Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/sync.RWMutex"
+                        }
+                    ]
+                },
+                "paths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.PathMapping"
+                    }
+                },
                 "primaryRoute": {
                     "$ref": "#/definitions/config.Route"
                 },
@@ -18252,6 +18412,9 @@ const docTemplate = `{
                 },
                 "volumedir": {
                     "type": "string"
+                },
+                "volumename": {
+                    "type": "string"
                 }
             }
         },
@@ -18309,10 +18472,22 @@ const docTemplate = `{
                 "dockerpath": {
                     "type": "string"
                 },
+                "name": {
+                    "type": "string"
+                },
+                "parentname": {
+                    "type": "string"
+                },
                 "srcname": {
                     "type": "string"
                 },
                 "srcpath": {
+                    "type": "string"
+                },
+                "srctype": {
+                    "$ref": "#/definitions/config.SourceType"
+                },
+                "volumename": {
                     "type": "string"
                 }
             }
@@ -18382,11 +18557,10 @@ const docTemplate = `{
                 }
             }
         },
-        "config.S3Mapping": {
+        "config.S3Mount": {
             "type": "object",
             "properties": {
-                "accessKey": {
-                    "description": "Optional fields for authentication",
+                "accesskey": {
                     "type": "string"
                 },
                 "bucket": {
@@ -18395,13 +18569,22 @@ const docTemplate = `{
                 "endpoint": {
                     "type": "string"
                 },
+                "mountdir": {
+                    "type": "string"
+                },
                 "name": {
                     "type": "string"
                 },
                 "region": {
                     "type": "string"
                 },
-                "secretKey": {
+                "secretkey": {
+                    "type": "string"
+                },
+                "volumedir": {
+                    "type": "string"
+                },
+                "volumename": {
                     "type": "string"
                 }
             }
@@ -18531,30 +18714,10 @@ const docTemplate = `{
                         "$ref": "#/definitions/config.GitClone"
                     }
                 },
-                "mutex": {
-                    "description": "Use sync.RWMutex to protect concurrent access to Volumes and VolumeMappings",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/sync.RWMutex"
-                        }
-                    ]
-                },
-                "paths": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.PathMapping"
-                    }
-                },
                 "s3Mounts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/config.S3Mapping"
-                    }
-                },
-                "volumeMappings": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/config.VolumeMapping"
+                        "$ref": "#/definitions/config.S3Mount"
                     }
                 },
                 "volumes": {
@@ -18657,34 +18820,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "volumedir": {
-                    "type": "string"
-                }
-            }
-        },
-        "config.VolumeMapping": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string"
-                },
-                "parent": {
-                    "type": "string"
-                },
-                "sourceName": {
-                    "type": "string"
-                },
-                "sourceType": {
-                    "description": "Source information",
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/config.SourceType"
-                        }
-                    ]
-                },
-                "subPath": {
-                    "type": "string"
-                },
-                "volume": {
                     "type": "string"
                 }
             }

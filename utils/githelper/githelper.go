@@ -613,6 +613,7 @@ type GitClientInterface interface {
 	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
 	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error)
 	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error)
+	DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error)
 }
 
 type GitClient struct {

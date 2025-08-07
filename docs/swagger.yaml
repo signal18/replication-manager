@@ -193,6 +193,10 @@ definitions:
         additionalProperties:
           $ref: '#/definitions/cluster.APIUser'
         type: object
+      appS3Providers:
+        items:
+          type: string
+        type: array
       appServers:
         items:
           type: string
@@ -994,6 +998,8 @@ definitions:
         type: string
       appPort:
         type: string
+      appS3Provider:
+        type: boolean
       deployment:
         $ref: '#/definitions/config.Deployment'
       provAppAgents:
@@ -1009,6 +1015,8 @@ definitions:
       provAppDiskSize:
         type: string
       provAppDiskType:
+        type: string
+      provAppDockerCmd:
         type: string
       provAppDockerImg:
         type: string
@@ -1087,6 +1095,15 @@ definitions:
     type: object
   config.Deployment:
     properties:
+      mutex:
+        allOf:
+        - $ref: '#/definitions/sync.RWMutex'
+        description: Use sync.RWMutex to protect concurrent access to Volumes and
+          VolumeMappings
+      paths:
+        items:
+          $ref: '#/definitions/config.PathMapping'
+        type: array
       primaryRoute:
         $ref: '#/definitions/config.Route'
       routes:
@@ -1132,6 +1149,8 @@ definitions:
         type: string
       volumedir:
         type: string
+      volumename:
+        type: string
     type: object
   config.Grant:
     properties:
@@ -1168,9 +1187,17 @@ definitions:
     properties:
       dockerpath:
         type: string
+      name:
+        type: string
+      parentname:
+        type: string
       srcname:
         type: string
       srcpath:
+        type: string
+      srctype:
+        $ref: '#/definitions/config.SourceType'
+      volumename:
         type: string
     type: object
   config.PointInTimeMeta:
@@ -1215,20 +1242,25 @@ definitions:
       status:
         type: string
     type: object
-  config.S3Mapping:
+  config.S3Mount:
     properties:
-      accessKey:
-        description: Optional fields for authentication
+      accesskey:
         type: string
       bucket:
         type: string
       endpoint:
         type: string
+      mountdir:
+        type: string
       name:
         type: string
       region:
         type: string
-      secretKey:
+      secretkey:
+        type: string
+      volumedir:
+        type: string
+      volumename:
         type: string
     type: object
   config.ServicePlan:
@@ -1321,22 +1353,9 @@ definitions:
         items:
           $ref: '#/definitions/config.GitClone'
         type: array
-      mutex:
-        allOf:
-        - $ref: '#/definitions/sync.RWMutex'
-        description: Use sync.RWMutex to protect concurrent access to Volumes and
-          VolumeMappings
-      paths:
-        items:
-          $ref: '#/definitions/config.PathMapping'
-        type: array
       s3Mounts:
         items:
-          $ref: '#/definitions/config.S3Mapping'
-        type: array
-      volumeMappings:
-        items:
-          $ref: '#/definitions/config.VolumeMapping'
+          $ref: '#/definitions/config.S3Mount'
         type: array
       volumes:
         items:
@@ -1404,23 +1423,6 @@ definitions:
       poolname:
         type: string
       volumedir:
-        type: string
-    type: object
-  config.VolumeMapping:
-    properties:
-      name:
-        type: string
-      parent:
-        type: string
-      sourceName:
-        type: string
-      sourceType:
-        allOf:
-        - $ref: '#/definitions/config.SourceType'
-        description: Source information
-      subPath:
-        type: string
-      volume:
         type: string
     type: object
   config.WorkLoad:
@@ -5948,6 +5950,52 @@ paths:
       summary: Drop Deployment Field Row
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/{appName}/resolve-template:
+    post:
+      consumes:
+      - application/json
+      description: Resolves the template variables for a specific app in a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Data to resolve in the template
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.DecodedData'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Resolved template variables
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error parsing template" or "Server Not Found" or "No cluster
+          schema:
+            type: string
+      summary: Resolve App Template Variable Values
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appName}/service-opensvc:
     get:
       consumes:
@@ -6027,6 +6075,52 @@ paths:
           schema:
             type: string
       summary: Reset App from Template
+      tags:
+      - Apps
+  /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName}:
+    post:
+      consumes:
+      - application/json
+      description: Saves the app configuration to a template directory for a specific
+        app in a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App Name
+        in: path
+        name: appName
+        required: true
+        type: string
+      - description: Template Name
+        in: path
+        name: templateName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App template saved successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Server Not Found" or "No cluster
+          schema:
+            type: string
+      summary: Save App to Template
       tags:
       - Apps
   /api/clusters/{clusterName}/apps/{appName}/storages/{field}/add:
@@ -6734,7 +6828,7 @@ paths:
       summary: Docker Registry Login
       tags:
       - Docker
-  /api/clusters/{clusterName}/docker/images/{imageRef}/browse:
+  /api/clusters/{clusterName}/docker/browse/{imageRef}:
     get:
       consumes:
       - application/json

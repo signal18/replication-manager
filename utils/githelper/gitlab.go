@@ -125,6 +125,21 @@ func (g *GitlabClient) GetProjectID(projectPath string, timeout time.Duration) (
 	return project.ID, nil
 }
 
+func (g *GitlabClient) DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Split the path into components
+	pathComponents := strings.Split(filePath, "/")
+	if len(pathComponents) == 0 {
+		return nil, fmt.Errorf("file path cannot be empty")
+	}
+
+	// Get the file content from GitLab
+	content, _, err := g.Client.RepositoryFiles.GetRawFile(projectID, filePath, nil, gitlab.WithContext(ctx))
+	return content, err
+}
+
 func ParseGitLabURL(input string) (apiURL, projectID string, err error) {
 	parsedURL, err := url.Parse(input)
 	if err != nil {

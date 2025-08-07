@@ -115,6 +115,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/save-to-template/{templateName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveToTemplate)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyStorageField)),
@@ -1871,6 +1875,49 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 			w.Write(jsondata)
 		} else {
 			http.Error(w, "Not a valid app", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// @Summary Save App to Template
+// @Description Saves the app configuration to a template directory for a specific app in a cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appName path string true "App Name"
+// @Param templateName path string true "Template Name"
+// @Success 200 {string} string "App template saved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Server Not Found" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName} [post]
+// This endpoint saves the app configuration to a template directory for a specific app in a cluster.
+func (repman *ReplicationManager) handlerMuxAppSaveToTemplate(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node != nil {
+			templateDir := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", mycluster.Name, vars["templateName"])
+			_, err := mycluster.SaveApp(node, templateDir)
+			if err != nil {
+				http.Error(w, "Error saving app template: "+err.Error(), 500)
+				return
+			}
+			w.Write([]byte("App template saved successfully"))
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
