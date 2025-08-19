@@ -3,15 +3,15 @@ import TextForm from '../../../../components/TextForm';
 import styles from './styles.module.scss';
 import { useDispatch } from 'react-redux';
 import TableType2 from '../../../../components/TableType2';
-import { resetAppFromTemplate, setAppSetting } from '../../../../redux/settingsSlice';
+import { resetAppFromTemplate, saveAppAsTemplate, setAppSetting } from '../../../../redux/settingsSlice';
 import Checkboxes from '../../../../components/Checkboxes/Checkboxes';
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import Dropdown from '../../../../components/Dropdown';
 import RMIconButton from '../../../../components/RMIconButton';
-import { HiRefresh } from 'react-icons/hi';
+import { AiOutlineSave } from 'react-icons/ai';
 import VariableInputArea from '../../../../components/VariableTree/VariableInputArea';
 
-export default function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) {
+export default React.memo(function GeneralSection({ clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user }) {
 
   const dispatch = useDispatch();
   const haTopologyOptions = useMemo(() => ([{ value: 'failover', name: 'Failover' }, { value: 'flex', name: 'Flex' }]), []);
@@ -20,8 +20,8 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
   const agentList = config?.provAppAgents ? config?.provAppAgents : config?.provDbAgents;
   const onSaveDockerImage = (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-img', value: value }))
   const onSaveDockerCmd = (value) => dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-docker-cmd', value: value }))
-  const onSaveDockerTemplate = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-template', value: value })) }
-  const onResetAppFromTemplate = () => dispatch(resetAppFromTemplate({ clusterName, appId }))
+  const onSaveAppAsTemplate = () => dispatch(saveAppAsTemplate({ clusterName: clusterName, appId: appId, template: appName }))
+  const onResetAppFromTemplate = (value) => dispatch(resetAppFromTemplate({ clusterName, appId, template: value }))
   const onAgentsChange = (value) => dispatch(setAppSetting({ clusterName, appId, setting: 'prov-app-agents', value: value.toString() }))
   const onHATopologyChange = (value) => { dispatch(setAppSetting({ clusterName: clusterName, appId: appId, setting: 'prov-app-ha-topology', value: value })) }
 
@@ -63,27 +63,31 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
       },
       {
         key: 'Docker Template',
-        value: (
-          <Dropdown
-            confirmTitle="Docker Template Change"
-            confirmBody='Are you sure you want to change "prov-app-template" to: '
-            isMenuPortalTarget={true}
-            onChange={onSaveDockerTemplate}
-            options={templateOptions}
-            selectedValue={provAppTemplate}
-          />
-        )
+        value: (<Text>{provAppTemplate}</Text>)
       },
       {
         key: 'Reset App From Template',
         value: (
+          <Dropdown
+            confirmTitle="Docker Template Change"
+            confirmBody='Are you sure you want to reset template using: '
+            isMenuPortalTarget={true}
+            onChange={onResetAppFromTemplate}
+            selectedValue={provAppTemplate}
+            options={templateOptions}
+          />
+        )
+      },
+      {
+        key: 'Save As Template',
+        value: (
           <RMIconButton
-            icon={HiRefresh}
-            aria-label="Reset App From Template"
-            tooltip="Reset App From Template"
-            onClick={onResetAppFromTemplate}
-            isDisabled={!provAppTemplate}
-            confirmTitle="Reset App From Template"
+            icon={AiOutlineSave}
+            aria-label="Save App As Template"
+            tooltip="Save App As Template"
+            onClick={onSaveAppAsTemplate}
+            isDisabled={!user?.grants['app-deployment']}
+            confirmTitle="Save App As Template"
           />
         )
       },
@@ -115,12 +119,11 @@ export default function GeneralSection({ clusterName, appId, appName, appHost, c
         )
       },
     ]
-  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveDockerTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
-
-
+  }, [appName, appHost, provAppDockerImg, onSaveDockerImage, provAppDockerCmd, onSaveDockerCmd, onSaveAppAsTemplate, templateOptions, provAppTemplate, onResetAppFromTemplate, agentList, onAgentsChange, provAppAgents, onHATopologyChange, provAppHaTopology, haTopologyOptions])
+  
   return (
     <Flex direction="column" className={`${styles.tableSectionWrapper}`} w={"100%"} gap="8px">
       <TableType2 dataArray={dataObject} className={styles.table} />
     </Flex>
   )
-}
+})

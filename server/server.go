@@ -2254,6 +2254,8 @@ func (repman *ReplicationManager) Run() error {
 				repman.PeerManager.GetAllHealthStatus()
 				repman.UpdateLocalPeer()
 			}
+
+			go repman.GetAppTemplates()
 		}
 
 		if counter%300 == 0 {
@@ -3006,7 +3008,36 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 	for i, file := range filelist {
 		ext := filepath.Ext(file)
 		if ext == ".toml" {
-			filelist[i] = strings.TrimSuffix(file, ext)
+			filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+		}
+	}
+
+	templateDir := filepath.Join(repman.Conf.WorkingDir, ".templates", "apps")
+	if _, err := os.Stat(templateDir); os.IsNotExist(err) {
+		_ = os.MkdirAll(templateDir, 0755)
+	} else {
+		list, err := os.ReadDir(templateDir)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading template directory %s: %v", templateDir, err)
+			return err
+		}
+
+		for _, entry := range list {
+			// List to subdirectories
+			if entry.IsDir() {
+				subdir := filepath.Join(templateDir, entry.Name())
+				sublist, err := os.ReadDir(subdir)
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading subdirectory %s: %v", subdir, err)
+					continue
+				}
+				for _, subentry := range sublist {
+					ext := filepath.Ext(subentry.Name())
+					if ext == ".toml" {
+						filelist = append(filelist, filepath.Join(entry.Name(), strings.TrimSuffix(subentry.Name(), ext)))
+					}
+				}
+			}
 		}
 	}
 

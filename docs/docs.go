@@ -3640,7 +3640,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName}": {
+        "/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName}": {
             "post": {
                 "description": "Saves the app configuration to a template directory for a specific app in a cluster.",
                 "consumes": [
@@ -20510,6 +20510,18 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppMemory": {
+                    "type": "string"
+                },
+                "provAppTemplateRepo": {
+                    "type": "string"
+                },
+                "provAppTemplateRepoPassword": {
+                    "type": "string"
+                },
+                "provAppTemplateRepoTimeout": {
+                    "type": "integer"
+                },
+                "provAppTemplateRepoUser": {
                     "type": "string"
                 },
                 "provAppVolumePools": {

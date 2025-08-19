@@ -2551,6 +2551,14 @@ definitions:
         type: string
       provAppMemory:
         type: string
+      provAppTemplateRepo:
+        type: string
+      provAppTemplateRepoPassword:
+        type: string
+      provAppTemplateRepoTimeout:
+        type: integer
+      provAppTemplateRepoUser:
+        type: string
       provAppVolumePools:
         type: string
       provDBApplyDynamicConfig:
@@ -6077,7 +6085,7 @@ paths:
       summary: Reset App from Template
       tags:
       - Apps
-  /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName}:
+  /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName}:
     post:
       consumes:
       - application/json

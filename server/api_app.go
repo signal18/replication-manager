@@ -111,13 +111,17 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppClearSetting)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/reset-from-template", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/reset-from-template", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppResetFromTemplate)),
 	))
-	router.Handle("/api/clusters/{clusterName}/apps/{appId}/settings/actions/save-to-template/{templateName}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveToTemplate)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveAsTemplate)),
+	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppSaveAsTemplate)),
 	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/storages/{field}/index/{index}/{key}/modify", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -1894,9 +1898,9 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 // @Success 200 {string} string "App template saved successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Server Not Found" or "No cluster"
-// @Router /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-to-template/{templateName} [post]
+// @Router /api/clusters/{clusterName}/apps/{appName}/settings/actions/save-as-template/{templateName} [post]
 // This endpoint saves the app configuration to a template directory for a specific app in a cluster.
-func (repman *ReplicationManager) handlerMuxAppSaveToTemplate(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxAppSaveAsTemplate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -1908,8 +1912,12 @@ func (repman *ReplicationManager) handlerMuxAppSaveToTemplate(w http.ResponseWri
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
-			templateDir := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", mycluster.Name, vars["templateName"])
-			_, err := mycluster.SaveApp(node, templateDir)
+			template := vars["templateName"]
+			if template == "" {
+				template = node.Name
+			}
+			templatePath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", mycluster.Name, template+".toml")
+			_, err := mycluster.SaveApp(node, templatePath)
 			if err != nil {
 				http.Error(w, "Error saving app template: "+err.Error(), 500)
 				return
@@ -1949,6 +1957,21 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 
 		node := mycluster.GetAppFromName(vars["appName"])
 		if node != nil {
+			//Get the request body {template: value}
+			var body struct {
+				Template string `json:"template"`
+			}
+			err := json.NewDecoder(r.Body).Decode(&body)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), 400)
+				return
+			}
+			if body.Template == "" {
+				http.Error(w, "Template name must be provided", 400)
+				return
+			}
+
+			node.AppConfig.ProvAppTemplate = body.Template
 			mycluster.LoadAppTemplate(node.AppConfig, node.AppConfig.ProvAppTemplate)
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("App template reloaded successfully"))

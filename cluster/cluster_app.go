@@ -118,7 +118,7 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 	}
 
 	// Check if the template is local template
-	localPath := filepath.Join(cluster.WorkingDir, ".templates", "apps", template+".toml")
+	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
 	_, err = os.Stat(localPath)
 	if err == nil {
 		// If the template file exists in the local templates directory, read it
@@ -131,6 +131,15 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error checking local template file %s: %s", template, err)
 		return err
 	} else {
+		// if the parent directory does not exist, create it
+		parentDir := filepath.Dir(localPath)
+		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
+			err = os.MkdirAll(parentDir, os.ModePerm)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error creating parent directory for local template file %s: %s", localPath, err)
+				return err
+			}
+		}
 
 		var gClient githelper.GitClientInterface
 		var baseURL, projectID string
@@ -154,12 +163,19 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		// Get the file content from the repository
 		content, err = gClient.DownloadFileFromRepo(projectID, cluster.Conf.ProvAppTemplateRepoUser, template+".toml", time.Duration(cluster.Conf.ProvAppTemplateRepoTimeout)*time.Second)
 		if err != nil {
-			template = "app/deployments/" + template + ".toml"
+			templateName := strings.TrimLeft(template, "shared/")
+			templatePath := "app/deployments/" + templateName + ".toml"
 
 			// Check if the template file exists within share
-			content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, template)
+			content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, templatePath)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", template, err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", templatePath, err)
+				return err
+			}
+
+			err = os.WriteFile(localPath, content, 0644)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error writing local template file %s: %s", localPath, err)
 				return err
 			}
 		}
@@ -204,6 +220,8 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
 		return err
 	}
+
+	appcnf.ProvAppTemplate = template
 
 	return nil
 }
@@ -335,6 +353,10 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 	t.WriteTo(file)
 
 	if templatePath != "" {
+		parentDir := filepath.Dir(templatePath)
+		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
+			os.MkdirAll(parentDir, os.ModePerm)
+		}
 		tfile, err := os.OpenFile(templatePath, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 		if err != nil {
 			if os.IsPermission(err) {

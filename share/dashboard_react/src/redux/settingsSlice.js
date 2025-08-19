@@ -114,10 +114,10 @@ export const switchAppSetting = createAsyncThunk('settings/switchAppSetting', as
   }
 })
 
-export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId }, thunkAPI) => {
+export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, baseURL)
+    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, baseURL)
     if (status === 200) {
       showSuccessBanner(`App reset from template successfully!`, status, thunkAPI)
       return { data, status }
@@ -126,6 +126,22 @@ export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTempl
     }
   } catch (error) {
     showErrorBanner(`Resetting app from template failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const saveAppAsTemplate = createAsyncThunk('settings/saveAppAsTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.saveAppAsTemplate(clusterName, appId, template, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`App saved as template successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Saving app as template failed!`, error.toString(), thunkAPI)
     handleError(error, thunkAPI)
   }
 })

@@ -47,10 +47,10 @@ export default React.memo(function Variables({
 }) {
   const [isVisible, setIsVisible] = useState(false);
 
-  const handleAddItem = () => {
+  const handleAddItem = useCallback(() => {
       setIsVisible(true);
       onPauseAutoReload(); // Pause auto-reload when adding a new item
-    };
+    }, [onPauseAutoReload]);
   
     const handleCancel = useCallback(() => {
       setIsVisible(false);

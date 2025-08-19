@@ -1,5 +1,5 @@
 
-import { Heading, VStack, HStack, Flex } from "@chakra-ui/react";
+import { Heading, VStack, HStack, Flex, Text } from "@chakra-ui/react";
 import { useDispatch, useSelector } from "react-redux";
 import styles from "./styles.module.scss";
 import AccordionComponent from "../../../../components/AccordionComponent";
@@ -104,6 +104,14 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
         return <Variables substitution={substitution} rows={variables} agentList={agentList} fieldName={'variables'} user={user} onResolveVariable={handleResolveVariables} {...actionProps} />;
     }, [variables, substitution, agentList, actionProps, handleResolveVariables, user]);
 
+    const GeneralSectionComponent = useMemo(() => {
+        return <GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} substitution={substitution} user={user} />;
+    }, [clusterName, appId, appName, appHost, config, appConfig, dockerTemplates, substitution, user]);
+
+    if (!appConfig) {
+        return (<Text>Waiting for config</Text>)
+    }
+
     return (
         <Flex direction="column" className={styles.contentContainer} w={"100%"} alignItems={"flex-start"} gap={4}>
             <HStack alignContent={"space-between"} w={"100%"}><Heading mb={4}>Deployment Details</Heading></HStack>
@@ -111,7 +119,7 @@ const Overview = ({ clusterName, config, appId, appName, appHost, appConfig, use
                 <VStack spacing={3} align="stretch">
                     <AccordionComponent
                         heading={'General Section'}
-                        body={<GeneralSection clusterName={clusterName} appId={appId} appName={appName} appHost={appHost} config={config} appConfig={appConfig} dockerTemplates={dockerTemplates} user={user} substitution={substitution} />}
+                        body={GeneralSectionComponent}
                     />
                     <AccordionComponent
                         heading={'Infra Resources'}

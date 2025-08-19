@@ -10,7 +10,8 @@ export const settingsService = {
   setAppSetting,
   switchAppSettings,
   clearAppSetting,
-  resetAppFromTemplate
+  resetAppFromTemplate,
+  saveAppAsTemplate
 }
 
 function switchSettings(clusterName, setting, baseURL) {
@@ -59,6 +60,12 @@ function clearAppSetting(clusterName, appId, setting, baseURL) {
     return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/clear/${setting}`)
 }
 
-function resetAppFromTemplate( clusterName, appId , baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`)
+function resetAppFromTemplate( clusterName, appId, template, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/settings/actions/reset-from-template`, {
+    template: template
+  })
+}
+
+function saveAppAsTemplate( clusterName, appId, template, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/settings/actions/save-as-template/${template}`)
 }
