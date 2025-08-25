@@ -60,7 +60,7 @@ function Home() {
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const params = useParams()
 
-  const terminalURL = useHref('/terminal').replace(/\/+$/, '')
+  const terminalURL = useHref('/terminal/')
 
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterData = useSelector((state) => state.cluster.clusterData)
