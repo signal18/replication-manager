@@ -1,9 +1,9 @@
 import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { dropServerByName, provisionProxy, stagingProxy, startProxy, stopProxy, unprovisionProxy } from '../../../../redux/clusterSlice'
-import { useNavigate } from 'react-router-dom'
+import { useHref } from 'react-router-dom'
 
 function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user, isMenuOptionsVisible = false, showTerminal, topoStaging }) {
   const dispatch = useDispatch()
@@ -11,7 +11,12 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [proxyName, setProxyName] = useState('')
-  const navigate = useNavigate()
+  const getHref = useHref('/').replace(/\/+$/, '');
+      
+  const openTerminalPage = useCallback((clusterName, prxId, commandType = '') => {
+    const terminalURL = getHref.concat(`/terminal/clusters/${clusterName}/proxies/${prxId}/${commandType}`).replace(/\/+$/, '')
+    window.open(terminalURL, '_blank')
+  }, [getHref])
 
   useEffect(() => {
     if (row?.proxyId) {
@@ -107,16 +112,16 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                   subMenu: [
                     {
                       name: 'MySQL Terminal',
-                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mysql`)
+                      onClick: () => openTerminalPage(clusterName, row.proxyId, 'mysql')
                     },
                     {
                       name: 'MyTop Terminal',
-                      onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}/mytop`)
+                      onClick: () => openTerminalPage(clusterName, row.proxyId, 'mytop')
                     },
                     ...(user?.grants['global-terminal'] ? [
                       {
                         name: 'Shell Terminal',
-                        onClick: () => navigate(`/terminal/clusters/${clusterName}/proxies/${row.proxyId}`)
+                        onClick: () => openTerminalPage(clusterName, row.proxyId)
                       }
                     ] : []),
                   ]
