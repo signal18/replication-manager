@@ -26,7 +26,7 @@ import {
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
 import styles from './styles.module.scss'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useHref, useParams } from 'react-router-dom'
 import { HiArrowNarrowLeft } from 'react-icons/hi'
 import CustomIcon from '../../components/Icons/CustomIcon'
 import Dashboard from '../Dashboard'
@@ -44,8 +44,6 @@ import ClustersGlobalSettings from '../ClustersGlobalSettings'
 import NewClusterModal from '../../components/Modals/NewClusterModal'
 import { FaPlus } from 'react-icons/fa'
 import { setBaseURL } from '../../redux/authSlice'
-import MattermostManager from '../Mattermost'
-import Chat from '../Chat'
 
 
 function Home() {
@@ -61,8 +59,7 @@ function Home() {
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const params = useParams()
 
-  // use navigation
-  const navigate = useNavigate()
+  const terminalURL = useHref('/terminal').replace(/\/+$/, '')
 
   const {
     cluster: { refreshInterval, clusterData },
@@ -233,7 +230,7 @@ function Home() {
   }
 
   const openTerminalPage = () => {
-    navigate('/terminal')
+    window.open(terminalURL, '_blank')
   }
 
   return (

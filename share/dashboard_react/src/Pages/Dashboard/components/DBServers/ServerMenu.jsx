@@ -29,8 +29,8 @@ import {
   toggleSlowQueryCapture,
   unprovisionDatabase
 } from '../../../../redux/clusterSlice'
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { useHref } from 'react-router-dom'
 import { generateConfig, preserveConfigPath } from '../../../../redux/configSlice'
 
 
@@ -54,7 +54,13 @@ function ServerMenu({
   const [confirmTitle, setConfirmTitle] = useState('')
   const [confirmHandler, setConfirmHandler] = useState(null)
   const [serverName, setServerName] = useState('')
-  const navigate = useNavigate()
+
+  const getHref = useHref('/').replace(/\/+$/, '');
+
+  const openTerminalPage = useCallback((clusterName, srvId, commandType = '') => {
+    const terminalURL = getHref.concat(`/terminal/clusters/${clusterName}/servers/${srvId}/${commandType}`).replace(/\/+$/, '')
+    window.open(terminalURL, '_blank')
+  }, [getHref])
 
   useEffect(() => {
     if (row?.id) {
@@ -101,16 +107,16 @@ function ServerMenu({
               subMenu: [
                 {
                   name: 'MySQL Terminal',
-                  onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mysql`)
+                  onClick: () => openTerminalPage(clusterName, row.id, 'mysql')
                 },
                 {
                   name: 'MyTop Terminal',
-                  onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}/mytop`)
+                  onClick: () => openTerminalPage(clusterName, row.id, 'mytop')
                 },
                 ...(user?.grants['global-terminal'] ? [
                   {
                     name: 'Shell Terminal',
-                    onClick: () => navigate(`/terminal/clusters/${clusterName}/servers/${row.id}`)
+                    onClick: () => openTerminalPage(clusterName, row.id)
                   }
                 ] : []),
               ]
