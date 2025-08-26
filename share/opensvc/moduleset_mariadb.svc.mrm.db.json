@@ -2410,6 +2410,25 @@
                 }
             ],
             "fset_name": "mariadb.log.loglatch"
+        },
+        {
+            "fset_stats": false,
+            "id": 423,
+            "filters": [
+                {
+                    "filter": {
+                        "f_op": "=",
+                        "f_field": "tag_name",
+                        "f_value": "repeatableread",
+                        "f_table": "v_tags",
+                        "id": 379
+                    },
+                    "f_order": 0,
+                    "f_log_op": "AND",
+                    "filterset": null
+                }
+            ],
+            "fset_name": "mariadb.optimizer.repeatableread"
         }
     ],
     "rulesets": [
@@ -4206,6 +4225,14 @@
                     "var_updated": "2025-04-17 13:32:35",
                     "var_name": "db_cnf_log_with_latch",
                     "id": 6349
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/replication-manager.d/with_opt_repeatable_read.cnf\",\"mode\":\"%%ENV:CNF_PERMS%%\",\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"# mariadb_documentation: https://mariadb.com/kb/en/set-transaction/\\n# mariadb_command: SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ; SET GLOBAL innodb_snapshot_isolation = ON;\\n# mysql_command: SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ;\\n# mariadb_default: SET GLOBAL innodb_snapshot_isolation = OFF;\\n# mysql_default: SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED;\\n\\n# Mariadb 10.6+\\n[mysqld]\\ntransaction-isolation = REPEATABLE-READ\\n\\n[mariadbd]\\nloose_innodb_snapshot_isolation = ON\"}",
+                    "var_updated": "2025-08-26 10:57:37",
+                    "var_name": "db_cnf_opt_with_repeatable_read",
+                    "id": 6352
                 }
             ],
             "ruleset_public": false,
@@ -4333,7 +4360,8 @@
                 "mariadb.svc.mrm.db.cnf.generic.disk_noatmpdisk",
                 "mariadb.svc.mrm.db.cnf.generic.rep_withwsrepgtid",
                 "mariadb.svc.mrm.db.cnf.generic.withloglatch",
-                "mariadb.svc.mrm.db.cnf.generic.withlogmutex"
+                "mariadb.svc.mrm.db.cnf.generic.withlogmutex",
+                "mariadb.svc.mrm.db.cnf.generic.opt_withrepeatableread"
             ],
             "publications": [
                 "replication-manager"
@@ -7617,6 +7645,30 @@
                 "replication-manager"
             ],
             "id": 1171,
+            "responsibles": [
+                "replication-manager"
+            ]
+        },
+        {
+            "fset_name": "mariadb.optimizer.repeatableread",
+            "ruleset_name": "mariadb.svc.mrm.db.cnf.generic.opt_withrepeatableread",
+            "variables": [
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "symlink",
+                    "var_value": "{\"symlink\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/etc/mysql/conf.d/65_with_opt_repeatable_read.cnf\",\"target\":\"../replication-manager.d/with_opt_repeatable_read.cnf\"}",
+                    "var_updated": "2025-08-26 10:50:48",
+                    "var_name": "db_link_repeatableread",
+                    "id": 6355
+                }
+            ],
+            "ruleset_public": false,
+            "ruleset_type": "contextual",
+            "rulesets": [],
+            "publications": [
+                "replication-manager"
+            ],
+            "id": 1173,
             "responsibles": [
                 "replication-manager"
             ]
