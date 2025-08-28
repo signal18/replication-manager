@@ -558,7 +558,7 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 	filter_user := "1=1"
 
 	if user != "" {
-		filter_user = "  User='+" + user + "' "
+		filter_user = "  User='" + user + "' "
 	}
 	if inactive_querying || order_by_trx_time {
 		filter_order_limit = " WHERE " + filter_user
