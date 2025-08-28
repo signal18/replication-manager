@@ -569,13 +569,13 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 		filter_order_limit = " WHERE " + filter_user + " AND  a.command='query' "
 	}
 	if order_by_trx_time {
-		if version.IsMySQLOrPercona() && version.Lower("8.0") {
+		if version.IsMySQL() || (version.IsPercona() && version.Lower("8.0")) {
 			filter_order_limit += " ORDER BY IF(a.Command='Query',a.TIME, b.trx_started) DESC LIMIT " + limit
 		} else {
 			filter_order_limit += " ORDER BY IF(a.Command='Query',a.TIME_MS, b.trx_started) DESC LIMIT " + limit
 		}
 	} else {
-		if version.IsMySQLOrPercona() && version.Lower("8.0") {
+		if version.IsMySQL() || (version.IsPercona() && version.Lower("8.0")) {
 			filter_order_limit += " ORDER BY a.TIME DESC LIMIT " + limit
 		} else {
 			filter_order_limit += " ORDER BY a.TIME_MS DESC LIMIT " + limit
