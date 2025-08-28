@@ -1829,7 +1829,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 			SSL:         cluster.Conf.ReplicationSSL,
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped with %s as master", master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 		// MySQL GTID
 		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
@@ -1846,7 +1846,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 			Channel:     cluster.Conf.MasterConn,
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped with MySQL GTID replication style and %s as master", master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
 		// Old Style file pos as default
@@ -1866,7 +1866,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 			SSL:         cluster.Conf.ReplicationSSL,
 			PostgressDB: server.PostgressDB,
 		}, server.DBVersion)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped with old replication style and %s as master", master.URL)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
 
 	}
 	if err != nil {
