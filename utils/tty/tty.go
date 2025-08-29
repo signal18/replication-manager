@@ -88,6 +88,7 @@ type Session struct {
 	SSHClient            *ssh.Client         `json:"-"`
 	SSHSession           *ssh.Session        `json:"-"`
 	Cmd                  *exec.Cmd           `json:"-"`
+	Command              string              `json:"-"`
 	Arguments            []string            `json:"-"`
 	CmdType              TerminalCommandType `json:"-"`
 	PTY                  *os.File            `json:"-"`
@@ -258,12 +259,8 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	session.SafeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
 
 	var cmd *exec.Cmd
-	if session.CmdType == TerminalMySQL {
-		cmd = exec.Command("mysql", session.Arguments...)
-	} else if session.CmdType == TerminalMyTop {
-		cmd = exec.Command("mytop", session.Arguments...)
-	} else if session.CmdType == TerminalGottyClient {
-		cmd = exec.Command("gotty-client", session.Arguments...)
+	if session.CmdType == TerminalMySQL || session.CmdType == TerminalMyTop || session.CmdType == TerminalGottyClient {
+		cmd = exec.Command(session.Command, session.Arguments...)
 	} else {
 		if session.AllowResume && session.TerminalMgr != nil {
 			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
