@@ -912,7 +912,11 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 				}
 			} else {
 				if server.DBVersion.IsMySQLOrPerconaGreater8() && ver.IsMySQLOrPerconaGreater8() { // Use","--ssl-mode
-					return []string{"--ssl-mode=" + sslMode} // No verify server cert
+					if sslMode != "" {
+						return []string{"--ssl-mode=" + sslMode} // No verify server cert
+					} else {
+						return []string{"--ssl-mode=PREFERRED"} // No verify server cert
+					}
 				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
 						return []string{"--skip-ssl"}
