@@ -887,7 +887,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
 				}
 
-				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use","--ssl-mode
+				if server.DBVersion.IsMySQLOrPerconaGreater8() && ver.IsMySQLOrPerconaGreater8() { // Use","--ssl-mode
 					switch sslMode {
 					case "DISABLED":
 						return []string{"--ssl-mode=DISABLED"}
@@ -911,8 +911,12 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					}
 				}
 			} else {
-				if server.DBVersion.IsMySQLOrPerconaGreater84() && ver.IsMySQLOrPerconaGreater84() { // Use","--ssl-mode
-					return []string{"--ssl-mode=" + sslMode} // No verify server cert
+				if server.DBVersion.IsMySQLOrPerconaGreater8() && ver.IsMySQLOrPerconaGreater8() { // Use","--ssl-mode
+					if sslMode != "" {
+						return []string{"--ssl-mode=" + sslMode} // No verify server cert
+					} else {
+						return []string{"--ssl-mode=PREFERRED"} // No verify server cert
+					}
 				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
 						return []string{"--skip-ssl"}
