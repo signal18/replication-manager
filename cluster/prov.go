@@ -530,13 +530,13 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	var err error
 
 	if cluster.Conf.MultiMasterWsrep {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Galera cluster ignoring replication setup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
 	if clean {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cleanup error %s", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cleanup error %s", err)
 			return err
 		}
 	}
@@ -556,7 +556,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	wg.Wait()
 	if err == nil {
 		newErr := errors.New("Environment already has an existing master/slave setup")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "%s", newErr)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "%s", newErr)
 		return newErr
 	}
 
