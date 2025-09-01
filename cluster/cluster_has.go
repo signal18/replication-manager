@@ -565,3 +565,15 @@ func (cluster *Cluster) HasWaitSponsorCredCookie() bool {
 	}
 	return false
 }
+
+func (cluster *Cluster) HasDiscoverTopologyMismatchTarget() bool {
+	return cluster.Topology != cluster.Conf.TopologyTarget
+}
+
+func (cluster *Cluster) HasDiscoverTopologyReachTarget() bool {
+	return cluster.Topology == cluster.Conf.TopologyTarget
+}
+
+func (cluster *Cluster) IsTopologyTargetEqual(target string) bool {
+	return cluster.Conf.TopologyTarget == target
+}

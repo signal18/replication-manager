@@ -568,6 +568,8 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.CheckDefaultUser(true)
 	cluster.SetToolVersions()
 	cluster.StartResticRepo()
+
+	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 }
 
 func (cluster *Cluster) initOrchetratorNodes() {
@@ -634,7 +636,7 @@ func (cluster *Cluster) Run() {
 	}
 
 	cluster.Lock()
-	cluster.Topology = cluster.GetTopologyFromConf()
+	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
 	for cluster.exit == false {
@@ -725,10 +727,6 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
-						if cluster.Topology != cluster.Conf.TopologyTarget {
-							cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
-						}
-
 						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
@@ -742,8 +740,14 @@ func (cluster *Cluster) Run() {
 						}
 						cluster.PrintDelayStat()
 					}
+
 					wg.Wait()
 				}
+
+				if cluster.HasDiscoverTopologyMismatchTarget() {
+					cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
+				}
+
 				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
 				err := cluster.AddChildServers()
 
