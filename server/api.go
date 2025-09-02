@@ -1976,14 +1976,17 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 				session.Arguments = append(session.Arguments, session.ServiceGottyUrl)
 
 				session.CmdType = tty.TerminalGottyClient
+				session.Command = mycluster.GetGottyClientPath()
 				session, err = repman.SessionManager.RunSession(session)
 			} else {
 				session, err = repman.SessionManager.RunSSHSession(session)
 			}
 		} else if session.CmdType == tty.TerminalMySQL {
+			session.Command = mycluster.GetMysqlclientPath()
 			session.Arguments = append(session.Arguments, "-p")
 			session, err = repman.SessionManager.RunSession(session)
 		} else if session.CmdType == tty.TerminalMyTop {
+			session.Command = mycluster.GetMytopPath()
 			session.Arguments = append(session.Arguments, "--prompt")
 			session, err = repman.SessionManager.RunSession(session)
 		} else {

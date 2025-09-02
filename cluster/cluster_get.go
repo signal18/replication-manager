@@ -219,6 +219,30 @@ func (cluster *Cluster) GetMysqlclientPath() string {
 	return cluster.Conf.BackupMysqlclientPath
 }
 
+func (cluster *Cluster) GetMytopPath() string {
+	if cluster.Conf.BackupMytopPath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "mytop").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/mytop"
+	}
+	return cluster.Conf.BackupMytopPath
+}
+
+func (cluster *Cluster) GetGottyClientPath() string {
+	if cluster.Conf.BackupGottyClientPath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "gotty-client").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+		return cluster.GetShareDir() + "/" + cluster.Conf.GoArch + "/" + cluster.Conf.GoOS + "/gotty-client"
+	}
+	return cluster.Conf.BackupGottyClientPath
+}
+
 func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
 		// Return installed mysql client on repman host instead of embedded if exists

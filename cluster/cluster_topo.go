@@ -669,7 +669,7 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 	}
 }
 
-func (cluster *Cluster) BootstrapTopology(topology string) {
+func (cluster *Cluster) BootstrapTopology(topology string) error {
 	switch topology {
 	case "master-slave":
 		cluster.SetMultiMasterRing(false)
@@ -738,9 +738,10 @@ func (cluster *Cluster) BootstrapTopology(topology string) {
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(true)
 	default:
-		return
+		return errors.New("Unknown topology: " + topology)
 	}
 	cluster.SetTopologyTarget(topology)
+	return nil
 }
 
 func (cluster *Cluster) GetReplicationMasterServerID() uint64 {

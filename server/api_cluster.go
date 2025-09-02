@@ -1473,9 +1473,13 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 			return
 		}
 
-		mycluster.BootstrapTopology(vars["topology"])
-		err := mycluster.BootstrapReplication(true)
-		if err != nil {
+		if err := mycluster.BootstrapTopology(vars["topology"]); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping topology %s", err)
+			http.Error(w, err.Error(), 500)
+			return
+		}
+
+		if err := mycluster.BootstrapReplication(true); err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error bootstraping replication %s", err)
 			http.Error(w, err.Error(), 500)
 			return
