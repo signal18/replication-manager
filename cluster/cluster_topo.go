@@ -672,6 +672,7 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 }
 
 func (cluster *Cluster) BootstrapTopology(topology string) error {
+func (cluster *Cluster) BootstrapTopology(topology string) error {
 	switch topology {
 	case "master-slave":
 		cluster.SetMultiMasterRing(false)
