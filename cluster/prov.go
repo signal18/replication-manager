@@ -561,14 +561,31 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		return newErr
 	}
 
+	err = cluster.BoostrapProcess(clean, oldMaster)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "BoostrapProcess error %s", err)
+		return err
+	}
+
+	// speed up topology discovery
+	wg.Add(1)
+	cluster.TopologyDiscover(wg)
+	wg.Wait()
+
+	//bootstrapChan <- true
+	return nil
+}
+
+func (cluster *Cluster) BoostrapProcess(clean bool, oldMaster *ServerMonitor) error {
 	cluster.StateMachine.SetFailoverState()
 	defer cluster.StateMachine.RemoveFailoverState()
 
+	var err error
+	// reset cluster state
 	if clean {
 		// Remove old master if any
 		cluster.master = nil
 		cluster.vmaster = nil
-		cluster.slaves = nil
 	}
 
 	masterKey := func() int {
@@ -785,12 +802,6 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 	}
 
-	// speed up topology discovery
-	wg.Add(1)
-	cluster.TopologyDiscover(wg)
-	wg.Wait()
-
-	//bootstrapChan <- true
 	return nil
 }
 
