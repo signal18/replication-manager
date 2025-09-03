@@ -471,6 +471,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Cleaning up replication on existing servers")
 	cluster.StateMachine.SetFailoverState()
+	defer cluster.StateMachine.RemoveFailoverState()
 	for _, server := range cluster.Servers {
 		err := server.Refresh()
 		if err != nil {
@@ -520,7 +521,6 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 	cluster.master = nil
 	cluster.vmaster = nil
 	cluster.slaves = nil
-	cluster.StateMachine.RemoveFailoverState()
 	return nil
 }
 
