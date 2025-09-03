@@ -438,7 +438,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SwitchLockUserOnFreeze, "switchover-lock-user-on-freeze", false, "Switchover lock all non replication-manager users on freeze")
 	//	flags.BoolVar(&conf.SwitchRedirectOnFreeze, "switchover-redirect-on-freeze", false, "Switchover redirect traffic to dummy")
 
-	flags.BoolVar(&conf.SwitchDecreaseMaxConn, "switchover-decrease-max-conn", true, "Switchover decrease max connection on old master")
+	flags.BoolVar(&conf.SwitchDecreaseMaxConn, "switchover-decrease-max-conn", false, "Switchover decrease max connection on old master")
 	flags.BoolVar(&conf.SwitchoverCopyOldLeaderGtid, "switchover-copy-old-leader-gtid", false, "Switchover copy old leader GTID")
 	flags.Int64Var(&conf.SwitchDecreaseMaxConnValue, "switchover-decrease-max-conn-value", 10, "Switchover decrease max connection to this value different according to flavor")
 	flags.IntVar(&conf.SwitchSlaveWaitRouteChange, "switchover-wait-route-change", 2, "Switchover wait for unmanged proxy monitor to dicoverd new state")
