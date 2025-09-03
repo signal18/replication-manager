@@ -635,11 +635,6 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 					server.SetReadOnly()
 				}
 			}
-
-		}
-		if cluster.master == nil {
-			cluster.master = cluster.Servers[masterKey]
-			cluster.master.SetMaster()
 		}
 	}
 
