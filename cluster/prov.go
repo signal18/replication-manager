@@ -528,6 +528,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
+	oldMaster := cluster.GetMaster()
 
 	if cluster.Conf.MultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Galera cluster ignoring replication setup")
@@ -570,21 +571,30 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		cluster.slaves = nil
 	}
 
-	masterKey := 0
-	if cluster.Conf.PrefMaster != "" {
-		masterKey = func() int {
-			for k, server := range cluster.Servers {
-				// Skip child cluster
-				if server.SourceClusterName != cluster.Name {
-					continue
+	masterKey := func() int {
+		for k, server := range cluster.Servers {
+			// Skip child cluster
+			if server.SourceClusterName != cluster.Name {
+				continue
+			}
+			if oldMaster != nil {
+				if server.URL == oldMaster.URL {
+					return k
 				}
+			} else if cluster.Conf.PrefMaster != "" {
 				if server.IsPrefered() {
 					return k
 				}
 			}
+		}
+
+		if cluster.Conf.PrefMaster != "" {
 			return -1
-		}()
-	}
+		}
+
+		return 0 // default to first node
+	}()
+
 	if masterKey == -1 {
 		return errors.New("Preferred master could not be found in existing servers")
 	}
