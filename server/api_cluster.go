@@ -2148,6 +2148,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchForceSlaveNoGtid()
 	case "switchover-lower-release":
 		mycluster.SwitchFailoverLowerRelease()
+	case "switchover-decrease-max-conn":
+		mycluster.SwitchFailoverDecreaseMaxConn()
 	case "failover-event-status":
 		mycluster.SwitchFailoverEventStatus()
 	case "failover-event-scheduler":

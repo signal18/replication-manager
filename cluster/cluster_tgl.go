@@ -350,6 +350,10 @@ func (cluster *Cluster) SwitchFailoverLowerRelease() {
 	cluster.Conf.SwitchLowerRelease = !cluster.Conf.SwitchLowerRelease
 }
 
+func (cluster *Cluster) SwitchFailoverDecreaseMaxConn() {
+	cluster.Conf.SwitchDecreaseMaxConn = !cluster.Conf.SwitchDecreaseMaxConn
+}
+
 func (cluster *Cluster) SwitchFailoverEventStatus() {
 	cluster.Conf.FailEventStatus = !cluster.Conf.FailEventStatus
 }

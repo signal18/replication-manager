@@ -29,6 +29,19 @@ function RepFailOverSettings({ selectedCluster, user, openConfirmModal, closeCon
         />
       )
     },
+     {
+      key: 'Decrease old master connection on failover/switchover',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for switchover-decrease-max-conn?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'switchover-decrease-max-conn' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.switchoverDecreaseMaxConn}
+        />
+      )
+    },
     {
       key: 'Checks failover & switchover constraints',
       value: (
