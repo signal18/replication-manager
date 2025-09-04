@@ -3976,7 +3976,7 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 		gitrepo = conf.ProvAppTemplateRepo
 		gitbranch = conf.ProvAppTemplateRepoBranch
 		cacheDir = filepath.Join(conf.WorkingDir, ".cache", "git", "repos")
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitbranch, gitpass, cacheDir, timeout)
+		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout)
 		if err != nil {
 			return result, err
 		}
