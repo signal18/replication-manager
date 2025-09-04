@@ -1087,6 +1087,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppVolumePools, "prov-app-volume-pools", "tank:local,drbd:shared:active-passive", "List of volume pools to use for application, comma separated. Format: poolname:type:[additional description]. Type can be local or shared. Example of additional description, for shared can be active-passive.")
 	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
 	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates")
+	flags.StringVar(&conf.ProvAppTemplateRepoBranch, "prov-app-template-repo-branch", "main", "Git repository branch for application templates")
 	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates")
 	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates")
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
@@ -2021,10 +2022,6 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
-	err = repman.GetAppTemplates()
-	if err != nil {
-		repman.Logrus.WithError(err).Errorf("Initialization app templates failed: %s %s", repman.Conf.ShareDir+"/app/deployments/", err)
-	}
 
 	repman.ServiceVM = config.GetVMType()
 	repman.ServiceFS = config.GetFSType()
@@ -2144,6 +2141,7 @@ func (repman *ReplicationManager) Run() error {
 	for _, gl := range repman.ClusterList {
 		repman.StartCluster(gl)
 	}
+
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
 		cluster.SetCarbonLogger(repman.clog)
@@ -3042,7 +3040,12 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 		}
 	}
 
-	repman.ServiceTemplates = filelist
+	repolist, err := repman.Conf.LoadAppTemplateList()
+	if err != nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
+	}
+
+	repman.ServiceTemplates = append(filelist, repolist...)
 
 	return nil
 }

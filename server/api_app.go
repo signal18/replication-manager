@@ -2046,3 +2046,46 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 		return
 	}
 }
+
+// @Summary Get App Template Repository Tree
+// @Description Retrieves the tree structure of the application template repository for a specific cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} treehelper.FileTreeCache "Application template repository tree structure"
+// @Failure 400 {string} string "Invalid Git repository URL"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree" or "No cluster"
+// @Router /api/clusters/{clusterName}/apps/actions/get-app-template [get]
+// This endpoint retrieves the tree structure of the application template repository for a specific cluster.
+func (repman *ReplicationManager) handlerMuxAppGetTemplateFromRepo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		gitpass := mycluster.Conf.GetDecryptedPassword("App Template Repo Pass", mycluster.Conf.ProvAppTemplateRepoPassword)
+		gitrepo := mycluster.Conf.ProvAppTemplateRepo
+		gitbranch := mycluster.Conf.ProvAppTemplateRepoBranch
+		cacheDir := filepath.Join(mycluster.Conf.WorkingDir, ".cache", "git", "repos")
+		timeout := mycluster.Conf.Timeout
+
+		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout)
+		if err != nil {
+			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(tree)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}

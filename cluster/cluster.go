@@ -247,6 +247,7 @@ type Cluster struct {
 	ConfigManager             *manager.ConfigManager      `json:"-"`
 	failSendCount             int                         `json:"-"`
 	MeetUserID                string                      `json:"-"` //To store meet user id
+	ServiceTemplates          []string                    `json:"-"` //To store application templates
 	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
@@ -361,6 +362,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.Confs = confs
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
+	cluster.ServiceTemplates = make([]string, 0)
 
 	*cluster.Conf = confs.ConfInit
 

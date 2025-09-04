@@ -626,3 +626,34 @@ func (gc GitClient) LoadTreeFromCache(cacheDir, gitRef, commitSHA string) *treeh
 	}
 	return nil
 }
+
+func GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir string, timeout int) (*treehelper.FileTreeCache, error) {
+	var err error
+	var gClient GitClientInterface
+	var baseURL, projectID string
+
+	if strings.Contains(gitrepo, "github") {
+		_, projectID, err = ParseGitHubURL(gitrepo)
+		if err != nil {
+			return nil, err
+		}
+		gClient, err = NewGithubClient(gitpass)
+	} else {
+		baseURL, projectID, err = ParseGitLabURL(gitrepo)
+		if err != nil {
+			return nil, err
+		}
+		gClient, err = NewGitlabClient(baseURL, gitpass)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the repository tree
+
+	gitTimeout := time.Duration(timeout) * time.Second
+	if timeout <= 0 {
+		gitTimeout = 15 * time.Second // Default timeout if not specified
+	}
+	return gClient.GetRepositoryTree(cacheDir, projectID, gitbranch, gitTimeout)
+}

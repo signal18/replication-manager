@@ -172,12 +172,12 @@ func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template strin
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", templatePath, err)
 				return err
 			}
+		}
 
-			err = os.WriteFile(localPath, content, 0644)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error writing local template file %s: %s", localPath, err)
-				return err
-			}
+		err = os.WriteFile(localPath, content, 0644)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error writing local template file %s: %s", localPath, err)
+			return err
 		}
 	}
 

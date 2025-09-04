@@ -130,3 +130,32 @@ func TraverseFileTree(root *FileEntry, path string) (*FileEntry, error) {
 
 	return current, nil
 }
+
+func (ftc *FileTreeCache) PrintTree(ext string, trimSuffix bool) []string {
+	result := make([]string, 0)
+
+	printTreeHelper(ftc.Tree, ext, trimSuffix, &result)
+
+	return result
+}
+
+func printTreeHelper(node *FileEntry, ext string, trimSuffix bool, result *[]string) {
+	if node == nil {
+		return
+	}
+
+	if node.Children != nil || ext == "" || strings.HasSuffix(node.Path, ext) {
+		if len(node.Children) > 0 {
+			for _, child := range node.Children {
+				printTreeHelper(child, ext, trimSuffix, result)
+			}
+		} else {
+			if trimSuffix {
+				*result = append(*result, strings.TrimSuffix(node.Path, ext))
+			} else {
+				*result = append(*result, node.Path)
+			}
+		}
+	}
+
+}
