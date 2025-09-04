@@ -3980,7 +3980,7 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 		if err != nil {
 			return result, err
 		}
-		result = tree.PrintTree(".toml", true)
+		result = tree.PrintTree(".toml", true, true)
 	}
 
 	return result, nil
