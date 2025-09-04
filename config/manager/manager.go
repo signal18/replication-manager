@@ -222,6 +222,15 @@ func (cm *ConfigManager) UpdateLoggerConfig(clustername string, conf *config.Con
 	cm.logger.UpdateConfig(clustername, conf)
 }
 
+func (cm *ConfigManager) CountTasksForCluster(cluster string) int {
+	if clusterManager, exists := cm.clusterData[cluster]; exists {
+		clusterManager.mutex.Lock()
+		defer clusterManager.mutex.Unlock()
+		return len(clusterManager.tasks)
+	}
+	return 0
+}
+
 // SaveConfig allows concurrent saves but respects stopping
 func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, wait bool) {
 	configSaveTask := &ConfigSaveTask{Cluster: clustername, SaveFunc: saveFunc}
