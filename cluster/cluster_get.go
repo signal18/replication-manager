@@ -914,41 +914,35 @@ func (cluster *Cluster) GetAppServerIdList() []string {
 
 func (cluster *Cluster) GetTopologyFromConf() string {
 
-	cluster.Conf.Topology = config.TopoUnknown
+	targetTopology := config.TopoMasterSlave
 	if cluster.Conf.MultiMaster {
-		cluster.Conf.Topology = config.TopoMultiMaster
+		targetTopology = config.TopoMultiMaster
 	} else if cluster.Conf.MultiMasterRing {
-		cluster.Conf.Topology = config.TopoMultiMasterRing
+		targetTopology = config.TopoMultiMasterRing
 	} else if cluster.Conf.MultiMasterWsrep {
-		cluster.Conf.Topology = config.TopoMultiMasterWsrep
+		targetTopology = config.TopoMultiMasterWsrep
 	} else if cluster.Conf.MultiMasterGrouprep {
-		cluster.Conf.Topology = config.TopoMultiMasterGrouprep
+		targetTopology = config.TopoMultiMasterGrouprep
 	} else if cluster.Conf.MxsBinlogOn {
-		cluster.Conf.Topology = config.TopoBinlogServer
+		targetTopology = config.TopoBinlogServer
 	} else if cluster.Conf.MultiTierSlave {
-		cluster.Conf.Topology = config.TopoMultiTierSlave
+		targetTopology = config.TopoMultiTierSlave
 	} else if cluster.Conf.MasterSlavePgStream {
-		cluster.Conf.Topology = config.TopoMasterSlavePgStream
+		targetTopology = config.TopoMasterSlavePgStream
 		cluster.IsPostgres = true
 	} else if cluster.Conf.MasterSlavePgLogical {
-		cluster.Conf.Topology = config.TopoMasterSlavePgLog
+		targetTopology = config.TopoMasterSlavePgLog
 		cluster.IsPostgres = true
 	} else if cluster.Conf.ActivePassive {
-		cluster.Conf.Topology = config.TopoActivePassive
+		targetTopology = config.TopoActivePassive
 	} else {
 		relay := cluster.GetRelayServer()
 		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
-			cluster.Conf.Topology = config.TopoMultiTierSlave
-		} else if cluster.master != nil {
-			cluster.Conf.Topology = config.TopoMasterSlave
+			targetTopology = config.TopoMultiTierSlave
 		}
 	}
 
-	if cluster.Conf.TopologyTarget == "" || cluster.Conf.TopologyTarget == config.TopoUnknown {
-		cluster.SetTopologyTarget(cluster.Conf.Topology)
-	}
-
-	return cluster.Conf.Topology
+	return targetTopology
 }
 
 func (cluster *Cluster) GetTopology() string {

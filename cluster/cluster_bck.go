@@ -22,7 +22,7 @@ import (
 
 func (cluster *Cluster) ResticGetEnv() []string {
 	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
-	newEnv = append(newEnv, "RESTIC_CACHE_DIR=$HOME/.cache/restic")
+	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+os.Getenv("HOME")+"/.cache/restic")
 
 	if cluster.Conf.BackupResticAws {
 		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
