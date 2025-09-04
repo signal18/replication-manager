@@ -1259,7 +1259,7 @@ This is the list of topology
 */
 const (
 	TopoMasterSlave         string = "master-slave"
-	TopoUnknown             string = "unknown"
+	TopoUnknown             string = ""
 	TopoBinlogServer        string = "binlog-server"
 	TopoMultiTierSlave      string = "multi-tier-slave"
 	TopoMultiMaster         string = "multi-master"

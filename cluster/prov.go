@@ -475,6 +475,7 @@ func (cluster *Cluster) BootstrapReplicationCleanup() error {
 		err := server.Refresh()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Refresh failed in Cleanup on server %s %s", server.URL, err)
+			cluster.StateMachine.RemoveFailoverState()
 			return err
 		}
 		if cluster.Conf.Verbose {
@@ -528,16 +529,16 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 	// default to master slave
 	var err error
+	oldMaster := cluster.GetMaster()
 
 	if cluster.Conf.MultiMasterWsrep {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Galera cluster ignoring replication setup")
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Galera cluster ignoring replication setup")
 		return nil
 	}
 	if clean {
 		err := cluster.BootstrapReplicationCleanup()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cleanup error %s", err)
-			return err
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cleanup error %s", err)
 		}
 	}
 	for _, server := range cluster.Servers {
@@ -555,36 +556,38 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	err = cluster.TopologyDiscover(wg)
 	wg.Wait()
 	if err == nil {
-		newErr := errors.New("Environment already has an existing master/slave setup")
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "%s", newErr)
-		return newErr
+		return errors.New("Environment already has an existing master/slave setup")
 	}
 
 	cluster.StateMachine.SetFailoverState()
-	defer cluster.StateMachine.RemoveFailoverState()
-
-	if clean {
-		// Remove old master if any
-		cluster.master = nil
-		cluster.vmaster = nil
-		cluster.slaves = nil
-	}
-
 	masterKey := 0
-	if cluster.Conf.PrefMaster != "" {
-		masterKey = func() int {
-			for k, server := range cluster.Servers {
-				// Skip child cluster
-				if server.SourceClusterName != cluster.Name {
-					continue
+
+	masterKey = func() int {
+		for k, server := range cluster.Servers {
+			// Skip child cluster
+			if server.SourceClusterName != cluster.Name {
+				continue
+			}
+			if oldMaster != nil {
+				if server == oldMaster {
+					cluster.StateMachine.RemoveFailoverState()
+					return k
 				}
+			} else if cluster.Conf.PrefMaster != "" {
 				if server.IsPrefered() {
+					cluster.StateMachine.RemoveFailoverState()
 					return k
 				}
 			}
+		}
+		cluster.StateMachine.RemoveFailoverState()
+		if cluster.Conf.PrefMaster != "" {
 			return -1
-		}()
-	}
+		}
+
+		return 0
+	}()
+
 	if masterKey == -1 {
 		return errors.New("Preferred master could not be found in existing servers")
 	}
@@ -637,12 +640,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			}
 
 		}
-		if cluster.master == nil {
-			cluster.master = cluster.Servers[masterKey]
-			cluster.master.SetMaster()
-		}
 	}
-
 	// Slave Relay
 	if cluster.Conf.MultiTierSlave == true {
 		relaykey := 1
@@ -681,12 +679,14 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				if relaykey == key {
 					err = server.ChangeMasterTo(cluster.Servers[masterKey], "CURRENT_POS")
 					if err != nil {
+						cluster.StateMachine.RemoveFailoverState()
 						return err
 					}
 
 				} else {
 					err = server.ChangeMasterTo(cluster.Servers[relaykey], "CURRENT_POS")
 					if err != nil {
+						cluster.StateMachine.RemoveFailoverState()
 						return err
 					}
 				}
@@ -698,7 +698,6 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 	}
-
 	// Multi Master
 	if cluster.Conf.MultiMaster == true {
 		for _, server := range cluster.Servers {
@@ -722,6 +721,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == 0 {
 				err = server.ChangeMasterTo(cluster.Servers[1], "CURRENT_POS")
 				if err != nil {
+					cluster.StateMachine.RemoveFailoverState()
 					return err
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
@@ -731,6 +731,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			if key == 1 {
 				err = server.ChangeMasterTo(cluster.Servers[0], "CURRENT_POS")
 				if err != nil {
+					cluster.StateMachine.RemoveFailoverState()
 					return err
 				}
 			}
@@ -772,6 +773,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 			i := (len(cluster.Servers) + key - 1) % len(cluster.Servers)
 			err = server.ChangeMasterTo(cluster.Servers[i], "SLAVE_POS")
 			if err != nil {
+				cluster.StateMachine.RemoveFailoverState()
 				return err
 			}
 
@@ -779,7 +781,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 
 		}
 	}
-
+	cluster.StateMachine.RemoveFailoverState()
 	// speed up topology discovery
 	wg.Add(1)
 	cluster.TopologyDiscover(wg)

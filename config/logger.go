@@ -33,6 +33,10 @@ func (l *LogrusWrapper) GetConfig(clustername string) *Config {
 	return cnf
 }
 
+func (l *LogrusWrapper) Print(fields logrus.Fields, args ...interface{}) {
+	l.Logger.WithFields(fields).Print(args...)
+}
+
 func (l *LogrusWrapper) Debugln(clustername string, module int, args ...interface{}) {
 	if l.GetConfig(clustername).IsEligibleForPrinting(module, LvlDbg) {
 		l.Logger.WithFields(logrus.Fields{"cluster": clustername, "module": GetTagsForLog(module)}).Debugln(args...)
