@@ -109,123 +109,6 @@ func (cluster *Cluster) LoadAppConfig(dirname, appname string) error {
 	return errormap
 }
 
-func (cluster *Cluster) LoadAppTemplate(appcnf *config.AppConfig, template string) error {
-	var content []byte
-	var err error
-
-	if template == "" {
-		return nil
-	}
-
-	// Check if the template is local template
-	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
-	_, err = os.Stat(localPath)
-	if err == nil {
-		// If the template file exists in the local templates directory, read it
-		content, err = os.ReadFile(localPath)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading local template file %s: %s", template, err)
-			return err
-		}
-	} else if !os.IsNotExist(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error checking local template file %s: %s", template, err)
-		return err
-	} else {
-		// if the parent directory does not exist, create it
-		parentDir := filepath.Dir(localPath)
-		if _, err := os.Stat(parentDir); os.IsNotExist(err) {
-			err = os.MkdirAll(parentDir, os.ModePerm)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error creating parent directory for local template file %s: %s", localPath, err)
-				return err
-			}
-		}
-
-		var gClient githelper.GitClientInterface
-		var baseURL, projectID string
-		gitpass := cluster.Conf.GetDecryptedPassword("template-repo", cluster.Conf.ProvAppTemplateRepoPassword)
-		if strings.Contains(cluster.Conf.ProvAppTemplateRepo, "github") {
-			_, projectID, err = githelper.ParseGitHubURL(cluster.Conf.ProvAppTemplateRepo)
-			if err == nil {
-				gClient, err = githelper.NewGithubClient(gitpass)
-			}
-		} else {
-			baseURL, projectID, err = githelper.ParseGitLabURL(cluster.Conf.ProvAppTemplateRepo)
-			if err == nil {
-				gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
-			}
-		}
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error creating git client for template repository %s: %s", cluster.Conf.ProvAppTemplateRepo, err)
-			return err
-		}
-
-		// Get the file content from the repository
-		content, err = gClient.DownloadFileFromRepo(projectID, cluster.Conf.ProvAppTemplateRepoUser, template+".toml", time.Duration(cluster.Conf.ProvAppTemplateRepoTimeout)*time.Second)
-		if err != nil {
-			templateName := strings.TrimLeft(template, "shared/")
-			templatePath := "app/deployments/" + templateName + ".toml"
-
-			// Check if the template file exists within share
-			content, err = share.ReadFileFromSharedDir(cluster.Conf.WithEmbed, cluster.Conf.ShareDir, templatePath)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading template file %s: %s", templatePath, err)
-				return err
-			}
-
-			err = os.WriteFile(localPath, content, 0644)
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error writing local template file %s: %s", localPath, err)
-				return err
-			}
-		}
-	}
-
-	// Parse the template content
-	app := cluster.GetAppByConfig(appcnf)
-	if app == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "App configuration not found for %s:%s", appcnf.AppHost, appcnf.AppPort)
-		return errors.New("app configuration not found")
-	}
-
-	// if app.AppClusterSubstitute == "" {
-	// 	// If the app cluster substitute is empty, generate it
-	// 	app.AppClusterSubstitute, err = cluster.GetAppsSubstitutionJSon(app)
-	// 	if err != nil {
-	// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error getting app cluster substitute for %s:%s: %s", appcnf.AppHost, appcnf.AppPort, err)
-	// 	}
-	// }
-
-	// // If the app cluster substitute is still empty, use the template as is
-	// var parsed string = string(content)
-	// if app.AppClusterSubstitute != "" {
-	// 	parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
-	// 	if err != nil {
-	// 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file %s: %s", template, err)
-	// 	}
-	// }
-
-	// read parsed content (toml format) and merge it into the app configuration
-	appViper := viper.New()
-	appViper.SetConfigType("toml")
-	err = appViper.ReadConfig(bytes.NewBuffer(content))
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading parsed template file %s: %s", template, err)
-		return err
-	}
-
-	// Unmarshal the parsed content into the app configuration
-	err = appViper.Unmarshal(appcnf)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
-		return err
-	}
-
-	appcnf.ProvAppTemplate = template
-
-	return nil
-}
-
 // // LoadConfig loads the configuration from a file to the configuration struct.
 // // If the file does not exist, it will return an error.
 // // If the file exists but cannot be read, it will return the old configuration and the error.
@@ -413,6 +296,35 @@ func (cluster *Cluster) SaveAppConfigFile(app *App, filePath, templatePath strin
 // }
 
 func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) error {
+	var newViper *viper.Viper
+	var content []byte
+	var err error
+	if template != "" {
+		content, err = cluster.GetTemplateContent(template)
+		if err != nil {
+			return err
+		}
+
+		newViper, err = cluster.LoadTemplateToViper(content)
+		if err != nil {
+			return err
+		}
+
+		if port == "" || port == "0" {
+			port = newViper.GetString("app-port")
+			if port == "" || port == "0" {
+				port = "80"
+			}
+		}
+
+		if dockerImg == "" {
+			dockerImg = newViper.GetString("prov-app-docker-img")
+			if dockerImg == "" {
+				return errors.New("Docker image is required in the template")
+			}
+		}
+	}
+
 	for _, app := range cluster.Conf.Apps {
 		if app.AppHost == srv && app.AppPort == port {
 			return errors.New("App already exists. If you want to add new deployment, please use the app deployment menu")
@@ -427,11 +339,27 @@ func (cluster *Cluster) AddSeededApp(srv, port, dockerImg, template string) erro
 	cluster.Lock()
 	cluster.newAppList()
 	cluster.Unlock()
+
 	app := cluster.GetAppByConfig(appcnf)
 	if app != nil {
 		app.CheckPrimaryRoute()
 	}
-	cluster.LoadAppTemplate(appcnf, template)
+
+	if template != "" {
+		resolvedContent, _ := cluster.ParseTemplateContent(app, content)
+		newViper, err = cluster.LoadTemplateToViper(resolvedContent)
+		newViper.Set("app-host", srv)
+		newViper.Set("app-port", port)
+		newViper.Set("prov-app-docker-img", dockerImg)
+		newViper.Set("prov-app-template", template)
+
+		// Unmarshal the parsed content into the app configuration
+		err = newViper.Unmarshal(appcnf)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", template, err)
+			return err
+		}
+	}
 	return nil
 }
 
@@ -648,4 +576,146 @@ func (cluster *Cluster) SetAppVariableValue(app *App, v config.VariableMapping) 
 	// If the variable does not exist, add it
 	app.AppConfig.Deployment.Variables = append(app.AppConfig.Deployment.Variables, config.VariableMapping{Name: v.Name, Value: newValue})
 	return nil
+}
+
+func (cluster *Cluster) loadLocalTemplate(path, template string) ([]byte, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, os.ErrNotExist
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error reading local template file %s: %s", template, err)
+	}
+	return content, err
+}
+
+func (cluster *Cluster) loadTemplateFromRepo(template string) ([]byte, error) {
+	var (
+		gClient   githelper.GitClientInterface
+		baseURL   string
+		projectID string
+		err       error
+	)
+
+	gitpass := cluster.Conf.GetDecryptedPassword("template-repo", cluster.Conf.ProvAppTemplateRepoPassword)
+
+	if strings.Contains(cluster.Conf.ProvAppTemplateRepo, "github") {
+		_, projectID, err = githelper.ParseGitHubURL(cluster.Conf.ProvAppTemplateRepo)
+		if err == nil {
+			gClient, err = githelper.NewGithubClient(gitpass)
+		}
+	} else {
+		baseURL, projectID, err = githelper.ParseGitLabURL(cluster.Conf.ProvAppTemplateRepo)
+		if err == nil {
+			gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
+		}
+	}
+
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error creating git client for repo %s: %s", cluster.Conf.ProvAppTemplateRepo, err)
+		return nil, err
+	}
+
+	content, err := gClient.DownloadFileFromRepo(
+		projectID,
+		cluster.Conf.ProvAppTemplateRepoUser,
+		template+".toml",
+		time.Duration(cluster.Conf.ProvAppTemplateRepoTimeout)*time.Second,
+	)
+	return content, err
+}
+
+func (cluster *Cluster) loadTemplateFromShared(template string) ([]byte, error) {
+	templateName := strings.TrimLeft(template, "shared/")
+	templatePath := "app/deployments/" + templateName + ".toml"
+
+	content, err := share.ReadFileFromSharedDir(
+		cluster.Conf.WithEmbed,
+		cluster.Conf.ShareDir,
+		templatePath,
+	)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error reading template file %s: %s", templatePath, err)
+		return nil, err
+	}
+	return content, nil
+}
+
+func (cluster *Cluster) GetTemplateContent(template string) ([]byte, error) {
+	localPath := filepath.Join(cluster.Conf.WorkingDir, ".templates", "apps", template+".toml")
+
+	// Try local file
+	if content, err := cluster.loadLocalTemplate(localPath, template); err == nil {
+		return content, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+
+	// Ensure parent dir exists
+	if err := os.MkdirAll(filepath.Dir(localPath), os.ModePerm); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error creating parent directory for %s: %s", localPath, err)
+		return nil, err
+	}
+
+	// Try repo
+	content, err := cluster.loadTemplateFromRepo(template)
+	if err != nil {
+		// Fallback: shared dir
+		content, err = cluster.loadTemplateFromShared(template)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Cache locally
+	if err := os.WriteFile(localPath, content, 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn,
+			"Error writing local template file %s: %s", localPath, err)
+		return nil, err
+	}
+
+	return content, nil
+}
+
+func (cluster *Cluster) LoadTemplateToViper(content []byte) (*viper.Viper, error) {
+	if content == nil {
+		return nil, errors.New("template content is empty")
+	}
+
+	// read parsed content (toml format) and merge it into the app configuration
+	appViper := viper.New()
+	appViper.SetConfigType("toml")
+	err := appViper.ReadConfig(bytes.NewBuffer(content))
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error reading parsed template file: %s", err)
+		return nil, err
+	}
+
+	return appViper, nil
+}
+
+func (cluster *Cluster) ParseTemplateContent(app *App, content []byte) ([]byte, error) {
+	var err error
+
+	if app.AppClusterSubstitute == "" {
+		// If the app cluster substitute is empty, generate it
+		app.AppClusterSubstitute, err = cluster.GetAppsSubstitutionJSon(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error getting app cluster substitute for %s:%s: %s", app.Host, app.Port, err)
+		}
+	}
+
+	// If the app cluster substitute is still empty, use the template as is
+	var parsed string = string(content)
+	if app.AppClusterSubstitute != "" {
+		parsed, err = cluster.ParseAppTemplate(string(content), app.AppClusterSubstitute)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error parsing template file: %s", err)
+		}
+	}
+	return []byte(parsed), nil
 }

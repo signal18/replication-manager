@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"hash"
 	"io"
+	"path/filepath"
 	"regexp"
 	"slices"
 
@@ -630,6 +631,7 @@ type Config struct {
 	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
 	ProvAppHATopology                         string                 `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
 	ProvAppTemplateRepo                       string                 `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
+	ProvAppTemplateRepoBranch                 string                 `mapstructure:"prov-app-template-repo-branch" toml:"prov-app-template-repo-branch" json:"provAppTemplateRepoBranch" groups:"apps"`
 	ProvAppTemplateRepoUser                   string                 `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
 	ProvAppTemplateRepoPassword               string                 `mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
 	ProvAppTemplateRepoTimeout                int                    `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
@@ -3963,4 +3965,23 @@ func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
 	}
 
 	return pools
+}
+
+func (conf *Config) LoadAppTemplateList() ([]string, error) {
+	var result []string = make([]string, 0)
+	var gitpass, gitrepo, gitbranch, cacheDir string
+	var timeout int = conf.Timeout
+	if conf.ProvAppTemplateRepo != "" {
+		gitpass = conf.GetDecryptedPassword("App Template Repo Pass", conf.ProvAppTemplateRepoPassword)
+		gitrepo = conf.ProvAppTemplateRepo
+		gitbranch = conf.ProvAppTemplateRepoBranch
+		cacheDir = filepath.Join(conf.WorkingDir, ".cache", "git", "repos")
+		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout)
+		if err != nil {
+			return result, err
+		}
+		result = tree.PrintTree(".toml", true, true)
+	}
+
+	return result, nil
 }

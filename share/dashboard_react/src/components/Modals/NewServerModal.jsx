@@ -63,13 +63,18 @@ const formReducer = (state, action) => {
     case 'FILL_VERSION_DROPDOWN':
       const repolist = action.payload === 'shardproxy' ? 'mariadb' : action.payload
       const repo = state.serviceRepos.find((r) => r.name === repolist)
+      const tmpValue = action.payload === 'app' ? state.formData.template : ''
       return {
         ...state,
         formData: {
           ...state.formData,
           monitorType: action.payload,
           dockerImage: repo?.image || '',
-          tag: ''
+          tag: '',
+          dockerRegistry: {
+            ...state.formData.dockerRegistry,
+            template: tmpValue
+          }
         },
         tagOptions: repo?.options || []
       }
@@ -166,11 +171,11 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
   useEffect(() => {
     if (monitor?.serviceTemplates?.length > 0) {
       const templates = monitor?.serviceTemplates.map(item => ({
-          name: item,
-          value: item
+        name: item,
+        value: item
       }))
 
-      formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: templates })
+      formDispatch({ type: 'SET_TEMPLATE_OPTIONS', payload: [{ name: 'No Template', value: '' }, ...templates] })
     }
   }, [monitor?.serviceTemplates])
 
@@ -180,38 +185,44 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
 
   const handleCreateNewServer = () => {
     const hostError = host ? '' : 'Host is required'
-    const portError = port && port > 0 ? '' : 'Port is required'
+    const portError = port >= 0 && port <= 65535 ? '' : 'Port is required'
 
     formDispatch({ type: 'SET_ERRORS', payload: { host: hostError, port: portError } })
     if (hostError || portError) {
       return
     }
 
-    if (monitorType === 'app' && (!dockerImage || dockerImage.length === 0)) {
-      formDispatch({ type: 'SET_ERRORS', payload: { dockerImage: 'Docker image is required' } })
-      return
-    }
+    if (monitorType === 'app') {
+      if (!template || template.length === 0) {
+        if (monitorType === 'app' && (!dockerImage || dockerImage.length === 0)) {
+          formDispatch({ type: 'SET_ERRORS', payload: { dockerImage: 'Docker image is required' } })
+          return
+        }
+      }
 
-    if (monitorType === 'app' && isPrivateRegistry && (!url || url.length === 0)) {
-      formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Registry URL is required' } })
-      return
-    }
+      if (isPrivateRegistry && (!url || url.length === 0)) {
+        formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Registry URL is required' } })
+        return
+      }
 
-    if (monitorType === 'app' && isPrivateRegistry && (!username || username.length === 0)) {
-      formDispatch({ type: 'SET_ERRORS', payload: { dockerUser: 'Username is required' } })
-      return
-    }
+      if (isPrivateRegistry && (!username || username.length === 0)) {
+        formDispatch({ type: 'SET_ERRORS', payload: { dockerUser: 'Username is required' } })
+        return
+      }
 
-    if (monitorType === 'app' && isPrivateRegistry && (!password || password.length === 0)) {
-      formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Password is required' } })
-      return
+      if (isPrivateRegistry && (!password || password.length === 0)) {
+        formDispatch({ type: 'SET_ERRORS', payload: { dockerPassword: 'Password is required' } })
+        return
+      }
+    } else {
+
     }
 
     let finalTag = ""
     if (monitorType === 'app' && dockerImage && dockerImage.length > 0) {
-        finalTag = dockerImage
+      finalTag = dockerImage
     } else if (tag && tag.length > 0) {
-        finalTag = tag
+      finalTag = tag
     }
 
     dispatch(addServer({ clusterName, host, port, monitorType, tag: finalTag, dockerRegistry }))
@@ -249,16 +260,6 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
         <ModalCloseButton />
         <ModalBody>
           <Stack spacing='5'>
-            <FormControl isInvalid={errors.host}>
-              <FormLabel htmlFor='host'>Host</FormLabel>
-              <Input id='host' type='text' isRequired={true} value={host} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { host: e.target.value } })} />
-              <FormErrorMessage>{errors.host}</FormErrorMessage>
-            </FormControl>
-            <FormControl isInvalid={errors.port}>
-              <FormLabel htmlFor='port'>Port</FormLabel>
-              <Input id='port' type='number' max={65535} isRequired={true} value={port} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { port: e.target.value ? parseInt(e.target.value, 10) : 0 } })} />
-              <FormErrorMessage>{errors.port}</FormErrorMessage>
-            </FormControl>
             <FormControl>
               <FormLabel htmlFor='monitorType'>Monitor type</FormLabel>
               <Dropdown
@@ -269,13 +270,9 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                 selectedValue={monitorType}
               />
             </FormControl>
-            {monitorType === 'app' ? (
-              <>
-                <FormControl>
-                  <FormLabel htmlFor='dockerImage'>Docker image</FormLabel>
-                  <Input id='dockerImage' type='text' isRequired={true} value={dockerImage} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { dockerImage: e.target.value } })} />
-                </FormControl>
 
+            {monitorType === 'app' && (
+              <>
                 <FormControl>
                   <FormLabel htmlFor='template'>Template</FormLabel>
                   <Dropdown
@@ -287,6 +284,26 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   />
                 </FormControl>
 
+                {!template && (
+                  <FormControl>
+                    <FormLabel htmlFor='dockerImage'>Docker image</FormLabel>
+                    <Input id='dockerImage' type='text' isRequired={true} value={dockerImage} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { dockerImage: e.target.value } })} />
+                  </FormControl>
+                )}
+              </>
+            )}
+            <FormControl isInvalid={errors.host}>
+              <FormLabel htmlFor='host'>Host</FormLabel>
+              <Input id='host' type='text' isRequired={true} value={host} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { host: e.target.value } })} />
+              <FormErrorMessage>{errors.host}</FormErrorMessage>
+            </FormControl>
+            <FormControl isInvalid={errors.port}>
+              <FormLabel htmlFor='port'>Port</FormLabel>
+              <Input id='port' type='number' max={65535} value={port} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { port: e.target.value ? parseInt(e.target.value, 10) : 0 } })} />
+              <FormErrorMessage>{errors.port}</FormErrorMessage>
+            </FormControl>
+            {monitorType === 'app' ? (
+              <>
                 {/* Private Docker Registry Checkbox */}
                 <FormControl>
                   <Checkbox
