@@ -1346,7 +1346,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
 
-	tmp_read := fistRead.Sub("Default")
+	tmp_read := fistRead.Sub("default")
 	if tmp_read != nil {
 		tmp_read.Unmarshal(&conf)
 	}
@@ -1439,11 +1439,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	cfgGroupIndex = 0
 	//extract the default section of the config files
-	cf1 := fistRead.Sub("Default")
+	cf1 := fistRead.Sub("default")
 
 	//cf1.Debug()
 	if cf1 == nil {
-		repman.Logrus.Warning("config.toml has no [Default] configuration group and config group has not been specified")
+		repman.Logrus.Warning("config.toml has no [default] configuration group and config group has not been specified")
 	} else {
 		//save all default section in conf
 		cf1.AutomaticEnv()
@@ -1502,9 +1502,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if strClusters == "" {
 
 		//add default to the clusterlist if no cluster discover
-		repman.Logrus.WithField("cluster", "Default").Debug("No clusters dicoverd add Default Cluster")
-
-		strClusters += "Default"
+		repman.Logrus.WithField("cluster", "default").Debug("No clusters discovered add default Cluster")
+		strClusters += "default"
 
 	}
 
@@ -1530,9 +1529,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//add config from cluster to the config map
 	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
-		if len(repman.ClusterList) > 1 && cl == "Default" {
-			continue
-		}
 		confs[cl] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cl, conf)
 		cfgGroupIndex++
 	}
