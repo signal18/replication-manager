@@ -8,12 +8,10 @@ import AccordionComponent from '../../components/AccordionComponent/index.jsx'
 import Logs from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
-import RunTests from './components/RunTests/index.jsx'
+import Apps from './components/Apps/index.jsx'
 
 function Dashboard({ selectedCluster, user }) {
-  const {
-    common: { isDesktop }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
 
   return (
     <Flex direction='column' gap='8px'>
@@ -39,11 +37,19 @@ function Dashboard({ selectedCluster, user }) {
         />
       )}
 
-      <AccordionComponent
-        heading={'Proxies'}
-        panelSX={{ overflowX: 'auto', p: 0 }}
-        body={<Proxies selectedCluster={selectedCluster} user={user} />}
-      />
+      {selectedCluster && (
+        <AccordionComponent
+          heading={'Proxies'}
+          panelSX={{ overflowX: 'auto', p: 0 }}
+          body={<Proxies selectedCluster={selectedCluster} user={user} />}
+        />)}
+
+        {selectedCluster && (
+        <AccordionComponent
+          heading={'Application Servers'}
+          panelSX={{ overflowX: 'auto', p: 0 }}
+          body={<Apps selectedCluster={selectedCluster} user={user} />}
+        />)}
 
       <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
       <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />

@@ -38,16 +38,12 @@ import NewClusterModal from '../../../components/Modals/NewClusterModal'
 
 function ClusterDetail({ selectedCluster }) {
   const dispatch = useDispatch()
-  const {
-    common: { isDesktop },
-    globalClusters: { monitor },
-    cluster: {
-      clusterMaster,
-      clusterServers,
-      clusterProxies,
-      loadingStates: { menuActions: menuActionsLoading }
-    }
-  } = useSelector((state) => state)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+  const monitor = useSelector((state) => state.globalClusters.monitor)
+  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const clusterProxies = useSelector((state) => state.cluster.clusterProxies)
+  const menuActionsLoading = useSelector((state) => state.cluster.loadingStates.menuActions)
 
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false)
   const [isNewServerModalOpen, setIsNewServerModalOpen] = useState(false)

@@ -12,16 +12,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	jwt "github.com/golang-jwt/jwt"
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Router) {
@@ -485,8 +487,7 @@ func (repman *ReplicationManager) handlerMuxServer(w http.ResponseWriter, r *htt
 
 		var cont map[string]interface{}
 		data, _ := json.Marshal(node)
-		list, _ := json.Marshal(node.BinaryLogFiles.ToNewMap())
-		data, err = jsonparser.Set(data, list, "binaryLogFiles")
+		data, err = sjson.SetBytes(data, "binaryLogFiles", node.BinaryLogFiles.ToNewMap())
 		if err != nil {
 			http.Error(w, "Encoding error: "+err.Error(), 500)
 			return
@@ -547,26 +548,33 @@ func (repman *ReplicationManager) handlerMuxServerAttribute(w http.ResponseWrite
 			return
 		}
 
-		var data, value []byte
-		var valtype jsonparser.ValueType
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
+		var value []byte
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 		// get the value from the json path
 		// if the attribute is binaryLogFiles, we need to convert the map to json
 		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
 		// otherwise, we just get the value from the json path
-		if vars["attrName"] == "binaryLogFiles" {
+		if jsonpath == "binaryLogFiles" {
 			value, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ = json.Marshal(node.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ = json.Marshal(node)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(jsonpath, "binaryLogFiles.") {
+				data, _ := json.Marshal(node.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(node)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		// if the value is not found, return an error
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			// if the value is not found, return an error
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			// convert the result to bytes
+			value = []byte(resultval.String())
 		}
 
 		// Write the value to the response
@@ -3935,7 +3943,7 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			res := mycluster.GetDatabaseServiceConfig(node)
-			w.Write([]byte(res))
+			w.Write(res)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
@@ -4314,5 +4322,23 @@ func (repman *ReplicationManager) handlerMuxServersConfigPathPreserve(w http.Res
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxClusterGetNodeJobEntries(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		entries, _ := mycluster.JobsGetEntries()
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(entries)
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
 	}
 }

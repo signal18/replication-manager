@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"slices"
@@ -58,6 +59,7 @@ import (
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/githelper"
@@ -106,6 +108,7 @@ type ReplicationManager struct {
 	ServiceRoles                                     []config.Role               `json:"serviceRoles"`
 	ServiceRepos                                     []config.DockerRepo         `json:"serviceRepos"`
 	ServiceTarballs                                  []config.Tarball            `json:"serviceTarballs"`
+	ServiceTemplates                                 []string                    `json:"serviceTemplates"`
 	ServiceFS                                        map[string]bool             `json:"serviceFS"`
 	ServiceVM                                        map[string]bool             `json:"serviceVM"`
 	ServiceDisk                                      map[string]string           `json:"serviceDisk"`
@@ -441,7 +444,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SwitchDecreaseMaxConn, "switchover-decrease-max-conn", true, "Switchover decrease max connection on old master")
 	flags.BoolVar(&conf.SwitchoverCopyOldLeaderGtid, "switchover-copy-old-leader-gtid", false, "Switchover copy old leader GTID")
 	flags.Int64Var(&conf.SwitchDecreaseMaxConnValue, "switchover-decrease-max-conn-value", 10, "Switchover decrease max connection to this value different according to flavor")
-	flags.IntVar(&conf.SwitchSlaveWaitRouteChange, "switchover-wait-route-change", 2, "Switchover wait for unmanged proxy monitor to dicoverd new state")
+	flags.IntVar(&conf.SwitchSlaveWaitRouteChange, "switchover-wait-route-change", 2, "Switchover wait for external proxy monitoring to discover new topology")
 	flags.BoolVar(&conf.SwitchLowerRelease, "switchover-lower-release", false, "Allow switchover to lower release")
 
 	flags.StringVar(&conf.MasterConn, "replication-source-name", "", "Replication channel name to use for multisource")
@@ -965,7 +968,18 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.Cloud18AlertSlackURL, "cloud18-alert-slack-url", "https://meet.signal18.io/hooks/1wuk8e5sttd89epqoaff3y9t6y", "Slack webhook URL for cloud18")
 	flags.StringVar(&conf.Cloud18AlertSlackUser, "cloud18-alert-slack-user", "repman", "Slack user for cloud18")
 	flags.IntVar(&conf.Cloud18HealthRefreshInterval, "cloud18-health-refresh-interval", 30, "Health refresh interval in seconds")
+	flags.StringVar(&conf.Cloud18GatewayDomainName, "cloud18-gateway-domain-name", "", "Cloud18 janitor gateway DNS ")
+	flags.IntVar(&conf.Cloud18ApplicationCredits, "cloud18-application-credits", 2, "Cloud18 application credits(1 core 4G Ram 8G Disk)")
+	flags.IntVar(&conf.Cloud18ApplicationCreditsPrice, "cloud18-application-credits-price", 20, "Cloud18 application credits price in Eur")
+	flags.StringVar(&conf.Cloud18DomainAddScript, "cloud18-domain-add-script", "", "Script to add DNS CNAME entry to cloud18-gateway-domain-name")
+	flags.StringVar(&conf.Cloud18DomainDropScript, "cloud18-domain-drop-script", "", "Script to drop DNS CNAME entry to cloud18-gateway-domain-name")
+	flags.StringVar(&conf.Cloud18DomainUser, "cloud18-domain-user", "", "First parameter to pass prov-domain-?-script")
+	flags.StringVar(&conf.Cloud18DomainSecret, "cloud18-domain-secret", "", "Second parameter to pass prov-domain-?-script")
+	flags.IntVar(&conf.TemplateVariableMaxDepth, "template-var-max-depth", 10, "Maximum depth of template variable expansion")
+	flags.BoolVar(&conf.TemplateStrict, "template-strict", false, "Enable strict template variable resolution")
+
 	if WithProvisioning == "ON" {
+		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
 		flags.StringVar(&conf.ProvDiskSystemSize, "prov-db-disk-system-size", "2", "Disk in g for micro service VM")
 		flags.StringVar(&conf.ProvDiskTempSize, "prov-db-disk-temp-size", "128", "Disk in m for micro service VM")
@@ -1062,6 +1076,20 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		}
 	}
 
+	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
+
+	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
+	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
+	flags.StringVar(&conf.ProvAppAgents, "prov-app-agents", "", "App agents for micro services provisionning.")
+	flags.StringVar(&conf.ProvAppDisk, "prov-app-disk-size", "4", "Disk in g for micro service VM. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppCpuCores, "prov-app-cpu-cores", "1", "Cpu cores. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppMem, "prov-app-memory", "1024", "Memory usage in M bytes. When cloud18 credit system is used, this is the base for 1 credit")
+	flags.StringVar(&conf.ProvAppVolumePools, "prov-app-volume-pools", "tank:local,drbd:shared:active-passive", "List of volume pools to use for application, comma separated. Format: poolname:type:[additional description]. Type can be local or shared. Example of additional description, for shared can be active-passive.")
+	flags.StringVar(&conf.ProvAppHATopology, "prov-app-ha-topology", "failover", "High availability mode for application. [failover|flex]")
+	flags.StringVar(&conf.ProvAppTemplateRepo, "prov-app-template-repo", "https://github.com/signal18/cloud18-templates", "Git repository for application templates")
+	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates")
+	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates")
+	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
 	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
@@ -1993,6 +2021,10 @@ func (repman *ReplicationManager) Run() error {
 	if err != nil {
 		repman.Logrus.WithError(err).Errorf("Initialization tarballs repo failed: %s %s", repman.Conf.ShareDir+"/repo/tarballs.json", err)
 	}
+	err = repman.GetAppTemplates()
+	if err != nil {
+		repman.Logrus.WithError(err).Errorf("Initialization app templates failed: %s %s", repman.Conf.ShareDir+"/app/deployments/", err)
+	}
 
 	repman.ServiceVM = config.GetVMType()
 	repman.ServiceFS = config.GetFSType()
@@ -2208,7 +2240,7 @@ func (repman *ReplicationManager) Run() error {
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
 		if counter%60 == 0 {
-			repman.ConfigManager.SaveConfig("default", repman.Save, true)
+			repman.ConfigManager.SaveConfig(repman, true)
 
 			if counter%int64(repman.Conf.GitMonitoringTicker) == 0 && repman.Conf.GitUrl != "" {
 				repman.ConfigManager.GitPush(repman.Conf, repman.ClusterList, true)
@@ -2223,6 +2255,8 @@ func (repman *ReplicationManager) Run() error {
 				repman.PeerManager.GetAllHealthStatus()
 				repman.UpdateLocalPeer()
 			}
+
+			go repman.GetAppTemplates()
 		}
 
 		if counter%300 == 0 {
@@ -2283,7 +2317,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.OsUser = repman.OsUser
 	repman.currentCluster.SessionManager = repman.SessionManager
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
-	repman.currentCluster.ErrorConfigMap = myClusterConf.ParseConfigMeasurement(repman.DefaultFlagMap)
+	repman.currentCluster.ErrorConfigMap = config.ParseConfigMeasurement(&myClusterConf, repman.DefaultFlagMap, myClusterConf.MeasurementAutoClampLimit)
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster
@@ -2303,7 +2337,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.LoadAPIUsers()
 	repman.currentCluster.SaveAcls()
 	repman.ConfigManager.UpdateLoggerConfig(clusterName, repman.currentCluster.Conf)
-	repman.ConfigManager.SaveConfig(clusterName, repman.currentCluster.Save, true)
+	repman.ConfigManager.SaveConfig(repman.currentCluster, true)
 
 	go repman.currentCluster.Run()
 	return repman.currentCluster, nil
@@ -2444,7 +2478,7 @@ func (repman *ReplicationManager) Stop() {
 		time.Sleep(time.Second)
 	}
 
-	repman.ConfigManager.SaveConfig("default", repman.Save, true)
+	repman.ConfigManager.SaveConfig(repman, true)
 
 	if repman.Conf.GitUrl != "" {
 		isNeedPush := repman.IsNeedGitPush
@@ -2962,6 +2996,53 @@ func (repman *ReplicationManager) Save() error {
 	}
 
 	repman.IsNeedGitPush = has_changed
+
+	return nil
+}
+
+func (repman *ReplicationManager) GetAppTemplates() error {
+	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	if err != nil {
+		return err
+	}
+
+	for i, file := range filelist {
+		ext := filepath.Ext(file)
+		if ext == ".toml" {
+			filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+		}
+	}
+
+	templateDir := filepath.Join(repman.Conf.WorkingDir, ".templates", "apps")
+	if _, err := os.Stat(templateDir); os.IsNotExist(err) {
+		_ = os.MkdirAll(templateDir, 0755)
+	} else {
+		list, err := os.ReadDir(templateDir)
+		if err != nil {
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading template directory %s: %v", templateDir, err)
+			return err
+		}
+
+		for _, entry := range list {
+			// List to subdirectories
+			if entry.IsDir() {
+				subdir := filepath.Join(templateDir, entry.Name())
+				sublist, err := os.ReadDir(subdir)
+				if err != nil {
+					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading subdirectory %s: %v", subdir, err)
+					continue
+				}
+				for _, subentry := range sublist {
+					ext := filepath.Ext(subentry.Name())
+					if ext == ".toml" {
+						filelist = append(filelist, filepath.Join(entry.Name(), strings.TrimSuffix(subentry.Name(), ext)))
+					}
+				}
+			}
+		}
+	}
+
+	repman.ServiceTemplates = filelist
 
 	return nil
 }

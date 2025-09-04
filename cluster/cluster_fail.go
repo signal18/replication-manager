@@ -238,7 +238,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	t := time.Now()
 	crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
 	crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)
-	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	cluster.ConfigManager.SaveConfig(cluster, true)
 
 	if !cluster.Conf.MultiMaster && !cluster.Conf.MultiMasterGrouprep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Resetting slave on new master and set read/write mode on")
@@ -1353,7 +1353,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		crash.FailoverSemiSyncSlaveStatus = cluster.master.SemiSyncSlaveStatus
 		cluster.Crashes = append(cluster.Crashes, crash)
 		cluster.FailoverHistory.StoreLastN(crash, cluster.Conf.FailoverLogFileKeep)
-		cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+		cluster.ConfigManager.SaveConfig(cluster, true)
 		t := time.Now()
 		crash.Save(cluster.WorkingDir + "/failover." + t.Format("20060102150405") + ".json")
 		crash.Purge(cluster.WorkingDir, cluster.Conf.FailoverLogFileKeep)

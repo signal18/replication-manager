@@ -641,6 +641,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/proxies") {
 		return cluster.IsURLPassProxiesACL(strUser, URL)
 	}
+	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/apps") {
+		return cluster.IsURLPassAppsACL(strUser, URL)
+	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSharding] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/schema") {
 			return true
@@ -860,6 +863,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/actions/add") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/opensvc-gateway") {
+			return true
+		}
 	}
 
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterStaging] {
@@ -978,9 +984,79 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterDocker] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker") {
+			return true
+		}
+	}
+
 	// Print error with no valid ACL
 	if errorPrint {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
 	}
+	return false
+}
+
+func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
+	if cluster.APIUsers[strUser].Grants[config.GrantProvAppProvision] {
+		if strings.Contains(URL, "/actions/provision") {
+			return true
+		}
+		if strings.Contains(URL, "/service-opensvc") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantProvAppUnprovision] {
+		if strings.Contains(URL, "/actions/unprovision") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
+		if strings.Contains(URL, "/deployment/") {
+			return true
+		}
+		if strings.Contains(URL, "/storages/") {
+			return true
+		}
+		if strings.Contains(URL, "/substitution") {
+			return true
+		}
+		if strings.Contains(URL, "/resolve-template") {
+			return true
+		}
+		if strings.Contains(URL, "/settings/actions/reset-from-template") {
+			return true
+		}
+		if strings.Contains(URL, "/settings/actions/save-to-template") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppStart] {
+		if strings.Contains(URL, "/actions/start") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppStop] {
+		if strings.Contains(URL, "/actions/stop") {
+			return true
+		}
+
+		if strings.Contains(URL, "/actions/restart") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppConfig] {
+		if strings.Contains(URL, "/settings/actions/") {
+			return true
+		}
+	}
+	if cluster.APIUsers[strUser].Grants[config.GrantAppGit] {
+		if strings.Contains(URL, "/git/") {
+			return true
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app check failed for user %s : %s ", strUser, URL)
+
 	return false
 }

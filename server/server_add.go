@@ -39,7 +39,7 @@ func (repman *ReplicationManager) AddCluster(clusterName string, clusterHead str
 	//cluster.SetClusterHead(clusterHead)
 	//cluster.SetClusterHead(clusterName)
 	//cluster.SetClusterList(repman.Clusters)
-	cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+	cluster.ConfigManager.SaveConfig(cluster, true)
 	return nil
 
 }
@@ -48,7 +48,7 @@ func (repman *ReplicationManager) CreateAdminUserForm(username string) cluster.U
 	return cluster.UserForm{
 		Username: username,
 		Roles:    "sysops dbops",
-		Grants:   "cluster db proxy prov global grant show sale extrole",
+		Grants:   "cluster db proxy prov global grant show sale extrole app",
 	}
 }
 

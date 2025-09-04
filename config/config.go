@@ -133,6 +133,7 @@ type Config struct {
 	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
 	LogSQLLevel                               int                    `mapstructure:"log-sql-level"  toml:"log-sql-level" json:"logSqlLevel"`
+	LogAppLevel                               int                    `mapstructure:"log-app-level"  toml:"log-app-level" json:"logAppLevel"`
 	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
 	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `scope:"server" mapstructure:"log-git" toml:"log-git" json:"logGit"`
@@ -491,6 +492,7 @@ type Config struct {
 	SlapOSMaxscalePartitions                  string                 `mapstructure:"slapos-maxscale-partitions" toml:"slapos-maxscale-partitions" json:"slaposMaxscalePartitions"`
 	SlapOSShardProxyPartitions                string                 `mapstructure:"slapos-shardproxy-partitions" toml:"slapos-shardproxy-partitions" json:"slaposShardproxyPartitions"`
 	SlapOSSphinxPartitions                    string                 `mapstructure:"slapos-sphinx-partitions" toml:"slapos-sphinx-partitions" json:"slaposSphinxPartitions"`
+	SlapOSAppPartitions                       string                 `mapstructure:"slapos-app-partitions" toml:"slapos-app-partitions" json:"slaposAppPartitions"`
 	ProvHost                                  string                 `mapstructure:"opensvc-host" toml:"opensvc-host" json:"opensvcHost"`
 	OnPremiseSSH                              bool                   `mapstructure:"onpremise-ssh" toml:"onpremise-ssh" json:"onpremiseSsh"`
 	OnPremiseSSHPort                          int                    `mapstructure:"onpremise-ssh-port" toml:"onpremise-ssh-port" json:"onpremiseSshPort"`
@@ -504,8 +506,6 @@ type Config struct {
 	ProvOpensvcP12Secret                      string                 `mapstructure:"opensvc-p12-secret" toml:"opensvc-p12-secret" json:"opensvcP12Secret"`
 	ProvOpensvcUseCollectorAPI                bool                   `mapstructure:"opensvc-use-collector-api" toml:"opensvc-use-collector-api" json:"opensvcUseCollectorApi"`
 	ProvOpensvcCollectorAccount               string                 `mapstructure:"opensvc-collector-account" toml:"opensvc-collector-account" json:"opensvcCollectorAccount"`
-	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
-	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	ProvUser                                  string                 `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
@@ -619,6 +619,22 @@ type Config struct {
 	ProvProxyStopScript                       string                 `mapstructure:"prov-proxy-stop-script" toml:"prov-proxy-stop-script" json:"provProxyStopScript"`
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
+	ProvDockerRegistryCredentials             string                 `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
+	AppOn                                     bool                   `mapstructure:"app" toml:"app" json:"app"`
+	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
+	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	ProvAppMem                                string                 `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory" groups:"apps"`
+	ProvAppDisk                               string                 `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize" groups:"apps"`
+	ProvAppVolumePools                        string                 `mapstructure:"prov-app-volume-pools" toml:"prov-app-volume-pools" json:"provAppVolumePools" groups:"apps"`
+	ProvAppCpuCores                           string                 `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores" groups:"apps"`
+	ProvAppAgents                             string                 `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents" groups:"apps"`
+	ProvAppHATopology                         string                 `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology" groups:"apps"`
+	ProvAppTemplateRepo                       string                 `mapstructure:"prov-app-template-repo" toml:"prov-app-template-repo" json:"provAppTemplateRepo" groups:"apps"`
+	ProvAppTemplateRepoUser                   string                 `mapstructure:"prov-app-template-repo-user" toml:"prov-app-template-repo-user" json:"provAppTemplateRepoUser" groups:"apps"`
+	ProvAppTemplateRepoPassword               string                 `mapstructure:"prov-app-template-repo-password" toml:"prov-app-template-repo-password" json:"provAppTemplateRepoPassword" groups:"apps"`
+	ProvAppTemplateRepoTimeout                int                    `mapstructure:"prov-app-template-repo-timeout" toml:"prov-app-template-repo-timeout" json:"provAppTemplateRepoTimeout" groups:"apps"`
+	TemplateVariableMaxDepth                  int                    `mapstructure:"template-var-max-depth" toml:"template-var-max-depth" json:"templateVarMaxDepth"`
+	TemplateStrict                            bool                   `mapstructure:"template-strict" toml:"template-strict" json:"templateStrict"`
 	APIUsers                                  string                 `mapstructure:"api-credentials" toml:"api-credentials" json:"apiCredentials"`
 	APIUsersExternal                          string                 `mapstructure:"api-credentials-external" toml:"api-credentials-external" json:"apiCredentialsExternal"`
 	APIUsersACLAllow                          string                 `mapstructure:"api-credentials-acl-allow" toml:"api-credentials-acl-allow" json:"apiCredentialsACLAllow"`
@@ -746,11 +762,17 @@ type Config struct {
 	GitAccesToken                             string                 `scope:"server" mapstructure:"git-acces-token" toml:"git-acces-token" json:"-"`
 	GitMonitoringTicker                       int                    `scope:"server" mapstructure:"git-monitoring-ticker" toml:"git-monitoring-ticker" json:"gitMonitoringTicker"`
 	Cloud18                                   bool                   `scope:"server" mapstructure:"cloud18"  toml:"cloud18" json:"cloud18"`
-	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain"`
-	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain"`
-	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone"`
+	Cloud18Domain                             string                 `scope:"server" mapstructure:"cloud18-domain" toml:"cloud18-domain" json:"cloud18Domain" groups:"apps"`
+	Cloud18SubDomain                          string                 `scope:"server" mapstructure:"cloud18-sub-domain" toml:"cloud18-sub-domain" json:"cloud18SubDomain" groups:"apps"`
+	Cloud18SubDomainZone                      string                 `scope:"server" mapstructure:"cloud18-sub-domain-zone" toml:"cloud18-sub-domain-zone" json:"cloud18SubDomainZone" groups:"apps"`
 	Cloud18GitUser                            string                 `scope:"server" mapstructure:"cloud18-gitlab-user" toml:"cloud18-gitlab-user" json:"cloud18GitUser"`
 	Cloud18GitPassword                        string                 `scope:"server" mapstructure:"cloud18-gitlab-password" toml:"cloud18-gitlab-password" json:"-"`
+	Cloud18GatewayDomainName                  string                 `scope:"server" mapstructure:"cloud18-gateway-domain-name" toml:"cloud18-gateway-domain-name"  json:"cloud18GatewayDomainName"`
+	Cloud18GatewayService                     string                 `scope:"server" mapstructure:"cloud18-gateway-service" toml:"Cloud18-gateway-service" json:"cloud18GatewayService"`
+	Cloud18DomainAddScript                    string                 `scope:"server" mapstructure:"cloud18-domain-add-script" toml:"cloud18-domain-add-script" json:"cloud18DomainAddScript"`
+	Cloud18DomainDropScript                   string                 `scope:"server" mapstructure:"cloud18-domain-drop-script" toml:"cloud18-domain-drop-script" json:"cloud18DomainDropScript"`
+	Cloud18DomainUser                         string                 `scope:"server" mapstructure:"cloud18-domain-user" toml:"cloud18-domain-user" json:"cloud18DomainUser"`
+	Cloud18DomainSecret                       string                 `scope:"server" mapstructure:"cloud18-domain-secret" toml:"cloud18-domain-secret" json:"cloud18DomainSecret"`
 	Cloud18Shared                             bool                   `mapstructure:"cloud18-shared"  toml:"cloud18-shared" json:"cloud18Shared"`
 	Cloud18PlatformDescription                string                 `mapstructure:"cloud18-platform-description"  toml:"cloud18-platform-description" json:"cloud18PlatformDescription"`
 	Cloud18MonthlyInfraCost                   float64                `mapstructure:"cloud18-monthly-infra-cost"  toml:"cloud18-monthly-infra-cost" json:"cloud18MonthlyInfraCost"`
@@ -794,8 +816,14 @@ type Config struct {
 	Cloud18AlertSlackURL                      string                 `mapstructure:"cloud18-alert-slack-url"  toml:"cloud18-alert-slack-url" json:"cloud18AlertSlackUrl"`
 	Cloud18AlertSlackUser                     string                 `mapstructure:"cloud18-alert-slack-user"  toml:"cloud18-alert-slack-user" json:"cloud18AlertSlackUser"`
 	Cloud18HealthRefreshInterval              int                    `mapstructure:"cloud18-health-refresh-interval"  toml:"cloud18-health-refresh-interval" json:"cloud18HealthRefreshInterval"`
+	Cloud18ApplicationCredits                 int                    `mapstructure:"cloud18-application-credits" toml:"Cloud18-application-credits" json:"cloud18ApplicationCredits"`
+	Cloud18ApplicationCreditsUsed             int                    `mapstructure:"cloud18-application-credits-used" toml:"Cloud18-application-credits-used" json:"cloud18ApplicationCreditsUsed"`
+	Cloud18ApplicationCreditsPrice            int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
+	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
+	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
+	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
 	Secrets                                   map[string]Secret      `toml:"-" json:"-"`
 	SecretKey                                 []byte                 `toml:"-" json:"-"`
 	ImmuableFlagMap                           map[string]interface{} `toml:"-" json:"-"`
@@ -815,6 +843,89 @@ type Config struct {
 	//	BackupResticStoragePolicy                  string `mapstructure:"backup-restic-storage-policy"  toml:"backup-restic-storage-policy" json:"backupResticStoragePolicy"`
 	//ProvMode                           string `mapstructure:"prov-mode" toml:"prov-mode" json:"provMode"` //InitContainer vs API
 }
+
+type AppConfig struct {
+	ProvAppType           string      `mapstructure:"prov-app-service-type" toml:"prov-app-service-type" json:"provAppServiceType"`
+	ProvAppMem            string      `measurement:"M,bytes,required" mapstructure:"prov-app-memory" toml:"prov-app-memory" json:"provAppMemory"`
+	ProvAppCpuCores       string      `mapstructure:"prov-app-cpu-cores" toml:"prov-app-cpu-cores" json:"provAppCpuCores"`
+	ProvAppDisk           string      `measurement:"G,bytes,required" mapstructure:"prov-app-disk-size" toml:"prov-app-disk-size" json:"provAppDiskSize"`
+	ProvAppDiskType       string      `mapstructure:"prov-app-disk-type" toml:"prov-app-disk-type" json:"provAppDiskType"`
+	ProvAppDockerImg      string      `mapstructure:"prov-app-docker-img" toml:"prov-app-docker-img" json:"provAppDockerImg"`
+	ProvAppDockerCmd      string      `mapstructure:"prov-app-docker-cmd" toml:"prov-app-docker-cmd" json:"provAppDockerCmd"`
+	ProvAppRouteAddr      string      `mapstructure:"prov-app-route-addr" toml:"prov-app-route-addr" json:"provAppRouteAddr"`
+	ProvAppRoutePort      string      `mapstructure:"prov-app-route-port" toml:"prov-app-route-port" json:"provAppRoutePort"`
+	ProvAppRouteMask      string      `mapstructure:"prov-app-route-mask" toml:"prov-app-route-mask" json:"provAppRouteMask"`
+	ProvAppTemplate       string      `mapstructure:"prov-app-template" toml:"prov-app-template" json:"provAppTemplate"`
+	ProvAppAgents         string      `mapstructure:"prov-app-agents" toml:"prov-app-agents" json:"provAppAgents"`
+	ProvAppHATopology     string      `mapstructure:"prov-app-ha-topology" toml:"prov-app-ha-topology" json:"provAppHaTopology"`
+	ProvAppAgentsFailover string      `mapstructure:"prov-app-agents-failover" toml:"prov-app-agents-failover" json:"provAppAgentsFailover"`
+	ProvAppCreditUsed     int         `mapstructure:"prov-app-credit-used" toml:"prov-app-credit-used" json:"provAppCreditUsed"`
+	ProvAppCreditPlanned  int         `mapstructure:"prov-app-credit-planned" toml:"prov-app-credit-planned" json:"provAppCreditPlanned"`
+	AppHost               string      `mapstructure:"app-host" toml:"app-host" json:"appHost"`
+	AppHostsIPV6          string      `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
+	AppPort               string      `mapstructure:"app-port" toml:"app-port" json:"appPort"`
+	AppDbUser             string      `mapstructure:"app-db-user" toml:"app-db-user" json:"appDbUser" groups:"apps"`
+	AppDbPass             string      `mapstructure:"app-db-pass" toml:"app-db-pass" json:"appDbPass" groups:"apps"`
+	AppDbPassClear        string      `mapstructure:"app-db-pass-clear" toml:"-" json:"-" app:"-"`
+	AppDbSchema           string      `mapstructure:"app-db-schema" toml:"app-db-schema" json:"appDbSchema" groups:"apps"`
+	AppS3Provider         bool        `mapstructure:"app-s3-provider" toml:"app-s3-provider" json:"appS3Provider"`
+	Deployment            *Deployment `mapstructure:"deployment" toml:"deployment" json:"deployment" groups:"apps"`
+}
+
+func (appcnf *AppConfig) GetDeploymentVariables(name string) *VariableMapping {
+	for _, v := range appcnf.Deployment.Variables {
+		if v.Name == name {
+			return &v
+		}
+	}
+
+	return nil
+}
+
+type AgentVariable struct {
+	Agent string `mapstructure:"agent" toml:"agent" json:"agent"`
+	Value string `mapstructure:"value" toml:"value" json:"value"`
+}
+
+type AVSlice []AgentVariable
+
+func (old AVSlice) Merge(new AVSlice, addFunc func(new AgentVariable) AgentVariable, updateFunc func(old, new AgentVariable) AgentVariable) AVSlice {
+	agentMap := make(map[string]AgentVariable)
+	addMap := make(map[string]bool)
+	for _, av := range new {
+		agentMap[av.Agent] = av // Update or add the agent variable
+		addMap[av.Agent] = true
+	}
+	for _, av := range old {
+		if newVal, exists := agentMap[av.Agent]; exists {
+			addMap[av.Agent] = false // Mark as not added
+
+			// If the value is different, we may want to update it
+			if newVal.Value != av.Value {
+				// If updateFunc is provided, use it to update the value
+				if updateFunc != nil {
+					agentMap[av.Agent] = updateFunc(av, agentMap[av.Agent])
+				}
+			}
+		}
+	}
+
+	var merged AVSlice
+	for agent, av := range agentMap {
+		if addMap[agent] && addFunc != nil {
+			// If addFunc is provided, use it to add the agent variable
+			merged = append(merged, addFunc(av))
+		} else {
+			merged = append(merged, av)
+		}
+	}
+
+	return merged
+}
+
+func (a AVSlice) Len() int           { return len(a) }
+func (a AVSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a AVSlice) Less(i, j int) bool { return a[i].Agent < a[j].Agent }
 
 type WorkLoad struct {
 	DBTableSize   int64   `json:"dbTableSize"`
@@ -903,6 +1014,11 @@ type ConfVersion struct {
 	ConfDynamic  Config `json:"-"`
 	ConfImmuable Config `json:"-"`
 }
+
+const (
+	OpenSVCTopologyFailover string = "failover"
+	OpenSVCTopologyFlex     string = "flex"
+)
 
 // Log levels
 const (
@@ -1103,20 +1219,30 @@ const (
 	GrantClusterDebug              string = "cluster-debug"
 	GrantClusterStaging            string = "cluster-staging"
 	GrantClusterAlert              string = "cluster-alert"
+	GrantClusterDocker             string = "cluster-docker"
 
-	GrantProxyConfigCreate      string = "proxy-config-create"
-	GrantProxyConfigGet         string = "proxy-config-get"
-	GrantProxyConfigRessource   string = "proxy-config-ressource"
-	GrantProxyConfigFlag        string = "proxy-config-flag"
-	GrantProxyStart             string = "proxy-start"
-	GrantProxyStop              string = "proxy-stop"
-	GrantProxyTerminal          string = "proxy-terminal"
+	GrantProxyConfigCreate    string = "proxy-config-create"
+	GrantProxyConfigGet       string = "proxy-config-get"
+	GrantProxyConfigRessource string = "proxy-config-ressource"
+	GrantProxyConfigFlag      string = "proxy-config-flag"
+	GrantProxyStart           string = "proxy-start"
+	GrantProxyStop            string = "proxy-stop"
+	GrantProxyTerminal        string = "proxy-terminal"
+
+	GrantAppConfig     string = "app-config"
+	GrantAppDeployment string = "app-deployment"
+	GrantAppStart      string = "app-start"
+	GrantAppStop       string = "app-stop"
+	GrantAppGit        string = "app-git"
+
 	GrantProvClusterProvision   string = "prov-cluster-provision"
 	GrantProvClusterUnprovision string = "prov-cluster-unprovision"
 	GrantProvProxyProvision     string = "prov-proxy-provision"
 	GrantProvProxyUnprovision   string = "prov-proxy-unprovision"
 	GrantProvDBProvision        string = "prov-db-provision"
 	GrantProvDBUnprovision      string = "prov-db-unprovision"
+	GrantProvAppProvision       string = "prov-app-provision"
+	GrantProvAppUnprovision     string = "prov-app-unprovision"
 	GrantProvSettings           string = "prov-settings"
 	GrantProvCluster            string = "prov-cluster"
 
@@ -1193,6 +1319,7 @@ const (
 	ConstLogModExternalScript = 21
 	ConstLogModStats          = 22
 	ConstLogModSQL            = 23
+	ConstLogModApp            = 24
 )
 
 /*
@@ -1303,6 +1430,7 @@ func (conf *Config) DecryptSecretsFromConfig() {
 		"cloud18-gitlab-password":               {"", ""},
 		"cloud18-dba-user-credentials":          {"", ""},
 		"cloud18-sponsor-user-credentials":      {"", ""},
+		"cloud18-domain-secret":                 {"", ""},
 		"vault-token":                           {"", ""},
 		"api-oauth-client-secret":               {"", ""},
 		"meet-token":                            {"", ""}}
@@ -2179,6 +2307,7 @@ func GetGrantType() map[string]string {
 		GrantClusterRotatePasswords:    GrantClusterRotatePasswords,
 		GrantClusterStaging:            GrantClusterStaging,
 		GrantClusterAlert:              GrantClusterAlert,
+		GrantClusterDocker:             GrantClusterDocker,
 		GrantProxyConfigCreate:         GrantProxyConfigCreate,
 		GrantProxyConfigGet:            GrantProxyConfigGet,
 		GrantProxyConfigRessource:      GrantProxyConfigRessource,
@@ -2194,6 +2323,13 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
+		GrantProvAppProvision:          GrantProvAppProvision,
+		GrantProvAppUnprovision:        GrantProvAppUnprovision,
+		GrantAppConfig:                 GrantAppConfig,
+		GrantAppDeployment:             GrantAppDeployment,
+		GrantAppStart:                  GrantAppStart,
+		GrantAppStop:                   GrantAppStop,
+		GrantAppGit:                    GrantAppGit,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
 		GrantGlobalTerminal:            GrantGlobalTerminal,
@@ -2278,6 +2414,7 @@ func GetGrantCluster() []string {
 		GrantClusterRotatePasswords,
 		GrantClusterStaging,
 		GrantClusterAlert,
+		GrantClusterDocker,
 	}
 }
 
@@ -2326,6 +2463,25 @@ func GetGrantProvision() []string {
 
 func HasAllProvisionGrants(grants map[string]bool) bool {
 	for _, grant := range GetGrantProvision() {
+		if !grants[grant] {
+			return false
+		}
+	}
+	return true
+}
+
+func GetGrantApp() []string {
+	return []string{
+		GrantAppStart,
+		GrantAppStop,
+		GrantAppConfig,
+		GrantAppDeployment,
+		GrantAppGit,
+	}
+}
+
+func HasAllAppGrants(grants map[string]bool) bool {
+	for _, grant := range GetGrantApp() {
 		if !grants[grant] {
 			return false
 		}
@@ -2474,6 +2630,27 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		}
 	}
 
+	// App
+	tmp = make([]string, 0)
+	counter = 0
+	if HasAllProvisionGrants(grants) {
+		compactGrants = append(compactGrants, "app")
+	} else {
+		for _, grant := range GetGrantProvision() {
+			if grants[grant] {
+				compactGrants = append(compactGrants, grant)
+				counter++
+			} else {
+				tmp = append(tmp, grant)
+			}
+		}
+		if counter == 0 {
+			compactDiscardGrants = append(compactDiscardGrants, "app")
+		} else {
+			compactDiscardGrants = append(compactDiscardGrants, tmp...)
+		}
+	}
+
 	// Global
 	tmp = make([]string, 0)
 	counter = 0
@@ -2591,7 +2768,7 @@ func GetDefaultAllowDiscardACL(role string) (string, string) {
 	case RoleDBOps:
 		return "*", "cluster prov sales global"
 	case RoleSponsor:
-		return "db show proxy grant extrole sales-unsubscribe", ""
+		return "db show proxy grant extrole sales-unsubscribe app", ""
 	case RoleExtDBOps:
 		return "db show proxy grant", "extrole"
 	default:
@@ -3027,6 +3204,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogStatsLevel >= lvl
 		case module == ConstLogModSQL:
 			return conf.LogSQLLevel >= lvl
+		case module == ConstLogModApp:
+			return conf.LogAppLevel >= lvl
 		}
 	}
 
@@ -3196,6 +3375,8 @@ func GetTagsForLog(module int) string {
 		return "stats"
 	case ConstLogModSQL:
 		return "sql"
+	case ConstLogModApp:
+		return "app"
 	}
 	return ""
 }
@@ -3458,6 +3639,30 @@ func (conf *Config) CheckKeepWithin() error {
 	return nil
 }
 
+type MeasurementConfig struct {
+	Min      int
+	Max      int
+	Required bool
+	Bytes    bool
+}
+
+func (m MeasurementConfig) String() string {
+	var parts []string
+	if m.Min > 0 {
+		parts = append(parts, fmt.Sprintf("min:%d", m.Min))
+	}
+	if m.Max > 0 {
+		parts = append(parts, fmt.Sprintf("max:%d", m.Max))
+	}
+	if m.Required {
+		parts = append(parts, "required")
+	}
+	if m.Bytes {
+		parts = append(parts, "bytes")
+	}
+	return strings.Join(parts, ", ")
+}
+
 var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 type ErrorMeasurement struct {
@@ -3466,9 +3671,21 @@ type ErrorMeasurement struct {
 	Message string
 }
 
+func (e ErrorMeasurement) Error() string {
+	return fmt.Sprintf("Old: %s, New: %s, Message: %s", e.Old, e.New, e.Message)
+}
+
 type ErrorConfigMap map[string]ErrorMeasurement
 
-func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) ErrorConfigMap {
+func (e ErrorConfigMap) Error() string {
+	var sb strings.Builder
+	for k, v := range e {
+		sb.WriteString(fmt.Sprintf("Field: %s, Error: %s\n", k, v.Error()))
+	}
+	return sb.String()
+}
+
+func ParseConfigMeasurement(conf interface{}, defaultmap map[string]interface{}, clampToLimit bool) ErrorConfigMap {
 	errormap := make(ErrorConfigMap)
 	to := reflect.TypeOf(conf).Elem()
 	vo := reflect.ValueOf(conf).Elem()
@@ -3488,7 +3705,7 @@ func (conf *Config) ParseConfigMeasurement(defaultmap map[string]interface{}) Er
 		}
 
 		// Parse unit measurement
-		val, err := ParseUnitMeasurement(tag, v, conf.MeasurementAutoClampLimit)
+		val, err := ParseUnitMeasurement(tag, v, clampToLimit)
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
@@ -3620,7 +3837,7 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	// 1. (\d+) : number (required)
 	// 2. ([K|M|G|T|P|E|Z|Y])? : unit (optional)
 	// 3. (B)? : bytes (optional)
-	r := regexp.MustCompile(`^(\d+)([K|M|G|T|P|E|Z|Y])?(B)?$`)
+	r := regexp.MustCompile(`(?i)^(\d+(?:\.\d+)?)\s*([KMGTPEZY])?(B)?$`)
 	matches := r.FindStringSubmatch(vstr)
 	if len(matches) < 2 {
 		return result, fmt.Errorf("invalid value: %s", vstr)
@@ -3686,4 +3903,64 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	result = strconv.Itoa(val)
 
 	return result, nil
+}
+
+func ParseUnitMeasurementToInt(tag, vstr string, clampToLimit bool) (int, error) {
+	valstr, err := ParseUnitMeasurement(tag, vstr, clampToLimit)
+	if err != nil {
+		return 0, err
+	}
+
+	val, err := strconv.Atoi(valstr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid value: %s", valstr)
+	}
+
+	return val, nil
+}
+
+type VolumePool struct {
+	Name        string `json:"name"`
+	Type        string `json:"type"`
+	Mode        string `json:"mode"`
+	Description string `json:"description"`
+}
+
+const PoolTypeLocal = "local"
+const PoolTypeRemote = "shared"
+
+func (conf *Config) GetAppVolumePools(pooltype string) map[string]VolumePool {
+	pools := make(map[string]VolumePool)
+
+	vols := strings.Split(conf.ProvAppVolumePools, ",")
+	for _, vol := range vols {
+		var name, poolType, mode, description string
+		parts := strings.SplitN(vol, ":", 4)
+		name = strings.TrimSpace(parts[0])
+		poolType = PoolTypeLocal
+		if len(parts) > 1 {
+			poolType = strings.TrimSpace(parts[1])
+		}
+
+		if pooltype != "" && poolType != pooltype {
+			continue
+		}
+
+		if len(parts) > 2 {
+			mode = strings.TrimSpace(parts[2])
+		}
+
+		if len(parts) > 3 {
+			description = strings.TrimSpace(parts[3])
+		}
+
+		pools[name] = VolumePool{
+			Name:        name,
+			Type:        poolType,
+			Mode:        mode,
+			Description: description,
+		}
+	}
+
+	return pools
 }

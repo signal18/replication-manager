@@ -34,12 +34,12 @@ function MenuOptions({
         {menuOptions?.map((option, index) => {
           return option.subMenu ? (
             <Menu key={index} placement={subMenuPlacement}>
-              <MenuItem as={MenuButton}>
+              <MenuItem key={`item-${index}`} as={MenuButton}>
                 <HStack>
                   <span>{option.name}</span> <Spacer /> <CustomIcon icon={HiChevronRight} />
                 </HStack>
               </MenuItem>
-              <MenuList className={styles.menuList}>
+              <MenuList key={`sub-${index}`} className={styles.menuList}>
                 {option.subMenu.map((subMenuOption, subIndex) => (
                   <MenuItem
                     onClick={() => {
@@ -54,6 +54,7 @@ function MenuOptions({
             </Menu>
           ) : (
             <MenuItem
+              key={index}
               {...(option.onClick
                 ? {
                     onClick: () => {

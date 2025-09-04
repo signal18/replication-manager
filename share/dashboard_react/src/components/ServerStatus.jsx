@@ -45,6 +45,12 @@ function ServerStatus({ state, isVirtualMaster, isBlinking = false }) {
         case 'Failed':
           setColorScheme('red')
           break
+        case 'AppRunning':
+          setColorScheme('blue')
+          break
+        case 'AppWarning':
+          setColorScheme('orange')
+          break
         default:
           setStateValue(state.toUpperCase())
           setColorScheme('gray')

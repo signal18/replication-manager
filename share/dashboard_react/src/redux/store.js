@@ -8,6 +8,13 @@ import commonReducer from '../redux/commonSlice'
 import toastReducer from '../redux/toastSlice'
 import meetReducer from '../redux/meetSlice'
 import logger from 'redux-logger'
+import pathReducer from './pathSlice'
+
+const middleware = []
+
+if (process.env.NODE_ENV === 'development') {
+  middleware.push(logger)
+}
 
 export default configureStore({
   reducer: {
@@ -19,6 +26,7 @@ export default configureStore({
     toast: toastReducer,
     meet: meetReducer,
     globalClusters: globalClustersReducer,
+    paths: pathReducer,
   },
-  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(logger)
+  middleware: (getDefaultMiddleware) => getDefaultMiddleware().concat(middleware)
 })

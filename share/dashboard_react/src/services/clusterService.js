@@ -118,6 +118,24 @@ export const clusterService = {
   endExternalRole,
 
   addClusterShard,
+
+  getClusterApps,
+  provisionApp,
+  unprovisionApp,
+  startApp,
+  stopApp,
+  getAppService,
+  resolveTemplateVariables,
+  addDeployment,
+  dropDeployment,
+  deploymentFieldChange,
+  deploymentFieldIndexAdd,
+  deploymentFieldIndexDrop,
+  storageFieldChange,
+  storageFieldIndexAdd,
+  storageFieldIndexDrop,
+
+  connectDockerRegistry
 }
 
 //#region Cluster data APIs
@@ -203,8 +221,10 @@ function toggleTrafficStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
-function addServer(clusterName, host, port, monitorType, tag, baseURL) {
-  if (!monitorType) {
+function addServer(clusterName, host, port, monitorType, tag,  dockerRegistry = {}, baseURL) {
+  if (monitorType === 'app') {
+    return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, { ...dockerRegistry })
+  } else if (!monitorType) {
     return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}`)
   } else if (!tag) {
     return getApi(baseURL).get(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}`)
@@ -213,7 +233,10 @@ function addServer(clusterName, host, port, monitorType, tag, baseURL) {
   }
 }
 
-function dropServer(clusterName, host, port, baseURL) {
+function dropServer(clusterName, host, port, type, baseURL) {
+  if (type) {
+    return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}/${type}`)
+  }
   return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${host}/${port}`)
 }
 
@@ -551,3 +574,65 @@ function addClusterShard(clusterName, shardClusterName, formdata, baseURL) {
 }
 
 //#endregion User management APIs
+
+function getClusterApps(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/apps`)
+}
+
+//#region App management APIs
+function provisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/provision`)
+}
+
+function unprovisionApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/unprovision`)
+}
+
+function startApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/start`)
+}
+
+function stopApp(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/stop`)
+}
+
+function getAppService(clusterName, serviceName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/${serviceName}`)
+}
+
+function resolveTemplateVariables(clusterName, appId, rawValue, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/resolve-template`, {data: rawValue})
+}
+
+function addDeployment(clusterName, appId, deployment, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/add`, deployment)
+}
+
+function dropDeployment(clusterName, appId, deployName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployment/drop/${deployName}`)
+}
+
+function deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/${key}/modify`, { value })
+}
+function deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/deployment/${field}/add`, value)
+}
+function deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/deployment/${field}/index/${index}/drop`)
+}
+
+function storageFieldChange(clusterName, appId, field, index, key, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/${key}/modify`, { value })
+}
+function storageFieldIndexAdd(clusterName, appId, field, value, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/storages/${field}/add`, value)
+}
+function storageFieldIndexDrop(clusterName, appId, field, index, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/storages/${field}/index/${index}/drop`)
+}
+//#endregion App management APIs
+
+function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/actions/docker/actions/registry-connect`, { ...dockerRegistry })
+}

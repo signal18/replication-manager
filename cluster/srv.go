@@ -41,19 +41,19 @@ import (
 
 // ServerMonitor defines a server to monitor.
 type ServerMonitor struct {
-	Id                          string                     `json:"id"` //Unique name given by cluster & crc64(URL) used by test to provision
-	Name                        string                     `json:"name"`
-	Domain                      string                     `json:"domain"` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
+	Id                          string                     `json:"id" groups:"apps"` //Unique name given by cluster & crc64(URL) used by test to provision
+	Name                        string                     `json:"name" groups:"apps"`
+	Domain                      string                     `json:"domain" groups:"apps""` // Use to store orchestrator CNI domain .<cluster_name>.svc.<cluster_name>
 	ServiceName                 string                     `json:"serviceName"`
-	SourceClusterName           string                     `json:"sourceClusterName"` //Used to idenfied server added from other clusters linked with multi source
+	SourceClusterName           string                     `json:"sourceClusterName" groups:"apps"` //Used to idenfied server added from other clusters linked with multi source
 	Conn                        *sqlx.DB                   `json:"-"`
 	User                        string                     `json:"user"`
 	Pass                        string                     `json:"-"`
-	URL                         string                     `json:"url"`
+	URL                         string                     `json:"url" groups:"apps"`
 	DSN                         string                     `json:"-"`
-	Host                        string                     `json:"host"`
+	Host                        string                     `json:"host" groups:"apps"`
 	HostCnf                     string                     `json:"-"` // used to store host from config file
-	Port                        string                     `json:"port"`
+	Port                        string                     `json:"port" groups:"apps"`
 	TunnelPort                  string                     `json:"tunnelPort"`
 	IP                          string                     `json:"ip"`
 	Strict                      string                     `json:"strict"`
@@ -255,6 +255,8 @@ const (
 	stateWsrepLate    string = "WsrepUnsync"
 	stateProxyRunning string = "ProxyRunning"
 	stateProxyDesync  string = "ProxyDesync"
+	stateAppRunning   string = "AppRunning"
+	stateAppWarning   string = "AppWarning"
 )
 
 const (

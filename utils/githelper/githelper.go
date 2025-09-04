@@ -15,7 +15,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/signal18/replication-manager/utils/treehelper"
 	"github.com/sirupsen/logrus"
 )
 
@@ -605,4 +607,22 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 	return reqId.ID, nil
 
+}
+
+type GitClientInterface interface {
+	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
+	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error)
+	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error)
+	DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error)
+}
+
+type GitClient struct {
+}
+
+func (gc GitClient) LoadTreeFromCache(cacheDir, gitRef, commitSHA string) *treehelper.FileTreeCache {
+	cache := treehelper.TryReadFileTreeCache(cacheDir, gitRef)
+	if cache != nil && cache.Tree != nil && cache.Layers != nil && cache.Layers[0] == commitSHA {
+		return cache
+	}
+	return nil
 }

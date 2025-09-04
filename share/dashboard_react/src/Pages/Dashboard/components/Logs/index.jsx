@@ -25,6 +25,7 @@ function Logs({ logs, className }) {
       onClick={handleClick}
       overflow={isScrollable ? 'auto' : 'hidden'}>
       <table className={styles.table}>
+        <tbody>
         {logsData?.length > 0 ? (
           logsData.map((log, index) => {
             const levelColor =
@@ -50,8 +51,13 @@ function Logs({ logs, className }) {
             )
           })
         ) : (
-          <NotFound text={'No logs found'} className={styles.notfound} />
+          <tr>
+            <td>
+            <NotFound text={'No logs found'} className={styles.notfound} />
+            </td>
+          </tr>
         )}
+        </tbody>
       </table>
     </Box>
   )

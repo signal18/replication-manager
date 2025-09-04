@@ -23,9 +23,11 @@ function ClusterList({ onClick }) {
   const [clusterList, setClusterList] = useState([])
   const [search, setSearch] = useState("")
 
-  const {
-    globalClusters: { clusters, loading, monitor, isDownList, isFailableList }
-  } = useSelector((state) => state)
+  const clusters = useSelector((state) => state.globalClusters.clusters)
+  const loading = useSelector((state) => state.globalClusters.loading)
+  const monitor = useSelector((state) => state.globalClusters.monitor)
+  const isDownList = useSelector((state) => state.globalClusters.isDownList)
+  const isFailableList = useSelector((state) => state.globalClusters.isFailableList)
 
   useEffect(() => {
     dispatch(getClusters({}))

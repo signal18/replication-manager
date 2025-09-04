@@ -151,7 +151,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Purging crashes, all databses nodes up")
 			cluster.Crashes = nil
 			if cluster.ConfigManager != nil && cluster.ConfigManager.CountTasksForCluster(cluster.Name) == 0 {
-				cluster.ConfigManager.SaveConfig(cluster.Name, cluster.Save, true)
+				cluster.ConfigManager.SaveConfig(cluster, false)
 			}
 		}
 	}

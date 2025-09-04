@@ -9,6 +9,7 @@ package cluster
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/signal18/replication-manager/config"
@@ -172,4 +173,40 @@ func (cluster *Cluster) DelWaitSponsorCredCookie() {
 	for _, srv := range cluster.Servers {
 		srv.DelWaitSponsorCredCookie()
 	}
+}
+
+func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
+	newApps := make([]*App, 0)
+	app, index := cluster.GetAppByHostPort(host, port)
+	if app == nil {
+		return fmt.Errorf("App with address %s:%s not found in cluster!", host, port)
+	}
+
+	appcnf := app.GetAppConfig()
+	if index >= 0 {
+		cluster.StateMachine.SetFailoverState()
+		cluster.Lock()
+		if len(cluster.Apps) > 1 {
+			newApps = append(cluster.Apps[:index], cluster.Apps[index+1:]...)
+		}
+		cluster.Apps = newApps
+		for i, a := range cluster.Conf.Apps {
+			if a == appcnf {
+				if len(cluster.Conf.Apps) > 1 {
+					cluster.Conf.Apps = append(cluster.Conf.Apps[:i], cluster.Conf.Apps[i+1:]...)
+				} else {
+					cluster.Conf.Apps = make([]*config.AppConfig, 0)
+				}
+				os.Rename(cluster.WorkingDir+"/apps/"+app.GetName()+".toml", cluster.WorkingDir+"/apps/"+app.GetName()+"toml.bak")
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Removed app %s from cluster", app.GetName())
+				break
+			}
+		}
+		cluster.Unlock()
+		cluster.StateMachine.RemoveFailoverState()
+	} else {
+		return fmt.Errorf("App with address %s:%s not found in cluster!", host, port)
+	}
+
+	return nil
 }

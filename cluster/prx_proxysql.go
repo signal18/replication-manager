@@ -196,7 +196,7 @@ func (proxy *ProxySQLProxy) Init() {
 					}
 				}
 				// if cluster.Conf.LogLevel > 2 || cluster.Conf.ProxysqlDebug {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlWarn, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL init backend  %s with state %s ", s.URL, s.State)
 				// }
 
 			}

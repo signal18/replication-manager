@@ -63,7 +63,7 @@ function NewClusterModal({ plans, orchestrators, defaultOrchestrator, isOpen, cl
   const onPlanChange = (option) => {
     setPlan(option.value)
     setPlanDetails(plans.find((obj) => obj.plan === option.value))
-    console.log(plans,option)
+    // console.log(plans,option)
   }
 
   useEffect(() => {

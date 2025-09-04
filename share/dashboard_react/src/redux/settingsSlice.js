@@ -80,6 +80,72 @@ export const updateGraphiteBlackList = createAsyncThunk(
   }
 )
 
+export const setAppSetting = createAsyncThunk('settings/setAppSetting', async ({ clusterName, appId, setting, value }, thunkAPI) => {
+  try {
+    // showLoaderBanner(`${setting} `, thunkAPI)
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = value !== "" ? await settingsService.setAppSetting(clusterName, appId, setting, value, baseURL) : await settingsService.clearAppSetting(clusterName, setting, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Changing ${setting} failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const switchAppSetting = createAsyncThunk('settings/switchAppSetting', async ({ clusterName, appId, setting }, thunkAPI) => {
+  try {
+    // showLoaderBanner(`${setting} `, thunkAPI)
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.switchAppSettings(clusterName, appId, setting, value, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`${setting} changed successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Changing ${setting} failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const resetAppFromTemplate = createAsyncThunk('settings/resetAppFromTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.resetAppFromTemplate(clusterName, appId, template, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`App reset from template successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Resetting app from template failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const saveAppAsTemplate = createAsyncThunk('settings/saveAppAsTemplate', async ({ clusterName, appId, template }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await settingsService.saveAppAsTemplate(clusterName, appId, template, baseURL)
+    if (status === 200) {
+      showSuccessBanner(`App saved as template successfully!`, status, thunkAPI)
+      return { data, status }
+    } else {
+      throw new Error(data)
+    }
+  } catch (error) {
+    showErrorBanner(`Saving app as template failed!`, error.toString(), thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {}
 
 export const settingsSlice = createSlice({

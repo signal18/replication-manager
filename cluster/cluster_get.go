@@ -424,6 +424,10 @@ func (cluster *Cluster) GetStateMachine() *state.StateMachine {
 	return cluster.StateMachine
 }
 
+func (cluster *Cluster) GetAppStateMachine() *state.StateMachine {
+	return cluster.StateMachine
+}
+
 func (cluster *Cluster) GetMasterFailCount() int {
 	return cluster.master.FailCount
 }
@@ -895,6 +899,14 @@ func (cluster *Cluster) GetDBServerIdList() []string {
 func (cluster *Cluster) GetProxyServerIdList() []string {
 	ret := make([]string, len(cluster.Proxies))
 	for i, server := range cluster.Proxies {
+		ret[i] = server.GetId()
+	}
+	return ret
+}
+
+func (cluster *Cluster) GetAppServerIdList() []string {
+	ret := make([]string, len(cluster.Apps))
+	for i, server := range cluster.Apps {
 		ret[i] = server.GetId()
 	}
 	return ret
@@ -1548,4 +1560,91 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 	}
 
 	return terminalMgr
+}
+
+func (cluster *Cluster) GetAppConfig(apphost, port string) *config.AppConfig {
+	for _, cnf := range cluster.Conf.Apps {
+		if cnf.AppHost == apphost && cnf.AppPort == port {
+			if cnf.Deployment.Variables == nil {
+				cnf.Deployment.Variables = make(config.VariableMaps, 0)
+			}
+			if cnf.Deployment.Routes == nil {
+				cnf.Deployment.Routes = make(config.Routes, 0)
+			}
+			if cnf.Deployment.Storages.GitClones == nil {
+				cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
+			}
+			if cnf.Deployment.Storages.S3Mounts == nil {
+				cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
+			}
+			if cnf.Deployment.Storages.Volumes == nil {
+				cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
+			}
+			if cnf.Deployment.Paths == nil {
+				cnf.Deployment.Paths = make(config.PathMaps, 0)
+			}
+			return cnf
+		}
+	}
+
+	cnf := cluster.NewAppConfig(apphost, port)
+	if cnf.Deployment.Variables == nil {
+		cnf.Deployment.Variables = make(config.VariableMaps, 0)
+	}
+	if cnf.Deployment.Routes == nil {
+		cnf.Deployment.Routes = make(config.Routes, 0)
+	}
+	if cnf.Deployment.Storages.GitClones == nil {
+		cnf.Deployment.Storages.GitClones = make(config.GitClones, 0)
+	}
+	if cnf.Deployment.Storages.Volumes == nil {
+		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
+	}
+	if cnf.Deployment.Storages.S3Mounts == nil {
+		cnf.Deployment.Storages.S3Mounts = make(config.S3Mounts, 0)
+	}
+	if cnf.Deployment.Storages.Volumes == nil {
+		cnf.Deployment.Storages.Volumes = make(config.Volumes, 0)
+	}
+	if cnf.Deployment.Paths == nil {
+		cnf.Deployment.Paths = make(config.PathMaps, 0)
+	}
+	if cnf.ProvAppAgents == "" {
+		cnf.ProvAppAgents = cluster.Conf.ProvAgents
+	}
+
+	return cnf
+}
+
+func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) *config.Volume {
+	pools := cluster.Conf.GetAppVolumePools(config.PoolTypeLocal)
+	if len(pools) == 0 {
+		return nil
+	}
+
+	pool := pools[config.PoolTypeLocal]
+
+	for _, volume := range app.AppConfig.Deployment.Storages.Volumes {
+		if p, ok := pools[volume.PoolName]; ok {
+			pool = p
+			if strings.HasPrefix(volume.VolumeDir, dir) {
+				//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "GetAppLocalVolume %s %s", volume.VolumeDir, pools[volume.Pool].Path)
+				return volume
+			}
+		}
+	}
+
+	newVolume := &config.Volume{
+		Name:      "local-" + dir + "-directory",
+		VolumeDir: dir,
+		PoolName:  pool.Name,
+	}
+
+	app.AppConfig.Deployment.InsertVolume(newVolume)
+
+	return newVolume
+}
+
+func (cluster *Cluster) SetAppLocalMountVolume(app *App) *config.Volume {
+	return cluster.SetAppLocalVolume(app, "mnt")
 }

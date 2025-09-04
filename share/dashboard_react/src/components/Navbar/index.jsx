@@ -18,6 +18,7 @@ import { useTheme } from '../../ThemeProvider'
 import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
+import { selectMeetUIState } from '../../redux/memoize'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -26,17 +27,16 @@ function Navbar({ username }) {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
-  const { meetInfo, unreadMessagesByChannel, meetError } = useSelector((state) => state?.meet)
   const [isChatOpen, setIsChatOpen] = useState(() => { return localStorage.getItem('chatOpen') === 'true'; });
   const [showImageLogo, setShowImageLogo] = useState(true)
   const [logoText, setLogoText] = useState('REPLICATION MANAGER')
 
-  const {
-    common: { isMobile, isDesktop },
-    globalClusters: { monitor },
-    cluster: { clusterAlerts, clusterData },
-    auth: { isLogged }
-  } = useSelector((state) => state)
+  const { meetInfo, unreadMessagesByChannel, meetError } = useSelector(selectMeetUIState)
+  const { isMobile, isDesktop } = useSelector((state) => state.common)
+  const clusterAlerts = useSelector((state) => state?.cluster?.clusterAlerts)
+  const clusterData = useSelector((state) => state?.cluster?.clusterData)
+  const isLogged = useSelector((state) => state?.auth?.isLogged)
+  const monitor = useSelector((state) => state?.globalClusters?.monitor)
 
   useEffect(() => {
     if (isLogged){

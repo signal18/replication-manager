@@ -33,6 +33,23 @@ func (cluster *Cluster) BashScriptAlert(alert alert.Alert) error {
 	return nil
 }
 
+func (cluster *Cluster) BashScriptProvDNS(cname string) error {
+	if cluster.Conf.Cloud18GatewayDomainName == "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", "Empty gateway for cloud18-gateway-domain-name")
+		return errors.New("Empty gateway for cloud18-gateway-domain-name")
+	}
+	if cluster.Conf.Cloud18DomainAddScript != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script")
+		var out []byte
+		out, err := exec.Command(cluster.Conf.Cloud18DomainAddScript, cluster.Conf.Cloud18DomainUser, cluster.Conf.GetDecryptedValue("cloud18-domain-secret"), cname, cluster.Conf.Cloud18GatewayDomainName).CombinedOutput()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+		}
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling provision add domain script: %s", string(out))
+	}
+	return nil
+}
+
 func (cluster *Cluster) BashScriptOpenSate(state state.State) error {
 	if cluster.Conf.MonitoringOpenStateScript != "" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Calling open state script")

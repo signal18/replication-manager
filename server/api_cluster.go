@@ -7,6 +7,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,18 +15,22 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/buger/jsonparser"
 	"github.com/codegangsta/negroni"
 	"github.com/iancoleman/strcase"
 	log "github.com/sirupsen/logrus"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/dockerhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
 )
@@ -48,6 +53,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCluster)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/opensvc-gateway", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGatewayServiceNodes)),
 	))
 
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
@@ -328,7 +338,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type}/{tag:.*}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAdd)),
 	))
@@ -366,7 +376,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/docker/actions/registry-connect", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),
+	))
+	router.Handle("/api/clusters/{clusterName}/docker/browse/{imageRef:.*}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerDockerImageFilesystemDir)),
+	))
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/{tableName}/actions/reshard-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaReshardTable)),
@@ -500,6 +517,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxies)),
 	))
+	router.Handle("/api/clusters/{clusterName}/topology/apps", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxApps)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/alerts", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAlerts)),
@@ -624,8 +645,7 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 		for _, srv := range mycluster.GetServers() {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
-			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			data, err = jsonparser.Set(data, list, "binaryLogFiles")
+			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), 500)
 				return
@@ -704,8 +724,7 @@ func (repman *ReplicationManager) handlerMuxGetServersByState(w http.ResponseWri
 		for _, srv := range mycluster.GetServersByState(vars["state"]) {
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
-			list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			data, err = jsonparser.Set(data, list, "binaryLogFiles")
+			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 			if err != nil {
 				http.Error(w, "Encoding error: "+err.Error(), 500)
 				return
@@ -794,8 +813,7 @@ func (repman *ReplicationManager) handlerMuxGetServerByStateAndIndex(w http.Resp
 		}
 
 		data, _ := json.Marshal(srv)
-		list, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-		data, err = jsonparser.Set(data, list, "binaryLogFiles")
+		data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
 		if err != nil {
 			http.Error(w, "Encoding error: "+err.Error(), 500)
 			return
@@ -841,21 +859,28 @@ func (repman *ReplicationManager) handlerMuxGetServerAttributeByStateAndIndex(w 
 			return
 		}
 
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
 		var value []byte
-		var valtype jsonparser.ValueType
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
+
 		if vars["attrName"] == "binaryLogFiles" {
 			value, _ = json.Marshal(srv.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ := json.Marshal(srv)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
+				data, _ := json.Marshal(srv.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(srv)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			value = []byte(resultval.String())
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -1021,26 +1046,33 @@ func (repman *ReplicationManager) handlerMuxSlaveAttributeByIndex(w http.Respons
 			return
 		}
 
-		var data, value []byte
-		var valtype jsonparser.ValueType
+		re := regexp.MustCompile(`\.\[(\d+)\]`)
+		var value []byte
+		var resultval gjson.Result
+		var jsonpath string = re.ReplaceAllString(vars["attrName"], `.$1`) // replace .[n] with .n for gjson compatibility
 		// get the value from the json path
 		// if the attribute is binaryLogFiles, we need to convert the map to json
 		// if the attribute is binaryLogFiles.*, we need to convert the map to json and get the value from the json path
 		// otherwise, we just get the value from the json path
 		if vars["attrName"] == "binaryLogFiles" {
 			value, _ = json.Marshal(slave.BinaryLogFiles.ToNewMap())
-		} else if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
-			data, _ = json.Marshal(slave.BinaryLogFiles.ToNewMap())
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")[1:]...)
 		} else {
-			data, _ = json.Marshal(slave)
-			value, valtype, _, _ = jsonparser.Get(data, strings.Split(vars["attrName"], ".")...)
-		}
+			if strings.HasPrefix(vars["attrName"], "binaryLogFiles.") {
+				data, _ := json.Marshal(slave.BinaryLogFiles.ToNewMap())
+				resultval = gjson.GetBytes(data, strings.TrimPrefix(jsonpath, "binaryLogFiles."))
+			} else {
+				data, _ := json.Marshal(slave)
+				resultval = gjson.GetBytes(data, jsonpath)
+			}
 
-		// if the value is not found, return an error
-		if valtype == jsonparser.NotExist {
-			http.Error(w, "Attribute not found", 500)
-			return
+			// if the value is not found, return an error
+			if !resultval.Exists() {
+				http.Error(w, "Attribute not found", 500)
+				return
+			}
+
+			// convert the value to bytes
+			value = []byte(resultval.String())
 		}
 
 		// Write the value to the response
@@ -2417,7 +2449,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	default:
 		return errors.New("Setting not found")
 	}
-	mycluster.ConfigManager.SaveConfig(mycluster.Name, mycluster.Save, true)
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
 }
 
@@ -3689,7 +3721,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	default:
 		return errors.New("Setting not found")
 	}
-	mycluster.ConfigManager.SaveConfig(mycluster.Name, mycluster.Save, false)
+	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
 }
 
@@ -3909,7 +3941,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		return errors.New("Setting not found")
 	}
 
-	repman.ConfigManager.SaveConfig("default", repman.Save, true)
+	repman.ConfigManager.SaveConfig(repman, false)
 	return nil
 }
 
@@ -3957,7 +3989,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	default:
 		return errors.New("Setting not found")
 	}
-	repman.ConfigManager.SaveConfig("default", repman.Save, true)
+	repman.ConfigManager.SaveConfig(repman, false)
 	return nil
 }
 
@@ -4398,6 +4430,8 @@ func (repman *ReplicationManager) handlerMuxSettingsReload(w http.ResponseWriter
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port}/{type} [post]
 // @Router /api/clusters/{clusterName}/actions/addserver/{host}/{port} [post]
 func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *http.Request) {
+	defer repman.LogPanicToFile()
+
 	var err error
 	var updateImg bool
 	var repopath, repoimg string
@@ -4412,30 +4446,68 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 			return
 		}
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive new %s monitor to be added %s", vars["type"], vars["host"]+":"+vars["port"])
-		if vars["type"] == "" {
-			err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
-		} else {
-			repopath = repman.GetDockerRepoPath(vars["type"])
+		var srvtype, host, port, tag, template string
+		srvtype = vars["type"]
+		host = vars["host"]
+		port = vars["port"]
+		tag = vars["tag"]
 
-			if repman.MonitorType[vars["type"]] == "proxy" {
+		if srvtype == "" {
+			err = mycluster.AddSeededServer(host + ":" + port)
+		} else if srvtype == "app" {
+			// Add app monitor
+			var formData DockerRegistryLoginForm
+			if r.Body != nil {
+				decoder := json.NewDecoder(r.Body)
+				err = decoder.Decode(&formData)
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error decoding JSON: %s", err.Error())
+					w.WriteHeader(400)
+					w.Write([]byte(`{"msg":"Error decoding JSON: ` + err.Error() + `"}`))
+					return
+				}
+
+				if formData.IsPrivate {
+					err := mycluster.AddDockerPrivateRegistryCredentials(formData.URL, formData.Username, formData.Password, formData.Update)
+					if err != nil {
+						// Only warn don't exit if error is not nil
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Error adding Docker private registry credentials: %s", err.Error())
+					}
+				}
+
+				if formData.Template != "" {
+					template = formData.Template
+				}
+			}
+
+			if tag == "" {
+				http.Error(w, "Docker image is required for app monitor", 400)
+				return
+			}
+
+			err = mycluster.AddSeededApp(host, port, tag, template)
+		} else {
+			repopath = repman.GetDockerRepoPath(srvtype)
+
+			if repman.MonitorType[srvtype] == "proxy" {
 				// update image if tag is not empty
-				if vars["tag"] != "" {
+				if tag != "" {
 					updateImg = true
 
 					// check if repository list is exists
-					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+					repoimg = repman.GetDockerRepoImage(srvtype, tag)
 
 					if repoimg == "" && repopath == "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for proxy %s. Skipping proxy image update", vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for proxy %s. Skipping proxy image update", srvtype)
 						updateImg = false
 					} else if repopath != "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for proxy %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for proxy %s. Changing to the latest tag.", tag, srvtype)
 						repoimg = repopath + ":latest"
 					}
 
 					// update image
 					if updateImg {
-						switch vars["type"] {
+						switch srvtype {
 						case config.ConstProxyHaproxy:
 							mycluster.Conf.ProvProxHaproxyImg = repoimg
 						case config.ConstProxySqlproxy:
@@ -4447,35 +4519,35 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						}
 					}
 				}
-				err = mycluster.AddSeededProxy(vars["type"], vars["host"], vars["port"], "", "")
-			} else if repman.MonitorType[vars["type"]] == "database" {
+				err = mycluster.AddSeededProxy(srvtype, host, port, "", "")
+			} else if repman.MonitorType[srvtype] == "database" {
 				// Check if new database repo is different with current repo
 				oldrepopath := strings.Split(mycluster.Conf.ProvDbImg, ":")[0]
 				if oldrepopath != repopath {
 					updateImg = true
 
 					// if no tag, use the latest version
-					if vars["tag"] == "" {
-						vars["tag"] = "latest"
+					if tag == "" {
+						tag = "latest"
 					}
 				}
 
-				if vars["tag"] != "" {
+				if tag != "" {
 					updateImg = true
-					repoimg = repman.GetDockerRepoImage(vars["type"], vars["tag"])
+					repoimg = repman.GetDockerRepoImage(srvtype, tag)
 
 					if repoimg == "" && repopath == "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for database %s. Skipping database image update", vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository path not found for database %s. Skipping database image update", srvtype)
 						updateImg = false
 					} else if repopath != "" {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", vars["tag"], vars["type"])
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", tag, srvtype)
 						repoimg = repopath + ":latest"
 					}
 				}
 
 				// update image
 				if updateImg {
-					switch vars["type"] {
+					switch srvtype {
 					case "mariadb":
 						mycluster.Conf.ProvDbImg = repoimg
 					case "percona":
@@ -4484,13 +4556,13 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						mycluster.Conf.ProvDbImg = repoimg
 					}
 				}
-				err = mycluster.AddSeededServer(vars["host"] + ":" + vars["port"])
+				err = mycluster.AddSeededServer(host + ":" + port)
 			}
 		}
 
 		// This will only return duplicate error
 		if err != nil {
-			errStr := fmt.Sprintf("Error adding new %s monitor of %s: %s", vars["type"], vars["host"]+":"+vars["port"], err.Error())
+			errStr := fmt.Sprintf("Error adding new %s monitor of %s: %s", srvtype, host+":"+port, err.Error())
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, errStr)
 			w.WriteHeader(409)
 			w.Write([]byte(`{"msg":"` + errStr + `"}`))
@@ -4538,7 +4610,9 @@ func (repman *ReplicationManager) handlerMuxServerDrop(w http.ResponseWriter, r 
 		if vars["type"] == "" {
 			mycluster.RemoveServerMonitor(vars["host"], vars["port"])
 		} else {
-			if mycluster.MonitorType[vars["type"]] == "proxy" {
+			if mycluster.MonitorType[vars["type"]] == "app" {
+				mycluster.RemoveAppMonitor(vars["host"], vars["port"])
+			} else if mycluster.MonitorType[vars["type"]] == "proxy" {
 				mycluster.RemoveProxyMonitor(vars["type"], vars["host"], vars["port"])
 			} else if mycluster.MonitorType[vars["type"]] == "database" {
 				mycluster.RemoveServerMonitor(vars["host"], vars["port"])
@@ -4845,22 +4919,25 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			return
 		}
 
-		for crkey, _ := range mycluster.Conf.Secrets {
-			cl, err = jsonparser.Set(cl, []byte(`"*:*" `), "config", strcase.ToLowerCamel(crkey))
+		for crkey := range mycluster.Conf.Secrets {
+			cl, err = sjson.SetBytes(cl, "config."+strcase.ToLowerCamel(crkey), "*:*")
 		}
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
 		}
 
-		list, _ := json.Marshal(mycluster.BackupMetaMap.ToNewMap())
-		if len(list) > 0 {
-			cl, err = jsonparser.Set(cl, list, "backupList")
-			if err != nil {
-				http.Error(w, "Encoding error", 500)
-				return
-			}
+		cl, err = sjson.SetBytes(cl, "backupList", mycluster.BackupMetaMap.ToNewMap())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
 		}
+
+		// Reduce the content of the cluster object
+		cl, _ = sjson.DeleteBytes(cl, "config.apps")
+		cl, _ = sjson.DeleteBytes(cl, "servers")
+		cl, _ = sjson.DeleteBytes(cl, "proxies")
+		cl, _ = sjson.DeleteBytes(cl, "apps")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
@@ -7059,6 +7136,233 @@ func (repman *ReplicationManager) handlerMuxClusterVariablesPreserve(w http.Resp
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(response))
 
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+func (repman *ReplicationManager) handlerMuxApps(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	//marshal unmarchal for ofuscation deep copy of struc
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		apps, err := json.MarshalIndent(mycluster.Apps, "", "\t")
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+
+		for idx := range mycluster.Apps {
+			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.appClusterSubstitute", idx))
+			apps, _ = sjson.DeleteBytes(apps, fmt.Sprintf("%d.config.deployment", idx))
+			apps, _ = sjson.SetBytes(apps, fmt.Sprintf("%d.config.appDbPass", idx), "*****")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(apps)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response", 500)
+			return
+		}
+	} else {
+
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+type DockerRegistryLoginForm struct {
+	IsPrivate bool   `json:"private"`  // true if private registry, false if public
+	Update    bool   `json:"update"`   // true if updating existing credentials, false if new credentials
+	AuthType  string `json:"authType"` // "password" or "token"
+	URL       string `json:"url"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Template  string `json:"template"` // Optional template for the registry, e.g., "docker.io" or "quay.io"
+}
+
+// handlerDockerRegistryConnect handles the HTTP request to login to a Docker registry.
+// @Summary Docker Registry Login
+// @Description Logs in to a Docker registry using the provided credentials.
+// @Tags Docker
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body DockerRegistryLoginForm true "Docker Registry Login Form"
+// @Success 200 {string} string "Docker registry login successful"
+// @Failure 400 {string} string "Error decoding request body"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error creating request" or "Error making request to Docker registry" or "Docker registry login failed"
+// @Router /api/clusters/{clusterName}/docker/actions/registry-connect [post]
+func (repman *ReplicationManager) handlerDockerRegistryConnect(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		// URL parse registry get host and port
+		var body DockerRegistryLoginForm
+		err := json.NewDecoder(r.Body).Decode(&body)
+		if err != nil {
+			http.Error(w, "Error decoding request body: "+err.Error(), 400)
+			return
+		}
+
+		if body.AuthType != "password" && body.AuthType != "token" {
+			http.Error(w, "Invalid auth type, must be 'password' or 'token'", 400)
+			return
+		}
+
+		if body.URL == "" || body.Username == "" {
+			http.Error(w, "URL and Username must be provided", 400)
+			return
+		}
+
+		req, err := http.NewRequest("GET", body.URL, nil)
+		if err != nil {
+			http.Error(w, "Error creating request: "+err.Error(), 500)
+			return
+		}
+
+		if body.AuthType == "password" {
+			req.SetBasicAuth(body.Username, body.Password)
+		} else if body.AuthType == "token" {
+			req.Header.Set("Authorization", "Bearer "+body.Password)
+		}
+
+		client := &http.Client{Transport: &http.Transport{
+			// Allow insecure connections for testing purposes
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			http.Error(w, "Error making request to Docker registry: "+err.Error(), 500)
+			return
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			http.Error(w, fmt.Sprintf("Docker registry login failed: %s - %s", resp.Status, string(bodyBytes)), resp.StatusCode)
+			return
+		}
+
+		// If we reach here, the login was successful
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Docker registry login successful for %s", body.URL)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Docker registry login successful"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerDockerImageFilesystemDir handles the HTTP request to list files in a directory of a Docker image.
+// @Summary List Files in Docker Image Directory
+// @Description Lists files in a specified directory of a Docker image.
+// @Tags Docker
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param imageRef path string true "Docker Image Reference"
+// @Success 200 {object} treehelper.FileTreeCache "List of files in the directory"
+// @Failure 400 {string} string "Image reference or source directory not provided"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Error listing files in image directory" or "Error encoding JSON"
+// @Router /api/clusters/{clusterName}/docker/browse/{imageRef} [get]
+func (repman *ReplicationManager) handlerDockerImageFilesystemDir(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		imageRef := strings.TrimSpace(vars["imageRef"])
+		if imageRef == "" {
+			http.Error(w, "Image reference not provided", 400)
+			return
+		}
+
+		cacheDir := filepath.Join(mycluster.WorkingDir, ".cache", "docker", "images")
+		results, err := dockerhelper.GetFileTreeCache(cacheDir, imageRef)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error listing files in image directory: ", err)
+			http.Error(w, "Error listing files in image directory: "+err.Error(), 500)
+			return
+		}
+
+		// Write the JSON response
+		w.Header().Set("Content-Type", "application/json")
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "\t") // Pretty print
+		if err := encoder.Encode(results); err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error encoding JSON: ", err)
+			http.Error(w, "Error encoding JSON: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterGatewayServiceNodes handles the HTTP request to retrieve the gateway nodes of a cluster.
+// @Summary Get Cluster Gateway Nodes
+// @Description Retrieves the gateway nodes of the specified cluster.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} string "List of gateway nodes"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting gateway nodes
+// @Router /api/clusters/{clusterName}/opensvc-gateway [get]
+func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		svc := mycluster.OpenSVCConnect()
+		nodes, err := svc.GetServiceNodeFromState(mycluster.Conf.Cloud18GatewayService)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting gateway nodes: ", err)
+			http.Error(w, "Error getting gateway nodes: "+err.Error(), 500)
+			return
+		}
+
+		// Marshal provided interface into JSON structure
+		nodesJSON, err := json.Marshal(nodes)
+		if err != nil {
+			http.Error(w, "Error marshalling nodes: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(nodesJSON)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response: "+err.Error(), 500)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

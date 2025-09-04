@@ -21,7 +21,8 @@ import {
   setRefreshInterval,
   pauseAutoReload,
   getBackupStats,
-  clearCluster
+  clearCluster,
+  getClusterApps
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -56,15 +57,15 @@ function Home() {
   const [selectedCluster, setSelectedCluster] = useState(null)
   const dashboardTabsRef = useRef([])
   const globalTabsRef = useRef([])
+  const intervalTickerRef = useRef(0)
   const [isNewClusterModalOpen, setIsNewClusterModalOpen] = useState(false)
   const params = useParams()
 
   const terminalURL = useHref('/terminal/')
 
-  const {
-    cluster: { refreshInterval, clusterData },
-    globalClusters: { monitor }
-  } = useSelector((state) => state)
+  const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+  const monitor = useSelector((state) => state.globalClusters.monitor)
 
   useEffect(() => {
     if (params?.cluster) {
@@ -139,6 +140,7 @@ function Home() {
 
     return () => {
       clearInterval(intervalId)
+      intervalTickerRef.current = 0
     }
   }, [refreshInterval])
 
@@ -177,6 +179,10 @@ function Home() {
         dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterProxies({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterApps({ clusterName: selectedClusterNameRef.current }))
+        if (intervalTickerRef.current % 10 === 0) { // every 10 ticks, call the monitor data to update global level options
+          dispatch(getMonitoredData({}))
+        }
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Configs') {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
@@ -196,6 +202,8 @@ function Home() {
         dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
       }
     }
+
+    intervalTickerRef.current += 1
   }
   const handleTabChange = (tabIndex) => {
     selectedTabRef.current = tabIndex

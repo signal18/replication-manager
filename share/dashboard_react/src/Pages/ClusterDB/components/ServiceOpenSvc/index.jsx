@@ -1,20 +1,35 @@
 import React, { useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { getDatabaseService } from '../../../../redux/clusterSlice'
+import { getAppService, getDatabaseService } from '../../../../redux/clusterSlice'
 
 import CopyObjectText from '../../../../components/CopyObjectText'
 
-function ServiceOpenSvc({ clusterName, dbId }) {
-  const dispatch = useDispatch()
-
-  const {
-    cluster: {
-      database: { serviceOpensvc }
+const useOpenSvcSelector = (type) => {
+  return useSelector((state) => {
+    switch (type) {
+      case "db":
+        return state.cluster.database.serviceOpensvc;
+      case "app":
+        return state.cluster.app.serviceOpensvc;
+      default:
+        return null;
     }
-  } = useSelector((state) => state)
+  });
+};
+
+
+function ServiceOpenSvc({ clusterName, type, id, user }) {
+  const dispatch = useDispatch()
+  const serviceOpensvc = useOpenSvcSelector(type)
+  const serviceName = 'service-opensvc'
+
   useEffect(() => {
-    dispatch(getDatabaseService({ clusterName, serviceName: 'service-opensvc', dbId }))
-  }, [])
+    if (type === "db") {
+      dispatch(getDatabaseService({ clusterName, serviceName, dbId: id }))
+    } else if (type === "app") {
+      dispatch(getAppService({ clusterName, serviceName, appId: id }))
+    }
+  }, [type])
   return <CopyObjectText text={JSON.stringify(serviceOpensvc)} />
 }
 

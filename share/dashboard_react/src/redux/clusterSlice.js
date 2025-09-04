@@ -30,7 +30,14 @@ export const getClusterAlerts = createAsyncThunk('cluster/getClusterAlerts', asy
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.alerts) {
+      return false;
+    }
+  }
+});
 
 export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', async ({ clusterName }, thunkAPI) => {
   try {
@@ -238,10 +245,10 @@ export const toggleTrafficStaging = createAsyncThunk('cluster/toggleTrafficStagi
 
 export const addServer = createAsyncThunk(
   'cluster/addServer',
-  async ({ clusterName, host, port, monitorType, tag }, thunkAPI) => {
+  async ({ clusterName, host, port, monitorType, tag, dockerRegistry }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.addServer(clusterName, host, port, monitorType, tag, baseURL)
+      const { data, status } = await clusterService.addServer(clusterName, host, port, monitorType, tag, dockerRegistry, baseURL)
       showSuccessBanner('New server added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -253,10 +260,10 @@ export const addServer = createAsyncThunk(
 
 export const dropServer = createAsyncThunk(
   'cluster/dropServer',
-  async ({ clusterName, host, port }, thunkAPI) => {
+  async ({ clusterName, host, port, type }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.dropServer(clusterName, host, port, baseURL)
+      const { data, status } = await clusterService.dropServer(clusterName, host, port, type, baseURL)
       showSuccessBanner('New server dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1042,7 +1049,7 @@ export const getDatabaseService = createAsyncThunk(
       if (status === 200) {
         return { data, status }
       }
-      
+
       throw new Error(data)
     } catch (error) {
       handleError(error, thunkAPI)
@@ -1056,7 +1063,7 @@ export const getDatabaseVariables = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL)
-        return { data, status }
+      return { data, status }
     } catch (error) {
       handleError(error, thunkAPI)
     }
@@ -1072,7 +1079,7 @@ export const preserveVariable = createAsyncThunk(
       if (status === 200) {
         return { data, status }
       }
-      
+
       throw new Error(data)
     } catch (error) {
       handleError(error, thunkAPI)
@@ -1438,9 +1445,220 @@ export const addClusterShard = createAsyncThunk('cluster/addClusterShard', async
   }
 })
 
+export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getClusterApps(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+},
+  // Add a condition to prevent the action from being dispatched if the user is already fetching the info
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.apps) {
+        return false;
+      }
+    }
+  });
+
+export const provisionApp = createAsyncThunk('cluster/provisionApp', async ({ clusterName, appId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.provisionApp(clusterName, appId, baseURL)
+    showSuccessBanner('Provision app successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Provision app failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const unprovisionApp = createAsyncThunk(
+  'cluster/unprovisionApp',
+  async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.unprovisionApp(clusterName, appId, baseURL)
+      showSuccessBanner('Unprovision app successful!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Unprovision app failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const startApp = createAsyncThunk('cluster/startApp', async ({ clusterName, appId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.startApp(clusterName, appId, baseURL)
+    showSuccessBanner('Starting app successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Starting app failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const stopApp = createAsyncThunk('cluster/stopApp', async ({ clusterName, appId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.stopApp(clusterName, appId, baseURL)
+    showSuccessBanner('Stopping app successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Stopping app failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const getAppService = createAsyncThunk(
+  'cluster/getAppService',
+  async ({ clusterName, serviceName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.getAppService(clusterName, serviceName, appId, baseURL)
+      if (status === 200) {
+        return { data, status }
+      }
+
+      throw new Error(data)
+    } catch (error) {
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const resolveTemplateVariables = createAsyncThunk(
+  'cluster/resolveTemplateVariables',
+  async ({ clusterName, appId, rawValue }, thunkAPI) => {
+    try {
+      console.log('resolveTemplateVariables', clusterName, appId, rawValue)
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.resolveTemplateVariables(clusterName, appId, rawValue, baseURL)
+      // showSuccessBanner(`Template variables resolved!`, status, thunkAPI)
+      if (status !== 200) {
+        throw new Error(data)
+      }
+      return { data, status }
+    } catch (error) {
+      showErrorBanner(`Resolving template variables failed!`, error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const deploymentFieldChange = createAsyncThunk(
+  'cluster/deploymentFieldChange',
+  async ({ clusterName, appId, field, index, key, value }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      showSuccessBanner('Deployment field updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while updating deployment field', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const deploymentFieldIndexAdd = createAsyncThunk(
+  'cluster/deploymentFieldIndexAdd',
+  async ({ clusterName, appId, field, value }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      showSuccessBanner('New deployment field row added!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while adding a new deployment field row', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+export const deploymentFieldIndexDrop = createAsyncThunk(
+  'cluster/deploymentFieldIndexDrop',
+  async ({ clusterName, appId, field, index }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      showSuccessBanner('Deployment field row dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a deployment field row', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const storageFieldChange = createAsyncThunk(
+  'cluster/storageFieldChange',
+  async ({ clusterName, appId, field, index, key, value }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.storageFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      showSuccessBanner('storage field updated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while updating storage field', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const storageFieldIndexAdd = createAsyncThunk(
+  'cluster/storageFieldIndexAdd',
+  async ({ clusterName, appId, field, value }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.storageFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      showSuccessBanner('New storage field row added!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while adding a new storage field row', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+export const storageFieldIndexDrop = createAsyncThunk(
+  'cluster/storageFieldIndexDrop',
+  async ({ clusterName, appId, field, index }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.storageFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      showSuccessBanner('storage field row dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a storage field row', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+
+export const connectDockerRegistry = createAsyncThunk(
+  'cluster/connectDockerRegistry',
+  async ({ clusterName, dockerRegistry }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.connectDockerRegistry(clusterName, dockerRegistry, baseURL)
+      showSuccessBanner('New server added!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while adding a new server', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   isFetching: {
+    apps: false,
     cluster: false,
     alerts: false,
     master: false,
@@ -1449,6 +1667,8 @@ const initialState = {
     certificates: false,
   },
   error: null,
+  clusterApps: null,
+  clusterAppStates: null,
   clusterData: null,
   clusterAlerts: null,
   clusterMaster: null,
@@ -1470,6 +1690,11 @@ const initialState = {
     switchOver: false,
     failOver: false,
     menuActions: false
+  },
+  app: {
+    substitution: null,
+    deployment: null,
+    serviceOpensvc: null,
   },
   database: {
     processList: null,
@@ -1518,6 +1743,7 @@ export const clusterSlice = createSlice({
         getClusterMaster.fulfilled,
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
+        getClusterApps.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
         getDatabaseVariables.fulfilled,
@@ -1541,9 +1767,13 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getClusterServers')) {
           state.isFetching.servers = false
           if (action.payload?.data && action.meta.arg?.clusterName == state.clusterData?.name) {
-              state.clusterServers = action.payload.data
-              state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+            state.clusterServers = action.payload.data
+            state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
           }
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
+          state.clusterApps = action.payload?.data
+          state.clusterAppStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
           state.clusterProxies = action.payload?.data
@@ -1571,7 +1801,7 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
           } else if (serviceName === 'tables') {
-            if(!isEqual(state.database.tables, action.payload?.data)) {
+            if (!isEqual(state.database.tables, action.payload?.data)) {
               state.database.tables = action.payload?.data
             }
           } else if (serviceName === 'status-delta') {
@@ -1611,6 +1841,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = true
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = true
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = true
         }
       }
     )
@@ -1634,6 +1866,8 @@ export const clusterSlice = createSlice({
           state.isFetching.servers = false
         } else if (action.type.includes('getClusterProxies')) {
           state.isFetching.proxies = false
+        } else if (action.type.includes('getClusterApps')) {
+          state.isFetching.apps = false
         }
       }
     )
@@ -1847,6 +2081,27 @@ export const clusterSlice = createSlice({
           state.loadingStates.failOver = false
         } else {
           state.loadingStates.menuActions = false
+        }
+      }
+    )
+    builder.addMatcher(
+      isAnyOf(
+        getAppService.fulfilled,
+      ),
+      (state, action) => {
+        const { serviceName } = action.meta.arg
+        if (serviceName === 'deployment') {
+          if (!state.app.deployment || !isEqual(state.app.deployment, action.payload.data)) {
+            state.app.deployment = action.payload.data
+          }
+        } else if (serviceName === 'substitution') {
+          if (!state.app.substitution || !isEqual(state.app.substitution, action.payload.data)) {
+            state.app.substitution = action.payload.data
+          }
+        } else if (serviceName === 'service-opensvc') {
+          if (!state.app.serviceOpensvc || !isEqual(state.app.serviceOpensvc, action.payload.data)) {
+            state.app.serviceOpensvc = action.payload.data
+          }
         }
       }
     )

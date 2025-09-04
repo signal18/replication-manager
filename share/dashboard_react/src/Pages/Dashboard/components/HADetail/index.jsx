@@ -9,13 +9,10 @@ import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import styles from './styles.module.scss'
 
 function HADetail({ selectedCluster }) {
-  const {
-    cluster: {
-      clusterMaster,
-      loadingStates: { switchOver: switchOverLoading, failOver: failOverLoading }
-    },
-    common: { isDesktop }
-  } = useSelector((state) => state)
+  const clusterMaster = useSelector((state) => state.cluster.clusterMaster)
+  const { switchOverLoading, failOverLoading } = useSelector((state) => state.cluster.loadingStates)
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+      
   const dispatch = useDispatch()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [failOverData, setFailOverData] = useState([])

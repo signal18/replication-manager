@@ -1,6 +1,7 @@
-import React, { forwardRef } from 'react'
+import React, { forwardRef, useState } from 'react'
 import { IconButton as ChakraIconButton, Tooltip } from '@chakra-ui/react'
 import CustomIcon from '../Icons/CustomIcon'
+import ConfirmModal from '../Modals/ConfirmModal'
 import styles from './styles.module.scss'
 
 const RMIconButton = forwardRef(
@@ -13,39 +14,78 @@ const RMIconButton = forwardRef(
       iconFillColor,
       tooltip,
       style,
-      className,
+      className = '',
       colorScheme,
+      isDisabled = false,
+      confirm = false,
+      confirmTitle = 'Are you sure?',
+      confirmBody = 'Do you want to proceed with this action?',
+      confirmButtonText = 'Confirm',
+      cancelButtonText = 'Cancel',
       ...rest
     },
     ref
   ) => {
-  return tooltip ? (
-    <Tooltip as={"div"} label={tooltip}>
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false)
+
+    const handleClick = (e) => {
+      if (confirm) {
+        setIsConfirmOpen(true)
+      } else {
+        onClick?.(e)
+      }
+    }
+
+    const handleConfirm = () => {
+      setIsConfirmOpen(false)
+      onClick?.()
+    }
+
+    const button = (
       <ChakraIconButton
         ref={ref}
         style={style}
         className={`${colorScheme ? '' : styles.button} ${className}`}
-        onClick={onClick}
-        icon={<CustomIcon icon={icon} fontSize={iconFontsize} fill={iconFillColor} />}
+        onClick={handleClick}
+        icon={
+          <CustomIcon
+            icon={icon}
+            fontSize={iconFontsize}
+            fill={iconFillColor}
+          />
+        }
         size={size}
         variant={variant}
         colorScheme={colorScheme}
+        isDisabled={isDisabled}
         {...rest}
       />
-    </Tooltip>
-  ) : (
-    <ChakraIconButton
-      ref={ref}
-      style={style}
-      className={`${colorScheme ? '' : styles.button} ${className}`}
-      onClick={onClick}
-      icon={<CustomIcon icon={icon} fontSize={iconFontsize} fill={iconFillColor} />}
-      size={size}
-      variant={variant}
-      colorScheme={colorScheme}
-      {...rest}
-    />
-  )
-})
+    )
+
+    return (
+      <>
+        {tooltip ? (
+          <Tooltip as="div" label={tooltip}>
+            {button}
+          </Tooltip>
+        ) : (
+          button
+        )}
+
+        {confirm && (
+          <ConfirmModal
+            isOpen={isConfirmOpen}
+            closeModal={() => setIsConfirmOpen(false)}
+            onConfirmClick={handleConfirm}
+            title={confirmTitle}
+            body={confirmBody}
+            confirmButtonText={confirmButtonText}
+            cancelButtonText={cancelButtonText}
+          />
+        )}
+      </>
+    )
+  }
+)
 
 export default RMIconButton

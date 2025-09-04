@@ -21,21 +21,22 @@ function ConfirmModal({
   onConfirmClick,
   showCancelButton = true,
   showConfirmButton = true,
+  closeOnOverlayClick = true,
+  closeOnEsc = true,
   cancelButtonText = 'Cancel',
   confirmButtonText = 'Confirm'
 }) {
   const { theme } = useTheme()
 
   return (
-    <Modal isOpen={isOpen} onClose={closeModal}>
+    <Modal isOpen={isOpen} onClose={closeModal} closeOnOverlayClick={closeOnOverlayClick} closeOnEsc={closeOnEsc}>
       <ModalOverlay />
       <ModalContent
         className={`${styles.modalContent} ${theme === 'light' ? parentStyles.modalLightContent : parentStyles.modalDarkContent}`}>
         {title && <ModalHeader className={styles.modalHeader}>{title}</ModalHeader>}
-
+        {title && <ModalCloseButton /> }
         <ModalBody className={styles.modalBody}>{body}</ModalBody>
-        <ModalCloseButton />
-
+        {!title && <ModalCloseButton /> }
         <ModalFooter gap={3}>
           {showCancelButton && (
             <RMButton variant='outline' colorScheme='white' size='medium' onClick={closeModal}>

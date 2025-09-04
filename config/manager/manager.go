@@ -21,10 +21,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type ClusterConfig interface {
+	GetName() string
+	Save() error
+}
+
 // ConfigSaveTask holds the parameters for saving a config and additional waiting functionality
 type ConfigSaveTask struct {
-	Cluster   string          // The cluster to which the task belongs
-	SaveFunc  func() error    // The function that performs the save
+	Cluster   ClusterConfig
 	WaitGroup *sync.WaitGroup // Pointer to sync.WaitGroup for additional waiting
 }
 
@@ -44,16 +48,18 @@ type GitAddTask struct {
 
 // ClusterManager holds the necessary fields for each cluster
 type ClusterManager struct {
-	tasks  []*ConfigSaveTask // Slice of tasks for the cluster
-	mutex  *sync.Mutex       // Mutex for safe access to tasks
-	cond   *sync.Cond        // Condition variable for waiting and notifying tasks
-	stopCh chan struct{}     // Stop channel to signal the goroutine to stop
+	tasks      []*ConfigSaveTask // Slice of tasks for the cluster
+	mutex      *sync.Mutex       // Mutex for safe access to tasks
+	cond       *sync.Cond        // Condition variable for waiting and notifying tasks
+	stopCh     chan struct{}     // Stop channel to signal the goroutine to stop
+	isStopping bool              // Flag to indicate if the cluster manager is stopping
 }
 
 // Push Manager
 type GitManager struct {
 	logger        *config.LogrusWrapper
 	IsPushing     bool             // Flag to indicate if a push is in progress
+	isStopping    bool             // Flag to indicate if the push manager is stopping
 	tasks         []*ConfigGitTask // Slice of tasks for the push queue
 	mutex         *sync.Mutex      // Mutex for safe access to tasks
 	cond          *sync.Cond       // Condition variable for waiting and notifying tasks
@@ -232,9 +238,14 @@ func (cm *ConfigManager) CountTasksForCluster(cluster string) int {
 }
 
 // SaveConfig allows concurrent saves but respects stopping
-func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, wait bool) {
-	configSaveTask := &ConfigSaveTask{Cluster: clustername, SaveFunc: saveFunc}
+func (cm *ConfigManager) SaveConfig(cluster ClusterConfig, wait bool) {
+	configSaveTask := &ConfigSaveTask{Cluster: cluster}
+	clustername := cluster.GetName()
 
+	if cm.isStopping {
+		cm.logger.Debugf(clustername, config.ConstLogModGeneral, "[%s] Save blocked: system is stopping.\n", configSaveTask.Cluster)
+		return
+	}
 	if wait {
 		wg := sync.WaitGroup{}
 		configSaveTask.WaitGroup = &wg
@@ -248,25 +259,25 @@ func (cm *ConfigManager) SaveConfig(clustername string, saveFunc func() error, w
 	}
 
 	// Ensure each cluster has a ClusterManager (with tasks, mutex, stop channel)
-	if _, exists := cm.clusterData[configSaveTask.Cluster]; !exists {
-		cm.clusterData[configSaveTask.Cluster] = &ClusterManager{
+	if _, exists := cm.clusterData[clustername]; !exists {
+		cm.clusterData[clustername] = &ClusterManager{
 			tasks:  []*ConfigSaveTask{},
 			mutex:  &sync.Mutex{},
 			stopCh: make(chan struct{}), // Initialize stop channel for the cluster
 		}
 		// Initialize the condition variable with the mutex
-		cm.clusterData[configSaveTask.Cluster].cond = sync.NewCond(cm.clusterData[configSaveTask.Cluster].mutex)
-		go cm.processClusterQueue(configSaveTask.Cluster) // Start the persistent goroutine for the cluster
+		cm.clusterData[clustername].cond = sync.NewCond(cm.clusterData[clustername].mutex)
+		go cm.processClusterQueue(clustername) // Start the persistent goroutine for the cluster
 	}
 
 	// Lock the cluster's mutex to safely add to the task slice
-	cm.clusterData[configSaveTask.Cluster].mutex.Lock()
-	cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Appending to save queue.\n", configSaveTask.Cluster)
+	cm.clusterData[clustername].mutex.Lock()
+	cm.logger.Debugf(clustername, config.ConstLogModConfigLoad, "[%s] Appending to save queue.\n", clustername)
 
-	cm.clusterData[configSaveTask.Cluster].tasks = append(cm.clusterData[configSaveTask.Cluster].tasks, configSaveTask)
+	cm.clusterData[clustername].tasks = append(cm.clusterData[clustername].tasks, configSaveTask)
 	// Signal the goroutine that a new task is available
-	cm.clusterData[configSaveTask.Cluster].cond.Signal()
-	cm.clusterData[configSaveTask.Cluster].mutex.Unlock()
+	cm.clusterData[clustername].cond.Signal()
+	cm.clusterData[clustername].mutex.Unlock()
 
 	// If a WaitGroup pointer is provided, add to the wait group
 	if configSaveTask.WaitGroup != nil {
@@ -304,9 +315,8 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 		// Check for the stop signal before processing
 		select {
 		case <-cm.clusterData[cluster].stopCh: // Stop signal for the goroutine
-			cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Stopping goroutine.\n", cluster)
+			cm.clusterData[cluster].isStopping = true
 			cm.clusterData[cluster].mutex.Unlock()
-			return
 		default:
 			// Process the first task in the queue
 			configSaveTask := cm.clusterData[cluster].tasks[0]
@@ -319,7 +329,7 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 			cm.gitMutex.Unlock()
 
 			// Execute the save function and handle potential errors
-			if err := configSaveTask.SaveFunc(); err != nil {
+			if err := configSaveTask.Cluster.Save(); err != nil {
 				cm.logger.Errorf(cluster, config.ConstLogModConfigLoad, "Error during save: %v", err)
 			} else {
 				cm.logger.Infof(cluster, config.ConstLogModConfigLoad, "Config saved successfully.")
@@ -339,6 +349,10 @@ func (cm *ConfigManager) processClusterQueue(cluster string) {
 			}
 
 			cm.configWg.Done()
+			if cm.clusterData[cluster].isStopping {
+				cm.logger.Infof(cluster, config.ConstLogModGeneral, "[%s] Cluster manager is stopping, exiting goroutine.", cluster)
+				return
+			}
 		}
 	}
 }
@@ -414,9 +428,9 @@ func (cm *ConfigManager) processGitPush() {
 		// Check for the stop signal before processing
 		select {
 		case <-cm.gitManager.stopCh: // Stop signal for the goroutine
+			cm.gitManager.isStopping = true
 			cm.logger.Debugf("none", config.ConstLogModGit, "[Git] Stopping goroutine.")
 			cm.gitManager.mutex.Unlock()
-			return
 		default:
 			// Process the first task in the queue and skip same type tasks
 			configGitTask, pull, push := cm.gitManager.SplitTaskQueue()
@@ -469,6 +483,11 @@ func (cm *ConfigManager) processGitPush() {
 			}
 
 			cm.gitMutex.Unlock()
+
+			if cm.gitManager.isStopping && len(cm.gitManager.tasks) == 0 {
+				cm.logger.Infof("none", config.ConstLogModGit, "[Git] No more tasks in queue, stopping goroutine.")
+				return
+			}
 		}
 	}
 }
@@ -484,9 +503,9 @@ func (cm *ConfigManager) Stop() {
 		defer cm.gitMutex.Unlock()
 
 		// Send stop signal to all cluster goroutines
-		for cluster := range cm.clusterData {
-			close(cm.clusterData[cluster].stopCh)
-			cm.clusterData[cluster].cond.Signal() // Wake up the cluster goroutine
+		for _, clmgr := range cm.clusterData {
+			close(clmgr.stopCh)
+			clmgr.cond.Signal() // Wake up the cluster goroutine
 		}
 
 		cm.logger.Infof("none", config.ConstLogModGeneral, "[Shutdown] Waiting for active saves to finish...")

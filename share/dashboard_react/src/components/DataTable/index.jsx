@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, Fragment, useCallback, useEffect } from 'react'
 import { Table, Thead, Tbody, Tr, Th, Td, Flex, HStack, Input, Text } from '@chakra-ui/react'
 import {
   useReactTable,
@@ -28,7 +28,7 @@ import { getColorFromServerStatus } from '../../utility/common'
 export const DataTable = React.memo(function DataTable({
   data,
   columns,
-  columnVisibility = { proxyId: false, groupHeader: false },
+  columnVisibility = { proxyId: false, groupHeader: false, expansion: false },
   initialGrouping = [],
   initialExpanded = {},
   className,
@@ -38,6 +38,9 @@ export const DataTable = React.memo(function DataTable({
   enablePagination = false,
   enableGrouping = false,
   enableExpanding = false,
+  enableExpandingNoSubRows = false,
+  accordionMode = false,
+  onExpandedChange: handleExpandedChange, // Function to handle expanded state changes
 }) {
   const [sorting, setSorting] = useState([])
   const [grouping, setGrouping] = useState(initialGrouping)
@@ -58,9 +61,41 @@ export const DataTable = React.memo(function DataTable({
     enableExpanding: enableExpanding,
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
+    getRowCanExpand: (row) => enableExpandingNoSubRows ? true : row.subRows?.length > 0,
     onGroupingChange: setGrouping,
     onSortingChange: setSorting,
-    onExpandedChange: setExpanded,
+    onExpandedChange: (newExpanded) => {
+      if (typeof newExpanded !== 'function') {
+        return
+      }
+
+      newExpanded = newExpanded()
+
+      if (setExpanded) {
+        setExpanded((prevExpanded) => {
+          const keys = Object.keys(newExpanded)
+          const prevKeys = Object.keys(prevExpanded)
+          if (accordionMode) {
+            console.log('Accordion mode enabled, setting last key as expanded')
+            return keys.length > 0 ? { [keys[keys.length - 1]]: true } : prevKeys.length > 0 ? prevExpanded : {}
+          } else {
+            return newExpanded
+          }
+        })
+      }
+
+      if (handleExpandedChange) {
+        handleExpandedChange((prevExpanded) => {
+          const keys = Object.keys(newExpanded)
+          const prevKeys = Object.keys(prevExpanded)
+          if (accordionMode) {
+            return keys.length > 0 ? { [keys[keys.length - 1]]: true } : prevKeys.length > 0 ? prevExpanded : {}
+          } else {
+            return newExpanded
+          }
+        })
+      }
+    },
     enableSortingRemoval: false,
     getSortedRowModel: getSortedRowModel(),
     ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel(), onPaginationChange: setPagination } : {}),
@@ -121,9 +156,9 @@ export const DataTable = React.memo(function DataTable({
           ) : (
             table.getRowModel().rows.map((row, index) => {
               if (row.getIsGrouped()) {
-                return (<GroupHeaderRow key={row.id} row={row} table={table} colSpan={row.getVisibleCells().length} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />)
+                return (<GroupHeaderRow key={row.id} row={row} table={table} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />)
               } else {
-                return (<DataRow key={row.id} row={row} index={index} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />)
+                return (<DataRow key={index} row={row} index={index} table={table} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />)
               }
             })
           )}
@@ -195,34 +230,36 @@ export const DataTable = React.memo(function DataTable({
 /**
  * @param {{ row: import('@tanstack/react-table').Row<any>, table: import('@tanstack/react-table').Table<any>, colSpan: number }} props
  */
-function GroupHeaderRow({ row, table, colSpan, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
+function GroupHeaderRow({ row, table, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
   const groupHeaderCol = table.getAllColumns().find(col => col.id === 'groupHeader');
   const meta = groupHeaderCol?.columnDef?.meta
   const renderFn = meta?.renderGroupHeader;
   const renderMenuFn = meta?.renderGroupHeaderMenu;
-  const newColSpan = renderMenuFn ? colSpan - 1 : colSpan;
+  const colSpan = renderMenuFn ? row.getVisibleCells().length - 1 : row.getVisibleCells().length;
   const menuCellRef = renderMenuFn && meta?.groupHeaderMenuColumnRef ? table.getAllColumns().find(col => col.id === meta?.groupHeaderMenuColumnRef) : row.subRows?.[0]?.getVisibleCells?.()?.[0]?.column
   return (
-    <>
+    <Fragment key={row.id}>
       <Tr key={row.id} >
-        { renderMenuFn && (<Td className={`${styles.tableColumn}`} maxWidth={menuCellRef?.columnDef?.maxWidth} width={menuCellRef?.columnDef?.width} minWidth={menuCellRef?.columnDef?.minWidth}>{renderMenuFn(row)}</Td>) }
-        <Td className={`${styles.tableColumn}`} colSpan={newColSpan} onClick={row.getToggleExpandedHandler()} style={{ cursor: 'pointer' }}>
+        {renderMenuFn && (<Td className={`${styles.tableColumn}`} maxWidth={menuCellRef?.columnDef?.maxWidth} width={menuCellRef?.columnDef?.width} minWidth={menuCellRef?.columnDef?.minWidth}>{renderMenuFn(row)}</Td>)}
+        <Td className={`${styles.tableColumn}`} colSpan={colSpan} onClick={row.getToggleExpandedHandler()} style={{ cursor: 'pointer' }}>
           {renderFn
             ? renderFn(row)
             : <>{row.original.groupName}</>}
         </Td>
       </Tr>
-      { row.subRows.map((subRow, index) => {
-      <DataRow key={`${row.id}-${subRow.id}`} row={subRow} index={index} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />
-      })}
-    </>
+      {row.subRows.map((subRow, index) => (<DataRow key={`${row.id}-${subRow.id}`} row={subRow} index={index} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />))}
+    </Fragment>
   );
 }
 
 /**
  * @param {{ row: import('@tanstack/react-table').Row<any>, index: number, fixedColumnIndex?: number, cellValueAlign?: 'left' | 'center' | 'right' }} props
  */
-function DataRow({ row, index, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
+function DataRow({ row, index, table, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
+  const expansionColumn = table.getAllColumns().find(col => col.id === 'expansion');
+  const meta = expansionColumn?.columnDef?.meta
+  const renderExpansionFn = meta?.renderExpansion;
+
   //this logic is for db servers
   let rowColor = row.original.state ? getColorFromServerStatus(row.original.state) : row.original.rowColor ? row.original.rowColor : ''
 
@@ -236,23 +273,34 @@ function DataRow({ row, index, fixedColumnIndex = 0, cellValueAlign = 'left' }) 
   }
 
   return (
-    <Tr
-      key={row.id}
-      className={`${index % 2 !== 0 && styles.tableColumnEven} ${rowColor === 'red' ? styles.redBlinking : rowColor === 'orange' ? styles.orangeBlinking : ''}`}>
-      {row.getVisibleCells().map((cell, index) => {
-        const meta = cell.column.columnDef.meta
-        return (
-          <Td
-            textAlign={cell.column.columnDef.textAlign || cellValueAlign}
-            maxWidth={cell.column.columnDef.maxWidth}
-            width={cell.column.columnDef.width}
-            className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}
-            key={cell.id}
-            isNumeric={meta?.isNumeric}>
-            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+    <Fragment key={row.id}>
+      <Tr
+        key={row.id}
+        className={`${index % 2 !== 0 && styles.tableColumnEven} ${rowColor === 'red' ? styles.redBlinking : rowColor === 'orange' ? styles.orangeBlinking : ''}`}
+        onClick={row.getCanExpand() ? row.getToggleExpandedHandler() : undefined}
+      >
+        {row.getVisibleCells().map((cell, index) => {
+          const meta = cell.column.columnDef.meta
+          return (
+            <Td
+              textAlign={cell.column.columnDef.textAlign || cellValueAlign}
+              maxWidth={cell.column.columnDef.maxWidth}
+              width={cell.column.columnDef.width}
+              className={`${styles.tableColumn} ${index === fixedColumnIndex && styles.fixedColumn}`}
+              key={cell.id}
+              isNumeric={meta?.isNumeric}>
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </Td>
+          )
+        })}
+      </Tr>
+      {renderExpansionFn && row.getIsExpanded() && (
+        <Tr key={`${row.id}-expansion`} className={`${styles.expansionRow} expansionRow`}>
+          <Td className={`${styles.tableExpansionColumn} expansionCell`} colSpan={row.getVisibleCells().length} >
+            {renderExpansionFn(row)}
           </Td>
-        )
-      })}
-    </Tr>
+        </Tr>
+      )}
+    </Fragment>
   )
 }
