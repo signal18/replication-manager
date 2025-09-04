@@ -1972,7 +1972,33 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			}
 
 			node.AppConfig.ProvAppTemplate = body.Template
-			mycluster.LoadAppTemplate(node.AppConfig, node.AppConfig.ProvAppTemplate)
+			// Get the template content
+			content, err := mycluster.GetTemplateContent(node.AppConfig.ProvAppTemplate)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error getting template content: %v", err), 500)
+				return
+			}
+
+			parsedContent, _ := mycluster.ParseTemplateContent(node, content)
+
+			// Load the new template into the Viper instance
+			newViper, err := mycluster.LoadTemplateToViper(parsedContent)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error loading template: %v", err), 500)
+				return
+			}
+
+			// Update the app configuration with the new Viper instance
+			// Unmarshal the parsed content into the app configuration
+			err = newViper.Unmarshal(node.AppConfig)
+			if err != nil {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", body.Template, err)
+				http.Error(w, fmt.Sprintf("Error unmarshalling template: %v", err), 500)
+				return
+			}
+
+			node.AppConfig.ProvAppTemplate = body.Template
+
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("App template reloaded successfully"))
 		} else {

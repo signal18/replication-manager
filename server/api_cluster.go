@@ -4480,7 +4480,7 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 				}
 			}
 
-			if tag == "" {
+			if tag == "" && template == "" {
 				http.Error(w, "Docker image is required for app monitor", 400)
 				return
 			}
