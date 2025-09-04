@@ -1530,6 +1530,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//add config from cluster to the config map
 	for _, cl := range repman.ClusterList {
 		//vipersave := backupvipersave
+		if len(repman.ClusterList) > 1 && cl == "Default" {
+			continue
+		}
 		confs[cl] = repman.GetClusterConfig(fistRead, ImmuableMap, DynamicMap, cl, conf)
 		cfgGroupIndex++
 	}
