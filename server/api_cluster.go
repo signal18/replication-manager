@@ -3161,7 +3161,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			err = mycluster.SetSponsorUserCredentials(suser, spass)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting sponsor user credentials: %s", err.Error())
-				return err
+				// return err
 			}
 		}
 
@@ -5735,10 +5735,10 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	}
 
 	err = repman.setClusterSetting(mycluster, "cloud18-sponsor-user-credentials", base64.StdEncoding.EncodeToString([]byte(suser+":"+spass)))
-	if err != nil {
-		http.Error(w, "Error setting sponsor db credentials :"+err.Error(), 500)
-		return
-	}
+	// if err != nil {
+	// 	http.Error(w, "Error setting sponsor db credentials :"+err.Error(), 500)
+	// 	return
+	// }
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting up db credentials for dba of cluster %s", mycluster.Name)
 
@@ -5752,9 +5752,9 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	}
 
 	err = repman.setClusterSetting(mycluster, "cloud18-dba-user-credentials", base64.StdEncoding.EncodeToString([]byte(duser+":"+dpass)))
-	if err != nil {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "The sponsorship process for %s is proceeding without creating a DBA user, as it does not impact the sponsor's operations", mycluster.Name)
-	}
+	// if err != nil {
+	// 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "The sponsorship process for %s is proceeding without creating a DBA user, as it does not impact the sponsor's operations", mycluster.Name)
+	// }
 
 	err = repman.AcceptSubscription(userform, mycluster)
 	if err != nil {
