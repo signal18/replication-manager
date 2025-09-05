@@ -984,7 +984,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterDocker] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterDocker] || cluster.APIUsers[strUser].Grants[config.GrantAppDocker] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker") {
 			return true
 		}

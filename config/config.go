@@ -1232,6 +1232,7 @@ const (
 	GrantProxyTerminal        string = "proxy-terminal"
 
 	GrantAppConfig     string = "app-config"
+	GrantAppDocker     string = "app-docker"
 	GrantAppDeployment string = "app-deployment"
 	GrantAppStart      string = "app-start"
 	GrantAppStop       string = "app-stop"
@@ -2328,6 +2329,7 @@ func GetGrantType() map[string]string {
 		GrantProvAppProvision:          GrantProvAppProvision,
 		GrantProvAppUnprovision:        GrantProvAppUnprovision,
 		GrantAppConfig:                 GrantAppConfig,
+		GrantAppDocker:                 GrantAppDocker,
 		GrantAppDeployment:             GrantAppDeployment,
 		GrantAppStart:                  GrantAppStart,
 		GrantAppStop:                   GrantAppStop,
@@ -2477,6 +2479,7 @@ func GetGrantApp() []string {
 		GrantAppStart,
 		GrantAppStop,
 		GrantAppConfig,
+		GrantAppDocker,
 		GrantAppDeployment,
 		GrantAppGit,
 	}
