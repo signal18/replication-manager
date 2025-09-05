@@ -5690,20 +5690,20 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 		return
 	}
 
-	if mycluster.Conf.Cloud18DatabaseReadSrvRecord == "" {
-		http.Error(w, "Empty Read Srv Record", http.StatusForbidden)
-		return
-	}
+	// if mycluster.Conf.Cloud18DatabaseReadSrvRecord == "" {
+	// 	http.Error(w, "Empty Read Srv Record", http.StatusForbidden)
+	// 	return
+	// }
 
-	if mycluster.Conf.Cloud18DatabaseReadWriteSrvRecord == "" {
-		http.Error(w, "Empty Read-Write Srv Record", http.StatusForbidden)
-		return
-	}
+	// if mycluster.Conf.Cloud18DatabaseReadWriteSrvRecord == "" {
+	// 	http.Error(w, "Empty Read-Write Srv Record", http.StatusForbidden)
+	// 	return
+	// }
 
-	if mycluster.Conf.Cloud18DatabaseReadWriteSplitSrvRecord == "" {
-		http.Error(w, "Empty Read-Write Split Srv Record", http.StatusForbidden)
-		return
-	}
+	// if mycluster.Conf.Cloud18DatabaseReadWriteSplitSrvRecord == "" {
+	// 	http.Error(w, "Empty Read-Write Split Srv Record", http.StatusForbidden)
+	// 	return
+	// }
 
 	var userform cluster.UserForm
 	//decode request into UserCredentials struct
