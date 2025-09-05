@@ -31,7 +31,7 @@ func (repman *ReplicationManager) AcceptSubscription(userform cluster.UserForm, 
 		return fmt.Errorf("User %s does not have 'pending' role", user)
 	}
 
-	grants := strings.Split("db show proxy grant extrole sales-unsubscribe", " ")
+	grants := strings.Split(config.GetDefaultGrants(config.RoleSponsor), " ")
 	roles := strings.Split("sponsor", " ")
 	for grant, v := range auser.Grants {
 		if v {
