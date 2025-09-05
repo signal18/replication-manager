@@ -139,7 +139,7 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
-	router.Handle("/api/cluster/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
 	))
