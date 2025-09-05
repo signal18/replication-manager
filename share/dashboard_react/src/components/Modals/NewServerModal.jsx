@@ -309,11 +309,11 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               <FormErrorMessage>{errors.host}</FormErrorMessage>
             </FormControl>
             <FormControl isInvalid={errors.port}>
-              <FormLabel htmlFor='port'>Port</FormLabel>
+              <FormLabel htmlFor='port'>Port {template ? "(Optional)" : ""}</FormLabel>
               <Input id='port' type='number' max={65535} value={port} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { port: e.target.value ? parseInt(e.target.value, 10) : 0 } })} />
               <FormErrorMessage>{errors.port}</FormErrorMessage>
             </FormControl>
-            
+
             {monitorType === 'app' && (
               <>
                 {/* Private Docker Registry Checkbox */}
