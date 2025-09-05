@@ -120,7 +120,7 @@ export const clusterService = {
   addClusterShard,
 
   // App management APIs
-  dropAppByName,
+  dropApp,
   getClusterApps,
   provisionApp,
   unprovisionApp,
@@ -246,8 +246,8 @@ function dropServerByName(clusterName, serverName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${serverName}`)
 }
 
-function dropAppByName(clusterName, appId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/drop`)
+function dropApp(clusterName, host, port, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${host}/${port}/actions/drop`)
 }
 
 function provisionCluster(clusterName, baseURL) {

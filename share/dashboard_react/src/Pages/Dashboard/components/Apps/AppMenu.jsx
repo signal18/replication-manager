@@ -2,7 +2,7 @@ import { useDispatch } from 'react-redux'
 import MenuOptions from '../../../../components/MenuOptions'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import { useState, useEffect } from 'react'
-import { dropAppByName, provisionApp, startApp, stopApp, unprovisionApp } from '../../../../redux/clusterSlice'
+import { dropApp, provisionApp, startApp, stopApp, unprovisionApp } from '../../../../redux/clusterSlice'
 import { useNavigate } from 'react-router-dom'
 
 function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView', user }) {
@@ -91,7 +91,7 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                 onClick: () => {
                   openConfirmModal()
                   setConfirmTitle(`Confirm removing monitor for ${appName}?`)
-                  setConfirmHandler(() => () => dispatch(dropAppByName({ clusterName, appId: row.appId })))
+                  setConfirmHandler(() => () => dispatch(dropApp({ clusterName, host: row.server, port: row.port })))
                 }
               },
             ]
