@@ -271,7 +271,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               />
             </FormControl>
 
-            {monitorType === 'app' && (
+            {monitorType === 'app' ? (
               <>
                 <FormControl>
                   <FormLabel htmlFor='template'>Template</FormLabel>
@@ -291,6 +291,17 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   </FormControl>
                 )}
               </>
+            ) : (
+              <FormControl >
+                <FormLabel htmlFor='tag'>Docker Version</FormLabel>
+                <Dropdown
+                  id='tag'
+                  isMenuPortalTarget={false}
+                  onChange={(option) => { formDispatch({ type: 'SET_FORM_DATA', payload: { tag: option.value } }) }}
+                  options={tagOptions}
+                  selectedValue={tag}
+                />
+              </FormControl>
             )}
             <FormControl isInvalid={errors.host}>
               <FormLabel htmlFor='host'>Host</FormLabel>
@@ -302,7 +313,8 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
               <Input id='port' type='number' max={65535} value={port} onChange={(e) => formDispatch({ type: 'SET_FORM_DATA', payload: { port: e.target.value ? parseInt(e.target.value, 10) : 0 } })} />
               <FormErrorMessage>{errors.port}</FormErrorMessage>
             </FormControl>
-            {monitorType === 'app' ? (
+            
+            {monitorType === 'app' && (
               <>
                 {/* Private Docker Registry Checkbox */}
                 <FormControl>
@@ -367,18 +379,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                   </>
                 )}
               </>
-            ) : (
-              <FormControl >
-                <FormLabel htmlFor='tag'>Docker Version</FormLabel>
-                <Dropdown
-                  id='tag'
-                  isMenuPortalTarget={false}
-                  onChange={(option) => { formDispatch({ type: 'SET_FORM_DATA', payload: { tag: option.value } }) }}
-                  options={tagOptions}
-                  selectedValue={tag}
-                />
-              </FormControl>
-            )}
+              )}
           </Stack>
         </ModalBody>
 
