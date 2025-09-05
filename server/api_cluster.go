@@ -4453,6 +4453,9 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 		tag = vars["tag"]
 
 		if srvtype == "" {
+			if port == "0" || port == "" {
+				port = "3306"
+			}
 			err = mycluster.AddSeededServer(host + ":" + port)
 		} else if srvtype == "app" {
 			// Add app monitor
@@ -4543,6 +4546,10 @@ func (repman *ReplicationManager) handlerMuxServerAdd(w http.ResponseWriter, r *
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Repository image with tag %s not found for database %s. Changing to the latest tag.", tag, srvtype)
 						repoimg = repopath + ":latest"
 					}
+				}
+
+				if port == "0" || port == "" {
+					port = "3306"
 				}
 
 				// update image
