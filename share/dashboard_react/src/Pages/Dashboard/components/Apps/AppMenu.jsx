@@ -91,7 +91,7 @@ function AppMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView',
                 onClick: () => {
                   openConfirmModal()
                   setConfirmTitle(`Confirm removing monitor for ${appName}?`)
-                  setConfirmHandler(() => () => dispatch(dropAppByName({ clusterName, appId: row.id })))
+                  setConfirmHandler(() => () => dispatch(dropAppByName({ clusterName, appId: row.appId })))
                 }
               },
             ]
