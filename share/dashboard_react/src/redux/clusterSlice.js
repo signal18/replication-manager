@@ -288,6 +288,21 @@ export const dropServerByName = createAsyncThunk(
   }
 )
 
+export const dropAppByName = createAsyncThunk(
+  'cluster/dropAppByName',
+  async ({ clusterName, appId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.dropAppByName(clusterName, appId, baseURL)
+      showSuccessBanner('New app dropped!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while dropping a new app', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
 export const provisionCluster = createAsyncThunk('cluster/provisionCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1880,6 +1895,7 @@ export const clusterSlice = createSlice({
         resetSLA.pending,
         addServer.pending,
         dropServer.pending,
+        dropAppByName.pending,
         toggleTraffic.pending,
         toggleTrafficStaging.pending,
         provisionCluster.pending,
@@ -1951,6 +1967,7 @@ export const clusterSlice = createSlice({
         resetSLA.fulfilled,
         addServer.fulfilled,
         dropServer.fulfilled,
+        dropAppByName.fulfilled,
         toggleTrafficStaging.fulfilled,
         provisionCluster.fulfilled,
         unProvisionCluster.fulfilled,
@@ -2021,6 +2038,7 @@ export const clusterSlice = createSlice({
         resetSLA.rejected,
         addServer.rejected,
         dropServer.rejected,
+        dropAppByName.rejected,
         toggleTraffic.rejected,
         toggleTrafficStaging.rejected,
         provisionCluster.rejected,

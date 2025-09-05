@@ -709,7 +709,7 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreateMonitor] {
+	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreateMonitor] || cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/addserver") {
 			return true
 		}
@@ -1008,6 +1008,9 @@ func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantProvAppUnprovision] {
 		if strings.Contains(URL, "/actions/unprovision") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/drop") {
 			return true
 		}
 	}

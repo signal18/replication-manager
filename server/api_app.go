@@ -59,6 +59,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropDeploymentFieldRow)),
 	))
+	router.Handle("/api/cluster/{clusterName}/apps/{appName}/actions/drop", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appName}/actions/unprovision", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppUnprovision)),
@@ -2114,4 +2118,50 @@ func (repman *ReplicationManager) handlerMuxAppGetTemplateFromRepo(w http.Respon
 		http.Error(w, "No cluster", 500)
 		return
 	}
+}
+
+// @Summary Drop App Monitor
+// @Description Drops the monitoring configuration for a specific app in a cluster.
+// @Tags Apps
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param appId path string true "App ID"
+// @Success 200 {string} string "App monitor dropped successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No app found with the provided app ID" or "Cluster Not Found"
+// @Router /api/clusters/{clusterName}/apps/{appName}/actions/drop [post]
+func (repman *ReplicationManager) handlerMuxAppDropByName(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if vars["appName"] == "" {
+			http.Error(w, "No app ID provided", 400)
+			return
+		}
+
+		node := mycluster.GetAppFromName(vars["appName"])
+		if node == nil {
+			http.Error(w, "No server found with name "+vars["serverName"], 400)
+			return
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop app monitor %s", node.Name)
+		err := mycluster.RemoveAppMonitor(node.Host, node.Port)
+		if err != nil {
+			http.Error(w, "Error dropping app monitor: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+
 }
