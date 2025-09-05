@@ -119,6 +119,8 @@ export const clusterService = {
 
   addClusterShard,
 
+  // App management APIs
+  dropAppByName,
   getClusterApps,
   provisionApp,
   unprovisionApp,
@@ -221,7 +223,7 @@ function toggleTrafficStaging(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/switch/database-heartbeat-staging`)
 }
 
-function addServer(clusterName, host, port, monitorType, tag,  dockerRegistry = {}, baseURL) {
+function addServer(clusterName, host, port, monitorType, tag, dockerRegistry = {}, baseURL) {
   if (monitorType === 'app') {
     return getApi(baseURL).post(`clusters/${clusterName}/actions/addserver/${host}/${port}/${monitorType}/${tag}`, { ...dockerRegistry })
   } else if (!monitorType) {
@@ -242,6 +244,10 @@ function dropServer(clusterName, host, port, type, baseURL) {
 
 function dropServerByName(clusterName, serverName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/dropserver/${serverName}`)
+}
+
+function dropAppByName(clusterName, appId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/apps/${appId}/actions/drop`)
 }
 
 function provisionCluster(clusterName, baseURL) {
@@ -601,7 +607,7 @@ function getAppService(clusterName, serviceName, appId, baseURL) {
 }
 
 function resolveTemplateVariables(clusterName, appId, rawValue, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/resolve-template`, {data: rawValue})
+  return getApi(baseURL).post(`clusters/${clusterName}/apps/${appId}/resolve-template`, { data: rawValue })
 }
 
 function addDeployment(clusterName, appId, deployment, baseURL) {
