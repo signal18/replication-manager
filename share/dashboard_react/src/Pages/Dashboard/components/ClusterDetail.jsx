@@ -95,7 +95,7 @@ function ClusterDetail({ selectedCluster }) {
             setConfirmHandler(() => () => dispatch(toggleTraffic({ clusterName: selectedCluster?.name })))
           }
         },
-        ...(selectedCluster.config.topologyStaging ? [{
+        ...(selectedCluster.config?.topologyStaging ? [{
           name: 'Toggle Traffic Staging',
           onClick: () => {
             openConfirmModal()

@@ -24,9 +24,11 @@ function ClusterDB(props) {
   const [dbId, setDbId] = useState(params.dbname)
   const tabs = useRef([])
 
-  const {
-    cluster: { refreshInterval, clusterServers, clusterData }
-  } = useSelector((state) => state)
+  const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const clusterData = useSelector((state) => state.cluster.clusterData)
+  const loggedUser = useSelector((state) => state.auth.user)
+
   useEffect(() => {
     let intervalId = 0
     let interval = localStorage.getItem('refresh_interval')
@@ -53,10 +55,12 @@ function ClusterDB(props) {
       const server = clusterServers.find((x) => x.id === dbId)
       setSelectedDBServer(server)
     }
-    if (clusterData?.apiUsers) {
-      const loggedUser = localStorage.getItem('username')
-      if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-        const apiUser = clusterData.apiUsers[loggedUser]
+  }, [dbId, clusterServers])
+
+  useEffect(() => {
+    if (clusterData?.apiUsers && loggedUser) {
+      const apiUser = clusterData.apiUsers[loggedUser.User] ? clusterData.apiUsers[loggedUser.User] : clusterData.apiUsers[loggedUser.Email]
+      if (apiUser) {
         const authorizedTabs = [
           <>
             <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
@@ -88,7 +92,7 @@ function ClusterDB(props) {
         setUser(apiUser)
       }
     }
-  }, [dbId, clusterServers])
+  }, [dbId, loggedUser, clusterData])
 
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))

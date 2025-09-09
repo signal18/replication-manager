@@ -10,7 +10,7 @@ import { HiArrowNarrowLeft } from 'react-icons/hi'
 import { useDispatch, useSelector } from 'react-redux'
 import { getClusterData, getClusterApps, setRefreshInterval, getAppService } from '../../redux/clusterSlice'
 
-function ClusterApp({}) {
+function ClusterApp({ }) {
   const params = useParams()
   const dispatch = useDispatch()
   const navigate = useNavigate()
@@ -22,6 +22,7 @@ function ClusterApp({}) {
   const [appId, setAppId] = useState(params.appname)
   const tabs = useRef([])
 
+  const loggedUser = useSelector((state) => state.auth.user)
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterApps = useSelector((state) => state.cluster.clusterApps)
   const clusterData = useSelector((state) => state.cluster.clusterData)
@@ -77,25 +78,24 @@ function ClusterApp({}) {
       const app = clusterApps.find((x) => x.id === appId)
       setSelectedApp(app)
     }
-    if (clusterData?.apiUsers) {
-      const loggedUser = localStorage.getItem('username')
-      if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-        const apiUser = clusterData.apiUsers[loggedUser]
-        const authorizedTabs = [
-          <>
-            <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
-          </>
-        ]
-        authorizedTabs.push('App Overview')
-        authorizedTabs.push('Storages')
-        authorizedTabs.push('Service OpenSVC')
-        tabs.current = authorizedTabs
-        setUser(apiUser)
-      }
+    if (clusterData?.apiUsers && loggedUser) {
+        const apiUser = clusterData?.apiUsers[loggedUser.User] || clusterData?.apiUsers[loggedUser.Email]
+        if (apiUser) {
+          const authorizedTabs = [
+            <>
+              <CustomIcon icon={HiArrowNarrowLeft} /> Dashboard
+            </>
+          ]
+          authorizedTabs.push('App Overview')
+          authorizedTabs.push('Storages')
+          authorizedTabs.push('Service OpenSVC')
+          tabs.current = authorizedTabs
+          setUser(apiUser)
+        }
     }
-  }, [appId, clusterApps])
+  }, [appId, clusterApps, loggedUser])
 
-  
+
   const handleTabChange = (tabIndex) => {
     selectedTabRef.current = tabIndex
     setSelectedTab(tabIndex)
@@ -104,7 +104,7 @@ function ClusterApp({}) {
     }
   }
 
-  if (clusterApps?.length === 0 || !selectedApp) { 
+  if (clusterApps?.length === 0 || !selectedApp) {
     return (
       <PageContainer>
         <Box className={styles.container}>
