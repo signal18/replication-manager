@@ -47,14 +47,15 @@ function UserGrantModal({ clusterName, selectedUser, isOpen, closeModal }) {
   const { theme } = useTheme()
   const { serviceAcl = [], serviceRoles = [] } = monitor
 
-  const loggedUser = localStorage.getItem('username')
+  const loggedUser = useSelector((state) => state.auth.user)
 
   useEffect(() => {
-    if (clusterData?.apiUsers?.[loggedUser]) {
-      const apiUser = clusterData.apiUsers[loggedUser]
+    const apiUser = clusterData?.apiUsers?.[loggedUser.User] ? clusterData?.apiUsers?.[loggedUser.User] : clusterData?.apiUsers?.[loggedUser.Email]
+
+    if (apiUser) {
       setUser(apiUser)
     }
-  }, [clusterData?.apiUsers?.[loggedUser]])
+  }, [clusterData?.apiUsers, loggedUser])
 
   useEffect(() => {
     setFirstLoad(true)

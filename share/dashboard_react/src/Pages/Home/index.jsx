@@ -63,6 +63,7 @@ function Home() {
 
   const terminalURL = useHref('/terminal/')
 
+  const loggedUser = useSelector((state) => state.auth.user)
   const refreshInterval = useSelector((state) => state.cluster.refreshInterval)
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const monitor = useSelector((state) => state.globalClusters.monitor)
@@ -89,38 +90,37 @@ function Home() {
   useEffect(() => {
     if (clusterData) {
       setSelectedCluster(clusterData)
-      if (clusterData.apiUsers) {
-        const loggedUser = localStorage.getItem('username')
-        if (loggedUser && clusterData?.apiUsers[loggedUser]) {
-          const apiUser = clusterData.apiUsers[loggedUser]
-          setUser(apiUser)
-          const authorizedTabs = ['Dashboard', 'Settings', 'Configs']
-          if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
-            authorizedTabs.push('Graphs')
+      if (clusterData.apiUsers && loggedUser) {
+          const apiUser = clusterData.apiUsers[loggedUser.User] ? clusterData.apiUsers[loggedUser.User] : clusterData.apiUsers[loggedUser.Email]
+          if (apiUser) {
+            setUser(apiUser)
+            const authorizedTabs = ['Dashboard', 'Settings', 'Configs']
+            if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
+              authorizedTabs.push('Graphs')
+            }
+            if (apiUser.grants['cluster-show-agents']) {
+              authorizedTabs.push('Agents')
+            }
+            if (apiUser.grants['cluster-show-backups']) {
+              authorizedTabs.push('Maintenance')
+            }
+            if (apiUser.grants['db-show-process']) {
+              authorizedTabs.push('Tops')
+            }
+            if (clusterData.config.proxysql && apiUser.grants['cluster-show-agents']) {
+              authorizedTabs.push('Query Rules')
+            }
+            if (apiUser.grants['db-show-schema']) {
+              authorizedTabs.push('Shards')
+            }
+            if (apiUser.grants['cluster-grant']) {
+              authorizedTabs.push('Users')
+            }
+            dashboardTabsRef.current = authorizedTabs
           }
-          if (apiUser.grants['cluster-show-agents']) {
-            authorizedTabs.push('Agents')
-          }
-          if (apiUser.grants['cluster-show-backups']) {
-            authorizedTabs.push('Maintenance')
-          }
-          if (apiUser.grants['db-show-process']) {
-            authorizedTabs.push('Tops')
-          }
-          if (clusterData.config.proxysql && apiUser.grants['cluster-show-agents']) {
-            authorizedTabs.push('Query Rules')
-          }
-          if (apiUser.grants['db-show-schema']) {
-            authorizedTabs.push('Shards')
-          }
-          if (apiUser.grants['cluster-grant']) {
-            authorizedTabs.push('Users')
-          }
-          dashboardTabsRef.current = authorizedTabs
         }
       }
-    }
-  }, [clusterData])
+  }, [clusterData, loggedUser])
 
   useEffect(() => {
     let intervalId = 0
@@ -252,14 +252,14 @@ function Home() {
               ? [renderClusterListTabWithArrow(), ...dashboardTabsRef.current]
               : globalTabsRef.current
           }
-          tabPrefix={[...(selectedClusterNameRef.current == '' ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus}/></div>]: [])]}
-          tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>]:[])]}
+          tabPrefix={[...(selectedClusterNameRef.current == '' ? [<div onClick={openNewClusterModal} className={styles.tabSelected}><CustomIcon icon={FaPlus} /></div>] : [])]}
+          tabSuffix={[...(selectedClusterNameRef.current == '' && localStorage.getItem('username') == "admin" ? [<div onClick={openTerminalPage} className={styles.tabNormal}>Terminal</div>] : [])]}
           tabContents={[
             <ClusterList onClick={setDashboardTab} />,
             ...(isClusterOpenRef.current
               ? [
                 <Dashboard user={user} selectedCluster={selectedCluster} />,
-                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor}/>,
+                <Settings user={user} selectedCluster={selectedCluster} onTabChange={handleTabChange} monitor={monitor} />,
                 <Configs user={user} selectedCluster={selectedCluster} />,
                 ...(selectedCluster?.config?.graphiteMetrics && user?.grants['cluster-show-graphs']
                   ? [<Graphs selectedCluster={selectedCluster} />]
@@ -275,7 +275,7 @@ function Home() {
                   ? [<QueryRules selectedCluster={selectedCluster} />]
                   : []),
                 ...(user?.grants['db-show-schema'] ? [<Shards selectedCluster={selectedCluster} />] : []),
-                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user}/>] : [])
+                ...(user?.grants['cluster-grant'] ? [<Users selectedCluster={selectedCluster} user={user} />] : [])
               ]
               : globalTabsRef.current.includes('Clusters Peer') // monitor?.config?.cloud18 is false, do not show "Peer Clusters" tab
                 ? [<PeerClusterList onLogin={setDashboardTab} />, <PeerClusterList mode='shared' />, <ClustersGlobalSettings />]
