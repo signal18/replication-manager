@@ -291,11 +291,7 @@ const meetSlice = createSlice({
       .addCase(getMeetInfo.rejected, (state, action) => {
         state.meetError = true;
         state.meetInfo = null;
-
-        // sleep for 5 seconds to prevent too many requests in case of error
-        setTimeout(() => {
-          state.isFetchingInfo = false;
-        }, 5000);
+        state.isFetchingInfo = false;
       })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;

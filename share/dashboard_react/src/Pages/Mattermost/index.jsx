@@ -78,7 +78,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 })
                     }
                     dispatch(getMeetInfo());
                 }
-            }, 2000);
+            }, 5000);
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel, isLogged, cloud18]);
 

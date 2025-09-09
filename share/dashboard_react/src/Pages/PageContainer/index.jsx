@@ -1,7 +1,7 @@
 import React, { useEffect, useState, lazy } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { setUserData } from '../../redux/authSlice'
+import { whoami } from '../../redux/authSlice'
 import { Box, useBreakpointValue, Text, HStack, Link } from '@chakra-ui/react'
 import { isAuthorized } from '../../utility/common'
 import { setIsMobile, setIsTablet, setIsDesktop } from '../../redux/commonSlice'
@@ -38,7 +38,7 @@ function PageContainer({ children }) {
 
   useEffect(() => {
     if (isAuthorized() && user === null) {
-      dispatch(setUserData())
+      dispatch(whoami())
     }
     handleResize() // Initial setup
 
