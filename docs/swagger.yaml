@@ -1716,6 +1716,8 @@ definitions:
         type: boolean
       backupEstimateSizePercentage:
         type: integer
+      backupGottyClientPath:
+        type: string
       backupGrowthPercentage:
         type: integer
       backupKeepDaily:
@@ -1770,11 +1772,13 @@ definitions:
         type: string
       backupMysqlclientOptions:
         type: string
-      backupMysqlclientgPath:
+      backupMysqlclientPath:
         type: string
       backupMysqldumpOptions:
         type: string
       backupMysqldumpPath:
+        type: string
+      backupMytopPath:
         type: string
       backupPhysicalType:
         type: string
@@ -14562,6 +14566,35 @@ paths:
       summary: Handles replication manager version requests
       tags:
       - Public
+  /api/whoami:
+    get:
+      consumes:
+      - application/json
+      description: Returns information about the user making the request based on
+        the provided JWT token.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User information
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Error retrieving user info from token" or "Error Marshal
+          schema:
+            type: string
+      summary: Identify the user
+      tags:
+      - User
   /cluster/{clusterName}/actions/dropserver/{host}/{port}:
     post:
       consumes:

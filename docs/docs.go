@@ -15568,6 +15568,48 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/whoami": {
+            "get": {
+                "description": "Returns information about the user making the request based on the provided JWT token.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "User"
+                ],
+                "summary": "Identify the user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "User information",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Error retrieving user info from token\" or \"Error Marshal",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/cluster/{clusterName}/actions/dropserver/{host}/{port}": {
             "post": {
                 "description": "This endpoint allows dropping a server monitor or proxy monitor from a specified cluster.",
@@ -19261,6 +19303,9 @@ const docTemplate = `{
                 "backupEstimateSizePercentage": {
                     "type": "integer"
                 },
+                "backupGottyClientPath": {
+                    "type": "string"
+                },
                 "backupGrowthPercentage": {
                     "type": "integer"
                 },
@@ -19342,13 +19387,16 @@ const docTemplate = `{
                 "backupMysqlclientOptions": {
                     "type": "string"
                 },
-                "backupMysqlclientgPath": {
+                "backupMysqlclientPath": {
                     "type": "string"
                 },
                 "backupMysqldumpOptions": {
                     "type": "string"
                 },
                 "backupMysqldumpPath": {
+                    "type": "string"
+                },
+                "backupMytopPath": {
                     "type": "string"
                 },
                 "backupPhysicalType": {
