@@ -33,9 +33,9 @@ export const peerLogin = createAsyncThunk('auth/peerLogin', async ({  password, 
   }
 })
 
-export const whoami = createAsyncThunk('auth/whoami', async ({  baseURL }, thunkAPI) => {
+export const whoami = createAsyncThunk('auth/whoami', async (_, thunkAPI) => {
   try {
-    const response = await authService.whoami(baseURL)
+    const response = await authService.whoami(thunkAPI.getState().auth.baseURL)
     if (response.status == 200){
       return response
     } else {
@@ -47,7 +47,16 @@ export const whoami = createAsyncThunk('auth/whoami', async ({  baseURL }, thunk
     // Handle errors (including custom errorStatus)
     return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
   }
-})
+}, 
+// Add a condition to prevent the action from being dispatched if the user is already fetching the info
+{
+  condition: (_, { getState }) => {
+    const { auth } = getState();
+    if (auth.isLoadingUserData) {
+      return false;
+    }
+  }
+});
 
 export const authSlice = createSlice({
   name: 'auth',
@@ -56,6 +65,7 @@ export const authSlice = createSlice({
     loading: false, 
     loadingGitLogin: false, 
     loadingPeerLogin: false, 
+    isLoadingUserData: false,
     error: null, 
     isLogged: false, 
     isPeerLogged: false, 
@@ -129,19 +139,23 @@ export const authSlice = createSlice({
       } 
       state.error = action?.payload?.errorMessage
     })
+    builder.addMatcher(isAnyOf(whoami.pending), (state, action) => {
+      state.isLoadingUserData = true
+    })
+    builder.addMatcher(isAnyOf(whoami.rejected), (state, action) => {
+      state.isLoadingUserData = false
+    })
     builder.addMatcher(isAnyOf(whoami.fulfilled), (state, action) => {
       const { payload } = action
       const { data } = payload
+      const username = localStorage.getItem('username')
       state.user = {
         ...state.user,
-        ...data
+        ...data,
+        username: username
       }
       state.isLogged = true
-    })
-    builder.addMatcher(isAnyOf(whoami.rejected), (state, action) => {
-      state.user = null
-      state.isLogged = false
-      state.error = action?.payload?.errorMessage
+      state.isLoadingUserData = false
     })
   }
 })

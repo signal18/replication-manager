@@ -2,7 +2,8 @@ import { getApi } from './apiHelper'
 
 export const authService = {
   login,
-  gitLogin
+  gitLogin,
+  whoami
 }
 
 function login(username, password, baseURL) {
@@ -11,4 +12,8 @@ function login(username, password, baseURL) {
 
 function gitLogin(username, password, baseURL) {
   return getApi(baseURL).post('login-git', { username, password })
+}
+
+function whoami(baseURL) {
+  return getApi(baseURL).get('whoami')
 }

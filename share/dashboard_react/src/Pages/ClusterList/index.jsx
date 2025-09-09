@@ -36,7 +36,7 @@ function ClusterList({ onClick }) {
 
   useEffect(() => {
     if (search === "") {
-      setClusterList(clusters)
+      setClusterList(clusters || [])
     } else {
       setClusterList(clusters?.filter((cluster) => cluster?.name.toLowerCase().includes(search.toLowerCase())) || [])
     }
@@ -54,7 +54,7 @@ function ClusterList({ onClick }) {
     setClusterName('')
   }
 
-  return !loading && clusters?.length === 0 ? (
+  return !loading && clusterList?.length === 0 ? (
     <NotFound text={'No cluster found!'} />
   ) : (
     <>

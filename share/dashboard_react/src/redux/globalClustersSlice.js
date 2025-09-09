@@ -1,11 +1,13 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 import { globalClustersService } from '../services/globalClustersService'
-import { Link } from '@chakra-ui/react'
 
 export const getClusters = createAsyncThunk('globalClusters/getClusters', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusters()
+    if (status !== 200) {
+      throw new Error(data)
+    }
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
@@ -191,7 +193,7 @@ export const getTermsData = createAsyncThunk('globalClusters/getTermsData', asyn
 const initialState = {
   loading: false,
   error: null,
-  clusters: null,
+  clusters: [],
   isDownList: {},
   isFailableList: {},
   clusterPeers: null,
