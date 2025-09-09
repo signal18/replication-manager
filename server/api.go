@@ -293,6 +293,11 @@ func (repman *ReplicationManager) apiserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 
+	router.Handle("/api/whoami", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWhoAmI)),
+	))
+
 	router.Handle("/api/clusters", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusters)),
 	))
@@ -474,8 +479,10 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 	userinfo := claims["CustomUserInfo"]
 	mycutinfo := userinfo.(map[string]interface{})
 	UserInfoMap := make(map[string]string)
+	UserInfoMap["Name"] = mycutinfo["Name"].(string)
 	UserInfoMap["Password"] = mycutinfo["Password"].(string)
 	UserInfoMap["Role"] = mycutinfo["Role"].(string)
+	UserInfoMap["Email"] = ""
 	_, ok := mycutinfo["profile"]
 	if ok {
 		profile := mycutinfo["profile"].(string)
@@ -485,6 +492,7 @@ func (repman *ReplicationManager) GetUserInfoMap(token *jwt.Token) (map[string]s
 		}
 		if strings.Contains(profile, repman.Conf.OAuthProvider) {
 			UserInfoMap["User"] = mycutinfo["email"].(string)
+			UserInfoMap["Email"] = mycutinfo["email"].(string)
 			UserInfoMap["profile"] = profile
 			return UserInfoMap, nil
 		}
@@ -598,12 +606,12 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			email, err := githelper.GetGitLabUserEmail(tok, true)
 			if email != "" {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlInfo, "Switch from gitlab user to email  : %s", email)
-				user.Username = email
+				meetUser = email
 			} else {
 				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModSupport, config.LvlErr, "Error retrieving email from gitlab: %e", err)
+				meetUser = user.Username
 			}
 
-			meetUser = user.Username
 			meetPassword = user.Password
 
 			//to get meet token and create a client while login
@@ -623,7 +631,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 				Email      string `json:"email"`
 				Profile    string `json:"profile"`
 				MeetUserID string `json:"meet_user_id"`
-			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), user.Username, repman.Conf.OAuthProvider, meetUserID}
+			}{user.Username, "Member", repman.Conf.GetEncryptedString(user.Password), email, repman.Conf.OAuthProvider, meetUserID}
 
 		} else {
 
@@ -909,6 +917,40 @@ func (repman *ReplicationManager) handlerVersion(w http.ResponseWriter, r *http.
 func (repman *ReplicationManager) handlerMuxTerms(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Write(repman.Terms)
+}
+
+// handlerMuxWhoAmI handles the HTTP request to identify the user making the request.
+// @Summary Identify the user
+// @Description Returns information about the user making the request based on the provided JWT token.
+// @Tags User
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {object} map[string]string "User information"
+// @Failure 500 {string} string "Error retrieving user info from token" or "Error Marshal"
+// @Router /api/whoami [get]
+func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	user, err := repman.GetJWTClaims(r)
+	if err != nil {
+		http.Error(w, "Error retrieving user info from token: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	res, err := json.Marshal(user)
+	if err != nil {
+		http.Error(w, "Error Marshal", 500)
+		return
+	}
+
+	res, err = sjson.SetBytes(res, "Password", "*****")
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(res)
 }
 
 // handlerMuxAddClusterUser handles the addition of a new user to a cluster.

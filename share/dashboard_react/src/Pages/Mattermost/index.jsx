@@ -10,9 +10,6 @@ import MessageRender from '../../components/MessageRender';
 import Picker from "@emoji-mart/react";
 import data from "@emoji-mart/data";
 
-
-
-
 // eslint-disable-next-line react/display-name, react/prop-types
 const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 }) => {
     const dispatch = useDispatch();
@@ -43,7 +40,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 })
                 if (messagesContainerRef.current) {
                     messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
                 }
-            }, 100);
+            }, 1000);
         }
     }, []);
 
@@ -81,7 +78,7 @@ const MattermostIntegration = memo(({ isOpen, setIsChatOpen, onClose, cloud18 })
                     }
                     dispatch(getMeetInfo());
                 }
-            }, 500);
+            }, 2000);
         return () => clearInterval(interval);
     }, [dispatch, selectedChannel, isLogged, cloud18]);
 

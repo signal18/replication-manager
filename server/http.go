@@ -167,6 +167,11 @@ func (repman *ReplicationManager) httpserver() {
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAuthCallback)),
 	))
 
+	router.Handle("/api/whoami", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWhoAmI)),
+	))
+
 	router.Handle("/api/prometheus", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxPrometheus)),
 	))

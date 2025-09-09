@@ -274,7 +274,6 @@ const meetSlice = createSlice({
         state.isFetchingInfo = true;
       })
       .addCase(getMeetInfo.fulfilled, (state, action) => {
-        state.isFetchingInfo = false;
         state.meetInfo = action.payload.data;
         //localStorage.setItem('userID', state.meetInfo?.user_id);
         state.unreadMessagesByChannel = action.payload.data.unread_messages_by_channel || {};
@@ -284,14 +283,19 @@ const meetSlice = createSlice({
           ...Object.entries(action.payload.data?.channel_ids_private || {}).map(([name, id]) => ({ name, id, type: 'P' })),
           ...Object.entries(action.payload.data?.channel_ids_direct || {}).map(([name, id]) => ({ name, id, type: 'D' })),
         ]
+        state.isFetchingInfo = false;
       })
       .addCase(logoutFromMeet.pending, (state) => {
         state.loading = true;
       })
       .addCase(getMeetInfo.rejected, (state, action) => {
-        state.isFetchingInfo = false;
         state.meetError = true;
         state.meetInfo = null;
+
+        // sleep for 5 seconds to prevent too many requests in case of error
+        setTimeout(() => {
+          state.isFetchingInfo = false;
+        }, 5000);
       })
       .addCase(logoutFromMeet.fulfilled, (state, action) => {
         state.loading = false;

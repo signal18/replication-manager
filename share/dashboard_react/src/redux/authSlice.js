@@ -33,6 +33,22 @@ export const peerLogin = createAsyncThunk('auth/peerLogin', async ({  password, 
   }
 })
 
+export const whoami = createAsyncThunk('auth/whoami', async ({  baseURL }, thunkAPI) => {
+  try {
+    const response = await authService.whoami(baseURL)
+    if (response.status == 200){
+      return response
+    } else {
+      return thunkAPI.rejectWithValue({ errorMessage: response.data || "Request failed", errorStatus: response.status || 500 })
+    }
+  } catch (error) {
+    const errorMessage = error.message || 'Request failed'
+    const errorStatus = error.errorStatus || 500 // Default error status if not provided
+    // Handle errors (including custom errorStatus)
+    return thunkAPI.rejectWithValue({ errorMessage, errorStatus }) // Pass the entire Error object to the rejected action
+  }
+})
+
 export const authSlice = createSlice({
   name: 'auth',
   initialState: { 
@@ -55,7 +71,10 @@ export const authSlice = createSlice({
     setUserData: (state, action) => {
       const username = localStorage.getItem('username')
       state.isLogged = localStorage.getItem('user_token') ? true : false
-      state.user = {
+      state.user = state.user ? {
+        ...state.user,
+        username: username
+      } : {
         username: username
       }
     },
@@ -108,6 +127,20 @@ export const authSlice = createSlice({
         state.loadingPeerLogin = false
         state.isPeerLogged = false 
       } 
+      state.error = action?.payload?.errorMessage
+    })
+    builder.addMatcher(isAnyOf(whoami.fulfilled), (state, action) => {
+      const { payload } = action
+      const { data } = payload
+      state.user = {
+        ...state.user,
+        ...data
+      }
+      state.isLogged = true
+    })
+    builder.addMatcher(isAnyOf(whoami.rejected), (state, action) => {
+      state.user = null
+      state.isLogged = false
       state.error = action?.payload?.errorMessage
     })
   }
