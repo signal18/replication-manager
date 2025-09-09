@@ -61,7 +61,7 @@ function Login(props) {
   }
 
   const logIn = () => {
-    dispatch(login({ username, password })).then(() => { window.location.reload() })
+    dispatch(login({ username, password }))
   }
 
   return (
