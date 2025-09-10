@@ -31,6 +31,14 @@ func (cluster *Cluster) Bootstrap() error {
 	if err != nil {
 		return err
 	}
+
+	if cluster.GetSponsorEmail() != "" {
+		err = cluster.CreateDBUserFromConfig("sponsor")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Cannot create sponsor user: %s", err)
+		}
+	}
+
 	if cluster.Conf.Test {
 		//cluster.initProxies()
 		err = cluster.WaitProxyEqualMaster()
