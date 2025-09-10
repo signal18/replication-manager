@@ -85,7 +85,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 			session.Password = mycluster.GetSponsorPass()
 
 			if session.Username == "" || session.Password == "" {
-				err := mycluster.CreateDBUserFromConfig("sponsor")
+				err := node.CreateDBUserFromConfig("sponsor")
 				if err != nil {
 					return fmt.Errorf("unable to create sponsor user: %v", err)
 				}
@@ -99,7 +99,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 			session.Password = mycluster.GetDbaPass()
 
 			if session.Username == "" || session.Password == "" {
-				err := mycluster.CreateDBUserFromConfig("dba")
+				err := node.CreateDBUserFromConfig("dba")
 				if err != nil {
 					return fmt.Errorf("unable to create dba user: %v", err)
 				}

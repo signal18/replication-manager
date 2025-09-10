@@ -686,7 +686,7 @@ func (server *ServerMonitor) CreateDBUserFromConfig(role string) error {
 			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
 		}
 
-		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		err = server.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
 		if err != nil {
 			return err
 		}
@@ -706,7 +706,7 @@ func (server *ServerMonitor) CreateDBUserFromConfig(role string) error {
 			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"))
 		}
 
-		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		err = server.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
 		if err != nil {
 			return err
 		}
