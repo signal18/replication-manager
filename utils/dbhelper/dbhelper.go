@@ -3240,12 +3240,12 @@ func RenameUserPassword(db *sqlx.DB, myver *version.Version, user_host string, o
 	return query, nil
 }
 
-func SetUserGrants(db *sqlx.DB, myver *version.Version, user_host string, user_name string, grants ...string) (string, error) {
+func SetUserGrants(ctx context.Context, conn *sqlx.Conn, myver *version.Version, user_host string, user_name string, grants ...string) (string, error) {
 	var query string
 
 	for _, grant := range grants {
 		query = "GRANT " + grant + " TO '" + user_name + "'@'" + user_host + "'"
-		_, err := db.Exec(query)
+		_, err := conn.ExecContext(ctx, query)
 		if err != nil {
 			return query, err
 		}
@@ -3253,22 +3253,23 @@ func SetUserGrants(db *sqlx.DB, myver *version.Version, user_host string, user_n
 	return query, nil
 }
 
-func RevokeUserGrants(db *sqlx.DB, myver *version.Version, user_host string, user_name string) (string, error) {
+func RevokeUserGrants(ctx context.Context, conn *sqlx.Conn, myver *version.Version, user_host string, user_name string) (string, error) {
 	var query string = "REVOKE ALL PRIVILEGES, GRANT OPTION ON *.* FROM '" + user_name + "'@'" + user_host + "'"
-	_, err := db.Exec(query)
+	_, err := conn.ExecContext(ctx, query)
 	return query, err
 }
 
-func SetUserGrantsWithGrantOption(db *sqlx.DB, myver *version.Version, user_host string, user_name string, grants ...string) (string, error) {
+func SetUserGrantsWithGrantOption(ctx context.Context, conn *sqlx.Conn, myver *version.Version, user_host string, user_name string, grants ...string) (string, error) {
 	var query string
 
 	for _, grant := range grants {
 		query = "GRANT " + grant + " TO '" + user_name + "'@'" + user_host + "' WITH GRANT OPTION"
-		_, err := db.Exec(query)
+		_, err := conn.ExecContext(ctx, query)
 		if err != nil {
 			return query, err
 		}
 	}
+
 	return query, nil
 }
 

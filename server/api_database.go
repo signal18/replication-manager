@@ -2296,7 +2296,18 @@ func (repman *ReplicationManager) handlerMuxServerProvision(w http.ResponseWrite
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			mycluster.InitDatabaseService(node)
+			err := mycluster.InitDatabaseService(node)
+			if err != nil {
+				http.Error(w, "Failed to provision server", 500)
+				return
+			}
+
+			if mycluster.GetSponsorEmail() != "" {
+				err := node.CreateDBUserFromConfig("sponsor")
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to create sponsor user: %s", err.Error())
+				}
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

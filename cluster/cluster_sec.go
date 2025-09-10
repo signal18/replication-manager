@@ -9,6 +9,7 @@ package cluster
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"net/smtp"
@@ -367,107 +368,6 @@ func (cluster *Cluster) SendVaultTokenByMail(Conf *config.Config) error {
 
 }
 
-func (cluster *Cluster) SetUserDBCredentials(user_pass string) error {
-	var found bool
-	user, password := misc.SplitPair(user_pass)
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master found")
-	}
-
-	conn, err := master.GetNewDBConn()
-	if err != nil {
-		return err
-	}
-
-	for _, u := range master.Users.ToNewMap() {
-		if u.User == user {
-			found = true
-			logs, err := dbhelper.SetUserPassword(conn, cluster.master.DBVersion, u.Host, u.User, password)
-			cluster.LogSQL(strings.Replace(logs, password, "*.*", -1), err, cluster.master.URL, "Security", config.LvlErr, "Alter user : %s", err)
-			if err != nil {
-				return err
-			}
-		}
-
-	}
-
-	if !found {
-		logs, err := dbhelper.CreateUser(conn, cluster.master.DBVersion, "%", user, password)
-		cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Create user : %s", err)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func (cluster *Cluster) SetUserDBGrants(user, host string, grantOpt bool, grants ...string) error {
-	var logs string
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master found")
-	}
-
-	conn, err := master.GetNewDBConn()
-	if err != nil {
-		return err
-	}
-
-	if grantOpt {
-		logs, err = dbhelper.SetUserGrantsWithGrantOption(conn, cluster.master.DBVersion, host, user, grants...)
-	} else {
-		logs, err = dbhelper.SetUserGrants(conn, cluster.master.DBVersion, host, user, grants...)
-	}
-	cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Set user grants : %s", err)
-
-	return nil
-}
-
-func (cluster *Cluster) SetDBAUserCredentials(user, pass string) error {
-	err := cluster.SetUserDBCredentials(user + ":" + pass)
-	if err != nil {
-		return err
-	}
-
-	err = cluster.SetUserDBGrants(user, "%", true, "ALL PRIVILEGES ON *.*")
-	return err
-}
-
-func (cluster *Cluster) SetSponsorUserCredentials(user, pass string) error {
-	err := cluster.SetUserDBCredentials(user + ":" + pass)
-	if err != nil {
-		return err
-	}
-
-	err = cluster.SetUserDBGrants(user, "%", true, "ALL PRIVILEGES ON *.*")
-	return err
-}
-
-func (cluster *Cluster) RevokeUserDBGrants(user_pass, host string) error {
-	var logs string
-
-	user, _ := misc.SplitPair(user_pass)
-
-	master := cluster.GetMaster()
-	if master == nil {
-		return fmt.Errorf("No master found")
-	}
-
-	conn, err := master.GetNewDBConn()
-	if err != nil {
-		return err
-	}
-
-	logs, err = dbhelper.RevokeUserGrants(conn, cluster.master.DBVersion, host, user)
-	cluster.LogSQL(logs, err, cluster.master.URL, "Security", config.LvlErr, "Set user grants : %s", err)
-
-	return nil
-}
-
 func (cluster *Cluster) AddDockerPrivateRegistryCredentials(registry, user, password string, update bool) error {
 	// parse the registry URL and get the host and optional port
 	if !strings.Contains(registry, ":") {
@@ -545,5 +445,141 @@ func (cluster *Cluster) DeleteDockerPrivateRegistryCredentials(registry, user st
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "Docker private registry credentials added for %s", registry)
 
+	return nil
+}
+
+func (cluster *Cluster) CreateDBUserFromConfig(role string) error {
+	var err error
+	switch role {
+	case "dba":
+		user, pass := misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		if user == "" || pass == "" {
+			if user == "" {
+				user = "dba"
+			}
+			pass, _ = cluster.GeneratePassword()
+			err = cluster.SetDatabaseCredentials(role, user+":"+pass)
+			if err != nil {
+				return err
+			}
+			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		}
+
+		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		if err != nil {
+			return err
+		}
+	case "sponsor":
+		user, pass := misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"))
+
+		if user == "" || pass == "" {
+			if user == "" {
+				user = "sponsor"
+			}
+			pass, _ = cluster.GeneratePassword()
+			err = cluster.SetDatabaseCredentials(role, user+":"+pass)
+			if err != nil {
+				return err
+			}
+
+			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"))
+		}
+
+		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("Unknown role: %s", role)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) SetDBUserCredentials(user, pass string, withGrantOption bool, grants ...string) error {
+
+	master := cluster.GetMaster()
+	if master != nil {
+		err := master.SetDBUserCredentials(user, pass, withGrantOption, grants...)
+		if err != nil {
+			return err
+		}
+
+		standalones := cluster.GetServersByState(stateUnconn)
+		for _, server := range standalones {
+			err := server.SetDBUserCredentials(user, pass, withGrantOption, grants...)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		for _, server := range cluster.Servers {
+			// Prevent from changing password on slave in cluster with active replication to avoid desynchronization
+			// but allow it on standalone server
+			if server.IsSlave && !server.IsMaster() {
+				continue
+			}
+
+			err := server.SetDBUserCredentials(user, pass, withGrantOption, grants...)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) RevokeDBUserGrants(user string) error {
+	if user == "" {
+		return errors.New("User and host are required")
+	}
+
+	master := cluster.GetMaster()
+	if master != nil {
+		for _, g := range master.Users.ToNewMap() {
+			if g.User != user {
+				continue
+			}
+
+			err := master.RevokeDBUserGrants(user, g.Host)
+			if err != nil {
+				return err
+			}
+		}
+
+		standalones := cluster.GetServersByState(stateUnconn)
+		for _, server := range standalones {
+			for _, g := range server.Users.ToNewMap() {
+				if g.User != user {
+					continue
+				}
+
+				err := server.RevokeDBUserGrants(user, g.Host)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	} else {
+		for _, server := range cluster.Servers {
+			// Prevent from changing password on slave in cluster with active replication to avoid desynchronization
+			// but allow it on standalone server
+			if server.IsSlave && !server.IsMaster() {
+				continue
+			}
+
+			for _, g := range server.Users.ToNewMap() {
+				if g.User != user {
+					continue
+				}
+
+				err := server.RevokeDBUserGrants(user, g.Host)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }

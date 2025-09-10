@@ -426,6 +426,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.HostsTlsSrvCert, "db-servers-tls-server-cert", "", "Database TLS server certificate to push in config")
 	flags.StringVar(&conf.HostsTlsSslMode, "db-servers-tls-ssl-mode", "", "Database TLS ssl mode, PREFERRED|DISABLED|REQUIRED|VERIFY_CA|VERIFY_IDENTITY. Default is empty")
 	flags.IntVar(&conf.Timeout, "db-servers-connect-timeout", 5, "Database connection timeout in seconds")
+	flags.IntVar(&conf.ExecTimeout, "db-servers-exec-timeout", 10, "Database execution timeout in seconds")
 	flags.IntVar(&conf.ReadTimeout, "db-servers-read-timeout", 3600, "Database read timeout in seconds")
 	flags.StringVar(&conf.PrefMaster, "db-servers-prefered-master", "", "Database preferred candidate in election,  host:[port] format")
 	flags.StringVar(&conf.IgnoreSrv, "db-servers-ignored-hosts", "", "Database list of hosts to ignore in election")

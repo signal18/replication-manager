@@ -83,6 +83,15 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 			// Sponsor can connect to the database using the sponsor user
 			session.Username = mycluster.GetSponsorUser()
 			session.Password = mycluster.GetSponsorPass()
+
+			if session.Username == "" || session.Password == "" {
+				err := node.CreateDBUserFromConfig("sponsor")
+				if err != nil {
+					return fmt.Errorf("unable to create sponsor user: %v", err)
+				}
+				session.Username = mycluster.GetSponsorUser()
+				session.Password = mycluster.GetSponsorPass()
+			}
 			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSponsor, true)
 		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantDBTerminal] {
 			// External SysOps, DBOps and the user has the grant can connect to the database using the dba user
@@ -90,29 +99,12 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 			session.Password = mycluster.GetDbaPass()
 
 			if session.Username == "" || session.Password == "" {
-				if session.Username == "" {
-					session.Username = "dba"
-				}
-
-				// Generate a new password for the dba user
-				dbapass, err := mycluster.GeneratePassword() // Generate a new password
+				err := node.CreateDBUserFromConfig("dba")
 				if err != nil {
-					dbapass, err = mycluster.GeneratePassword() // Retry
-					if err != nil {
-						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error generating password: %s", err.Error())
-						return err
-					}
+					return fmt.Errorf("unable to create dba user: %v", err)
 				}
-
-				if session.Password == "" {
-					session.Password = dbapass
-				}
-
-				err = mycluster.SetCloud18DbaUserCredentials(session.Username + ":" + dbapass)
-				if err != nil {
-					return err
-				}
-
+				session.Username = mycluster.GetDbaUser()
+				session.Password = mycluster.GetDbaPass()
 			}
 
 			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleDBOps, true)
