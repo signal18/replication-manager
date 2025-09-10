@@ -527,29 +527,6 @@ func (cluster *Cluster) SetCloud18DatabaseReadWriteSrvRecord(value string) {
 	cluster.Conf.Cloud18DatabaseReadWriteSrvRecord = value
 }
 
-func (cluster *Cluster) SetCloud18DbaUserCredentials(cred string) error {
-	dbauser, dbapass := misc.SplitPair(cred)
-	if dbauser != "" {
-		if dbapass == "" {
-			dbapass, _ = cluster.GeneratePassword()
-		}
-		err := cluster.SetDBAUserCredentials(dbauser, dbapass)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting dba user credentials: %s", err.Error())
-			return err
-		}
-	}
-
-	var new_secret config.Secret
-	new_secret.Value = cred
-	new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
-
-	cluster.Conf.Cloud18DbaUserCredentials = cred
-	cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
-
-	return nil
-}
-
 func (cluster *Cluster) SetTraffic(traffic bool) {
 	cluster.Conf.TestInjectTraffic = traffic
 }
@@ -2591,6 +2568,29 @@ func (cluster *Cluster) PreserveVariable(variable string, preserve bool) error {
 		cluster.SetPreserveFlagToAllNodes(key, value)
 	} else {
 		cluster.DelPreserveFlagToAllNodes(key)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
+	switch role {
+	case "dba":
+		var new_secret config.Secret
+		new_secret.Value = cred
+		new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials")
+
+		cluster.Conf.Cloud18DbaUserCredentials = cred
+		cluster.Conf.Secrets["cloud18-dba-user-credentials"] = new_secret
+	case "sponsor":
+		var new_secret config.Secret
+		new_secret.Value = cred
+		new_secret.OldValue = cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials")
+
+		cluster.Conf.Cloud18SponsorUserCredentials = cred
+		cluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = new_secret
+	default:
+		return errors.New("Unknown secret role")
 	}
 
 	return nil

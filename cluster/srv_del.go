@@ -30,6 +30,10 @@ func (server *ServerMonitor) DelProvisionCookie() error {
 	return server.delCookie("cookie_prov")
 }
 
+func (server *ServerMonitor) DelProvisionDBUsersCookie() error {
+	return server.delCookie("cookie_provision_db_users")
+}
+
 func (server *ServerMonitor) DelWaitStartCookie() error {
 	return server.delCookie("cookie_waitstart")
 }

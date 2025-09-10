@@ -3142,7 +3142,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		err = mycluster.SetCloud18DbaUserCredentials(string(val))
+		err = mycluster.SetDatabaseCredentials("dba", string(val))
 		if err != nil {
 			return err
 		}
@@ -3151,26 +3151,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-
-		cred := string(val)
-		suser, spass := misc.SplitPair(cred)
-		if suser != "" {
-			if spass == "" {
-				spass, _ = mycluster.GeneratePassword()
-			}
-			err = mycluster.SetSponsorUserCredentials(suser, spass)
-			if err != nil {
-				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error setting sponsor user credentials: %s", err.Error())
-				// return err
-			}
+		err = mycluster.SetDatabaseCredentials("sponsor", string(val))
+		if err != nil {
+			return err
 		}
-
-		var new_secret config.Secret
-		new_secret.Value = cred
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials")
-
-		mycluster.Conf.Cloud18SponsorUserCredentials = cred
-		mycluster.Conf.Secrets["cloud18-sponsor-user-credentials"] = new_secret
 	case "cloud18-cloud18-dbops":
 		if value != "" && value != mycluster.Conf.Cloud18GitUser {
 			dbops := repman.CreateDBOpsForm(value)
@@ -5929,7 +5913,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 	}
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Revoking db privileges from sponsor %s for cluster %s", userform.Username, mycluster.Name)
-	mycluster.RevokeUserDBGrants(mycluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"), "%")
+	mycluster.RevokeDBUserGrants(mycluster.GetSponsorUser())
 
 	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Removing sponsor db credentials for cluster %s", mycluster.Name)
 	repman.setClusterSetting(mycluster, "cloud18-sponsor-user-credentials", base64.StdEncoding.EncodeToString([]byte("")))

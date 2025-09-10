@@ -177,6 +177,7 @@ type Config struct {
 	IgnoreSrv                                 string                 `mapstructure:"db-servers-ignored-hosts" toml:"db-servers-ignored-hosts" json:"dbServersIgnoredHosts"`
 	IgnoreSrvRO                               string                 `mapstructure:"db-servers-ignored-readonly" toml:"db-servers-ignored-readonly" json:"dbServersIgnoredReadonly"`
 	Timeout                                   int                    `mapstructure:"db-servers-connect-timeout" toml:"db-servers-connect-timeout" json:"dbServersConnectTimeout"`
+	ExecTimeout                               int                    `mapstructure:"db-servers-exec-timeout" toml:"db-servers-exec-timeout" json:"dbServersExecTimeout"`
 	ReadTimeout                               int                    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	DBServersLocality                         string                 `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
 	PRXServersReadOnMaster                    bool                   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`

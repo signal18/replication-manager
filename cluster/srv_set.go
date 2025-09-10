@@ -10,12 +10,14 @@
 package cluster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-sql-driver/mysql"
 
@@ -371,6 +373,10 @@ func (server *ServerMonitor) SetProvisionCookie() error {
 	return server.createCookie("cookie_prov")
 }
 
+func (server *ServerMonitor) SetProvisionDBUsersCookie() error {
+	return server.createCookie("cookie_provision_db_users")
+}
+
 func (server *ServerMonitor) SetUnprovisionCookie() error {
 	return server.createCookie("cookie_unprov")
 }
@@ -541,6 +547,203 @@ func (server *ServerMonitor) SetMyGTIDTransitional(force bool) error {
 			}
 		}
 	}
+
+	return nil
+}
+
+func (server *ServerMonitor) SetDBCredentials(user, password string) error {
+	cluster := server.ClusterGroup
+	var found bool
+	if !server.IsMaster() && server.IsSlave {
+		return errors.New("Cannot set credentials on slave server")
+	}
+
+	conn, err := server.GetNewDBConn()
+	if err != nil {
+		return err
+	}
+
+	for _, u := range server.Users.ToNewMap() {
+		if u.User == user {
+			found = true
+			logs, err := dbhelper.SetUserPassword(conn, server.DBVersion, u.Host, u.User, password)
+			cluster.LogSQL(strings.Replace(logs, password, "*.*", -1), err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if !found {
+		// create user for replication-manager host
+		logs, err := dbhelper.CreateUser(conn, server.DBVersion, cluster.Conf.MonitorAddress, user, password)
+		cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Create user : %s", err)
+		if err != nil {
+			return err
+		}
+
+		// create user with all db servers
+		for _, h := range server.ClusterGroup.Servers {
+			logs, err := dbhelper.CreateUser(conn, server.DBVersion, h.Host, user, password)
+			cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Create user : %s", err)
+			if err != nil {
+				return err
+			}
+
+		}
+
+		// create user for all proxies
+		for _, p := range server.ClusterGroup.Proxies {
+			logs, err := dbhelper.CreateUser(conn, server.DBVersion, p.GetHost(), user, password)
+			cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Create user : %s", err)
+			if err != nil {
+				return err
+			}
+		}
+
+		// create user for all apps if any
+		for _, a := range server.ClusterGroup.Apps {
+			logs, err := dbhelper.CreateUser(conn, server.DBVersion, a.GetHost(), user, password)
+			cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Create user : %s", err)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) SetUserDBGrants(user, host string, grantOpt bool, grants ...string) error {
+	cluster := server.ClusterGroup
+	var logs string
+
+	if server.IsSlave && !server.IsMaster() {
+		return errors.New("Cannot set credentials on slave server")
+	}
+
+	dbconn, err := server.GetNewDBConn()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ExecTimeout)*time.Second)
+	defer cancel()
+
+	conn, err := dbconn.Connx(ctx)
+	if err != nil {
+		return err
+	}
+
+	if grantOpt {
+		logs, err = dbhelper.SetUserGrantsWithGrantOption(ctx, conn, server.DBVersion, host, user, grants...)
+	} else {
+		logs, err = dbhelper.SetUserGrants(ctx, conn, server.DBVersion, host, user, grants...)
+	}
+	cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Set user grants : %s", err)
+
+	return nil
+}
+
+func (server *ServerMonitor) SetDBUserCredentials(user, pass string, withGrantOption bool, grants ...string) error {
+	err := server.SetDBCredentials(user, pass)
+	if err != nil {
+		return err
+	}
+
+	if len(grants) == 0 {
+		return nil
+	}
+
+	// refresh user list
+	users, _, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
+	server.Users = config.FromNormalGrantsMap(server.Users, users)
+
+	// set grants for all hosts of this user
+	for _, u := range server.Users.ToNewMap() {
+		if u.User == user {
+			err = server.SetUserDBGrants(user, u.Host, withGrantOption, grants...)
+		}
+	}
+	return err
+}
+
+func (server *ServerMonitor) CreateDBUserFromConfig(role string) error {
+	cluster := server.ClusterGroup
+	var err error
+	switch role {
+	case "dba":
+		user, pass := misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		if user == "" || pass == "" {
+			if user == "" {
+				user = "dba"
+			}
+			pass, _ = cluster.GeneratePassword()
+			err = cluster.SetDatabaseCredentials(role, user+":"+pass)
+			if err != nil {
+				return err
+			}
+			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-dba-user-credentials"))
+		}
+
+		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		if err != nil {
+			return err
+		}
+	case "sponsor":
+		user, pass := misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"))
+
+		if user == "" || pass == "" {
+			if user == "" {
+				user = "sponsor"
+			}
+			pass, _ = cluster.GeneratePassword()
+			err = cluster.SetDatabaseCredentials(role, user+":"+pass)
+			if err != nil {
+				return err
+			}
+
+			user, pass = misc.SplitPair(cluster.Conf.GetDecryptedValue("cloud18-sponsor-user-credentials"))
+		}
+
+		err = cluster.SetDBUserCredentials(user, pass, true, "ALL PRIVILEGES ON *.*")
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("Unknown role: %s", role)
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) RevokeDBUserGrants(user, host string) error {
+	cluster := server.ClusterGroup
+	var logs string
+
+	if user == "" || host == "" {
+		return errors.New("User and host are required")
+	}
+
+	if server.IsSlave && !server.IsMaster() {
+		return errors.New("Cannot revoke credentials on slave server")
+	}
+
+	dbconn, err := server.GetNewDBConn()
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.ExecTimeout)*time.Second)
+	defer cancel()
+
+	conn, err := dbconn.Connx(ctx)
+	if err != nil {
+		return err
+	}
+
+	logs, err = dbhelper.RevokeUserGrants(ctx, conn, server.DBVersion, host, user)
+	cluster.LogSQL(logs, err, server.URL, "Security", config.LvlErr, "Set user grants : %s", err)
 
 	return nil
 }
