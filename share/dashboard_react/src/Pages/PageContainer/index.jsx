@@ -29,7 +29,6 @@ function PageContainer({ children }) {
   useEffect(() => {
     if (monitor === null) {
       dispatch(getMonitoredData({}))
-      dispatch(whoami({}))
     }
 
     if (monitor?.fullVersion) {
