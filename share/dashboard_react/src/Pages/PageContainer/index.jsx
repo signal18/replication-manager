@@ -29,6 +29,7 @@ function PageContainer({ children }) {
   useEffect(() => {
     if (monitor === null) {
       dispatch(getMonitoredData({}))
+      dispatch(whoami({}))
     }
 
     if (monitor?.fullVersion) {
@@ -37,8 +38,8 @@ function PageContainer({ children }) {
   }, [monitor])
 
   useEffect(() => {
-    if (isAuthorized() && user === null) {
-      dispatch(whoami())
+    if (isAuthorized() && (user === null || user.User === undefined)) {
+      dispatch(whoami({}))
     }
     handleResize() // Initial setup
 
