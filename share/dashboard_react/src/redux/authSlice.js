@@ -108,9 +108,6 @@ export const authSlice = createSlice({
       localStorage.setItem('user_token', typeof data === 'string' ? JSON.parse(data)?.token : data?.token)
       localStorage.setItem('username', arg.username)
       state.isLogged = true
-      state.user = {
-        username: arg.username
-      }
       if (action.type === 'login') {
         state.loading = false
       }
