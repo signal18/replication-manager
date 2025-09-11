@@ -1,7 +1,6 @@
 package slackman
 
 import (
-	"fmt"
 	"net/url"
 	"sync"
 	"time"
@@ -14,14 +13,13 @@ import (
 
 // SlackConfig holds the configuration for a Slack or Mattermost webhook.
 type SlackConfig struct {
-	HookType         string                 // Type of hook: "slack" or "meet" (Mattermost).
-	URL              string                 // Webhook URL for sending messages.
-	Channel          string                 // Target channel for notifications.
-	User             string                 // Username used for sending messages.
-	Icon             string                 // Emoji or image URL for the message sender.
-	Timeout          time.Duration          // Timeout duration for webhook requests.
-	AcceptedLevels   []logrus.Level         // Log levels that trigger notifications.
-	AdditionalFields map[string]interface{} // Additional fields to include in the message.
+	HookType       string         // Type of hook: "slack" or "meet" (Mattermost).
+	URL            string         // Webhook URL for sending messages.
+	Channel        string         // Target channel for notifications.
+	User           string         // Username used for sending messages.
+	Icon           string         // Emoji or image URL for the message sender.
+	Timeout        time.Duration  // Timeout duration for webhook requests.
+	AcceptedLevels []logrus.Level // Log levels that trigger notifications.
 }
 
 // SlackmanHook represents an individual webhook configuration and its state.
@@ -234,17 +232,6 @@ func (s *SlackManager) SetURL(hooktype, url string) {
 	if url != "" {
 		s.Activate(hooktype, false)
 	}
-}
-
-func (s *SlackManager) SetAdditionalFields(hooktype string, fields map[string]interface{}) error {
-	sh := s.GetHook(hooktype)
-	if sh == nil {
-		return fmt.Errorf("hook not found")
-	}
-
-	sh.Config.AdditionalFields = fields
-
-	return nil
 }
 
 // SetChannel updates the webhook channel and reactivates the hook if necessary.

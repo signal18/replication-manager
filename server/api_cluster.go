@@ -2434,10 +2434,6 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "cloud18-alert":
 		mycluster.Conf.SwitchCloud18Alert()
 		if mycluster.Conf.Cloud18Alert {
-			cloud18fields := make(map[string]interface{})
-			cloud18fields["cloud18"] = mycluster.Conf.Cloud18Domain + "/" + mycluster.Conf.Cloud18SubDomain + "-" + mycluster.Conf.Cloud18SubDomainZone
-			cloud18fields["client"] = mycluster.Conf.Cloud18GitUser
-			mycluster.LogSlack.SetAdditionalFields("cloud18", cloud18fields)
 			mycluster.LogSlack.Activate("cloud18", true)
 		} else {
 			mycluster.LogSlack.Deactivate("cloud18", true)
@@ -5749,7 +5745,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 		return
 	}
 
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "User %s registered as sponsor successfully", userform.Username)
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "ALERTOK", "User %s registered as sponsor successfully", userform.Username)
 
 	if repman.Conf.Cloud18SalesSubscriptionValidateScript != "" {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Executing script after sponsor validated")

@@ -75,7 +75,6 @@ function Home() {
   }, [])
 
   useEffect(() => {
-    const loggedUser = localStorage.getItem('username')
     if (monitor?.config?.cloud18) {
       globalTabsRef.current = ['Clusters Local', 'Clusters Peer', 'Clusters For Sale']
 
