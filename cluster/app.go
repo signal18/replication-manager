@@ -153,7 +153,11 @@ func (app *App) Refresh() error {
 		//if cluster.Conf.Verbose {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
 		if app.State != stateSuspect {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
+			lvl := "ALERT"
+			if app.State == stateAppRunning {
+				lvl = "ALERTOK"
+			}
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "app %s state changed from %s to %s", app.Name, app.PrevState, app.State)
 		}
 	}
 

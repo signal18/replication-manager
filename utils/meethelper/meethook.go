@@ -15,13 +15,12 @@ import (
 )
 
 type MeetHook struct {
-	WebhookURL       string
-	AcceptedLevels   []logrus.Level
-	Timeout          time.Duration
-	Async            bool
-	FieldHeader      string
-	Model            model.IncomingWebhookRequest
-	AdditionalFields map[string]interface{}
+	WebhookURL     string
+	AcceptedLevels []logrus.Level
+	Timeout        time.Duration
+	Async          bool
+	FieldHeader    string
+	Model          model.IncomingWebhookRequest
 
 	hook *WebHook
 }
@@ -53,12 +52,6 @@ func (sh *MeetHook) Fire(e *logrus.Entry) error {
 		attachment.Pretext = e.Message
 	} else {
 		attachment.Text = e.Message
-	}
-
-	if len(sh.AdditionalFields) > 0 {
-		for k, v := range sh.AdditionalFields {
-			attachment.Fields = append(attachment.Fields, sh.makeAttachmentField(k, v))
-		}
 	}
 
 	attachment.Fallback = e.Message

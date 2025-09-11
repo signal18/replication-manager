@@ -493,13 +493,12 @@ func (cluster *Cluster) InitFromConf() {
 	}
 
 	cluster.LogSlack.SetHookConfig("cloud18", slackman.SlackConfig{
-		URL:              cluster.Conf.Cloud18AlertSlackURL,
-		AcceptedLevels:   logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
-		Channel:          cluster.Conf.Cloud18AlertSlackChannel,
-		User:             cluster.Conf.Cloud18AlertSlackUser,
-		Icon:             ":ghost:",
-		Timeout:          5 * time.Second,
-		AdditionalFields: cloud18fields,
+		URL:            cluster.Conf.Cloud18AlertSlackURL,
+		AcceptedLevels: logrus_slack.LevelThreshold(log.InfoLevel), // Only send Error level to alert channel
+		Channel:        cluster.Conf.Cloud18AlertSlackChannel,
+		User:           cluster.Conf.Cloud18AlertSlackUser,
+		Icon:           ":ghost:",
+		Timeout:        5 * time.Second,
 	})
 
 	if cluster.Conf.SlackURL != "" {

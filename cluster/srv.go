@@ -532,7 +532,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			//if cluster.Conf.Verbose {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 			if server.State != stateSuspect {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ALERT", "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
+				lvl := "ALERT"
+				if server.State == stateMaster || server.State == stateSlave || server.State == stateWsrep {
+					lvl = "ALERTOK"
+				}
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, lvl, "Server %s state changed from %s to %s", server.URL, server.PrevState, server.State)
 				cluster.backendStateChangeProxies()
 				server.SendAlert()
 				server.ProcessFailedSlave()
