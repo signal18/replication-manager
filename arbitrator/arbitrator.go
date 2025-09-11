@@ -179,7 +179,7 @@ func handlerArbitrator(w http.ResponseWriter, r *http.Request) {
 
 	db, err := getArbitratorBackendStorageConnection()
 	if err != nil {
-		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
 		return
 	}
 	defer db.Close()
@@ -227,7 +227,7 @@ func handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var send string
 	db, err := getArbitratorBackendStorageConnection()
 	if err != nil {
-		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
 		w.WriteHeader(500)
 		log.Errorln(err)
 		return
@@ -280,7 +280,7 @@ func handlerForget(w http.ResponseWriter, r *http.Request) {
 	var send string
 	db, err := getArbitratorBackendStorageConnection()
 	if err != nil {
-		arbitratorCluster.LogPrintf("ERROR", "Error opening arbitrator database: %s", err)
+		arbitratorCluster.LogModulePrintf(arbitratorCluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error opening arbitrator database: %s", err)
 		w.WriteHeader(500)
 		log.Errorln(err)
 		return
