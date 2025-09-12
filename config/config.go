@@ -824,6 +824,7 @@ type Config struct {
 	Cloud18ApplicationCreditsPrice            int                    `mapstructure:"cloud18-application-credits-price" toml:"Cloud18-application-credits-price" json:"cloud18ApplicationCreditsPrice"`
 	ProvRegister                              bool                   `mapstructure:"opensvc-register" toml:"opensvc-register" json:"opensvcRegister"`
 	ProvAdminUser                             string                 `mapstructure:"opensvc-admin-user" toml:"opensvc-admin-user" json:"opensvcAdminUser"`
+	Measurement                               bool                   `mapstructure:"measurement" toml:"measurement" json:"measurement"`
 	MeasurementAutoClampLimit                 bool                   `mapstructure:"measurement-auto-clamp-limit"  toml:"measurement-auto-clamp-limit" json:"measurementAutoClampLimit"`
 	LogSecrets                                bool                   `mapstructure:"log-secrets"  toml:"log-secrets" json:"-"`
 	Apps                                      []*AppConfig           `mapstructure:"apps" toml:"apps" json:"apps" groups:"apps"`
@@ -3672,6 +3673,7 @@ func (m MeasurementConfig) String() string {
 var mUnits []string = []string{"0", "K", "M", "G", "T", "P", "E", "Z", "Y"}
 
 type ErrorMeasurement struct {
+	Field   string
 	Old     string
 	New     string
 	Message string
@@ -3681,18 +3683,22 @@ func (e ErrorMeasurement) Error() string {
 	return fmt.Sprintf("Old: %s, New: %s, Message: %s", e.Old, e.New, e.Message)
 }
 
-type ErrorConfigMap map[string]ErrorMeasurement
+type ErrorConfigs []ErrorMeasurement
 
-func (e ErrorConfigMap) Error() string {
+func (e ErrorConfigs) Error() string {
 	var sb strings.Builder
-	for k, v := range e {
-		sb.WriteString(fmt.Sprintf("Field: %s, Error: %s\n", k, v.Error()))
+	for _, v := range e {
+		sb.WriteString(fmt.Sprintf("Field: %s, Error: %s\n", v.Field, v.Error()))
 	}
 	return sb.String()
 }
 
-func ParseConfigMeasurement(conf interface{}, defaultmap map[string]interface{}, clampToLimit bool) ErrorConfigMap {
-	errormap := make(ErrorConfigMap)
+func ParseConfigMeasurement(conf interface{}, defaultmap map[string]interface{}, clampToLimit bool) ErrorConfigs {
+	errormap := make(ErrorConfigs, 0)
+	if conf == nil {
+		return errormap
+	}
+
 	to := reflect.TypeOf(conf).Elem()
 	vo := reflect.ValueOf(conf).Elem()
 
@@ -3710,22 +3716,37 @@ func ParseConfigMeasurement(conf interface{}, defaultmap map[string]interface{},
 			continue
 		}
 
+		mtag, err := GetTagDetails(tag)
+		if err != nil {
+			errormap = append(errormap, ErrorMeasurement{Field: f.Name, Old: v, New: v, Message: fmt.Sprintf("error parsing tag for %s: %s", f.Name, err)})
+			continue
+		}
+
+		if mtag.Parent != "" {
+			// Check if parent is bool with true value
+			pvb, ok := vo.FieldByName(mtag.Parent).Interface().(bool)
+			if !ok || !pvb {
+				// Parent is not bool or false, skip parsing
+				continue
+			}
+		}
+
 		// Parse unit measurement
-		val, err := ParseUnitMeasurement(tag, v, clampToLimit)
+		val, err := ParseUnitMeasurement(mtag, v, clampToLimit)
 		if err != nil {
 			dvalue, ok := defaultmap[f.Tag.Get("mapstructure")]
 			if !ok {
-				errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("error parsing %s with no default: %s", f.Name, err)}
+				errormap = append(errormap, ErrorMeasurement{Field: f.Name, Old: v, New: v, Message: fmt.Sprintf("error parsing %s with no default: %s", f.Name, err)})
 				continue
 			}
 
 			// fallback to default value
 			val = dvalue.(string)
-			errormap[f.Name] = ErrorMeasurement{Old: v, New: val, Message: fmt.Sprintf("error parsing %s: %s", f.Name, err)}
+			errormap = append(errormap, ErrorMeasurement{Field: f.Name, Old: v, New: val, Message: fmt.Sprintf("error parsing %s: %s", f.Name, err)})
 		}
 
 		if !vo.Field(i).CanSet() {
-			errormap[f.Name] = ErrorMeasurement{Old: v, New: v, Message: fmt.Sprintf("field %s is not settable", f.Name)}
+			errormap = append(errormap, ErrorMeasurement{Field: f.Name, Old: v, New: v, Message: fmt.Sprintf("field %s is not settable", f.Name)})
 			continue
 		}
 
@@ -3775,60 +3796,82 @@ func GetMeasurementTag(s interface{}, tag string, list ...string) (map[string]st
 	return m, nil
 }
 
-func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
-	var base, unit string
-	var isBytes, isRequired bool
-	var idx, vidx, min, max int
-	var step int = 1000
-	var result string = vstr
+type MeasurementTag struct {
+	Parent   string
+	Base     string
+	IsBytes  bool
+	Required bool
+	Idx      int
+	Min      int
+	Max      int
+}
 
+func GetTagDetails(tag string) (*MeasurementTag, error) {
+	result := &MeasurementTag{}
 	/* Tag format: base, [required, bytes, min:, max:] */
 	// measurement tag should have value
 	if tag == "" {
-		return result, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
+		return nil, fmt.Errorf("tag cannot be empty, allowed values : %v", mUnits)
 	}
 
 	// split tag into base and optional parts
 	parts := strings.Split(tag, ",")
 	if parts[0] == "" {
-		return result, fmt.Errorf("base cannot be empty, use 0 for default")
+		return nil, fmt.Errorf("base cannot be empty, use 0 for default")
 	}
 
 	// get base unit
-	base = strings.ToUpper(strings.TrimSpace(parts[0]))
+	base := strings.ToUpper(strings.TrimSpace(parts[0]))
 	if slices.Contains(mUnits, base) {
-		idx = slices.Index(mUnits, base)
+		result.Idx = slices.Index(mUnits, base)
 	} else {
-		return result, fmt.Errorf("invalid unit: %s", base)
+		return nil, fmt.Errorf("invalid unit: %s", base)
 	}
 
 	if len(parts) > 1 {
 		for _, p := range parts[1:] {
 			trimmed := strings.TrimSpace(p)
 			if trimmed == "bytes" {
-				isBytes = true
+				result.IsBytes = true
 			}
 			if trimmed == "required" {
-				isRequired = true
+				result.Required = true
 			}
 			if strings.HasPrefix(trimmed, "min:") {
-				min, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				min, _ := strconv.Atoi(strings.Split(trimmed, ":")[1])
 				if min < 0 {
-					return result, fmt.Errorf("min value should be bigger than 0")
+					return nil, fmt.Errorf("min value should be bigger than 0")
 				}
+
+				result.Min = min
 			}
 			if strings.HasPrefix(trimmed, "max:") {
-				max, _ = strconv.Atoi(strings.Split(trimmed, ":")[1])
+				max, _ := strconv.Atoi(strings.Split(trimmed, ":")[1])
 				if max < 0 {
-					return result, fmt.Errorf("max value should be bigger than 0")
+					return nil, fmt.Errorf("max value should be bigger than 0")
 				}
+
+				result.Max = max
+			}
+			if strings.HasPrefix(trimmed, "parent:") {
+				parent := strings.Split(trimmed, ":")[1]
+				result.Parent = strings.TrimSpace(parent)
 			}
 		}
 	}
 
+	return result, nil
+}
+
+func ParseUnitMeasurement(mtag *MeasurementTag, vstr string, clampToLimit bool) (string, error) {
+	var unit string
+	var vidx int
+	var step int = 1000
+	var result string = vstr
+
 	// check if value is empty
 	if vstr == "" {
-		if isRequired {
+		if mtag.Required {
 			return result, fmt.Errorf("value is required")
 		} else {
 			return result, nil
@@ -3874,36 +3917,36 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 	vidx = slices.Index(mUnits, unit)
 
 	// unit should bigger than base
-	if vidx < idx {
-		return result, fmt.Errorf("invalid minimum unit '%s': %s", base, unit)
+	if vidx < mtag.Idx {
+		return result, fmt.Errorf("invalid minimum unit '%s': %s", mtag.Base, unit)
 	}
 
 	// convert step to 1024 if bytes
-	if isBytes {
+	if mtag.IsBytes {
 		step = 1024
 	}
 
 	// convert value to base unit
-	if vidx > idx {
-		for i := 0; i < vidx-idx; i++ {
+	if vidx > mtag.Idx {
+		for i := 0; i < vidx-mtag.Idx; i++ {
 			val *= step
 		}
 	}
 
-	if val < min {
+	if val < mtag.Min {
 		if !clampToLimit {
-			return result, fmt.Errorf("value should be bigger than %d", min)
+			return result, fmt.Errorf("value should be bigger than %d", mtag.Min)
 		}
 
-		val = min
+		val = mtag.Min
 	}
 
-	if max > 0 && val > max {
+	if mtag.Max > 0 && val > mtag.Max {
 		if !clampToLimit {
-			return result, fmt.Errorf("value should be smaller than %d", max)
+			return result, fmt.Errorf("value should be smaller than %d", mtag.Max)
 		}
 
-		val = max
+		val = mtag.Max
 	}
 
 	result = strconv.Itoa(val)
@@ -3912,7 +3955,12 @@ func ParseUnitMeasurement(tag, vstr string, clampToLimit bool) (string, error) {
 }
 
 func ParseUnitMeasurementToInt(tag, vstr string, clampToLimit bool) (int, error) {
-	valstr, err := ParseUnitMeasurement(tag, vstr, clampToLimit)
+	mtag, err := GetTagDetails(tag)
+	if err != nil {
+		return 0, err
+	}
+
+	valstr, err := ParseUnitMeasurement(mtag, vstr, clampToLimit)
 	if err != nil {
 		return 0, err
 	}
