@@ -323,7 +323,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 
 	// 2. Login meet
 	// 2.1 Request login with gitlab account and land on mattermost meetlogin channel
-	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=/signal18/channels/meetlogin", meetUrl)
+	meetLoginPageURL := fmt.Sprintf("%s/oauth/gitlab/login?redirect_to=%s/signal18/channels/meetlogin", meetUrl, meetUrl)
 
 	body, err = misc.GetRequest(client, meetLoginPageURL)
 	if err != nil {
@@ -332,6 +332,8 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 		}
 		return "", err
 	}
+
+	// fmt.Printf("GetMeetToken: login request body: %s\n", body)
 
 	// 2.2 Extract RedirectUrl and unescape it
 	redirectUrl, err := misc.ExtractValue(body, "href=\"([^\"]+)")
