@@ -242,7 +242,7 @@ type Cluster struct {
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticRepo                *archiver.ResticRepo        `json:"-"`
-	ErrorConfigMap            config.ErrorConfigMap       `json:"-"` //To store error config
+	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
 	failSendCount             int                         `json:"-"`
@@ -657,7 +657,7 @@ func (cluster *Cluster) Run() {
 			go cluster.CheckDefaultUser(false)
 
 			if cluster.HasBadConfigMeasurement() {
-				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigMap), ErrFrom: "CONFIG"})
+				cluster.SetState("WARN0135", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0135"], cluster.ErrorConfigs), ErrFrom: "CONFIG"})
 			}
 
 			select {

@@ -979,6 +979,13 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.TemplateVariableMaxDepth, "template-var-max-depth", 10, "Maximum depth of template variable expansion")
 	flags.BoolVar(&conf.TemplateStrict, "template-strict", false, "Enable strict template variable resolution")
 
+	// Disable measurement in non provisioning version
+	if WithProvisioning == "ON" {
+		flags.BoolVar(&conf.Measurement, "measurement", true, "Enable measurement")
+	} else {
+		flags.BoolVar(&conf.Measurement, "measurement", false, "Enable measurement")
+	}
+
 	if WithProvisioning == "ON" {
 		flags.StringVar(&conf.Cloud18GatewayService, "cloud18-gateway-service", "", "Cloud18 OpenSVC service of the janitor proxy")
 		flags.StringVar(&conf.ProvDatadirVersion, "prov-db-datadir-version", "10.2", "Empty datadir to deploy for localtest")
@@ -2313,10 +2320,13 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 		repman.VersionConfs[clusterName].ConfInit.MonitoringKeyPath = repman.Conf.MonitoringKeyPath
 	}
 
+	if myClusterConf.Measurement {
+		repman.currentCluster.ErrorConfigs = config.ParseConfigMeasurement(&myClusterConf, repman.DefaultFlagMap, myClusterConf.MeasurementAutoClampLimit)
+	}
+
 	repman.currentCluster.OsUser = repman.OsUser
 	repman.currentCluster.SessionManager = repman.SessionManager
 	repman.currentCluster.DiskStatManager = repman.DiskStatManager
-	repman.currentCluster.ErrorConfigMap = config.ParseConfigMeasurement(&myClusterConf, repman.DefaultFlagMap, myClusterConf.MeasurementAutoClampLimit)
 	repman.currentCluster.Mailer = repman.Mailer
 	repman.currentCluster.Init(repman.VersionConfs[clusterName], clusterName, &repman.tlog, &repman.Logs, repman.termlength, repman.UUID, repman.Version, repman.Hostname)
 	repman.Clusters[clusterName] = repman.currentCluster

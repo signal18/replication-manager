@@ -224,7 +224,7 @@ func (cluster *Cluster) HasAllDbUp() bool {
 }
 
 func (cluster *Cluster) HasBadConfigMeasurement() bool {
-	return len(cluster.ErrorConfigMap) > 0
+	return len(cluster.ErrorConfigs) > 0
 }
 
 func (cluster *Cluster) HasAllDbDown() bool {
