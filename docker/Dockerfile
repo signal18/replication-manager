@@ -7,13 +7,21 @@ COPY . .
 
 RUN apt-get update && apt-get -y install nodejs npm
 RUN make osc cli
+RUN go install github.com/moul/gotty-client/cmd/gotty-client@v1.10.0
 
 FROM debian:bookworm-slim
+
+ENV PROXYSQL_VERSION=2.7.3
+ENV MARIADB_VERSION=11.4
+ENV MYDUMPER_VERSION=0.17.1-1
 
 RUN mkdir -p \
         /etc/replication-manager \
         /etc/replication-manager/cluster.d \
         /var/lib/replication-manager
+
+RUN apt-get update && apt-get -y  install apt-transport-https curl \
+ && mkdir -p /etc/apt/keyrings && curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
 
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/config.toml.docker /etc/replication-manager/config.toml
 COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml
@@ -21,8 +29,14 @@ COPY --from=builder /go/src/github.com/signal18/replication-manager/etc/local/ma
 COPY --from=builder /go/src/github.com/signal18/replication-manager/share /usr/share/replication-manager/
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-osc /usr/bin/replication-manager
 COPY --from=builder /go/src/github.com/signal18/replication-manager/build/binaries/replication-manager-cli /usr/bin/replication-manager-cli
+COPY --from=builder /go/bin/gotty-client /usr/local/bin/gotty-client
 
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client haproxy wget openssh-client
-
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
+RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb-server=1:11* mariadb-client mariadb-plugin-spider haproxy \
+    libmariadb-dev fuse sysbench curl wget openssh-client libatomic1 libglib2.0 libpcre3 adduser libfontconfig1 \
+  && curl -LO https://dl.grafana.com/oss/release/grafana_8.1.1_amd64.deb && dpkg -i grafana_8.1.1_amd64.deb && rm -f grafana_8.1.1_amd64.deb \
+  && curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb \
+  && curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb \
+  && rm -f *.deb && rm -rf /var/lib/mysql/*
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001
