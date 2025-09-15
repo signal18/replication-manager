@@ -401,7 +401,7 @@ type Config struct {
 	ProxysqlPassword                          string                 `mapstructure:"proxysql-password" toml:"proxysql-password" json:"proxysqlPassword"`
 	ProxysqlWriterHostgroup                   string                 `mapstructure:"proxysql-writer-hostgroup" toml:"proxysql-writer-hostgroup" json:"proxysqlWriterHostgroup"`
 	ProxysqlReaderHostgroup                   string                 `mapstructure:"proxysql-reader-hostgroup" toml:"proxysql-reader-hostgroup" json:"proxysqlReaderHostgroup"`
-	ProxysqlCopyGrants                        bool                   `mapstructure:"proxysql-bootstrap-users" toml:"proxysql-bootstarp-users" json:"proxysqlBootstrapyUsers"`
+	ProxysqlCopyGrants                        bool                   `mapstructure:"proxysql-bootstrap-users" toml:"proxysql-bootstrap-users" json:"proxysqlBootstrapUsers"`
 	ProxysqlBootstrap                         bool                   `mapstructure:"proxysql-bootstrap" toml:"proxysql-bootstrap" json:"proxysqlBootstrap"`
 	ProxysqlBootstrapVariables                bool                   `mapstructure:"proxysql-bootstrap-variables" toml:"proxysql-bootstrap-variables" json:"proxysqlBootstrapVariables"`
 	ProxysqlBootstrapHG                       bool                   `mapstructure:"proxysql-bootstrap-hostgroups" toml:"proxysql-bootstrap-hostgroups" json:"proxysqlBootstrapHostgroups"`
