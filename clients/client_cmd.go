@@ -226,9 +226,17 @@ func cliClusterInServerList() bool {
 	return true
 }
 
+func getenv(key, fallback string) string {
+    value := os.Getenv(key)
+    if len(value) == 0 {
+        return fallback
+    }
+    return value
+}
+
 func initServerApiFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
+	cmd.Flags().StringVar(&cliUser, "user", getenv("REPMGR_USERNAME", "admin"), "User of replication-manager (alternative: REPMGR_USERNAME env var)")
+	cmd.Flags().StringVar(&cliPassword, "password", getenv("REPMGR_PASSWORD", "repman"), "Password of replication-manager (alternative: REPMGR_PASSWORD env var)")
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
