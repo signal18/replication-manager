@@ -303,6 +303,16 @@ func (cluster *Cluster) StartDatabaseWaitRejoin(server *ServerMonitor) error {
 	wg2 := new(sync.WaitGroup)
 	wg2.Add(1)
 	go cluster.WaitRejoin(wg2)
+
+	// Default action from cluster configuration
+	// If ProvDbStartFetchConfig is set to true, we want the server to fetch configuration on rolling restart
+	// If ProvDbStartFetchConfig is set to false, we want the server to NOT fetch configuration on rolling restart
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
+
 	err := cluster.StartDatabaseService(server)
 	wg2.Wait()
 	return err
