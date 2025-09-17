@@ -268,10 +268,11 @@ read_log_file() {
     local last_read=0
     local current_line=$((last_read + 1))
 
-    if [[ -f "$checkpoint_file" ]]; then
+    if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
         current_line=$((last_read + 1))
     fi
+
 
     if [ -f "$logfile" ]; then
         while IFS= read -r line; do
@@ -314,7 +315,7 @@ process_log_file() {
         log_file="$LOG_DIR/flash.out"
         ;;
     *)
-        log_file="$LOG_DIR/$job.out"
+        log_file="$LOG_DIR/$job.process.out"
         ;;
     esac
 
@@ -598,7 +599,7 @@ for job in "${JOBS[@]}"; do
             # Check if the error log is not empty
             if [ -s $ERROLOG ]; then
                 cat $ERROLOG >> $ERRROLOG'_'$(date '+%Y-%m-%d')
-                cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+                cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
                 if [ -f $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
                 gzip $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
                 fi
@@ -617,7 +618,7 @@ for job in "${JOBS[@]}"; do
 
             if [ -s $SLOWLOG ]; then
                 cat $SLOWLOG >> $SLOWLOG'_'$(date '+%Y-%m-%d')
-                cat $SLOWLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+                cat $SLOWLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
                 if [ -f $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
                 gzip $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
                 fi
@@ -636,15 +637,15 @@ for job in "${JOBS[@]}"; do
             %%ENV:SERVICES_SVCNAME%% start
             ;;
         optimize)
-            $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.out"
+            $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
             ;;
         restart)
             systemctl restart mysql
-            journalctl -u mysql >"$LOG_DIR/$job.out"
+            journalctl -u mysql >"$LOG_DIR/$job.process.out"
             ;;
         stop)
             systemctl stop mysql
-            journalctl -u mysql >"$LOG_DIR/$job.out"
+            journalctl -u mysql >"$LOG_DIR/$job.process.out"
             ;;
         esac
         doneJob "$job"
