@@ -8,6 +8,7 @@ PASSWORD=$MYSQL_ROOT_PASSWORD
 MYSQL_PORT=%%ENV:SERVER_PORT%%
 MYSQL_SERVER=%%ENV:SERVER_HOST%%
 CLUSTER_NAME=%%ENV:SVC_NAMESPACE%%
+REPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%
 REPLICATION_MANAGER_URL=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%
 REPLICATION_MANAGER_HOST=$(echo "$REPLICATION_MANAGER_URL" | cut -d":" -f1)
 REPLICATION_MANAGER_PORT=$(echo "$REPLICATION_MANAGER_URL" | cut -d":" -f2)
@@ -523,8 +524,8 @@ for job in "${JOBS[@]}"; do
         # echo "No $job needed"
         case "$job" in
         start)
-            if [ "curl -so /dev/null -w '%{response_code}'   https://$REPLICATION_MANAGER_URL/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start" == "200" ]; then
-                curl https://$REPLICATION_MANAGER_URL/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config | tar xzvf etc/* - -C $CONFDIR/../..
+            if [ "curl -so /dev/null -w '%{response_code}'   http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-start" == "200" ]; then
+                curl http://$REPLICATION_MANAGER_ADDR/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config | tar xzvf etc/* - -C $CONFDIR/../..
                 systemctl start mysql
             fi
             ;;
@@ -606,7 +607,7 @@ for job in "${JOBS[@]}"; do
                 fi
                 >$ERROLOG
             else 
-                echo "Error log file is empty" | socat -u stdio TCP:$ADDRESS
+                echo -n | socat -u stdio TCP:$ADDRESS
             fi
             ;;
         slowquery)
@@ -625,7 +626,7 @@ for job in "${JOBS[@]}"; do
                 fi
                 >$SLOWLOG
             else 
-                echo "Slow log file is empty" | socat -u stdio TCP:$ADDRESS
+                echo -n | socat -u stdio TCP:$ADDRESS
             fi
             ;;
         zfssnapback)
