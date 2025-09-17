@@ -1,7 +1,7 @@
 import React, { useEffect, useState, Suspense } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
-import { login } from '../../redux/authSlice'
+import { login, logout } from '../../redux/authSlice'
 import styles from './styles.module.scss'
 import { Box, Container, FormControl, FormLabel, FormErrorMessage, Heading, Input, Stack, Text } from '@chakra-ui/react'
 import PageContainer from '../PageContainer'
@@ -10,6 +10,8 @@ import PasswordControl from '../../components/PasswordControl'
 import RMButton from '../../components/RMButton'
 import Message from '../../components/Message'
 import { useTheme } from '../../ThemeProvider'
+import { clearCluster } from '../../redux/clusterSlice'
+import { clearClusters } from '../../redux/globalClustersSlice'
 
 function Login(props) {
   const [username, setUsername] = useState('')
@@ -28,6 +30,11 @@ function Login(props) {
   useEffect(() => {
     if (isAuthorized()) {
       navigate('/')
+    } else {
+      // If not authorized, ensure the user is logged out and clear clusters
+      dispatch(logout());
+      dispatch(clearClusters());
+      dispatch(clearCluster());
     }
   }, [])
 

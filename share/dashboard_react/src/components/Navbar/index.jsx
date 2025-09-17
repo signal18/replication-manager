@@ -19,6 +19,7 @@ import AddUserModal from '../Modals/AddUserModal'
 import MattermostIntegration from '../../Pages/Mattermost';
 import { getMeetInfo, logoutFromMeet } from '../../redux/meetSlice';
 import { selectMeetUIState } from '../../redux/memoize'
+import { clearClusters } from '../../redux/globalClustersSlice'
 
 function Navbar({ username }) {
   const dispatch = useDispatch()
@@ -101,6 +102,7 @@ function Navbar({ username }) {
     localStorage.removeItem('selectedChannel');
     localStorage.removeItem('userID')
     dispatch(logout())
+    dispatch(clearClusters())
     dispatch(clearCluster())
   }
   const openAddUserModal = () => {
