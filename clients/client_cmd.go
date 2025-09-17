@@ -227,11 +227,10 @@ func cliClusterInServerList() bool {
 }
 
 func getenv(key, fallback string) string {
-    value := os.Getenv(key)
-    if len(value) == 0 {
-        return fallback
+    if value, ok := os.LookupEnv(key); ok {
+        return value
     }
-    return value
+    return fallback
 }
 
 func initServerApiFlags(cmd *cobra.Command) {
