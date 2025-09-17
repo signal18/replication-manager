@@ -399,8 +399,7 @@ func needRefreshConfig() bool {
 
 	_, err := cliAPICmd(urlpost, nil)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "API call error: %s", err)
-		os.Exit(1)
+		return false
 	}
 
 	return true

@@ -1,7 +1,6 @@
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
-ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 
 USER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%
 PASSWORD=$MYSQL_ROOT_PASSWORD
@@ -31,12 +30,12 @@ if [ -x "$MARIADB_CLIENT" ]; then
     BINARY_CLIENT="$MARIADB_CLIENT $BINARY_CLIENT_PARAMETERS"
     BINARY_CHECK=$MARIADB_CHECK
     BINARY_DUMP=$MARIADB_DUMP
-    echo "Using MariaDB binaries."
+    echo "Job start: Using MariaDB binaries."
 elif [ -x "$MYSQL_CLIENT" ]; then
     BINARY_CLIENT="$MYSQL_CLIENT $BINARY_CLIENT_PARAMETERS"
     BINARY_CHECK=$MYSQL_CHECK
     BINARY_DUMP=$MYSQL_DUMP
-    echo "Using MySQL binaries."
+    echo "Job start: Using MySQL binaries."
 else
     echo "Neither MariaDB nor MySQL binaries are available."
     exit 1
@@ -284,14 +283,14 @@ read_log_file() {
                 break
             fi
 
-        batch+="$escaped\n"
-        if ((current_line % BATCH_SIZE == 0)); then
-            send_lines_to_api "$batch" "$job"
-            batch=""
-        fi
-        echo "$current_line" >"$checkpoint_file"
+            batch+="$escaped\n"
+            if ((current_line % BATCH_SIZE == 0)); then
+                send_lines_to_api "$batch" "$job"
+                batch=""
+            fi
+            echo "$current_line" >"$checkpoint_file"
 
-        done < <(sed -n "$current_line,${p}" "$log_file")
+        done < <(sed -n "${current_line},\$p" "$log_file")
 
         # Send any remaining lines in the batch after the first loop
         if [[ -n "$batch" ]]; then
