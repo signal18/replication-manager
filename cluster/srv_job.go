@@ -927,6 +927,11 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 		return 0, nil
 	}
 
+	if server.HasWaitErrorlogCookie() {
+		return 0, nil
+	}
+	server.SetWaitErrorlogCookie()
+
 	filename := server.Datadir + "/log/log_error.log"
 	dirname := filepath.Dir(filename)
 	if _, err := os.Stat(dirname); os.IsNotExist(err) {
@@ -1003,6 +1008,10 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	}
 
 	if server.HasLogsInSystemTables() {
+		return 0, nil
+	}
+
+	if server.HasWaitSlowqueryCookie() {
 		return 0, nil
 	}
 
@@ -3317,6 +3326,10 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	cluster := server.ClusterGroup
 
 	switch task {
+	case config.ConstTaskError:
+		server.DelWaitErrorlogCookie()
+	case config.ConstTaskSlowQuery:
+		server.DelWaitSlowqueryCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 

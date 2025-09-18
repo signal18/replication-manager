@@ -747,3 +747,11 @@ func (server *ServerMonitor) RevokeDBUserGrants(user, host string) error {
 
 	return nil
 }
+
+func (server *ServerMonitor) SetWaitErrorlogCookie() error {
+	return server.createCookie("cookie_wait_errorlog")
+}
+
+func (server *ServerMonitor) SetWaitSlowqueryCookie() error {
+	return server.createCookie("cookie_wait_slowquery")
+}
