@@ -61,6 +61,20 @@ LOCK_DIR="$TMP_DIR/locks"
 BATCH_SIZE=5
 JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
 
+append_trap() {
+  local new_cmd=$1
+  local sig=$2
+  local old_cmd
+  old_cmd=$(trap -p "$sig" | awk -F"'" '{print $2}')
+
+  if [[ -n "$old_cmd" ]]; then
+    trap "$old_cmd; $new_cmd" "$sig"
+  else
+    trap "$new_cmd" "$sig"
+  fi
+}
+
+
 table_exists() {
     local db="$1"
     local table="$2"
@@ -218,7 +232,17 @@ create_lock_file() {
 # Function to remove a manual lock file
 remove_lock_file() {
     local lock_file="$1"
-    rm -f "$lock_file"
+    if [ -e "$lock_file" ]; then
+        rm -f "$lock_file"
+    fi
+}
+
+# Function to remove a run directory lock file
+remove_run_lockdir() {
+    local run_lockdir="$1"
+    if [ -d "$run_lockdir" ]; then
+        rmdir "$run_lockdir"
+    fi
 }
 
 # Function to wait for the .run file with a timeout
@@ -327,7 +351,7 @@ process_log_file() {
     fi
 
     # Ensure lock file is removed on script exit
-    trap 'remove_lock_file "$lock_file"' EXIT
+    append_trap 'remove_lock_file "$lock_file"' EXIT
 
     if ! wait_for_run_lockdir "$run_lockdir"; then
         remove_lock_file "$lock_file"
@@ -534,7 +558,7 @@ for job in "${JOBS[@]}"; do
 
         mkdir -p "$LOG_DIR/$job.run"
         process_log_file "$job" &
-        trap 'rmdir "$LOG_DIR/$job.run"' EXIT
+        append_trap 'remove_run_lockdir "$LOG_DIR/$job.run"' EXIT
         echo "Processing $job"
         
         #purge de past
@@ -648,6 +672,6 @@ for job in "${JOBS[@]}"; do
             ;;
         esac
         doneJob "$job"
-        sleep 1 && rmdir "$LOG_DIR/$job.run" &
+        sleep 1 && remove_run_lockdir "$LOG_DIR/$job.run" &
     fi
 done
