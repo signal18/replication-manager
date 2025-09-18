@@ -3126,6 +3126,10 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task stri
 			continue
 		}
 
+		if task == "main" && logEntry.Level == "" {
+			logEntry.Level = config.LvlInfo
+		}
+
 		server.ParseLogEntries(logEntry, mod, task)
 	}
 
@@ -3180,7 +3184,7 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 						server.LastBackupMeta.Physical.BinLogFileName = matches[1]
 					}
 				}
-				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlDbg, "[%s] %s", server.URL, line)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, entry.Level, "[%s] %s", server.URL, line)
 			}
 		}
 	}

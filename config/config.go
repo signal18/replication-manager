@@ -3454,6 +3454,7 @@ func IsValidLogLevel(lvl string) bool {
 type LogEntry struct {
 	Server string `json:"server"`
 	Log    string `json:"log"`
+	Level  string `json:"level"`
 }
 
 func (conf *Config) IsVariableImmutable(v string) bool {

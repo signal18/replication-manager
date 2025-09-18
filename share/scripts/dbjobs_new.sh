@@ -48,6 +48,12 @@ JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize"
 # OSX need socat extra path
 export PATH=$PATH:/usr/local/bin
 
+# Logging levels
+LVL_ERROR="ERROR"
+LVL_WARN="WARN"
+LVL_INFO="INFO"
+LVL_DEBUG="DEBUG"
+
 ########################
 # Function Definitions #
 ########################
@@ -132,16 +138,22 @@ send_encrypted_data() {
 send_lines_to_api() {
     local lines="$1"
     local job="$2"
+    local level="$3"
     local address="${REPLICATION_MANAGER_URL}"
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"log\":\"$lines\"}"
-
     local max_retries=3
     local attempt=0
     local success=false
 
     if [ -z "$job" ]; then
-        job="general"
+        job="main"
+        level=$LVL_INFO
     fi
+
+    if [ -z "$level" ]; then
+        level=$LVL_INFO
+    fi
+
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"log\":\"$lines\",\"level\":\"$level\"}"
 
     while ((attempt < max_retries)); do
         # Capture response and HTTP status code
@@ -251,17 +263,17 @@ wait_for_run_lockdir() {
     local timeout=30
     local start_time=$(date +%s)
 
-    send_lines_to_api "Waiting for $run_lockdir file...\n" "$job"
+    send_lines_to_api "Waiting for $run_lockdir file...\n" "$job" "$LVL_DEBUG"
     while [[ ! -d "$run_lockdir" ]]; do
         sleep 0.5
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
         if ((elapsed >= timeout)); then
-            send_lines_to_api "Timeout reached while waiting for .run file.\n" "$job"
+            send_lines_to_api "Timeout reached while waiting for .run file.\n" "$job" "$LVL_ERROR"
             return 1
         fi
     done
-    send_lines_to_api "$run_lockdir file found...\n" "$job"
+    send_lines_to_api "$run_lockdir file found...\n" "$job" "$LVL_DEBUG"
     return 0
 }
 
@@ -271,17 +283,17 @@ wait_for_log_file() {
     local timeout=60
     local start_time=$(date +%s)
 
-    send_lines_to_api "Waiting for $logfile file...\n" "$job"
+    send_lines_to_api "Waiting for $logfile file...\n" "$job" "$LVL_DEBUG"
     while [[ ! -f "$logfile" ]]; do
         sleep 0.5
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
         if ((elapsed >= timeout)); then
-            send_lines_to_api "Timeout reached while waiting for $logfile file. Please check log manually if needed. \n" "$job"
+            send_lines_to_api "Timeout reached while waiting for $logfile file. Please check log manually if needed. \n" "$job" "$LVL_ERROR"
             return 1
         fi
     done
-    send_lines_to_api "$logfile file found...\n" "$job"
+    send_lines_to_api "$logfile file found...\n" "$job" "$LVL_DEBUG"
     return 0
 }
 
@@ -303,13 +315,13 @@ read_log_file() {
             ((current_line++))
 
             if [[ ! -d "$run_lockdir" ]]; then
-                send_lines_to_api "Run file has been deleted. Processing remaining lines.\n" "$job"
+                send_lines_to_api "Run file has been deleted. Processing remaining lines.\n" "$job" "$LVL_DEBUG"
                 break
             fi
 
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
-                send_lines_to_api "$batch" "$job"
+                send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
             echo "$current_line" >"$checkpoint_file"
@@ -318,7 +330,7 @@ read_log_file() {
 
         # Send any remaining lines in the batch after the first loop
         if [[ -n "$batch" ]]; then
-            send_lines_to_api "$batch" "$job"
+            send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
         fi
     fi
 }
@@ -368,7 +380,7 @@ process_log_file() {
         last_line=$(cat "$checkpoint_file")
     fi
 
-    send_lines_to_api "Last checkpoint on "$checkpoint_file" is: $last_line.\n" "$job"
+    send_lines_to_api "Last checkpoint on "$checkpoint_file" is: $last_line.\n" "$job" "$LVL_DEBUG"
 
     local current_line=0
     local batch=""
@@ -387,7 +399,7 @@ process_log_file() {
             ((current_line++))
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
-                send_lines_to_api "$batch" "$job"
+                send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
             echo "$current_line" >"$checkpoint_file"
@@ -395,10 +407,10 @@ process_log_file() {
     fi
 
     if [[ -n "$batch" ]]; then
-        send_lines_to_api "$batch" "$job"
+        send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
     fi
 
-    send_lines_to_api "Removing checkpoint file.\n" "$job"
+    send_lines_to_api "Removing checkpoint file.\n" "$job" "$LVL_DEBUG"
     rm -f "$checkpoint_file"
 
     remove_lock_file "$lock_file"
@@ -443,9 +455,9 @@ doneJob() {
     esac
     
     if [ $jobstate -eq 3 ]; then
-        send_lines_to_api "Job $job ended with state: Finished" "$job" 
+        send_lines_to_api "Job $job ended with state: Finished" "$job" "$LVL_INFO"
     else
-        send_lines_to_api "Job $job ended with state: Error" "$job"
+        send_lines_to_api "Job $job ended with state: Error" "$job" "$LVL_ERROR"
     fi
     $BINARY_CLIENT -e "set sql_log_bin=0;UPDATE replication_manager_schema.jobs set end=NOW(), state=$jobstate, result=LOAD_FILE('$LOG_DIR/$job.out'), done=$done  WHERE id='$ID';" &
 }
@@ -455,11 +467,11 @@ pauseJob() {
 }
 
 partialRestore() {
-    send_lines_to_api "Starting partial restore..." "$job" 
+    send_lines_to_api "Starting partial restore..." "$job" "$LVL_INFO"
     chown -R mysql:mysql $BACKUPDIR 
     $BINARY_CLIENT -e "set sql_log_bin=0;install plugin BLACKHOLE soname 'ha_blackhole.so'"
     for dir in $(ls -d $BACKUPDIR/*/ | xargs -n 1 basename | grep -vE 'mysql|performance_schema|replication_manager_schema'); do
-        send_lines_to_api "Restoring $dir..." "$job" 
+        send_lines_to_api "Restoring $dir..." "$job" "$LVL_DEBUG"
         $BINARY_CLIENT -e "set sql_log_bin=0;drop database IF EXISTS $dir; CREATE DATABASE $dir;"
 
         for file in $(find $BACKUPDIR/$dir/ -name "*.ibd" | xargs -n 1 basename | cut -d'.' --complement -f2-); do
@@ -485,10 +497,11 @@ partialRestore() {
         mv $BACKUPDIR/mysql/$file.* $DATADIR/mysql/
         $BINARY_CLIENT -e "set sql_log_bin=0;FLUSH TABLE mysql.$file"
     done
-    send_lines_to_api "Setting GTID of the last change..." "$job" 
+    send_lines_to_api "Setting GTID of the last change..." "$job" "$LVL_DEBUG"
     cat $BACKUPDIR/xtrabackup_info | grep binlog_pos | awk -F, '{ print $3 }' | sed -e 's/GTID of the last change/set sql_log_bin=0;set global gtid_slave_pos=/g' | $BINARY_CLIENT
-    send_lines_to_api "Flushing privileges..." "$job" 
+    send_lines_to_api "Flushing privileges..." "$job" "$LVL_DEBUG"
     $BINARY_CLIENT -e"set sql_log_bin=0;flush privileges;start slave;"
+    send_lines_to_api "Partial restore done." "$job" "$LVL_INFO"
 }
 
 #######################
@@ -530,7 +543,7 @@ for job in "${JOBS[@]}"; do
     ID=($(echo $TASK | awk -F@ '{ print $1 }'))
 
     if [ "$ID" != "" ]; then
-        send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" 
+        send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" "$LVL_INFO""
         case "$job" in
             mariabackup|xtrabackup)
                 rm -f "$LOG_DIR/backup.out"
