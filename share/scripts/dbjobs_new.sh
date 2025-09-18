@@ -146,11 +146,11 @@ send_lines_to_api() {
 
     if [ -z "$job" ]; then
         job="main"
-        level=$LVL_INFO
+        level="$LVL_DEBUG"
     fi
 
     if [ -z "$level" ]; then
-        level=$LVL_INFO
+        level="$LVL_DEBUG"
     fi
 
     local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"log\":\"$lines\",\"level\":\"$level\"}"
@@ -166,12 +166,12 @@ send_lines_to_api() {
         local http_code=$(echo "$response" | grep -oP '(?<=HTTP/1.1 )[0-9]{3}')
 
         if [[ "$http_code" == "200" ]]; then
-            echo "API call successful for job: $job"
+            # echo "API call successful for job: $job"
             success=true
             break
         else
             echo "API call failed for job: $job with status code: $http_code"
-            cat $LOG_DIR/curl_response.txt
+            # cat $LOG_DIR/curl_response.txt
             ((attempt++))
             sleep 2 # Wait before retrying
         fi
@@ -194,7 +194,7 @@ elif [ -x "$MYSQL_CLIENT" ]; then
     BINARY_DUMP=$MYSQL_DUMP
     send_lines_to_api "Job start: Using MySQL binaries."
 else
-    send_lines_to_api "Neither MariaDB nor MySQL binaries are available. Exiting job script."
+    send_lines_to_api "Neither MariaDB nor MySQL binaries are available. Exiting job script." "main" "$LVL_ERROR"
     exit 1
 fi
 
@@ -221,7 +221,7 @@ table_exists() {
 # Function to create the jobs table if it doesn't exist
 create_jobs_table() {
     if ! table_exists "replication_manager_schema" "jobs"; then
-        echo "Creating jobs table..."
+        send_lines_to_api "Creating jobs table..." "main" "$LVL_INFO"
         echo "set sql_log_bin=0;CREATE DATABASE IF NOT EXISTS replication_manager_schema;CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb;set sql_log_bin=1;" | $BINARY_CLIENT
     fi
 }
@@ -234,7 +234,7 @@ create_jobs_table() {
 create_lock_file() {
     local lock_file="$1"
     if [ -e "$lock_file" ]; then
-        echo "Lock file exists. Exiting."
+        send_lines_to_api "Lock file $lock_file exists. Exiting." "main" "$LVL_ERROR"
         return 1
     fi
     touch "$lock_file"
@@ -543,7 +543,7 @@ for job in "${JOBS[@]}"; do
     ID=($(echo $TASK | awk -F@ '{ print $1 }'))
 
     if [ "$ID" != "" ]; then
-        send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" "$LVL_INFO""
+        send_lines_to_api "Job $job initiated. Clearing previous logs..." "$job" "$LVL_INFO"
         case "$job" in
             mariabackup|xtrabackup)
                 rm -f "$LOG_DIR/backup.out"
@@ -691,5 +691,6 @@ for job in "${JOBS[@]}"; do
         esac
         doneJob "$job"
         sleep 1 && remove_run_lockdir "$LOG_DIR/$job.run" &
+        trap - EXIT
     fi
 done
