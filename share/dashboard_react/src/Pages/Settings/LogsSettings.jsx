@@ -289,6 +289,42 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
+          key: 'Log Fetch Errorlog Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logFetchErrorlogLevel}
+              confirmTitle={`Confirm change 'log-fetch-errorlog-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-fetch-errorlog-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+         {
+          key: 'Log Fetch Slowquery Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logFetchSlowqueryLevel}
+              confirmTitle={`Confirm change 'log-fetch-slowquery-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-fetch-slowquery-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
           key: 'Log Mailer Level',
           value: (
             <LogSlider

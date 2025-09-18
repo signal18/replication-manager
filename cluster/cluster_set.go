@@ -2117,6 +2117,14 @@ func (cluster *Cluster) SetLogExternalScriptLevel(value int) {
 	}
 }
 
+func (cluster *Cluster) SetLogFetchErrorlogLevel(value int) {
+	cluster.Conf.LogFetchErrorlogLevel = value
+}
+
+func (cluster *Cluster) SetLogFetchSlowqueryLevel(value int) {
+	cluster.Conf.LogFetchSlowqueryLevel = value
+}
+
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
 
 	parts := strings.Split(value, ".")

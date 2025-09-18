@@ -2934,6 +2934,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-stats-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogStatsLevel = val
+	case "log-fetch-errorlog-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogFetchErrorlogLevel(val)
+	case "log-fetch-slowquery-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogFetchSlowqueryLevel(val)
 	case "monitoring-ignore-errors":
 		mycluster.SetMonitorIgnoreErrors(value)
 	case "monitoring-capture-trigger":

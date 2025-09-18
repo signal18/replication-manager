@@ -160,6 +160,8 @@ type Config struct {
 	LogExternalScript                         bool                   `mapstructure:"log-external-script" toml:"log-external-script" json:"ExternalScript"`
 	LogExternalScriptLevel                    int                    `mapstructure:"log-external-script-level" toml:"log-external-script-level" json:"logExternalScriptLevel"`
 	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-stats-level" toml:"log-stats-level" json:"logStatsLevel"`
+	LogFetchErrorlogLevel                     int                    `mapstructure:"log-fetch-errorlog-level" toml:"log-fetch-errorlog-level" json:"logFetchErrorlogLevel"`
+	LogFetchSlowqueryLevel                    int                    `mapstructure:"log-fetch-slowquery-level" toml:"log-fetch-slowquery-level" json:"logFetchSlowqueryLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1325,6 +1327,8 @@ const (
 	ConstLogModStats          = 22
 	ConstLogModSQL            = 23
 	ConstLogModApp            = 24
+	ConstLogModFetchErrorlog  = 25
+	ConstLogModFetchSlowquery = 26
 )
 
 /*
@@ -1353,6 +1357,11 @@ const (
 	ConstLogNameMailer         string = "log-mailer"
 	ConstLogNameExternalScript string = "log-external-script"
 	ConstLogNameLogSQL         string = "log-sql"
+	ConstLogNameSupport        string = "log-support"
+	ConstLogNameStats          string = "log-stats"
+	ConstLogNameApp            string = "log-app"
+	ConstLogNameFetchErrorlog  string = "log-fetch-errorlog"
+	ConstLogNameFetchSlowquery string = "log-fetch-slowquery"
 )
 
 /*
@@ -1361,7 +1370,7 @@ This is the list of task to be used in SSH
 const (
 	ConstTaskXB        string = "xtrabackup"
 	ConstTaskMB        string = "mariabackup"
-	ConstTaskError     string = "error"
+	ConstTaskError     string = "errorlog"
 	ConstTaskSlowQuery string = "slowquery"
 	ConstTaskZFS       string = "zfssnapback"
 	ConstTaskOptimize  string = "optimize"
@@ -3213,6 +3222,10 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogSQLLevel >= lvl
 		case module == ConstLogModApp:
 			return conf.LogAppLevel >= lvl
+		case module == ConstLogModFetchErrorlog:
+			return conf.LogFetchErrorlogLevel >= lvl
+		case module == ConstLogModFetchSlowquery:
+			return conf.LogFetchSlowqueryLevel >= lvl
 		}
 	}
 
@@ -3384,6 +3397,14 @@ func GetTagsForLog(module int) string {
 		return "sql"
 	case ConstLogModApp:
 		return "app"
+	case ConstLogModArchive:
+		return "archive"
+	case ConstLogModMailer:
+		return "mailer"
+	case ConstLogModFetchErrorlog:
+		return "errorlog"
+	case ConstLogModFetchSlowquery:
+		return "slowquery"
 	}
 	return ""
 }
@@ -3393,6 +3414,10 @@ func GetModuleNameForTask(task string) string {
 	switch task {
 	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
+	case ConstTaskError:
+		return ConstLogNameFetchErrorlog
+	case ConstTaskSlowQuery:
+		return ConstLogNameFetchSlowquery
 	default:
 		return ConstLogNameTask
 
@@ -3439,6 +3464,22 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModTask
 	case ConstLogNameExternalScript:
 		return ConstLogModExternalScript
+	case ConstLogNameStats:
+		return ConstLogModStats
+	case ConstLogNameLogSQL:
+		return ConstLogModSQL
+	case ConstLogNameApp:
+		return ConstLogModApp
+	case ConstLogNameSupport:
+		return ConstLogModSupport
+	case ConstLogNameArchive:
+		return ConstLogModArchive
+	case ConstLogNameMailer:
+		return ConstLogModMailer
+	case ConstLogNameFetchErrorlog:
+		return ConstLogModFetchErrorlog
+	case ConstLogNameFetchSlowquery:
+		return ConstLogModFetchSlowquery
 	}
 	return -1
 }
