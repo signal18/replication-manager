@@ -220,7 +220,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 			}
 			line = cluster.htlog.Add(msg)
 			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream:
+			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModFetchErrorlog, config.ConstLogModFetchSlowquery:
 				cluster.LogTask.Add(msg)
 			default:
 				cluster.Log.Add(msg)
