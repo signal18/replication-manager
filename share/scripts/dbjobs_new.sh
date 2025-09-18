@@ -154,23 +154,22 @@ send_lines_to_api() {
     fi
 
     local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"log\":\"$lines\",\"level\":\"$level\"}"
+    local http_code
+    local response
 
     while ((attempt < max_retries)); do
         # Capture response and HTTP status code
-        local response
         response=$(send_encrypted_data "$address" "$job" "$data")
 
-        # echo "$response" >> $LOG_DIR/curl_response.txt
-        
         # Extract HTTP status code
-        local http_code=$(echo "$response" | grep -oP '(?<=HTTP/1.1 )[0-9]{3}')
+        http_code=$(echo "$response" | grep -oP '(?<=HTTP/1.1 )[0-9]{3}')
 
         if [[ "$http_code" == "200" ]]; then
             # echo "API call successful for job: $job"
             success=true
             break
         else
-            echo "API call failed for job: $job with status code: $http_code"
+            # echo "API call failed for job: $job with status code: $http_code"
             # cat $LOG_DIR/curl_response.txt
             ((attempt++))
             sleep 2 # Wait before retrying
@@ -178,7 +177,21 @@ send_lines_to_api() {
     done
 
     if [ "$success" = false ]; then
-        echo "API call failed after $max_retries attempts for job: $job"
+        # Backup log file if it exceeds 1MB. Only keep1 old log file.
+        if [ -f "$LOG_DIR/api_calls.log" ]; then
+            local filesize
+            filesize=$(stat -c%s "$LOG_DIR/api_calls.log")
+            if ((filesize > 1048576)); then
+                cp -f "$LOG_DIR/api_calls.log" "$LOG_DIR/api_calls.log.bak"
+                : > "$LOG_DIR/api_calls.log"
+            fi
+        else 
+            touch "$LOG_DIR/api_calls.log"
+        fi
+
+        echo "API call failed with code: $http_code after $max_retries attempts for job: $job" >> $LOG_DIR/api_calls.log
+        echo "Request Destination: $address Job: $job Data: $data" >> $LOG_DIR/api_calls.log
+        echo "$response" >> $LOG_DIR/api_calls.log
     fi
 }
 
