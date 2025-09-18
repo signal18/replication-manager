@@ -25,22 +25,6 @@ MYSQL_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql"
 MYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck
 MYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump
 
-# Determine which binary to use (prefer MariaDB, fallback to MySQL)
-if [ -x "$MARIADB_CLIENT" ]; then
-    BINARY_CLIENT="$MARIADB_CLIENT $BINARY_CLIENT_PARAMETERS"
-    BINARY_CHECK=$MARIADB_CHECK
-    BINARY_DUMP=$MARIADB_DUMP
-    echo "Job start: Using MariaDB binaries."
-elif [ -x "$MYSQL_CLIENT" ]; then
-    BINARY_CLIENT="$MYSQL_CLIENT $BINARY_CLIENT_PARAMETERS"
-    BINARY_CHECK=$MYSQL_CHECK
-    BINARY_DUMP=$MYSQL_DUMP
-    echo "Job start: Using MySQL binaries."
-else
-    echo "Neither MariaDB nor MySQL binaries are available."
-    exit 1
-fi
-
 SST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%
 SOCAT_BIND=%%ENV:SERVER_IP%%
 MARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup
@@ -61,48 +45,12 @@ LOCK_DIR="$TMP_DIR/locks"
 BATCH_SIZE=5
 JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
 
-append_trap() {
-  local new_cmd=$1
-  local sig=$2
-  local old_cmd
-  old_cmd=$(trap -p "$sig" | awk -F"'" '{print $2}')
-
-  if [[ -n "$old_cmd" ]]; then
-    trap "$old_cmd; $new_cmd" "$sig"
-  else
-    trap "$new_cmd" "$sig"
-  fi
-}
-
-
-table_exists() {
-    local db="$1"
-    local table="$2"
-
-    # Ask information_schema if the table exists
-    local result
-    result=$(echo "SELECT COUNT(*) 
-                   FROM information_schema.tables 
-                   WHERE table_schema='${db}' 
-                     AND table_name='${table}';" \
-             | $BINARY_CLIENT -N 2>/dev/null)
-
-    if [ "$result" = "1" ]; then
-        return 0  # true, table exists
-    else
-        return 1  # false, table missing
-    fi
-}
-
-create_jobs_table() {
-    if ! table_exists "replication_manager_schema" "jobs"; then
-        echo "Creating jobs table..."
-        echo "set sql_log_bin=0;CREATE DATABASE IF NOT EXISTS replication_manager_schema;CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb;set sql_log_bin=1;" | $BINARY_CLIENT
-    fi
-}
-
 # OSX need socat extra path
 export PATH=$PATH:/usr/local/bin
+
+########################
+# Function Definitions #
+########################
 
 pad_pkcs7() {
     local data="$1"
@@ -191,6 +139,10 @@ send_lines_to_api() {
     local attempt=0
     local success=false
 
+    if [ -z "$job" ]; then
+        job="general"
+    fi
+
     while ((attempt < max_retries)); do
         # Capture response and HTTP status code
         local response
@@ -217,6 +169,54 @@ send_lines_to_api() {
         echo "API call failed after $max_retries attempts for job: $job"
     fi
 }
+
+# Determine which binary to use (prefer MariaDB, fallback to MySQL)
+if [ -x "$MARIADB_CLIENT" ]; then
+    BINARY_CLIENT="$MARIADB_CLIENT $BINARY_CLIENT_PARAMETERS"
+    BINARY_CHECK=$MARIADB_CHECK
+    BINARY_DUMP=$MARIADB_DUMP
+    send_lines_to_api "Job start: Using MariaDB binaries."
+elif [ -x "$MYSQL_CLIENT" ]; then
+    BINARY_CLIENT="$MYSQL_CLIENT $BINARY_CLIENT_PARAMETERS"
+    BINARY_CHECK=$MYSQL_CHECK
+    BINARY_DUMP=$MYSQL_DUMP
+    send_lines_to_api "Job start: Using MySQL binaries."
+else
+    send_lines_to_api "Neither MariaDB nor MySQL binaries are available. Exiting job script."
+    exit 1
+fi
+
+# Function to check if a table exists in a given database
+table_exists() {
+    local db="$1"
+    local table="$2"
+
+    # Ask information_schema if the table exists
+    local result
+    result=$(echo "SELECT COUNT(*) 
+                   FROM information_schema.tables 
+                   WHERE table_schema='${db}' 
+                     AND table_name='${table}';" \
+             | $BINARY_CLIENT -N 2>/dev/null)
+
+    if [ "$result" = "1" ]; then
+        return 0  # true, table exists
+    else
+        return 1  # false, table missing
+    fi
+}
+
+# Function to create the jobs table if it doesn't exist
+create_jobs_table() {
+    if ! table_exists "replication_manager_schema" "jobs"; then
+        echo "Creating jobs table..."
+        echo "set sql_log_bin=0;CREATE DATABASE IF NOT EXISTS replication_manager_schema;CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb;set sql_log_bin=1;" | $BINARY_CLIENT
+    fi
+}
+
+################################
+# Log Processing Functions     #
+################################
 
 # Function to create a manual lock file
 create_lock_file() {
@@ -350,8 +350,8 @@ process_log_file() {
         return
     fi
 
-    # Ensure lock file is removed on script exit
-    append_trap 'remove_lock_file "$lock_file"' EXIT
+    # Ensure lock file is removed on script exit. Using trap to handle unexpected exit. This will not interfere with other traps since it's a separate subshell.
+    trap 'remove_lock_file "$lock_file"' EXIT
 
     if ! wait_for_run_lockdir "$run_lockdir"; then
         remove_lock_file "$lock_file"
@@ -403,6 +403,10 @@ process_log_file() {
 
     remove_lock_file "$lock_file"
 }
+
+#################################
+# Job Related Functions     #
+#################################
 
 socatCleaner() {
     kill -9 $(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN)
@@ -558,7 +562,8 @@ for job in "${JOBS[@]}"; do
 
         mkdir -p "$LOG_DIR/$job.run"
         process_log_file "$job" &
-        append_trap 'remove_run_lockdir "$LOG_DIR/$job.run"' EXIT
+        # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
+        trap 'remove_run_lockdir "$LOG_DIR/$job.run"' EXIT
         echo "Processing $job"
         
         #purge de past
