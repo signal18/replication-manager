@@ -662,7 +662,7 @@ for job in "${JOBS[@]}"; do
                 fi
                 >$ERROLOG
             else 
-                echo -n | socat -u stdio TCP:$ADDRESS
+                echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
             fi
             ;;
         slowquery)
@@ -681,7 +681,7 @@ for job in "${JOBS[@]}"; do
                 fi
                 >$SLOWLOG
             else 
-                echo -n | socat -u stdio TCP:$ADDRESS
+                echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
             fi
             ;;
         zfssnapback)
