@@ -151,3 +151,11 @@ func (server *ServerMonitor) DelMaintenance() {
 	server.IsMaintenance = false
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
+
+func (server *ServerMonitor) DelWaitErrorlogCookie() error {
+	return server.delCookie("cookie_wait_errorlog")
+}
+
+func (server *ServerMonitor) DelWaitSlowqueryCookie() error {
+	return server.delCookie("cookie_wait_slowquery")
+}

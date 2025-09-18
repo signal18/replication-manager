@@ -3086,9 +3086,13 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 	if mycluster != nil {
 		var mod int
 		switch vars["task"] {
+		case "errorlog":
+			mod = config.ConstLogModFetchErrorlog
+		case "slowquery":
+			mod = config.ConstLogModFetchSlowquery
 		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup":
 			mod = config.ConstLogModBackupStream
-		case "errorlog", "slowquery", "zfssnapback", "optimize", "reseedmysqldump", "flashbackmysqldump", "stop", "restart", "start":
+		case "zfssnapback", "optimize", "reseedmysqldump", "flashbackmysqldump", "stop", "restart", "start", "main":
 			mod = config.ConstLogModTask
 		default:
 			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)

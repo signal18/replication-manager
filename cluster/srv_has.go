@@ -808,3 +808,11 @@ func (server *ServerMonitor) IsSlaveLate() bool {
 func (server *ServerMonitor) IsStandAlone() bool {
 	return server.State == stateUnconn
 }
+
+func (server *ServerMonitor) HasWaitErrorlogCookie() bool {
+	return server.hasCookie("cookie_wait_errorlog")
+}
+
+func (server *ServerMonitor) HasWaitSlowqueryCookie() bool {
+	return server.hasCookie("cookie_wait_slowquery")
+}
