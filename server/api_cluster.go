@@ -2641,10 +2641,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 
 	//not immutable
 	if !mycluster.Conf.IsVariableImmutable(name) {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s to %s", name, value)
 	} else {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s to %s", name, value)
 	}
 
 	switch name {
@@ -3716,10 +3716,10 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	var v int
 	//not immutable
 	if !repman.Conf.IsVariableImmutable(name) {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s to %s", name, value)
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s to %s", name, value)
 	}
 
 	switch name {
