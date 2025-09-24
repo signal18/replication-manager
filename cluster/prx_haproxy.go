@@ -343,7 +343,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 			srv := cluster.GetServerFromURL(host)
 
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy stat lookup writer: host %s translated to %s", line[73], host)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup writer: host %s translated to %s", line[73], host)
 
 			if srv != nil {
 				foundMasterInStat = true
@@ -407,7 +407,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 			srv := cluster.GetServerFromURL(host)
 			if cluster.Conf.HaproxyDebug {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
 			}
 			if srv != nil {
 				proxy.BackendsRead = append(proxy.BackendsRead, Backend{
