@@ -46,7 +46,7 @@ func (r *Runtime) GetVersion() (string, error) {
 	return string(result), nil
 }
 
-func (r *Runtime) SetMaster(host string, port string) (string, error) {
+func (r *Runtime) SetMaster(writebackend string, host string, port string) (string, error) {
 
 	if net.ParseIP(host) == nil {
 		return r.SetMasterFQDN(host, port)
@@ -56,7 +56,7 @@ func (r *Runtime) SetMaster(host string, port string) (string, error) {
 		return "", err
 	}
 	defer conn.Close()
-	_, err = conn.Write([]byte("set server service_write/leader addr " + host + " port " + port + "\n"))
+	_, err = conn.Write([]byte("set server " + writebackend + "/leader addr " + host + " port " + port + "\n"))
 	if err != nil {
 
 		return "", err
