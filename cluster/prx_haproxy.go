@@ -346,8 +346,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup writer: host %s translated to %s", line[73], host)
 
 			if srv != nil {
-				foundMasterInStat = true
-				proxy.BackendsWrite = append(proxy.BackendsWrite, Backend{
+				bkw := Backend{
 					Host:           srv.Host,
 					Port:           srv.Port,
 					Status:         srv.State,
@@ -357,35 +356,40 @@ func (proxy *HaproxyProxy) Refresh() error {
 					PrxByteIn:      line[8],
 					PrxByteOut:     line[9],
 					PrxLatency:     line[61], //ttime: average session time in ms over the 1024 last requests
-				})
+				}
 
-				if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-					if !srv.IsStandAlone() {
-						if stagingsrv == nil {
-							stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
-							cluster.StagingServer = stagingsrv
-						}
+				if bkw.PrxName != "" {
+					foundMasterInStat = true
+					proxy.BackendsWrite = append(proxy.BackendsWrite, bkw)
 
-						if stagingsrv != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
-							msg, err := haRuntime.SetMaster(stagingsrv.Host, stagingsrv.Port)
-							if err != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
-							} else {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
+						if !srv.IsStandAlone() {
+							if stagingsrv == nil {
+								stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+								cluster.StagingServer = stagingsrv
+							}
+
+							if stagingsrv != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
+								msg, err := haRuntime.SetMaster(stagingsrv.Host, stagingsrv.Port)
+								if err != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+								} else {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (staging: %s)", proxy.Host+":"+proxy.Port, msg, stagingsrv.Host+":"+stagingsrv.Port)
+								}
 							}
 						}
-					}
-				} else {
-					if !srv.IsMaster() {
-						master := cluster.GetMaster()
-						if master != nil {
-							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
-							msg, err := haRuntime.SetMaster(master.Host, master.Port)
-							if err != nil {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
-							} else {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+					} else {
+						if !srv.IsMaster() {
+							master := cluster.GetMaster()
+							if master != nil {
+								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "Detecting wrong master server in haproxy %s fixing it to master %s %s", proxy.Host+":"+proxy.Port, master.Host, master.Port)
+								msg, err := haRuntime.SetMaster(master.Host, master.Port)
+								if err != nil {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+								} else {
+									cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "%s: %s (master: %s)", proxy.Host+":"+proxy.Port, msg, master.Host+":"+master.Port)
+								}
 							}
 						}
 					}
@@ -406,9 +410,9 @@ func (proxy *HaproxyProxy) Refresh() error {
 				host = backend_ip_host[host]
 			}
 			srv := cluster.GetServerFromURL(host)
-			if cluster.Conf.HaproxyDebug {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
-			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
+
 			if srv != nil {
 				proxy.BackendsRead = append(proxy.BackendsRead, Backend{
 					Host:           srv.Host,
@@ -542,9 +546,9 @@ func (proxy *Proxy) SetMaintenance(server *ServerMonitor) {
 		proxy.Init()
 		return
 	}
-	//if cluster.Conf.HaproxyDebug {
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "HAProxy set maintenance for server %s ", server.URL)
-	//}
+
 	haRuntime := haproxy.Runtime{
 		Binary:   cluster.Conf.HaproxyBinaryPath,
 		SockFile: filepath.Join(proxy.Datadir+"/var", "/haproxy.stats.sock"),
