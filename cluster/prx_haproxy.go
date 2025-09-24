@@ -410,8 +410,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 				host = backend_ip_host[host]
 			}
 			srv := cluster.GetServerFromURL(host)
-
-			if srv.Id != line[1] {
+			if srv != nil && srv.Id != line[1] {
 				cluster.SetState("WARN0144", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0144"], line[1], srv.Id, host), ErrFrom: "HAProxy", ServerUrl: srv.URL})
 			}
 
