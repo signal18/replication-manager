@@ -411,6 +411,10 @@ func (proxy *HaproxyProxy) Refresh() error {
 			}
 			srv := cluster.GetServerFromURL(host)
 
+			if srv.Id != line[1] {
+				cluster.SetState("WARN0144", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0144"], line[1], srv.Id, host), ErrFrom: "HAProxy", ServerUrl: srv.URL})
+			}
+
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "HAProxy stat lookup reader: host %s translated to %s", line[73], host)
 
 			if srv != nil {
