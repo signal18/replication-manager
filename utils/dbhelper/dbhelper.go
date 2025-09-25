@@ -3608,15 +3608,15 @@ func FetchLogsToBufferTable(conn *sqlx.Conn, version *version.Version, table str
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	if _, err := conn.ExecContext(ctx, query); err != nil {
 		cancel()
-		return fmt.Errorf("Unable to create drop replication_manager_schema.%s: %s", desttablename, err.Error())
+		return fmt.Errorf("Unable to create drop replication_manager_schema.%s: %s", copytablename, err.Error())
 	}
 	cancel()
 
-	query = "CREATE TABLE `replication_manager_schema`." + copytablename + " LIKE `mysql`." + table
+	query = "CREATE TABLE IF NOT EXISTS `replication_manager_schema`." + copytablename + " LIKE `mysql`." + table
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	if _, err := conn.ExecContext(ctx, query); err != nil {
 		cancel()
-		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", copytablename, err.Error())
 	}
 	cancel()
 
@@ -3709,6 +3709,14 @@ func MoveLogsToDailyTable(conn *sqlx.Conn, version *version.Version, table strin
 	if _, err := conn.ExecContext(ctx, query); err != nil {
 		cancel()
 		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", desttablename, err.Error())
+	}
+	cancel()
+
+	query = "CREATE TABLE IF NOT EXISTS `replication_manager_schema`." + copytablename + " LIKE `mysql`." + table
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	if _, err := conn.ExecContext(ctx, query); err != nil {
+		cancel()
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", copytablename, err.Error())
 	}
 	cancel()
 
