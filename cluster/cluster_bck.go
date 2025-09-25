@@ -136,7 +136,7 @@ func (cluster *Cluster) ResticFetchRepo() error {
 	_, err := cluster.ResticRepo.AddFetchTask(true)
 	if err != nil {
 		if !cluster.ResticRepo.CanInitRepo {
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0096"], "restic repo cannot be initialized"), ErrFrom: "BACKUP"})
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 		} else if cluster.ResticRepo.CanFetch && cluster.ResticRepo.HasLocks {
 			cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticRepo.GetRepoPath()), ErrFrom: "BACKUP"})
 		} else {
