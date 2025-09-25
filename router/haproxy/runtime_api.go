@@ -46,17 +46,17 @@ func (r *Runtime) GetVersion() (string, error) {
 	return string(result), nil
 }
 
-func (r *Runtime) SetMaster(host string, port string) (string, error) {
+func (r *Runtime) SetMaster(pool string, host string, port string) (string, error) {
 
 	if net.ParseIP(host) == nil {
-		return r.SetMasterFQDN(host, port)
+		return r.SetMasterFQDN(pool, host, port)
 	}
 	conn, err := net.DialTimeout("tcp", r.Host+":"+r.Port, DefaultTimeout)
 	if err != nil {
 		return "", err
 	}
 	defer conn.Close()
-	_, err = conn.Write([]byte("set server service_write/leader addr " + host + " port " + port + "\n"))
+	_, err = conn.Write([]byte("set server " + pool + "/leader addr " + host + " port " + port + "\n"))
 	if err != nil {
 
 		return "", err
@@ -70,13 +70,13 @@ func (r *Runtime) SetMaster(host string, port string) (string, error) {
 	return string(result), nil
 }
 
-func (r *Runtime) SetMasterFQDN(host string, port string) (string, error) {
+func (r *Runtime) SetMasterFQDN(pool string, host string, port string) (string, error) {
 	conn, err := net.DialTimeout("tcp", r.Host+":"+r.Port, DefaultTimeout)
 	if err != nil {
 		return "", err
 	}
 	defer conn.Close()
-	_, err = conn.Write([]byte("set server service_write/leader fqdn " + host + " port " + port + "\n"))
+	_, err = conn.Write([]byte("set server " + pool + "/leader fqdn " + host + " port " + port + "\n"))
 	if err != nil {
 
 		return "", err

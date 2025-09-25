@@ -2635,16 +2635,27 @@ func applyIsActive(oldValue bool, isactive *bool) bool {
 	return *isactive
 }
 
+func GetApiChangeLogFormat(name, value string) (string, []interface{}) {
+	switch name {
+	case "replication-credential", "db-servers-credential", "proxysql-servers-credential", "proxy-servers-backend-max-connections", "proxy-servers-backend-max-replication-lag", "maxscale-servers-credential", "shardproxy-servers-credential", "mail-smtp-password", "mail-smtp-user", "mail-to", "mail-from", "cloud18-gitlab-user", "cloud18-gitlab-password", "backup-restic-aws-access-key-id", "backup-restic-aws-access-secret", "backup-restic-password", "cloud18-dba-user-credentials", "cloud18-sponsor-user-credentials":
+		return "API receive set setting %s to ****", []interface{}{name}
+	default:
+		return "API receive set setting %s to %s", []interface{}{name, value}
+	}
+}
+
 func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, name string, value string) error {
 	var isactive *bool = setIsActive(value)
 	var err error
 
+	fmtlog, logargs := GetApiChangeLogFormat(name, value)
+
 	//not immutable
 	if !mycluster.Conf.IsVariableImmutable(name) {
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", fmtlog, logargs...)
 	} else {
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", fmtlog, logargs...)
 	}
 
 	switch name {
@@ -3714,12 +3725,15 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 func (repman *ReplicationManager) setRepmanSetting(name string, value string) error {
 	var isactive bool = strings.ToLower(value) == "on"
 	var v int
+
+	fmtLog, logArgs := GetApiChangeLogFormat(name, value)
+
 	//not immutable
 	if !repman.Conf.IsVariableImmutable(name) {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", fmtLog, logArgs...)
 	} else {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Overwriting an immutable parameter defined in config , please use config-merge command to preserve them between restart")
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", "API receive set setting %s", name)
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, "INFO", fmtLog, logArgs...)
 	}
 
 	switch name {
