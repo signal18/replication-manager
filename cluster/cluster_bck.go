@@ -9,6 +9,7 @@ package cluster
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/dustin/go-humanize"
@@ -16,6 +17,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
@@ -140,9 +142,64 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		} else {
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
 		}
+	} else {
+		if _, err2 := os.Stat(filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic.config.bak")); os.IsNotExist(err2) {
+			if err2 := cluster.BackupResticConfig(); err2 != nil {
+				cluster.SetState("WARN0145", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0145"], err2), ErrFrom: "BACKUP"})
+			}
+		}
 	}
 
 	return err
+}
+
+func (cluster *Cluster) BackupResticConfig() error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	repopath := cluster.ResticRepo.GetRepoPath()
+	if repopath == "" {
+		return fmt.Errorf("restic repo path is empty")
+	}
+
+	dest := filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic.config.bak")
+	src := filepath.Join(repopath, "config")
+
+	err := misc.CopyFile(src, dest)
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic config file backed up to %s", dest)
+	return nil
+}
+
+func (cluster *Cluster) RestoreResticConfig(force bool) error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	repopath := cluster.ResticRepo.GetRepoPath()
+	if repopath == "" {
+		return fmt.Errorf("restic repo path is empty")
+	}
+
+	_, err := os.Stat(filepath.Join(repopath, "config"))
+	if !os.IsNotExist(err) && !force {
+		return fmt.Errorf("restic config file already exists in repo path %s", repopath)
+	}
+
+	dest := filepath.Join(repopath, "config")
+	src := filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic.config.bak")
+
+	err = misc.CopyFile(src, dest)
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic config file restored from %s", src)
+	return nil
 }
 
 func (cluster *Cluster) ResticUnlockRepo() error {

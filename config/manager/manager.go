@@ -753,6 +753,12 @@ func (cm *ConfigManager) PushConfigToGit(conf *config.Config, clusterList []stri
 				cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: jsonPath, W: w, WaitGroup: &cwg})
 			}
 		}
+
+		// Add restic.config.bak if it exists (this will store the restic config which is crucial in case of missing restic config)
+		if _, err := os.Stat(filepath.Join(path, name, "restic.config.bak")); !os.IsNotExist(err) {
+			cwg.Add(1)
+			cm.gitManager.CommitManager.AddFileToCommit(GitAddTask{Cluster: name, Filename: filepath.Join(name, "restic.config.bak"), W: w, WaitGroup: &cwg})
+		}
 	}
 
 	// Add default.toml if it exists
