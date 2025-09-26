@@ -57,6 +57,7 @@ var tests = []string{
 	"testSlaReplAllSlavesDelayNoSemiSync",
 	"testMasterSuspect",
 	"testMasterNil",
+	"testRunSysbenchTPCPerMinuteIncreaseThreads",
 }
 
 const recoverTime = 8

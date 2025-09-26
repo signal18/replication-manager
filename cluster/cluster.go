@@ -256,8 +256,9 @@ type Cluster struct {
 	SlavesConnected        int
 	clog                   *clog.Logger `json:"-"`
 	*ClusterGraphite
-	VersionsMap    *config.VersionsMap
-	SessionManager *tty.SessionManager `json:"-"`
+	VersionsMap         *config.VersionsMap
+	SessionManager      *tty.SessionManager `json:"-"`
+	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 }
 
 type SlavesOldestMasterFile struct {
