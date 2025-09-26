@@ -13,6 +13,9 @@ import (
 )
 
 func (regtest *RegTest) TestRunSysbenchTPCPerMinuteIncreaseThreads(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
+	oldtest := cluster.Conf.SysbenchTest
+	cluster.Conf.SysbenchTest = "tpcc"
 	cluster.RunSysbenchTPCPerMinuteIncreaseThreads()
+	cluster.Conf.SysbenchTest = oldtest
 	return true
 }

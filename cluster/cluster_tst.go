@@ -254,10 +254,10 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, mode, requests, threads, "run")
 	if cluster.Conf.SysbenchV1 {
 		test = cluster.Conf.SysbenchTest
-		tablesize = "--table-size=1000000"
-		threads = "--threads=" + strconv.Itoa(cluster.Conf.SysbenchThreads)
+		tablesize = "--table-size=" + mySize
+		threads = "--threads=" + myThreads
 		requests = "" //			--events=N
-		time = "--time=" + strconv.Itoa(cluster.Conf.SysbenchTime)
+		time = "--time=" + myTime
 		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
 		if cluster.Conf.SysbenchTest == "tpcc" {
 			test = cluster.Conf.ShareDir + "/submodules/sysbench-tpcc" + cluster.Conf.SysbenchTest + ".lua"
