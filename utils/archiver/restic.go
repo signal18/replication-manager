@@ -21,20 +21,24 @@ import (
 type TaskType int
 
 const (
-	PurgeTask TaskType = iota
+	FetchTask TaskType = iota
+	PurgeTask
 	BackupTask
-	FetchTask
 	UnlockTask
 )
 
 func GetTaskName(TaskType TaskType) string {
 	switch TaskType {
 	case 0:
-		return "purge"
+		return "fetch"
 	case 1:
 		return "backup"
 	case 2:
-		return "fetch"
+		return "purge"
+	case 3:
+		return "unlock"
+	case 4:
+		return "changepass"
 	default:
 		return "Unknown"
 	}
@@ -42,13 +46,14 @@ func GetTaskName(TaskType TaskType) string {
 
 // Task represents a queue task
 type ResticTask struct {
-	ID         int               `json:"task_id"`
-	DirPath    string            `json:"dir_path"`
-	Tags       []string          `json:"tags"`
-	Type       TaskType          `json:"task_type"`
-	Opt        ResticPurgeOption `json:"opt"`
-	ErrorState state.State       `json:"error_state"`
-	Result     chan ResticResult `json:"-"` // Only used if caller needs the result
+	ID          int               `json:"task_id"`
+	DirPath     string            `json:"dir_path"`
+	NewPassFile string            `json:"new_pass_file"`
+	Tags        []string          `json:"tags"`
+	Type        TaskType          `json:"task_type"`
+	Opt         ResticPurgeOption `json:"opt"`
+	ErrorState  state.State       `json:"error_state"`
+	Result      chan ResticResult `json:"-"` // Only used if caller needs the result
 }
 
 // ResticResult holds the output or error of a task
@@ -138,6 +143,19 @@ func (repo *ResticRepo) GetRepoPath() string {
 	return ""
 }
 
+func (repo *ResticRepo) GetCacheDirPath() string {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	for _, env := range repo.Env {
+		if strings.HasPrefix(env, "RESTIC_CACHE_DIR") {
+			return strings.Split(env, "=")[1]
+		}
+	}
+
+	return ""
+}
+
 // GenerateTaskID ensures unique task IDs
 func (repo *ResticRepo) GenerateTaskID() int {
 	repo.Mutex.Lock()
@@ -213,14 +231,14 @@ func (repo *ResticRepo) worker() {
 
 		var result ResticResult
 		switch task.Type {
+		case FetchTask:
+			err := repo.ResticFetchRepo()
+			result = ResticResult{TaskID: task.ID, Error: err}
 		case PurgeTask:
 			err := repo.ResticPurgeRepo(task.Opt)
 			result = ResticResult{TaskID: task.ID, Error: err}
 		case BackupTask:
 			err := repo.ResticBackup(task.DirPath, task.Tags)
-			result = ResticResult{TaskID: task.ID, Error: err}
-		case FetchTask:
-			err := repo.ResticFetchRepo()
 			result = ResticResult{TaskID: task.ID, Error: err}
 		case UnlockTask:
 			err := repo.ResticUnlockRepo()
@@ -290,10 +308,10 @@ func (repo *ResticRepo) AddPurgeTask(opt ResticPurgeOption, waitForResult bool) 
 	return nil, nil
 }
 
-func (repo *ResticRepo) AddBackupTask(taskType TaskType, dirpath string, tags []string, waitForResult bool) (*ResticResult, error) {
+func (repo *ResticRepo) AddBackupTask(dirpath string, tags []string, waitForResult bool) (*ResticResult, error) {
 	task := ResticTask{
 		ID:      repo.GenerateTaskID(),
-		Type:    taskType,
+		Type:    BackupTask,
 		DirPath: dirpath,
 		Tags:    tags,
 	}
@@ -795,5 +813,94 @@ func (repo *ResticRepo) ResticUnlockRepo() error {
 	}
 
 	repo.HasLocks = false
+	return nil
+}
+
+// ResticChangePassword changes the repository password
+func (repo *ResticRepo) ResticAddPassword(newpassfile string) error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.ResticAddPassword(newpassfile)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Prepare the arguments for the "backup" command
+	args := []string{"key", "add", "--new-password-file", newpassfile}
+
+	// Execute the Restic "list locks" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	if err != nil {
+		return fmt.Errorf("failed to add repo password: %v, stderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(string(stdout), "saved new key as") {
+		return fmt.Errorf("failed to add new key: %s. stderr: %s", stdout, stderr)
+	}
+
+	return nil
+}
+
+type ResticKey struct {
+	Current  bool   `json:"current"`
+	Id       string `json:"id"`
+	UserName string `json:"userName"`
+	HostName string `json:"hostName"`
+	Created  string `json:"created"`
+}
+
+func (repo *ResticRepo) ResticKeyList() ([]ResticKey, error) {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.ResticKeyList()
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Prepare the arguments for the "key list" command
+	args := []string{"key", "list", "--json"}
+
+	// Execute the Restic "key list" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
+	if err != nil {
+		if strings.Contains(string(stderr), "no such file or directory") {
+			_ = repo.ResticInitRepo(false)
+		}
+		// Handle error (including stderr)
+		return nil, fmt.Errorf("failed to list repo keys: %v, stderr: %s", err, stderr)
+	}
+
+	var keys []ResticKey
+	if err := json.Unmarshal(stdout, &keys); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal repo keys: %v", err)
+	}
+
+	return keys, nil
+}
+
+func (repo *ResticRepo) ResticRemoveKey(keyid string) error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.ResticRemoveKey(keyid)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Prepare the arguments for the "key remove" command
+	args := []string{"key", "remove", keyid}
+
+	// Execute the Restic "key remove" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	if err != nil {
+		return fmt.Errorf("failed to remove repo key: %v, stderr: %s", err, stderr)
+	}
+
+	if !strings.Contains(string(stdout), "removed key") {
+		return fmt.Errorf("failed to remove key: %s. stderr: %s", stdout, stderr)
+	}
+
 	return nil
 }

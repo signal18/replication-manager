@@ -24,7 +24,7 @@ import (
 
 func (cluster *Cluster) ResticGetEnv() []string {
 	newEnv := append(os.Environ(), "RESTIC_PASSWORD="+cluster.Conf.GetDecryptedValue("backup-restic-password"))
-	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+os.Getenv("HOME")+"/.cache/restic")
+	newEnv = append(newEnv, "RESTIC_CACHE_DIR="+cluster.Conf.WorkingDir+"/"+cluster.Name+"/.cache/restic")
 
 	if cluster.Conf.BackupResticAws {
 		newEnv = append(newEnv, "AWS_ACCESS_KEY_ID="+cluster.Conf.BackupResticAwsAccessKeyId)
@@ -368,4 +368,90 @@ func (cluster *Cluster) CheckAllBackupFreeSpace() {
 	}
 
 	wg.Wait()
+}
+
+// TODO: Restic password change
+func (cluster *Cluster) ChangeResticPassword(newpass string) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("Restic backup is not enabled")
+	}
+
+	if newpass == "" {
+		return fmt.Errorf("New password is empty")
+	}
+
+	if newpass == cluster.Conf.GetDecryptedValue("backup-restic-password") {
+		return fmt.Errorf("New password is the same as the current one")
+	}
+
+	oldvalue := cluster.Conf.GetDecryptedValue("backup-restic-password")
+
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+
+	keylist, err := cluster.ResticRepo.ResticKeyList()
+	if err != nil {
+		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
+	keylen := len(keylist)
+	if keylen == 0 {
+		return fmt.Errorf("No keys found in the restic repository")
+	}
+
+	oldkeyid := ""
+	for _, key := range keylist {
+		if key.Current {
+			oldkeyid = key.Id
+			break
+		}
+	}
+
+	if _, err := os.Stat(cluster.ResticRepo.GetCacheDirPath()); os.IsNotExist(err) {
+		err := os.MkdirAll(cluster.ResticRepo.GetCacheDirPath(), os.ModePerm)
+		if err != nil {
+			return fmt.Errorf("Error creating restic cache directory: %s", err)
+		}
+	}
+
+	newpassfile := filepath.Join(cluster.ResticRepo.GetCacheDirPath(), "newpass.txt")
+	err = os.WriteFile(newpassfile, []byte(newpass), 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write new password file: %w", err)
+	}
+
+	defer func() {
+		if _, err := os.Stat(newpassfile); err == nil {
+			err := os.Remove(newpassfile)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to remove new password file: %s", err)
+			}
+		}
+	}()
+
+	err = cluster.ResticRepo.ResticAddPassword(newpassfile)
+	if err != nil {
+		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
+	cluster.Conf.BackupResticPassword = newpass
+	var new_secret config.Secret
+	new_secret.Value = cluster.Conf.BackupResticPassword
+	new_secret.OldValue = oldvalue
+	cluster.Conf.Secrets["backup-restic-password"] = new_secret
+
+	// Reload env with new password
+	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+
+	// Remove old key using new password
+	err = cluster.ResticRepo.ResticRemoveKey(oldkeyid)
+	if err != nil {
+		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
+
+	return nil
 }
