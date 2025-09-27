@@ -541,7 +541,7 @@ fi
 
 if [ -f "$REPMAN_CLIENT" ]; then
     ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-    $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" > $LOG_DIR/repman.out
+    $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --log-dir="$LOG_DIR" > $LOG_DIR/repman.out
 fi
 
 #####################
@@ -652,7 +652,7 @@ for job in "${JOBS[@]}"; do
             
             # Check if the error log is not empty
             if [ -s $ERROLOG ]; then
-                cat $ERROLOG >> $ERRROLOG'_'$(date '+%Y-%m-%d')
+                cat $ERROLOG >> $ERROLOG'_'$(date '+%Y-%m-%d')
                 cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
                 if [ -f $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
                 gzip $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
