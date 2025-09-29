@@ -371,7 +371,7 @@ func (cluster *Cluster) CheckAllBackupFreeSpace() {
 }
 
 // TODO: Restic password change
-func (cluster *Cluster) ChangeResticPassword(newpass string) error {
+func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("Restic backup is not enabled")
 	}
@@ -384,13 +384,13 @@ func (cluster *Cluster) ChangeResticPassword(newpass string) error {
 		return fmt.Errorf("New password is the same as the current one")
 	}
 
-	oldvalue := cluster.Conf.GetDecryptedValue("backup-restic-password")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Changing restic password for cluster %s", cluster.Name)
 
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
 
 	keylist, err := cluster.ResticRepo.ResticKeyList()
 	if err != nil {
-		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to list restic keys: %s", err)
 		return err
 	}
 
@@ -412,34 +412,43 @@ func (cluster *Cluster) ChangeResticPassword(newpass string) error {
 		if err != nil {
 			return fmt.Errorf("Error creating restic cache directory: %s", err)
 		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic cache directory created: %s", cluster.ResticRepo.GetCacheDirPath())
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Adding new key to restic repository")
 
 	newpassfile := filepath.Join(cluster.ResticRepo.GetCacheDirPath(), "newpass.txt")
 	err = os.WriteFile(newpassfile, []byte(newpass), 0600)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to write new password file: %s", err)
 		return fmt.Errorf("failed to write new password file: %w", err)
 	}
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Temporary password file created: %s", newpassfile)
+
 	defer func() {
 		if _, err := os.Stat(newpassfile); err == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Removing temporary password file")
 			err := os.Remove(newpassfile)
 			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed to remove new password file: %s", err)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to remove temporary password file: %s", err)
 			}
 		}
 	}()
 
 	err = cluster.ResticRepo.ResticAddPassword(newpassfile)
 	if err != nil {
-		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to add new key to restic repository: %s", err)
 		return err
 	}
 
-	cluster.Conf.BackupResticPassword = newpass
-	var new_secret config.Secret
-	new_secret.Value = cluster.Conf.BackupResticPassword
-	new_secret.OldValue = oldvalue
-	cluster.Conf.Secrets["backup-restic-password"] = new_secret
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "New key added to restic repository successfully. Saving new password.")
+
+	// Save new password in configuration
+	cluster.SetResticPassword(newpass)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "New restic password saved in configuration successfully. Removing old key from repository using new password.")
 
 	// Reload env with new password
 	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
@@ -447,11 +456,11 @@ func (cluster *Cluster) ChangeResticPassword(newpass string) error {
 	// Remove old key using new password
 	err = cluster.ResticRepo.ResticRemoveKey(oldkeyid)
 	if err != nil {
-		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], err), ErrFrom: "BACKUP"})
-		return err
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to remove old key from restic repository: %s", err)
+		return nil
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
 
 	return nil
 }

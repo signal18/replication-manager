@@ -19,10 +19,10 @@ import { DataTable } from '../../components/DataTable'
 import ResticPurgeStrategy from './ResticPurgeStrategy'
 import NumberInput from '../../components/NumberInput'
 
-const sizeGenerator = () => { 
+const sizeGenerator = () => {
   const result = []
   let i = 1024;
-  while( i <= 1024 * 1024 * 1024) {
+  while (i <= 1024 * 1024 * 1024) {
     result.push(i)
     i = i * 2
   }
@@ -403,7 +403,7 @@ The script will be executed with the following parameters:
         </Flex>
       )
     },
-   {
+    {
       key: 'Use Compression',
       value: (
         <RMSwitch
@@ -611,126 +611,120 @@ The script will be executed with the following parameters:
             />
           )
         },
-        ...(selectedCluster?.config?.backupRestic ? [
-          {
-            key: 'Backup restic binary path',
-            value: (
-              <TextForm
-                value={selectedCluster?.config?.backupResticBinaryPath}
-                confirmTitle={`Confirm backup-restic-binary-path to `}
-                className={styles.textbox}
-                onSave={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'backup-restic-binary-path',
-                      value: value
-                    })
-                  )
-                }
-              />
-            )
-          },
-          {
-            key: 'Backup restic password',
-            value: (
-              <TextForm
-                value={selectedCluster?.config?.backupResticPassword}
-                confirmTitle={`Confirm backup-restic-password to `}
-                className={styles.textbox}
-                onSave={(value) =>
-                  dispatch(
-                    setSetting({
-                      clusterName: selectedCluster?.name,
-                      setting: 'backup-restic-password',
-                      value: btoa(value)
-                    })
-                  )
-                }
-              />
-            )
-          },
-          {
-            key: 'Backup restic aws',
-            value: (
-              <RMSwitch
-                isChecked={selectedCluster?.config?.backupResticAws}
-                isDisabled={user?.grants['cluster-settings'] == false}
-                confirmTitle={'Confirm switch settings for backup-restic-aws?'}
-                onChange={() =>
-                  dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-aws' }))
-                }
-              />
-            )
-          },
-          ...(selectedCluster?.config?.backupResticAws ? [
-            {
-              key: 'Backup restic access key id',
-              value: (
-                <TextForm
-                  value={selectedCluster?.config?.backupResticAwsAccessKeyId}
-                  confirmTitle={`Confirm backup-restic-binary-path to `}
-                  className={styles.textbox}
-                  onSave={(value) =>
-                    dispatch(
-                      setSetting({
-                        clusterName: selectedCluster?.name,
-                        setting: 'backup-restic-aws-access-key-id',
-                        value: value
-                      })
-                    )
-                  }
-                />
-              )
-            },
-            {
-              key: 'Backup restic aws access secret',
-              value: (
-                <TextForm
-                  value={selectedCluster?.config?.backupResticAwsAccessSecret}
-                  confirmTitle={`Confirm backup-restic-aws-access-secret to `}
-                  className={styles.textbox}
-                  onSave={(value) =>
-                    dispatch(
-                      setSetting({
-                        clusterName: selectedCluster?.name,
-                        setting: 'backup-restic-aws-access-secret',
-                        value: btoa(value)
-                      })
-                    )
-                  }
-                />
-              )
-            },
-            {
-              key: 'Backup restic aws bucket',
-              value: (
-                <TextForm
-                  value={selectedCluster?.config?.backupResticRepository}
-                  confirmTitle={`Confirm backup-restic-repository to `}
-                  className={styles.textbox}
-                  onSave={(value) =>
-                    dispatch(
-                      setSetting({
-                        clusterName: selectedCluster?.name,
-                        setting: 'backup-restic-repository',
-                        value: btoa(value)
-                      })
-                    )
-                  }
-                />
-              )
-            }
-          ] : []
-          ),
-          {
-            key: 'Restic Purge Strategy',
-            value: (
-              <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
-            )
-          }
-        ] : []
-        )
+        {
+          key: 'Backup restic binary path',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticBinaryPath}
+              confirmTitle={`Confirm backup-restic-binary-path to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-binary-path',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup restic password',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticPassword}
+              confirmTitle={`Confirm backup-restic-password to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-password',
+                    value: btoa(value)
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup restic aws',
+          value: (
+            <RMSwitch
+              isChecked={selectedCluster?.config?.backupResticAws}
+              isDisabled={user?.grants['cluster-settings'] == false}
+              confirmTitle={'Confirm switch settings for backup-restic-aws?'}
+              onChange={() =>
+                dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-aws' }))
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup restic access key id',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticAwsAccessKeyId}
+              confirmTitle={`Confirm backup-restic-aws-access-key-id to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-aws-access-key-id',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup restic aws access secret',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticAwsAccessSecret}
+              confirmTitle={`Confirm backup-restic-aws-access-secret to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-aws-access-secret',
+                    value: btoa(value)
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Backup restic aws bucket',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticRepository}
+              confirmTitle={`Confirm backup-restic-repository to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-repository',
+                    value: btoa(value)
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Restic Purge Strategy',
+          value: (
+            <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />
+          )
+        }
       ]
     },
     {

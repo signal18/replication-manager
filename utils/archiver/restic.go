@@ -130,6 +130,25 @@ func (repo *ResticRepo) SetEnv(env []string) {
 	repo.Env = env
 }
 
+// UpdateEnvKey updates the environment variable for the Restic repository
+func (repo *ResticRepo) UpdateEnvKey(key, value string) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	found := false
+	for i, env := range repo.Env {
+		if strings.HasPrefix(env, key+"=") {
+			repo.Env[i] = fmt.Sprintf("%s=%s", key, value)
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		repo.Env = append(repo.Env, fmt.Sprintf("%s=%s", key, value))
+	}
+}
+
 func (repo *ResticRepo) GetRepoPath() string {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
@@ -829,7 +848,7 @@ func (repo *ResticRepo) ResticAddPassword(newpassfile string) error {
 	// Prepare the arguments for the "backup" command
 	args := []string{"key", "add", "--new-password-file", newpassfile}
 
-	// Execute the Restic "list locks" command using RunCommand
+	// Execute the Restic "key add" command using RunCommand
 	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
 	if err != nil {
 		return fmt.Errorf("failed to add repo password: %v, stderr: %s", err, stderr)
@@ -900,6 +919,32 @@ func (repo *ResticRepo) ResticRemoveKey(keyid string) error {
 
 	if !strings.Contains(string(stdout), "removed key") {
 		return fmt.Errorf("failed to remove key: %s. stderr: %s", stdout, stderr)
+	}
+
+	return nil
+}
+
+func (repo *ResticRepo) ResticTestPassword(newpass string) error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.ResticTestPassword(newpass)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Temporarily add the new password file to the environment
+	originalEnv := repo.Env
+	repo.UpdateEnvKey("RESTIC_PASSWORD", newpass)
+	defer func() { repo.Env = originalEnv }() // Restore original env after function
+
+	// Test the new password by listing keys
+	args := []string{"key", "list", "--json"}
+
+	// Execute the Restic "key list" command using RunCommand
+	_, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
+	if err != nil {
+		return fmt.Errorf("failed to test repo password: %v, stderr: %s", err, stderr)
 	}
 
 	return nil

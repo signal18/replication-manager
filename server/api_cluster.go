@@ -3105,11 +3105,40 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		mycluster.Conf.BackupResticPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.BackupResticPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-password")
-		mycluster.Conf.Secrets["backup-restic-password"] = new_secret
+		newval := string(val)
+		if mycluster.Conf.BackupRestic {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic backup is already enabled, testing new password validity")
+
+			// Test if new password is valid. If yes, can be used directly
+			err = mycluster.ResticRepo.ResticTestPassword(newval)
+			// If not valid, test if old password is valid (rotate password)
+			if err != nil {
+				err2 := mycluster.ResticRepo.ResticTestPassword(mycluster.Conf.GetDecryptedValue("backup-restic-password"))
+				if err2 == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Old restic password is valid, rotating password to new one")
+
+					// Old password is valid, we can use it to rotate password using ChangeResticRepoPassword
+					err = mycluster.ChangeResticRepoPassword(newval)
+					if err != nil {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to change restic password: "+err.Error())
+						return errors.New("Unable to change restic password: " + err.Error())
+					}
+				} else {
+					// Old password is not valid, just use new password (maybe first time setup)
+					// If both old and new password are not valid, this will be detected later when trying to do a backup
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Both old and new restic password are not valid, assuming first time setup")
+					mycluster.SetResticPassword(newval)
+				}
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New restic password is valid, using it")
+				mycluster.SetResticPassword(newval)
+			}
+		} else {
+			mycluster.SetResticPassword(newval)
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password updated")
+
 	case "backup-mydumper-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
