@@ -85,7 +85,7 @@ type Cluster struct {
 	Apps                          appList                `json:"apps" groups:"apps" `
 	AppIdList                     []string               `json:"appServers" groups:"web"`
 	Proxies                       proxyList              `json:"proxies" groups:"apps"`
-	ProxyIdList                   []string               `json:"proxy-list" groups:"web"`
+	ProxyIdList                   []string               `json:"proxyServers" groups:"web"`
 	FailoverCtr                   int                    `json:"failoverCounter" groups:"web"`
 	FailoverTs                    int64                  `json:"failoverLastTime" groups:"web"`
 	Status                        string                 `json:"activePassiveStatus" groups:"web"`
