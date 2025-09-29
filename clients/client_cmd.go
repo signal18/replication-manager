@@ -228,7 +228,7 @@ func cliClusterInServerList() bool {
 
 func initServerApiFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
-	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Paswword of replication-manager")
+	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -320,6 +320,7 @@ func initPrintDefaultsFlags(cmd *cobra.Command) {
 }
 
 func init() {
+	viper.SetEnvPrefix("REPLICATION_MANAGER_CLI")
 
 	rootClientCmd.AddCommand(clientConsoleCmd)
 	initServerApiFlags(clientConsoleCmd)
@@ -367,6 +368,8 @@ func init() {
 
 	rootClientCmd.AddCommand(printDefaultsCmd)
 	initPrintDefaultsFlags(printDefaultsCmd)
+
+	viper.AutomaticEnv()
 }
 
 func cliGetClusters() ([]string, error) {
