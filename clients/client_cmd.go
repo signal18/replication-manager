@@ -226,16 +226,9 @@ func cliClusterInServerList() bool {
 	return true
 }
 
-func getenv(key, fallback string) string {
-    if value, ok := os.LookupEnv(key); ok {
-        return value
-    }
-    return fallback
-}
-
 func initServerApiFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVar(&cliUser, "user", getenv("REPMGR_USERNAME", "admin"), "User of replication-manager (alternative: REPMGR_USERNAME env var)")
-	cmd.Flags().StringVar(&cliPassword, "password", getenv("REPMGR_PASSWORD", "repman"), "Password of replication-manager (alternative: REPMGR_PASSWORD env var)")
+	cmd.Flags().StringVar(&cliUser, "user", "admin", "User of replication-manager")
+	cmd.Flags().StringVar(&cliPassword, "password", "repman", "Password of replication-manager")
 	cmd.Flags().StringVar(&cliPort, "port", "10005", "TLS port of  replication-manager")
 	cmd.Flags().StringVar(&cliHost, "host", "127.0.0.1", "Host of replication-manager")
 	cmd.Flags().StringVar(&cliCert, "cert", "", "Public certificate")
@@ -327,6 +320,7 @@ func initPrintDefaultsFlags(cmd *cobra.Command) {
 }
 
 func init() {
+	viper.SetEnvPrefix("REPLICATION_MANAGER_CLI")
 
 	rootClientCmd.AddCommand(clientConsoleCmd)
 	initServerApiFlags(clientConsoleCmd)
@@ -374,6 +368,8 @@ func init() {
 
 	rootClientCmd.AddCommand(printDefaultsCmd)
 	initPrintDefaultsFlags(printDefaultsCmd)
+
+	viper.AutomaticEnv()
 }
 
 func cliGetClusters() ([]string, error) {
