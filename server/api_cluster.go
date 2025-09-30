@@ -7493,12 +7493,12 @@ func (repman *ReplicationManager) handlerMuxClusterCanFetchLogs(w http.ResponseW
 		}
 
 		if mycluster.IsInFailover() {
-			http.Error(w, "Cluster is in failover. Fetch logs not allowed", 500)
+			http.Error(w, "false", 500)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Fetch logs allowed"))
+		w.Write([]byte("true"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
