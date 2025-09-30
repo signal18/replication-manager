@@ -55,6 +55,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCluster)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/can-fetch-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCanFetchLogs)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/opensvc-gateway", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGatewayServiceNodes)),
@@ -7460,6 +7465,40 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 			http.Error(w, "Error writing response: "+err.Error(), 500)
 			return
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterCanFetchLogs handles the HTTP request to check if a cluster can fetch logs.
+// @Summary Check if Cluster Can Fetch Logs
+// @Description Checks if the specified cluster is allowed to fetch logs.
+// @Tags ClusterLogs
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Fetch logs allowed"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Cluster is in failover. Fetch logs not allowed"
+// @Router /api/clusters/{clusterName}/can-fetch-logs [get]
+func (repman *ReplicationManager) handlerMuxClusterCanFetchLogs(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.IsInFailover() {
+			http.Error(w, "Cluster is in failover. Fetch logs not allowed", 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Fetch logs allowed"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
