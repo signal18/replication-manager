@@ -216,6 +216,8 @@ var ClusterError = map[string]string{
 	"WARN0142":  "Not enough free space estimated for %s physical backup on %s. Mount: %s Free: %s Required: %s",
 	"WARN0143":  "Not enough free space estimated for binary log backup on %s. Mount: %s Free: %s Required: %s",
 	"WARN0144":  "HAProxy inconsistent server ID between haproxy %s and cluster %s for host %s",
+	"WARN0145":  "Failed to backup restic config file: %s",
+	"WARN0146":  "Failed to restore restic config file: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

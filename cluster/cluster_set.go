@@ -2603,3 +2603,11 @@ func (cluster *Cluster) SetDatabaseCredentials(role string, cred string) error {
 
 	return nil
 }
+
+func (cluster *Cluster) SetResticPassword(cred string) {
+	cluster.Conf.BackupResticPassword = cred
+	var new_secret config.Secret
+	new_secret.Value = cluster.Conf.BackupResticPassword
+	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-restic-password")
+	cluster.Conf.Secrets["backup-restic-password"] = new_secret
+}

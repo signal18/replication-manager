@@ -180,6 +180,8 @@ definitions:
         type: string
       status:
         type: string
+      svname:
+        type: string
     type: object
   cluster.Cluster:
     properties:
@@ -1956,6 +1958,8 @@ definitions:
         type: integer
       dbServersCredential:
         type: string
+      dbServersExecTimeout:
+        type: integer
       dbServersHosts:
         type: string
       dbServersIgnoredHosts:
@@ -2227,6 +2231,10 @@ definitions:
         type: integer
       logExternalScriptLevel:
         type: integer
+      logFetchErrorlogLevel:
+        type: integer
+      logFetchSlowqueryLevel:
+        type: integer
       logFile:
         type: string
       logFileLevel:
@@ -2349,6 +2357,8 @@ definitions:
         type: integer
       maxscalemBinaryPath:
         type: string
+      measurement:
+        type: boolean
       measurementAutoClampLimit:
         type: boolean
       monitoringAddress:
@@ -2556,6 +2566,8 @@ definitions:
       provAppMemory:
         type: string
       provAppTemplateRepo:
+        type: string
+      provAppTemplateRepoBranch:
         type: string
       provAppTemplateRepoPassword:
         type: string
@@ -2825,9 +2837,9 @@ definitions:
         type: boolean
       proxysqlBootstrapQueryRules:
         type: boolean
-      proxysqlBootstrapVariables:
+      proxysqlBootstrapUsers:
         type: boolean
-      proxysqlBootstrapyUsers:
+      proxysqlBootstrapVariables:
         type: boolean
       proxysqlDebug:
         type: boolean
@@ -5118,6 +5130,46 @@ paths:
       summary: Wait for databases to be ready for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop:
+    post:
+      consumes:
+      - application/json
+      description: Drops the monitoring configuration for a specific app in a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: appId
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: App monitor dropped successfully
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No app found with the provided app ID" or "Cluster Not Found
+          schema:
+            type: string
+      summary: Drop App Monitor
+      tags:
+      - Apps
   /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree:
     get:
       consumes:
@@ -6344,6 +6396,47 @@ paths:
       summary: Get App Substitution Variables
       tags:
       - Apps
+  /api/clusters/{clusterName}/apps/actions/get-app-template:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of the application template repository
+        for a specific cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Application template repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "400":
+          description: Invalid Git repository URL
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating Git client" or "Error getting repository tree"
+            or "No cluster
+          schema:
+            type: string
+      summary: Get App Template Repository Tree
+      tags:
+      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -6516,6 +6609,45 @@ paths:
           schema:
             type: string
       summary: Purge Restic Backup
+      tags:
+      - ClusterBackups
+  /api/clusters/{clusterName}/archives/restore-config/{force}:
+    post:
+      description: Restores the restic config for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - default: noforce
+        description: Force Restore
+        in: path
+        name: force
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Archives restore config done
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Restore Restic Config
       tags:
       - ClusterBackups
   /api/clusters/{clusterName}/archives/stats:

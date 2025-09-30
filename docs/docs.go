@@ -2229,6 +2229,123 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/apps/actions/get-app-template": {
+            "get": {
+                "description": "Retrieves the tree structure of the application template repository for a specific cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Get App Template Repository Tree",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Application template repository tree structure",
+                        "schema": {
+                            "$ref": "#/definitions/treehelper.FileTreeCache"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Git repository URL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating Git client\" or \"Error getting repository tree\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop": {
+            "post": {
+                "description": "Drops the monitoring configuration for a specific app in a cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Drop App Monitor",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "App monitor dropped successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No app found with the provided app ID\" or \"Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree": {
             "get": {
                 "description": "Retrieves the tree structure of a specified Git repository.",
@@ -4242,6 +4359,63 @@ const docTemplate = `{
                 "responses": {
                     "200": {
                         "description": "Archives purge queued",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/archives/restore-config/{force}": {
+            "post": {
+                "description": "Restores the restic config for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterBackups"
+                ],
+                "summary": "Restore Restic Config",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "noforce",
+                        "description": "Force Restore",
+                        "name": "force",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Archives restore config done",
                         "schema": {
                             "type": "string"
                         }
@@ -17007,6 +17181,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "svname": {
+                    "type": "string"
                 }
             }
         },
@@ -19663,6 +19840,9 @@ const docTemplate = `{
                 "dbServersCredential": {
                     "type": "string"
                 },
+                "dbServersExecTimeout": {
+                    "type": "integer"
+                },
                 "dbServersHosts": {
                     "type": "string"
                 },
@@ -20069,6 +20249,12 @@ const docTemplate = `{
                 "logExternalScriptLevel": {
                     "type": "integer"
                 },
+                "logFetchErrorlogLevel": {
+                    "type": "integer"
+                },
+                "logFetchSlowqueryLevel": {
+                    "type": "integer"
+                },
                 "logFile": {
                     "type": "string"
                 },
@@ -20250,6 +20436,9 @@ const docTemplate = `{
                 },
                 "maxscalemBinaryPath": {
                     "type": "string"
+                },
+                "measurement": {
+                    "type": "boolean"
                 },
                 "measurementAutoClampLimit": {
                     "type": "boolean"
@@ -20561,6 +20750,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "provAppTemplateRepo": {
+                    "type": "string"
+                },
+                "provAppTemplateRepoBranch": {
                     "type": "string"
                 },
                 "provAppTemplateRepoPassword": {
@@ -20965,10 +21157,10 @@ const docTemplate = `{
                 "proxysqlBootstrapQueryRules": {
                     "type": "boolean"
                 },
-                "proxysqlBootstrapVariables": {
+                "proxysqlBootstrapUsers": {
                     "type": "boolean"
                 },
-                "proxysqlBootstrapyUsers": {
+                "proxysqlBootstrapVariables": {
                     "type": "boolean"
                 },
                 "proxysqlDebug": {

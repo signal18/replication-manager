@@ -135,6 +135,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetArchivesTaskQueue)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/archives/restore-config", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesRestoreConfig)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/restore-config/{force}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesRestoreConfig)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/certificates", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCertificates)),
@@ -3095,11 +3105,40 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return errors.New("Unable to decode")
 		}
-		mycluster.Conf.BackupResticPassword = string(val)
-		var new_secret config.Secret
-		new_secret.Value = mycluster.Conf.BackupResticPassword
-		new_secret.OldValue = mycluster.Conf.GetDecryptedValue("backup-restic-password")
-		mycluster.Conf.Secrets["backup-restic-password"] = new_secret
+		newval := string(val)
+		if mycluster.Conf.BackupRestic {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic backup is already enabled, testing new password validity")
+
+			// Test if new password is valid. If yes, can be used directly
+			err = mycluster.ResticRepo.ResticTestPassword(newval)
+			// If not valid, test if old password is valid (rotate password)
+			if err != nil {
+				err2 := mycluster.ResticRepo.ResticTestPassword(mycluster.Conf.GetDecryptedValue("backup-restic-password"))
+				if err2 == nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Old restic password is valid, rotating password to new one")
+
+					// Old password is valid, we can use it to rotate password using ChangeResticRepoPassword
+					err = mycluster.ChangeResticRepoPassword(newval)
+					if err != nil {
+						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unable to change restic password: "+err.Error())
+						return errors.New("Unable to change restic password: " + err.Error())
+					}
+				} else {
+					// Old password is not valid, just use new password (maybe first time setup)
+					// If both old and new password are not valid, this will be detected later when trying to do a backup
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Both old and new restic password are not valid, assuming first time setup")
+					mycluster.SetResticPassword(newval)
+				}
+			} else {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New restic password is valid, using it")
+				mycluster.SetResticPassword(newval)
+			}
+		} else {
+			mycluster.SetResticPassword(newval)
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic password updated")
+
 	case "backup-mydumper-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
@@ -6575,6 +6614,57 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Sponsor partnership removed!"))
+}
+
+// handlerMuxArchivesRestoreConfig handles the HTTP request to restore the restic config for a given cluster.
+// @Summary Restore Restic Config
+// @Description Restores the restic config for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param force path string true "Force Restore" Enum(force, noforce) default(noforce)
+// @Success 200 {string} string "Archives restore config done"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/restore-config/{force} [post]
+func (repman *ReplicationManager) handlerMuxArchivesRestoreConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	var force bool
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+
+	if strings.ToLower(vars["force"]) == "force" {
+		force = true
+	}
+
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticRepo == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		err := mycluster.RestoreResticConfig(force)
+		if err != nil {
+			http.Error(w, "Error restoring restic config: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Archives restore config done"))
 }
 
 // handlerMuxArchivesFetch handles the HTTP request to fetch the restic snapshots for a given cluster.
