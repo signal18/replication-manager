@@ -753,6 +753,8 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
+					} else {
+						cluster.StateMachine.PreserveState("ERR00100")
 					}
 
 					wg.Wait()
@@ -762,7 +764,7 @@ func (cluster *Cluster) Run() {
 					cluster.SetState("ERR00092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00092"], cluster.Name, cluster.Topology, cluster.Conf.TopologyTarget), ErrFrom: "TOPO"})
 				}
 
-				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so elelection win but server is ignored see electFailoverCandidate
+				// AddChildServers can't be done before TopologyDiscover but need a refresh aquiring more fresh gtid vs current cluster so election win but server is ignored see electFailoverCandidate
 				err := cluster.AddChildServers()
 
 				if err != nil {
