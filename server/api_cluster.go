@@ -55,9 +55,9 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCluster)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/can-fetch-logs", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/can-run-jobs", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCanFetchLogs)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCanRunJobs)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/opensvc-gateway", negroni.New(
@@ -7481,8 +7481,8 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 // @Success 200 {string} string "Fetch logs allowed"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster" or "Cluster is in failover. Fetch logs not allowed"
-// @Router /api/clusters/{clusterName}/can-fetch-logs [get]
-func (repman *ReplicationManager) handlerMuxClusterCanFetchLogs(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/can-run-jobs [get]
+func (repman *ReplicationManager) handlerMuxClusterCanRunJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
