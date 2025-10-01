@@ -162,6 +162,7 @@ type Config struct {
 	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-stats-level" toml:"log-stats-level" json:"logStatsLevel"`
 	LogFetchErrorlogLevel                     int                    `mapstructure:"log-fetch-errorlog-level" toml:"log-fetch-errorlog-level" json:"logFetchErrorlogLevel"`
 	LogFetchSlowqueryLevel                    int                    `mapstructure:"log-fetch-slowquery-level" toml:"log-fetch-slowquery-level" json:"logFetchSlowqueryLevel"`
+	LogAPILevel                               int                    `mapstructure:"log-api-level" toml:"log-api-level" json:"logApiLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1329,6 +1330,7 @@ const (
 	ConstLogModApp            = 24
 	ConstLogModFetchErrorlog  = 25
 	ConstLogModFetchSlowquery = 26
+	ConstLogModAPI            = 27
 )
 
 /*
@@ -1362,6 +1364,7 @@ const (
 	ConstLogNameApp            string = "log-app"
 	ConstLogNameFetchErrorlog  string = "log-fetch-errorlog"
 	ConstLogNameFetchSlowquery string = "log-fetch-slowquery"
+	ConstLogNameAPI            string = "log-api"
 )
 
 /*
@@ -3226,6 +3229,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogFetchErrorlogLevel >= lvl
 		case module == ConstLogModFetchSlowquery:
 			return conf.LogFetchSlowqueryLevel >= lvl
+		case module == ConstLogModAPI:
+			return conf.LogAPILevel >= lvl
 		}
 	}
 
@@ -3405,6 +3410,8 @@ func GetTagsForLog(module int) string {
 		return "errorlog"
 	case ConstLogModFetchSlowquery:
 		return "slowquery"
+	case ConstLogModAPI:
+		return "api"
 	}
 	return ""
 }

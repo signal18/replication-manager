@@ -103,6 +103,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-config-refresh", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedConfigRefresh)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{type}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
+	))
 	router.Handle("/api/clusters/{clusterName}/need-rolling-reprov", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRollingReprov)),
 	))
@@ -4354,6 +4357,58 @@ func (repman *ReplicationManager) handlerMuxClusterGetNodeJobEntries(w http.Resp
 		json.NewEncoder(w).Encode(entries)
 	} else {
 		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerNeeds handles the HTTP request to check if a specific task needs to be performed on a server within a cluster.
+// @Summary Check if a task needs to be performed on a server
+// @Description Checks if a specified task needs to be performed on a server within a cluster.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Param type path string true "Type of check (e.g., 'config-refresh')"
+// @Success 200 {string} string "true" or "false"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error checking task necessity"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{type} [get]
+func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	checktype := vars["type"]
+	if mycluster != nil {
+		clientAddress := r.Header.Get("X-Forwarded-For")
+		if clientAddress == "" {
+			clientAddress = r.RemoteAddr
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModAPI, config.LvlInfo, "Checking if %s needs to be done on %s:%s from %s", checktype, vars["serverName"], vars["serverPort"], clientAddress)
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && !node.IsDown() {
+			if ok, err := node.CheckTaskNeeded(checktype); err == nil {
+				if ok {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("true"))
+					return
+				} else {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("false"))
+					return
+				}
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -" + err.Error()))
+				return
+			}
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+		}
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
 		return
 	}
 }

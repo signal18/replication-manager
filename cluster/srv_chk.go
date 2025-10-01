@@ -562,3 +562,22 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 		}
 	}
 }
+
+func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
+	// Check if we have to run the task and remove the cookie to avoid to run it again
+	switch checktype {
+	case "slow-query-log":
+		if server.HasWaitSlowqueryCookie() {
+			server.DelWaitSlowqueryCookie()
+			return true, nil
+		}
+	case "error-log":
+		if server.HasWaitErrorlogCookie() {
+			server.DelWaitErrorlogCookie()
+			return true, nil
+		}
+	default:
+		return false, fmt.Errorf("unknown checktype %s", checktype)
+	}
+	return false, nil
+}
