@@ -4369,7 +4369,7 @@ func (repman *ReplicationManager) handlerMuxClusterGetNodeJobEntries(w http.Resp
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
-// @Param type path string true "Type of check (e.g., 'config-refresh')"
+// @Param type path config.TaskName true "Type of check (e.g., 'config-refresh')"
 // @Success 200 {string} string "true" or "false"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error checking task necessity"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{type} [get]

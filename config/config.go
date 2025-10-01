@@ -1368,24 +1368,28 @@ const (
 )
 
 /*
-This is the list of task to be used in SSH
+This is the list of task to be used in Task struct and Task table
 */
+type TaskName string
+
 const (
-	ConstTaskXB        string = "xtrabackup"
-	ConstTaskMB        string = "mariabackup"
-	ConstTaskError     string = "errorlog"
-	ConstTaskSlowQuery string = "slowquery"
-	ConstTaskZFS       string = "zfssnapback"
-	ConstTaskOptimize  string = "optimize"
-	ConstTaskReseedXB  string = "reseedxtrabackup"
-	ConstTaskReseedMB  string = "reseedmariabackup"
-	ConstTaskDump      string = "reseedmysqldump"
-	ConstTaskFlashXB   string = "flashbackxtrabackup"
-	ConstTaskFlashMB   string = "flashbackmariadbackup"
-	ConstTaskFlashDump string = "flashbackmysqldump"
-	ConstTaskStop      string = "stop"
-	ConstTaskRestart   string = "restart"
-	ConstTaskStart     string = "start"
+	ConstTaskXB                 TaskName = "xtrabackup"
+	ConstTaskMB                 TaskName = "mariabackup"
+	ConstTaskError              TaskName = "errorlog"
+	ConstTaskSlowQuery          TaskName = "slowquery"
+	ConstTaskZFS                TaskName = "zfssnapback"
+	ConstTaskOptimize           TaskName = "optimize"
+	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
+	ConstTaskReseedMB           TaskName = "reseedmariabackup"
+	ConstTaskDump               TaskName = "reseedmysqldump"
+	ConstTaskFlashXB            TaskName = "flashbackxtrabackup"
+	ConstTaskFlashMB            TaskName = "flashbackmariadbackup"
+	ConstTaskFlashDump          TaskName = "flashbackmysqldump"
+	ConstTaskStop               TaskName = "stop"
+	ConstTaskRestart            TaskName = "restart"
+	ConstTaskStart              TaskName = "start"
+	ConstTaskPrintCurrentConfig TaskName = "printdefault-current"
+	ConstTaskPrintDummyConfig   TaskName = "printdefault-dummy"
 )
 
 /*
@@ -3418,7 +3422,9 @@ func GetTagsForLog(module int) string {
 
 // If task is about backup and reseed, it will use log backup stream else will use log task
 func GetModuleNameForTask(task string) string {
-	switch task {
+	// check if input compatible with TaskName type
+
+	switch TaskName(task) {
 	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
 	case ConstTaskError:
@@ -3427,7 +3433,6 @@ func GetModuleNameForTask(task string) string {
 		return ConstLogNameFetchSlowquery
 	default:
 		return ConstLogNameTask
-
 	}
 }
 

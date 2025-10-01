@@ -563,6 +563,7 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 	}
 }
 
+// CheckTaskNeeded check if we have to run a task and remove the cookie to avoid to run it again
 func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	// Check if we have to run the task and remove the cookie to avoid to run it again
 	switch checktype {
