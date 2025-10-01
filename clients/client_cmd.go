@@ -453,20 +453,26 @@ func cliLogin() (string, error) {
 		log.Println("ERROR ", err)
 		return "", err
 	}
-	if resp.StatusCode == http.StatusForbidden {
-		return "", errors.New("Wrong credentential")
+
+	if resp.StatusCode == http.StatusOK {
+		type Result struct {
+			Token string `json:"token"`
+		}
+		var r Result
+		err = json.Unmarshal(body, &r)
+		if err != nil {
+			log.Println("ERROR in login", err)
+			return "", err
+		}
+		return r.Token, nil
 	}
 
-	type Result struct {
-		Token string `json:"token"`
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		return "", errors.New("Wrong credentials")
 	}
-	var r Result
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		log.Println("ERROR in login", err)
-		return "", err
-	}
-	return r.Token, nil
+
+	return "", errors.New("Error in login: " + string(body))
+
 }
 
 func cliSecretLogin() (string, error) {
@@ -493,20 +499,26 @@ func cliSecretLogin() (string, error) {
 		log.Println("ERROR ", err)
 		return "", err
 	}
-	if resp.StatusCode == http.StatusForbidden {
-		return "", errors.New("Wrong credentential")
+
+	if resp.StatusCode == http.StatusOK {
+		type Result struct {
+			Token string `json:"token"`
+		}
+		var r Result
+		err = json.Unmarshal(body, &r)
+		if err != nil {
+			log.Println("ERROR in login", err)
+			return "", err
+		}
+
+		return r.Token, nil
 	}
 
-	type Result struct {
-		Token string `json:"token"`
+	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		return "", errors.New("Wrong credentials")
 	}
-	var r Result
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		log.Println("ERROR in login", err)
-		return "", err
-	}
-	return r.Token, nil
+
+	return "", errors.New("Error in login: " + string(body))
 }
 
 func cliGetAllClusters() ([]string, error) {
