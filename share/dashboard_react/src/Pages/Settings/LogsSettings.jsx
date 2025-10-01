@@ -325,6 +325,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
+          key: 'Log DB Optimize Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logOptimizeLevel}
+              confirmTitle={`Confirm change 'log-optimize-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-optimize-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
           key: 'Log Mailer Level',
           value: (
             <LogSlider

@@ -408,6 +408,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogTask, "log-task", true, "To log DB job process")
 	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
 
+	flags.IntVar(&conf.LogOptimizeLevel, "log-optimize-level", 4, "Log Level for optimizer")
+
 	// Log external script
 	flags.BoolVar(&conf.LogExternalScript, "log-external-script", true, "To log external scripts output")
 	flags.IntVar(&conf.LogExternalScriptLevel, "log-external-script-level", 3, "Log external scripts Level")
