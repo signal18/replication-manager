@@ -566,13 +566,13 @@ func (server *ServerMonitor) CheckMonitoringCredentialsRotation() {
 // CheckTaskNeeded check if we have to run a task and remove the cookie to avoid to run it again
 func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	// Check if we have to run the task and remove the cookie to avoid to run it again
-	switch checktype {
-	case "slow-query-log":
+	switch config.TaskName(checktype) {
+	case config.ConstTaskSlowQuery:
 		if server.HasWaitSlowqueryCookie() {
 			server.DelWaitSlowqueryCookie()
 			return true, nil
 		}
-	case "error-log":
+	case config.ConstTaskError:
 		if server.HasWaitErrorlogCookie() {
 			server.DelWaitErrorlogCookie()
 			return true, nil
