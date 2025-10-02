@@ -2125,6 +2125,10 @@ func (cluster *Cluster) SetLogFetchSlowqueryLevel(value int) {
 	cluster.Conf.LogFetchSlowqueryLevel = value
 }
 
+func (cluster *Cluster) SetLogOptimizeLevel(value int) {
+	cluster.Conf.LogOptimizeLevel = value
+}
+
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {
 
 	parts := strings.Split(value, ".")

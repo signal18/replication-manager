@@ -3182,7 +3182,7 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
 			if matches := endRegex.FindStringSubmatch(line); matches != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] %s", server.URL, line)
-			} else if strings.Contains(line, "ERROR") {
+			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
 				switch task {
