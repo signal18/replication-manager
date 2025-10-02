@@ -2954,6 +2954,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-task-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTaskLevel(val)
+	case "log-optimize-level":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogOptimizeLevel(val)
 	case "log-external-script-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogExternalScriptLevel(val)
