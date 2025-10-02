@@ -55,11 +55,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCluster)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/can-run-jobs", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCanRunJobs)),
-	))
-
 	router.Handle("/api/clusters/{clusterName}/opensvc-gateway", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGatewayServiceNodes)),
