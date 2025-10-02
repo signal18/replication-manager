@@ -81,7 +81,7 @@ function Home() {
     } else {
       globalTabsRef.current = ['Clusters Local']
     }
-    if (loggedUser == "admin") {
+    if (loggedUser?.User == "admin") {
       globalTabsRef.current.push('Settings')
     }
   }, [monitor?.config?.cloud18])
