@@ -9943,6 +9943,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/jobs": {
+            "get": {
+                "description": "Retrieves the job entries for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Get job entries for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job entries retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/config.ServerTaskList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/master-status": {
             "get": {
                 "description": "Retrieves the master status of a specified server within a cluster.",
@@ -11550,6 +11605,81 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is currently involved in a specific task.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Check if a server is in a specific task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "xtrabackup",
+                            "mariabackup",
+                            "errorlog",
+                            "slowquery",
+                            "zfssnapback",
+                            "optimize",
+                            "reseedxtrabackup",
+                            "reseedmariabackup",
+                            "reseedmysqldump",
+                            "flashbackxtrabackup",
+                            "flashbackmariadbackup",
+                            "flashbackmysqldump",
+                            "stop",
+                            "restart",
+                            "start",
+                            "printdefault-current",
+                            "printdefault-dummy"
+                        ],
+                        "type": "string",
+                        "description": "taskname",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error checking task status",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master": {
             "get": {
                 "description": "Checks if a specified server port within a cluster is a master.",
@@ -12213,6 +12343,81 @@ const docTemplate = `{
                     },
                     "503": {
                         "description": "503 -No unprov needed!",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}": {
+            "get": {
+                "description": "Checks if a specified task needs to be performed on a server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Check if a task needs to be performed on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "xtrabackup",
+                            "mariabackup",
+                            "errorlog",
+                            "slowquery",
+                            "zfssnapback",
+                            "optimize",
+                            "reseedxtrabackup",
+                            "reseedmariabackup",
+                            "reseedmysqldump",
+                            "flashbackxtrabackup",
+                            "flashbackmariadbackup",
+                            "flashbackmysqldump",
+                            "stop",
+                            "restart",
+                            "start",
+                            "printdefault-current",
+                            "printdefault-dummy"
+                        ],
+                        "type": "string",
+                        "description": "Type of check (e.g., 'config-refresh')",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error checking task necessity",
                         "schema": {
                             "type": "string"
                         }
@@ -16974,6 +17179,9 @@ const docTemplate = `{
                 "error_state": {
                     "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
                 },
+                "new_pass_file": {
+                    "type": "string"
+                },
                 "opt": {
                     "$ref": "#/definitions/archiver.ResticPurgeOption"
                 },
@@ -17000,9 +17208,9 @@ const docTemplate = `{
                 3
             ],
             "x-enum-varnames": [
+                "FetchTask",
                 "PurgeTask",
                 "BackupTask",
-                "FetchTask",
                 "UnlockTask"
             ]
         },
@@ -17450,7 +17658,7 @@ const docTemplate = `{
                     "type": "array",
                     "items": {}
                 },
-                "proxy-list": {
+                "proxyServers": {
                     "type": "array",
                     "items": {
                         "type": "string"
@@ -17493,6 +17701,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/state.StateMachine"
                         }
                     ]
+                },
+                "sysBenchTpcMResults": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/cluster.SysBenchTpcResultPerMinute"
+                    }
                 },
                 "tenant": {
                     "type": "string"
@@ -17598,7 +17812,8 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "unixTimestamp": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "url": {
                     "type": "string"
@@ -18319,6 +18534,23 @@ const docTemplate = `{
                 }
             }
         },
+        "cluster.SysBenchTpcResultPerMinute": {
+            "type": "object",
+            "properties": {
+                "errors": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "threads": {
+                    "type": "integer",
+                    "format": "int32"
+                },
+                "tpc": {
+                    "type": "integer",
+                    "format": "int32"
+                }
+            }
+        },
         "cluster.Test": {
             "type": "object",
             "properties": {
@@ -18715,13 +18947,15 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "backup": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "isInPITR": {
                     "type": "boolean"
                 },
                 "restoreTime": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "useBinlog": {
                     "type": "boolean"
@@ -18805,6 +19039,20 @@ const docTemplate = `{
                 },
                 "volumename": {
                     "type": "string"
+                }
+            }
+        },
+        "config.ServerTaskList": {
+            "type": "object",
+            "properties": {
+                "serverUrl": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Task"
+                    }
                 }
             }
         },
@@ -18995,6 +19243,38 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Task": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "task": {
                     "type": "string"
                 }
             }
@@ -20222,6 +20502,9 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
+                "logApiLevel": {
+                    "type": "integer"
+                },
                 "logAppLevel": {
                     "type": "integer"
                 },
@@ -20283,6 +20566,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "logMailerLevel": {
+                    "type": "integer"
+                },
+                "logOptimizeLevel": {
                     "type": "integer"
                 },
                 "logOrchestrator": {
@@ -21743,7 +22029,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "extension": {
                     "type": "string"
@@ -21778,7 +22065,8 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "createAt": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "fileIds": {
                     "type": "array",
@@ -22623,7 +22911,8 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "int64": {
-                    "type": "integer"
+                    "type": "integer",
+                    "format": "int64"
                 },
                 "valid": {
                     "description": "Valid is true if Int64 is not NULL",

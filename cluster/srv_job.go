@@ -3326,13 +3326,12 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	cluster := server.ClusterGroup
 
 	switch task {
-	case config.ConstTaskError:
+	case "errorlog":
 		server.DelWaitErrorlogCookie()
-	case config.ConstTaskSlowQuery:
+	case "slowquery":
 		server.DelWaitSlowqueryCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
-
 		server.WriteBackupMetadata(config.BackupMethodPhysical)
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)

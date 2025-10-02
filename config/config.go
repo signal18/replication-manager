@@ -163,6 +163,7 @@ type Config struct {
 	LogFetchErrorlogLevel                     int                    `mapstructure:"log-fetch-errorlog-level" toml:"log-fetch-errorlog-level" json:"logFetchErrorlogLevel"`
 	LogFetchSlowqueryLevel                    int                    `mapstructure:"log-fetch-slowquery-level" toml:"log-fetch-slowquery-level" json:"logFetchSlowqueryLevel"`
 	LogOptimizeLevel                          int                    `mapstructure:"log-optimize-level" toml:"log-optimize-level" json:"logOptimizeLevel"`
+	LogAPILevel                               int                    `mapstructure:"log-api-level" toml:"log-api-level" json:"logApiLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1331,6 +1332,7 @@ const (
 	ConstLogModFetchErrorlog  = 25
 	ConstLogModFetchSlowquery = 26
 	ConstLogModOptimize       = 27
+	ConstLogModAPI            = 28
 )
 
 /*
@@ -1365,27 +1367,32 @@ const (
 	ConstLogNameFetchErrorlog  string = "log-fetch-errorlog"
 	ConstLogNameFetchSlowquery string = "log-fetch-slowquery"
 	ConstLogNameOptimize       string = "log-optimize"
+	ConstLogNameAPI            string = "log-api"
 )
 
 /*
-This is the list of task to be used in SSH
+This is the list of task to be used in Task struct and Task table
 */
+type TaskName string
+
 const (
-	ConstTaskXB        string = "xtrabackup"
-	ConstTaskMB        string = "mariabackup"
-	ConstTaskError     string = "errorlog"
-	ConstTaskSlowQuery string = "slowquery"
-	ConstTaskZFS       string = "zfssnapback"
-	ConstTaskOptimize  string = "optimize"
-	ConstTaskReseedXB  string = "reseedxtrabackup"
-	ConstTaskReseedMB  string = "reseedmariabackup"
-	ConstTaskDump      string = "reseedmysqldump"
-	ConstTaskFlashXB   string = "flashbackxtrabackup"
-	ConstTaskFlashMB   string = "flashbackmariadbackup"
-	ConstTaskFlashDump string = "flashbackmysqldump"
-	ConstTaskStop      string = "stop"
-	ConstTaskRestart   string = "restart"
-	ConstTaskStart     string = "start"
+	ConstTaskXB                 TaskName = "xtrabackup"
+	ConstTaskMB                 TaskName = "mariabackup"
+	ConstTaskError              TaskName = "errorlog"
+	ConstTaskSlowQuery          TaskName = "slowquery"
+	ConstTaskZFS                TaskName = "zfssnapback"
+	ConstTaskOptimize           TaskName = "optimize"
+	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
+	ConstTaskReseedMB           TaskName = "reseedmariabackup"
+	ConstTaskDump               TaskName = "reseedmysqldump"
+	ConstTaskFlashXB            TaskName = "flashbackxtrabackup"
+	ConstTaskFlashMB            TaskName = "flashbackmariadbackup"
+	ConstTaskFlashDump          TaskName = "flashbackmysqldump"
+	ConstTaskStop               TaskName = "stop"
+	ConstTaskRestart            TaskName = "restart"
+	ConstTaskStart              TaskName = "start"
+	ConstTaskPrintCurrentConfig TaskName = "printdefault-current"
+	ConstTaskPrintDummyConfig   TaskName = "printdefault-dummy"
 )
 
 /*
@@ -3231,6 +3238,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogFetchSlowqueryLevel >= lvl
 		case module == ConstLogModOptimize:
 			return conf.LogOptimizeLevel >= lvl
+		case module == ConstLogModAPI:
+			return conf.LogAPILevel >= lvl
 		}
 	}
 
@@ -3410,13 +3419,17 @@ func GetTagsForLog(module int) string {
 		return "errorlog"
 	case ConstLogModFetchSlowquery:
 		return "slowquery"
+	case ConstLogModAPI:
+		return "api"
 	}
 	return ""
 }
 
 // If task is about backup and reseed, it will use log backup stream else will use log task
 func GetModuleNameForTask(task string) string {
-	switch task {
+	// check if input compatible with TaskName type
+
+	switch TaskName(task) {
 	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
 	case ConstTaskError:
@@ -3425,7 +3438,6 @@ func GetModuleNameForTask(task string) string {
 		return ConstLogNameFetchSlowquery
 	default:
 		return ConstLogNameTask
-
 	}
 }
 

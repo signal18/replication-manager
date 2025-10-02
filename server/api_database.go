@@ -76,6 +76,12 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-standalone", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsStandAloneStatus)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerIsInTask)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeeds)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/need-restart", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerNeedRestart)),
 	))
@@ -151,6 +157,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortBackup)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/jobs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerGetJobEntries)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/processlist", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -4342,7 +4352,19 @@ func (repman *ReplicationManager) handlerMuxServersConfigPathPreserve(w http.Res
 	}
 }
 
-func (repman *ReplicationManager) handlerMuxClusterGetNodeJobEntries(w http.ResponseWriter, r *http.Request) {
+// handlerMuxServerGetJobEntries handles the HTTP request to get job entries for a specific server within a cluster.
+// @Summary Get job entries for a server
+// @Description Retrieves the job entries for a specified server within a cluster.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Success 200 {object} config.ServerTaskList "Job entries retrieved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/jobs [get]
+func (repman *ReplicationManager) handlerMuxServerGetJobEntries(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -4351,11 +4373,112 @@ func (repman *ReplicationManager) handlerMuxClusterGetNodeJobEntries(w http.Resp
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
-		entries, _ := mycluster.JobsGetEntries()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(entries)
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(node.JobsGetEntries())
+			return
+		} else {
+			http.Error(w, "No Server", http.StatusInternalServerError)
+			return
+		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handlerMuxServerIsInTask checks if a server is in a specific task
+// @Summary Check if a server is in a specific task
+// @Description Checks if a specified server within a cluster is currently involved in a specific task.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Param type path config.TaskName true "taskname"
+// @Success 200 {string} string "true" or "false"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error checking task status"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname} [get]
+func (repman *ReplicationManager) handlerMuxServerIsInTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	taskname := vars["taskname"]
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil {
+			if node.IsInTask(taskname) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("true"))
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("false"))
+			}
+			return
+		} else {
+			http.Error(w, "No Server", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxServerNeeds handles the HTTP request to check if a specific task needs to be performed on a server within a cluster.
+// @Summary Check if a task needs to be performed on a server
+// @Description Checks if a specified task needs to be performed on a server within a cluster.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string true "Server Port"
+// @Param type path config.TaskName true "Type of check (e.g., 'config-refresh')"
+// @Success 200 {string} string "true" or "false"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error checking task necessity"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname} [get]
+func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	checktype := vars["taskname"]
+	if mycluster != nil {
+		clientAddress := r.Header.Get("X-Forwarded-For")
+		if clientAddress == "" {
+			clientAddress = r.RemoteAddr
+		}
+
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModAPI, config.LvlInfo, "Checking if %s needs to be done on %s:%s from %s", checktype, vars["serverName"], vars["serverPort"], clientAddress)
+		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+		if node != nil && !node.IsDown() {
+			if ok, err := node.CheckTaskNeeded(checktype); err == nil {
+				if ok {
+					w.WriteHeader(http.StatusOK)
+					w.Write([]byte("true"))
+					return
+				} else {
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("false"))
+					return
+				}
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -" + err.Error()))
+				return
+			}
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("500 -No valid server!"))
+		}
+	} else {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("500 -No cluster!"))
 		return
 	}
 }

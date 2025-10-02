@@ -954,3 +954,26 @@ func (server *ServerMonitor) GetStatusDeltaValue(name string) int {
 	}
 	return cur - prev
 }
+
+func (server *ServerMonitor) JobsGetEntries() config.ServerTaskList {
+	sTask := config.ServerTaskList{
+		ServerURL: server.URL,
+		Tasks:     make([]config.Task, 0),
+	}
+
+	server.JobResults.Range(func(k, v any) bool {
+		sTask.Tasks = append(sTask.Tasks, *v.(*config.Task))
+		return true
+	})
+	sort.Sort(config.TaskSorter(sTask.Tasks))
+	return sTask
+}
+
+func (server *ServerMonitor) IsInTask(taskname string) bool {
+	task, exist := server.JobResults.CheckAndGet(taskname)
+	if exist && task.Done == 0 {
+		return true
+	}
+
+	return false
+}

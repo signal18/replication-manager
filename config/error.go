@@ -117,6 +117,7 @@ var ClusterError = map[string]string{
 	"ERR00097":  "Auto failover locked with false positive conditions: %s",
 	"ERR00098":  "Failed to enable GTID Mode on master node. Err: %s",
 	"ERR00099":  "Failed to enable GTID Mode on slave %s. Err: %s",
+	"ERR00100":  "Cluster is in switchover. Switchover started at %s",
 	"WARN0022":  "Rejoining standalone server %s to master %s",
 	"WARN0023":  "Number of failed master ping has been reached",
 	"WARN0045":  "Provision task is in queue",

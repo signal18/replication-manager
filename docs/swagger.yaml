@@ -41,6 +41,8 @@ definitions:
         type: string
       error_state:
         $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
+      new_pass_file:
+        type: string
       opt:
         $ref: '#/definitions/archiver.ResticPurgeOption'
       tags:
@@ -60,9 +62,9 @@ definitions:
     - 3
     type: integer
     x-enum-varnames:
+    - FetchTask
     - PurgeTask
     - BackupTask
-    - FetchTask
     - UnlockTask
   cluster.APIUser:
     properties:
@@ -360,7 +362,7 @@ definitions:
       proxies:
         items: {}
         type: array
-      proxy-list:
+      proxyServers:
         items:
           type: string
         type: array
@@ -396,6 +398,10 @@ definitions:
           rplPass                   string                      `json:"-"`
           proxysqlUser              string                      `json:"-"`
           proxysqlPass              string                      `json:"-"`
+      sysBenchTpcMResults:
+        items:
+          $ref: '#/definitions/cluster.SysBenchTpcResultPerMinute'
+        type: array
       tenant:
         type: string
       topology:
@@ -465,6 +471,7 @@ definitions:
       switchover:
         type: boolean
       unixTimestamp:
+        format: int64
         type: integer
       url:
         type: string
@@ -946,6 +953,18 @@ definitions:
       suffix:
         type: integer
     type: object
+  cluster.SysBenchTpcResultPerMinute:
+    properties:
+      errors:
+        format: int32
+        type: integer
+      threads:
+        format: int32
+        type: integer
+      tpc:
+        format: int32
+        type: integer
+    type: object
   cluster.Test:
     properties:
       config-file:
@@ -1205,10 +1224,12 @@ definitions:
   config.PointInTimeMeta:
     properties:
       backup:
+        format: int64
         type: integer
       isInPITR:
         type: boolean
       restoreTime:
+        format: int64
         type: integer
       useBinlog:
         type: boolean
@@ -1264,6 +1285,15 @@ definitions:
         type: string
       volumename:
         type: string
+    type: object
+  config.ServerTaskList:
+    properties:
+      serverUrl:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/config.Task'
+        type: array
     type: object
   config.ServicePlan:
     properties:
@@ -1396,6 +1426,27 @@ definitions:
       url:
         type: string
       version:
+        type: string
+    type: object
+  config.Task:
+    properties:
+      done:
+        type: integer
+      end:
+        type: integer
+      id:
+        type: integer
+      port:
+        type: integer
+      result:
+        type: string
+      server:
+        type: string
+      start:
+        type: integer
+      state:
+        type: integer
+      task:
         type: string
     type: object
   config.TasksMap:
@@ -2213,6 +2264,8 @@ definitions:
         type: integer
       kubeConfig:
         type: string
+      logApiLevel:
+        type: integer
       logAppLevel:
         type: integer
       logArchiveLevel:
@@ -2254,6 +2307,8 @@ definitions:
       logLevel:
         type: integer
       logMailerLevel:
+        type: integer
+      logOptimizeLevel:
         type: integer
       logOrchestrator:
         type: boolean
@@ -3226,6 +3281,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       extension:
         type: string
@@ -3249,6 +3305,7 @@ definitions:
       channelID:
         type: string
       createAt:
+        format: int64
         type: integer
       fileIds:
         items:
@@ -3811,6 +3868,7 @@ definitions:
   sql.NullInt64:
     properties:
       int64:
+        format: int64
         type: integer
       valid:
         description: Valid is true if Int64 is not NULL
@@ -8611,6 +8669,64 @@ paths:
       summary: Check if a server is failed
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}:
+    get:
+      description: Checks if a specified server within a cluster is currently involved
+        in a specific task.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: taskname
+        enum:
+        - xtrabackup
+        - mariabackup
+        - errorlog
+        - slowquery
+        - zfssnapback
+        - optimize
+        - reseedxtrabackup
+        - reseedmariabackup
+        - reseedmysqldump
+        - flashbackxtrabackup
+        - flashbackmariadbackup
+        - flashbackmysqldump
+        - stop
+        - restart
+        - start
+        - printdefault-current
+        - printdefault-dummy
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            task status
+          schema:
+            type: string
+      summary: Check if a server is in a specific task
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master:
     get:
       description: Checks if a specified server port within a cluster is a master.
@@ -9071,6 +9187,64 @@ paths:
       summary: Check if a server needs unprovisioning
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}:
+    get:
+      description: Checks if a specified task needs to be performed on a server within
+        a cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: Type of check (e.g., 'config-refresh')
+        enum:
+        - xtrabackup
+        - mariabackup
+        - errorlog
+        - slowquery
+        - zfssnapback
+        - optimize
+        - reseedxtrabackup
+        - reseedmariabackup
+        - reseedmysqldump
+        - flashbackxtrabackup
+        - flashbackmariadbackup
+        - flashbackmysqldump
+        - stop
+        - restart
+        - start
+        - printdefault-current
+        - printdefault-dummy
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            task necessity
+          schema:
+            type: string
+      summary: Check if a task needs to be performed on a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/secret-login:
     post:
       description: Handles secret login for a specified server within a cluster.
@@ -11240,6 +11414,43 @@ paths:
       summary: Check if a server is in standalone state
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/jobs:
+    get:
+      description: Retrieves the job entries for a specified server within a cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Job entries retrieved successfully
+          schema:
+            $ref: '#/definitions/config.ServerTaskList'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: Get job entries for a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/master-status:
     get:
       description: Retrieves the master status of a specified server within a cluster.
