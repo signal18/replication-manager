@@ -253,7 +253,7 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 	s.MasterPort = rs.SourcePort
 	s.MasterLogFile = rs.SourceLogFile
 	s.ReadMasterLogPos = rs.ReadSourceLogPos
-	s.RelayMasterLogFile = rs.RelayLogFile
+	s.RelayMasterLogFile = rs.RelaySourceLogFile
 	s.SlaveIORunning = rs.ReplicaIORunning
 	s.SlaveSQLRunning = rs.ReplicaSQLRunning
 	s.ExecMasterLogPos = rs.ExecSourceLogPos
