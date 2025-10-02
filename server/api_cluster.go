@@ -7468,37 +7468,3 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 		return
 	}
 }
-
-// handlerMuxClusterCanFetchLogs handles the HTTP request to check if a cluster can fetch logs.
-// @Summary Check if Cluster Can Fetch Logs
-// @Description Checks if the specified cluster is allowed to fetch logs.
-// @Tags ClusterLogs
-// @Produce json
-// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
-// @Param clusterName path string true "Cluster Name"
-// @Success 200 {string} string "Fetch logs allowed"
-// @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "No cluster" or "Cluster is in failover. Fetch logs not allowed"
-// @Router /api/clusters/{clusterName}/can-run-jobs [get]
-func (repman *ReplicationManager) handlerMuxClusterCanRunJobs(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if mycluster.IsInFailover() {
-			http.Error(w, "false", 500)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("true"))
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-}

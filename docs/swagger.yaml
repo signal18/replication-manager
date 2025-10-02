@@ -6915,39 +6915,6 @@ paths:
       summary: Retrieve backup stats for a specific cluster
       tags:
       - ClusterBackups
-  /api/clusters/{clusterName}/can-run-jobs:
-    get:
-      description: Checks if the specified cluster is allowed to fetch logs.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Fetch logs allowed
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster" or "Cluster is in failover. Fetch logs not allowed
-          schema:
-            type: string
-      summary: Check if Cluster Can Fetch Logs
-      tags:
-      - ClusterLogs
   /api/clusters/{clusterName}/certificates:
     get:
       description: This endpoint retrieves the client certificates for the specified

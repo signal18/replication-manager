@@ -4731,55 +4731,6 @@
                 }
             }
         },
-        "/api/clusters/{clusterName}/can-run-jobs": {
-            "get": {
-                "description": "Checks if the specified cluster is allowed to fetch logs.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterLogs"
-                ],
-                "summary": "Check if Cluster Can Fetch Logs",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Fetch logs allowed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "No cluster\" or \"Cluster is in failover. Fetch logs not allowed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/certificates": {
             "get": {
                 "description": "This endpoint retrieves the client certificates for the specified cluster.",
