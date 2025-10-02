@@ -84,7 +84,7 @@ function Home() {
     if (loggedUser?.User == "admin") {
       globalTabsRef.current.push('Settings')
     }
-  }, [monitor?.config?.cloud18])
+  }, [monitor?.config?.cloud18,loggedUser?.User])
 
   useEffect(() => {
     if (clusterData) {
