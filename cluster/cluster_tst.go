@@ -70,9 +70,9 @@ type SysbenchRecordViolation struct {
 type SysbenchAnalyzer struct {
 	ignoreInvalidLines bool
 }
-
+//  30s ] thds: 4 tps: 67.00 qps: 1892.93 (r/w/o: 874.97/883.97/134.00) lat (ms,95%): 137.35 err/s 0.00 reconn/s: 0.00
 const (
-	recordFormat = "[ %ds ] thds: %d tps: %f qps: %f (r/w/o: %f/%f/%f) lat (ms,%f%%): %f err/s: %f reconn/s: %f"
+	recordFormat = "[ %ds ] thds: %d tps: %f qps: %f (r/w/o: %f/%f/%f) lat (ms,%f%%): %f err/s %f reconn/s: %f"
 )
 
 func ParseRecord(str string) (SysbenchRecord, error) {
@@ -108,7 +108,6 @@ func (a *SysbenchAnalyzer) ParseToEnd(reader io.Reader) ([]SysbenchRecord, []Sys
 			break
 		}
 		str := scanner.Text()
-
 		record, err := ParseRecord(str)
 		if err == nil {
 			records = append(records, record)
@@ -278,11 +277,13 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 	out, err := cmdrun.CombinedOutput()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s , %s", string(out), err)
-		analyzer := cluster.NewSysbenchAnalyzer(true)
-		records, _ := analyzer.ParseToEnd(os.Stdin)
-		cluster.ExtractSybenchTPCM(records)
 		return err
 	}
+	analyzer := cluster.NewSysbenchAnalyzer(false)
+	records,viols := analyzer.ParseToEnd(bytes.NewReader(out))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "Analyse Parse %+v %+v", records,viols)
+	
+	cluster.ExtractSybenchTPCM(records)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", string(out))
 	return nil
 }
@@ -290,6 +291,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 func (cluster *Cluster) ExtractSybenchTPCM(records []SysbenchRecord) error {
 	var tcpm SysBenchTpcResultPerMinute
 	for _, record := range records {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "TPCM loop on parse result : %d", int32(record.TPS) )
 		tcpm.Tpc = tcpm.Tpc + int32(record.TPS)
 		tcpm.Threads = record.Threads
 		tcpm.Errors = tcpm.Errors + int32(record.ErrorPerSec)
@@ -305,11 +307,13 @@ func (cluster *Cluster) WriteSybenchTPCM() error {
 		return err
 	}
 
-	output := cluster.Conf.ProvServicePlan
-	header := "Plan " + cluster.Name
+	output := cluster.Name + " " +  cluster.Conf.ProvServicePlan
+	header := "Plan" 
 	for _, record := range cluster.SysBenchTpcMResults {
+	    cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "sybecnh loop on save result : %d", int32(record.Tpc) )
 		header = header + fmt.Sprintf(",%d", record.Threads)
 		output = output + fmt.Sprintf(",%d", record.Tpc)
+		
 	}
 	if _, err := f.Write([]byte(header + "\n" + output + "\n")); err != nil {
 		f.Close() // ignore error; Write error takes precedence
@@ -347,7 +351,7 @@ func (cluster *Cluster) RunSysbenchTPCPerMinuteIncreaseThreads() error {
 	cluster.CleanupBench()
 	cluster.PrepareBench()
 	threads := 1
-	for threads <= 1024 {
+	for threads <= 256 {
 		cluster.RunSysBench("tpcc", strconv.Itoa(threads), "1000000", "60", "complex")
 		threads = threads * 2
 	}
