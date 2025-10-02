@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,17 +106,7 @@ func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 	}
 
 	for _, s := range cluster.Servers {
-		sTask := config.ServerTaskList{
-			ServerURL: s.URL,
-			Tasks:     make([]config.Task, 0),
-		}
-
-		s.JobResults.Range(func(k, v any) bool {
-			sTask.Tasks = append(sTask.Tasks, *v.(*config.Task))
-			return true
-		})
-		sort.Sort(config.TaskSorter(sTask.Tasks))
-		entries.Servers[s.Id] = sTask
+		entries.Servers[s.Id] = s.JobsGetEntries()
 	}
 
 	return entries, nil

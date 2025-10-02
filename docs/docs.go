@@ -9992,6 +9992,61 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/jobs": {
+            "get": {
+                "description": "Retrieves the job entries for a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Get job entries for a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Job entries retrieved successfully",
+                        "schema": {
+                            "$ref": "#/definitions/config.ServerTaskList"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/master-status": {
             "get": {
                 "description": "Retrieves the master status of a specified server within a cluster.",
@@ -11599,6 +11654,81 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is currently involved in a specific task.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Check if a server is in a specific task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "xtrabackup",
+                            "mariabackup",
+                            "errorlog",
+                            "slowquery",
+                            "zfssnapback",
+                            "optimize",
+                            "reseedxtrabackup",
+                            "reseedmariabackup",
+                            "reseedmysqldump",
+                            "flashbackxtrabackup",
+                            "flashbackmariadbackup",
+                            "flashbackmysqldump",
+                            "stop",
+                            "restart",
+                            "start",
+                            "printdefault-current",
+                            "printdefault-dummy"
+                        ],
+                        "type": "string",
+                        "description": "taskname",
+                        "name": "type",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error checking task status",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master": {
             "get": {
                 "description": "Checks if a specified server port within a cluster is a master.",
@@ -12269,7 +12399,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{type}": {
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}": {
             "get": {
                 "description": "Checks if a specified task needs to be performed on a server within a cluster.",
                 "produces": [
@@ -18961,6 +19091,20 @@ const docTemplate = `{
                 }
             }
         },
+        "config.ServerTaskList": {
+            "type": "object",
+            "properties": {
+                "serverUrl": {
+                    "type": "string"
+                },
+                "tasks": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/config.Task"
+                    }
+                }
+            }
+        },
         "config.ServicePlan": {
             "type": "object",
             "properties": {
@@ -19148,6 +19292,38 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "config.Task": {
+            "type": "object",
+            "properties": {
+                "done": {
+                    "type": "integer"
+                },
+                "end": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "port": {
+                    "type": "integer"
+                },
+                "result": {
+                    "type": "string"
+                },
+                "server": {
+                    "type": "string"
+                },
+                "start": {
+                    "type": "integer"
+                },
+                "state": {
+                    "type": "integer"
+                },
+                "task": {
                     "type": "string"
                 }
             }
@@ -20439,6 +20615,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "logMailerLevel": {
+                    "type": "integer"
+                },
+                "logOptimizeLevel": {
                     "type": "integer"
                 },
                 "logOrchestrator": {

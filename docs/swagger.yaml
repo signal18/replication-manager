@@ -1286,6 +1286,15 @@ definitions:
       volumename:
         type: string
     type: object
+  config.ServerTaskList:
+    properties:
+      serverUrl:
+        type: string
+      tasks:
+        items:
+          $ref: '#/definitions/config.Task'
+        type: array
+    type: object
   config.ServicePlan:
     properties:
       bp:
@@ -1417,6 +1426,27 @@ definitions:
       url:
         type: string
       version:
+        type: string
+    type: object
+  config.Task:
+    properties:
+      done:
+        type: integer
+      end:
+        type: integer
+      id:
+        type: integer
+      port:
+        type: integer
+      result:
+        type: string
+      server:
+        type: string
+      start:
+        type: integer
+      state:
+        type: integer
+      task:
         type: string
     type: object
   config.TasksMap:
@@ -2277,6 +2307,8 @@ definitions:
       logLevel:
         type: integer
       logMailerLevel:
+        type: integer
+      logOptimizeLevel:
         type: integer
       logOrchestrator:
         type: boolean
@@ -8670,6 +8702,64 @@ paths:
       summary: Check if a server is failed
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}:
+    get:
+      description: Checks if a specified server within a cluster is currently involved
+        in a specific task.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: taskname
+        enum:
+        - xtrabackup
+        - mariabackup
+        - errorlog
+        - slowquery
+        - zfssnapback
+        - optimize
+        - reseedxtrabackup
+        - reseedmariabackup
+        - reseedmysqldump
+        - flashbackxtrabackup
+        - flashbackmariadbackup
+        - flashbackmysqldump
+        - stop
+        - restart
+        - start
+        - printdefault-current
+        - printdefault-dummy
+        in: path
+        name: type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            task status
+          schema:
+            type: string
+      summary: Check if a server is in a specific task
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-master:
     get:
       description: Checks if a specified server port within a cluster is a master.
@@ -9130,7 +9220,7 @@ paths:
       summary: Check if a server needs unprovisioning
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{type}:
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/needs/{taskname}:
     get:
       description: Checks if a specified task needs to be performed on a server within
         a cluster.
@@ -11357,6 +11447,43 @@ paths:
       summary: Check if a server is in standalone state
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/jobs:
+    get:
+      description: Retrieves the job entries for a specified server within a cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Job entries retrieved successfully
+          schema:
+            $ref: '#/definitions/config.ServerTaskList'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: Get job entries for a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/master-status:
     get:
       description: Retrieves the master status of a specified server within a cluster.
