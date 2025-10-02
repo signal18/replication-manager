@@ -78,6 +78,7 @@ var (
 	cliConsoleServerIndex        int
 	cliShowObjects               string
 	cliConfirm                   string
+	cliLogDir                    string
 	cfgGroup                     string
 	memprofile                   string
 	cpuprofile                   string
@@ -315,6 +316,7 @@ func initClusterFlags(cmd *cobra.Command) {
 }
 
 func initPrintDefaultsFlags(cmd *cobra.Command) {
+	cmd.PersistentFlags().StringVar(&cliLogDir, "log-dir", "", "Log directory")
 	initClusterFlags(cmd)
 	initServerFlags(cmd)
 }

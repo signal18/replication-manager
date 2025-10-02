@@ -49,9 +49,13 @@ func RunConfigPrintJobs() error {
 		return fmt.Errorf("failed to fetch config receiver: %w", err)
 	}
 
+	if cliLogDir == "" {
+		cliLogDir = os.TempDir()
+	}
+
 	// Step 2: Prepare log file paths
-	dummyLog := filepath.Join(os.TempDir(), "dummy.log")
-	currentLog := filepath.Join(os.TempDir(), "current.log")
+	dummyLog := filepath.Join(cliLogDir, "dummy.log")
+	currentLog := filepath.Join(cliLogDir, "current.log")
 
 	var wg sync.WaitGroup
 	wg.Add(2)
