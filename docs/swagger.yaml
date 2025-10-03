@@ -3394,6 +3394,13 @@ definitions:
       net_network:
         type: string
     type: object
+  opensvc.DaemonNodeStats:
+    properties:
+      node:
+        type: string
+      stats:
+        $ref: '#/definitions/opensvc.NodeStats'
+    type: object
   opensvc.Host:
     properties:
       cpu_cores:
@@ -3420,6 +3427,21 @@ definitions:
         items:
           $ref: '#/definitions/opensvc.Service'
         type: array
+    type: object
+  opensvc.NodeStats:
+    properties:
+      load_15m:
+        type: number
+      mem_avail:
+        type: integer
+      mem_total:
+        type: integer
+      score:
+        type: integer
+      swap_avail:
+        type: integer
+      swap_total:
+        type: integer
     type: object
   opensvc.Service:
     properties:
@@ -7420,6 +7442,41 @@ paths:
           schema:
             type: string
       summary: Get Cluster Gateway Nodes
+      tags:
+      - ClusterGateway
+  /api/clusters/{clusterName}/opensvc-stats:
+    get:
+      description: Retrieves the OpenSVC daemon status of the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OpenSVC daemon status fetched
+          schema:
+            items:
+              $ref: '#/definitions/opensvc.DaemonNodeStats'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "Error getting OpenSVC stats
+          schema:
+            type: string
+      summary: Get OpenSVC Daemon Status
       tags:
       - ClusterGateway
   /api/clusters/{clusterName}/proxies/{proxyName}:

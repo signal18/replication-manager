@@ -60,6 +60,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterGatewayServiceNodes)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/opensvc-stats", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterOpenSVCDaemonStatus)),
+	))
+
 	//PROTECTED ENDPOINTS FOR CLUSTERS ACTIONS
 	router.Handle("/api/clusters/{clusterName}/settings", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -7458,6 +7463,55 @@ func (repman *ReplicationManager) handlerMuxClusterGatewayServiceNodes(w http.Re
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(nodesJSON)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterOpenSVCDaemonStatus handles the HTTP request to retrieve the OpenSVC daemon status of a cluster.
+// @Summary Get OpenSVC Daemon Status
+// @Description Retrieves the OpenSVC daemon status of the specified cluster.
+// @Tags ClusterGateway
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} opensvc.DaemonNodeStats "OpenSVC daemon status fetched"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "Error getting OpenSVC stats"
+// @Router /api/clusters/{clusterName}/opensvc-stats [get]
+func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		stats, err := mycluster.GetOpenSVCStats()
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error getting OpenSVC stats: ", err)
+			http.Error(w, "Error getting OpenSVC stats: "+err.Error(), 500)
+			return
+		}
+
+		// Marshal provided interface into JSON structure
+		statsJSON, err := json.Marshal(stats)
+		if err != nil {
+			http.Error(w, "Error marshalling stats: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, err = w.Write(statsJSON)
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
 			http.Error(w, "Error writing response: "+err.Error(), 500)

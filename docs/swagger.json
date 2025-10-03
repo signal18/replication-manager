@@ -5476,6 +5476,58 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/opensvc-stats": {
+            "get": {
+                "description": "Retrieves the OpenSVC daemon status of the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterGateway"
+                ],
+                "summary": "Get OpenSVC Daemon Status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OpenSVC daemon status fetched",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/opensvc.DaemonNodeStats"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"Error getting OpenSVC stats",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/proxies/{proxyName}": {
             "get": {
                 "description": "Shows the proxies for that specific named cluster",
@@ -22190,6 +22242,17 @@
                 }
             }
         },
+        "opensvc.DaemonNodeStats": {
+            "type": "object",
+            "properties": {
+                "node": {
+                    "type": "string"
+                },
+                "stats": {
+                    "$ref": "#/definitions/opensvc.NodeStats"
+                }
+            }
+        },
         "opensvc.Host": {
             "type": "object",
             "properties": {
@@ -22228,6 +22291,29 @@
                     "items": {
                         "$ref": "#/definitions/opensvc.Service"
                     }
+                }
+            }
+        },
+        "opensvc.NodeStats": {
+            "type": "object",
+            "properties": {
+                "load_15m": {
+                    "type": "number"
+                },
+                "mem_avail": {
+                    "type": "integer"
+                },
+                "mem_total": {
+                    "type": "integer"
+                },
+                "score": {
+                    "type": "integer"
+                },
+                "swap_avail": {
+                    "type": "integer"
+                },
+                "swap_total": {
+                    "type": "integer"
                 }
             }
         },

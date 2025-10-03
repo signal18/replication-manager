@@ -23,6 +23,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bluele/logrus_slack"
@@ -33,6 +34,7 @@ import (
 	"github.com/signal18/replication-manager/cluster/nbc"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/config/manager"
+	"github.com/signal18/replication-manager/opensvc"
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
@@ -259,6 +261,7 @@ type Cluster struct {
 	VersionsMap         *config.VersionsMap
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
+	OpenSVCStats        atomic.Value `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -364,6 +367,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.debugLineMap = make(map[string]int)
 	cluster.AgentMaxFreq = make(map[string]int64)
 	cluster.ServiceTemplates = make([]string, 0)
+	cluster.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
 
 	*cluster.Conf = confs.ConfInit
 

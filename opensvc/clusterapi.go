@@ -1040,3 +1040,68 @@ func (collector *Collector) GetUniqueValuesFromSlicesRecursive(slices []interfac
 		}
 	}
 }
+
+type NodeStats struct {
+	Load15m   float64 `json:"load_15m"`
+	MemTotal  int64   `json:"mem_total"`
+	MemAvail  int64   `json:"mem_avail"`
+	SwapTotal int64   `json:"swap_total"`
+	SwapAvail int64   `json:"swap_avail"`
+	Score     int64   `json:"score"`
+}
+
+type DaemonNodeStats struct {
+	Node  string    `json:"node"`
+	Stats NodeStats `json:"stats"`
+}
+
+func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
+
+	stats := make([]DaemonNodeStats, 0)
+
+	urlget := fmt.Sprintf("https://%s:%s/daemon_status", collector.Host, collector.Port)
+
+	client := collector.GetHttpClient()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlget)
+	}
+
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	// Extract node stats using gjson
+	key := "monitor.nodes.{node:@keys,stats:@values.#.stats}.@group"
+	result := gjson.GetBytes(body, key)
+	if !result.Exists() {
+		return nil, errors.New("No node stats found")
+	}
+
+	err = json.Unmarshal([]byte(result.Raw), &stats)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	return stats, nil
+}
