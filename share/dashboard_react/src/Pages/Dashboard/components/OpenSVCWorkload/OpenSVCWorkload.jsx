@@ -88,10 +88,10 @@ const OpenSVCNodeCard = ({ nodeData, width }) => {
 const OpenSVCWorkload = function ({ workload }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
   const third = workload && workload.length > 2 ? true : false;
-  const cardWidth = workload ? (isDesktop ? (third ? `33%` : `${Math.floor(100 / workload.length)}%`) : '100%') : '100%';
+  const cardWidth = workload ? (isDesktop ? (third ? `32%` : `${Math.floor(100 / workload.length) - 1}%`) : '100%') : '100%';
   return (
-    <Flex direction={'column'} gap='8px' padding={'8px'}>
-      <Flex wrap='wrap' gap='8px' align='center' justify='space-evenly'>
+    <Flex direction={'column'} padding={'8px'}>
+      <Flex wrap='wrap' gap='4px' align='center' justify='space-evenly'>
         {workload.map((nodeData) => (
           <OpenSVCNodeCard key={nodeData.node} nodeData={nodeData} width={cardWidth} />
         ))}
