@@ -1930,17 +1930,22 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 func (repman *ReplicationManager) ReloadOpenSVCStats() {
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		globalstat := make([]opensvc.DaemonNodeStats, 0)
-		stats, err := repman.OpenSVC.GetDaemonNodeStats()
-		if err == nil {
-			globalstat = stats
-		}
-
-		repman.OpenSVCStats.Swap(globalstat)
+		fetched := false
 
 		for _, cl := range repman.Clusters {
 			if cl.Conf.ProvOrchestrator == "opensvc" {
 				if cl.Conf.ProvHost == repman.Conf.ProvHost {
-					cl.OpenSVCStats = repman.OpenSVCStats
+					if !fetched {
+						svc := cl.OpenSVCConnect()
+						stats, err := svc.GetDaemonNodeStats()
+						if err == nil {
+							globalstat = stats
+							fetched = true
+						}
+
+						repman.OpenSVCStats.Swap(globalstat)
+					}
+					cl.OpenSVCStats.Swap(globalstat)
 				} else {
 					clstats := make([]opensvc.DaemonNodeStats, 0)
 					svc := cl.OpenSVCConnect()
