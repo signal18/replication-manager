@@ -94,7 +94,7 @@ function Gauge({
               subArcs: [
                 { length: 0.33, color: '#5BE12C' },
                 { length: 0.33, color: '#F5CD19' },
-                { length: 0.33, color: '#EA4228' }
+                { length: 0.34, color: '#EA4228' }
               ]
             }}
             style={isGaugeSizeCustomized ? {} : { width: `${width}px`, height: `${height}px` }}
