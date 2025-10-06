@@ -8,7 +8,7 @@ import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../components/DataTable'
 import { convertObjectToArrayForDropdown, getColorFromServerStatus, getReadableTime } from '../../utility/common'
 import { Link } from 'react-router-dom'
-import { getTopProcess } from '../../redux/clusterSlice'
+import { getOpenSVCStats, getTopProcess } from '../../redux/clusterSlice'
 import BarGraph from '../../components/BarGraph'
 import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
@@ -27,6 +27,7 @@ function Top({ selectedCluster }) {
 
   useEffect(() => {
     dispatch(getTopProcess({ clusterName: selectedCluster?.name }))
+    dispatch(getOpenSVCStats({ clusterName: selectedCluster?.name }))
   }, [])
 
   useEffect(() => {

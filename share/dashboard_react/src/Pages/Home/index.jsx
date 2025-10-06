@@ -193,6 +193,7 @@ function Home() {
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getOpenSVCStats({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Query Rules') {
         dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
