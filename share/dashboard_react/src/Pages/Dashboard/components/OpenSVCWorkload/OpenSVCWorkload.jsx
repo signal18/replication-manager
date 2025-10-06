@@ -60,7 +60,7 @@ const OpenSVCNodeCard = ({ nodeData }) => {
             <Gauge
               minValue={0}
               maxValue={stats.mem_total}
-              value={convertSize(memUsed, "M", "M")}
+              value={memUsed}
               text={'Memory'}
               width={220}
               height={150}
@@ -71,7 +71,7 @@ const OpenSVCNodeCard = ({ nodeData }) => {
             <Gauge
               minValue={0}
               maxValue={stats.swap_total}
-              value={convertSize(swapUsed, "M", "M")}
+              value={swapUsed}
               text={'Swap'}
               width={220}
               height={150}
