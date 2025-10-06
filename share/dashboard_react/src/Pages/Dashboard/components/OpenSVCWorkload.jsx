@@ -85,7 +85,7 @@ const OpenSVCWorkload = function ({ workload }) {
   return (
     <Flex direction={'column'} gap='16px'>
       <Flex wrap='wrap' gap='16px' align='center' justify='space-evenly'>
-        {workload.nodes.map((nodeData) => (
+        {workload.map((nodeData) => (
           <OpenSVCNodeCard key={nodeData.node} nodeData={nodeData} />
         ))}
       </Flex>
