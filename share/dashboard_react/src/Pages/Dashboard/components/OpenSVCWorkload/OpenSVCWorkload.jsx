@@ -1,9 +1,10 @@
 import { Box, Flex, Text } from '@chakra-ui/react'
 import React from 'react'
-import Gauge from '../../../components/Gauge'
-import Card from '../../../components/Card';
+import Gauge from '../../../../components/Gauge';
+import Card from '../../../../components/Card';
 import { useSelector } from 'react-redux';
-import TagPill from '../../../components/TagPill';
+import TagPill from '../../../../components/TagPill';
+import styles from './styles.module.scss';
 
 const getScoreColor = (score) => {
   if (score >= 80) return 'green';
@@ -34,7 +35,7 @@ const OpenSVCNodeCard = ({ nodeData }) => {
         <>
           <Text>{node}</Text>
           <Box ml='auto'>
-              <TagPill colorScheme={getScoreColor(stats.score)} text={`${stats.score}`} />
+            <TagPill colorScheme={getScoreColor(stats.score)} text={`${stats.score}`} />
           </Box>
         </>
       }
@@ -54,25 +55,28 @@ const OpenSVCNodeCard = ({ nodeData }) => {
               />
             </Box>
           </Flex>
-
-          <Flex justify='space-around' gap='16px'>
+          <Flex justify='space-around'>
             <Gauge
               minValue={0}
               maxValue={stats.mem_total}
-              value={memUsed}
-              text='Memory Used'
-              appendTextToValue='MB'
-              width={isDesktop ? 120 : 100}
-              height={isDesktop ? 80 : 70}
+              value={convertSize(memUsed, "M", "M")}
+              text={'Memory'}
+              width={220}
+              height={150}
+              isDisabled={true}
+              isGaugeSizeCustomized={false}
+              textOverlayClassName={styles.textOverlay}
             />
             <Gauge
               minValue={0}
               maxValue={stats.swap_total}
-              value={swapUsed}
-              text='Swap Used'
-              appendTextToValue='MB'
-              width={isDesktop ? 120 : 100}
-              height={isDesktop ? 80 : 70}
+              value={convertSize(swapUsed, "M", "M")}
+              text={'Swap'}
+              width={220}
+              height={150}
+              isDisabled={true}
+              isGaugeSizeCustomized={false}
+              textOverlayClassName={styles.textOverlay}
             />
           </Flex>
         </Flex>

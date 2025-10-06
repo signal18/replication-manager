@@ -14,7 +14,7 @@ import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
 import ServerStatus from '../../components/ServerStatus'
 import ShowMoreText from '../../components/ShowMoreText'
-import OpenSVCWorkload from '../Dashboard/components/OpenSVCWorkload'
+import OpenSVCWorkload from '../Dashboard/components/OpenSVCWorkload/OpenSVCWorkload'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
