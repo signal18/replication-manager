@@ -62,10 +62,11 @@ const OpenSVCNodeCard = ({ nodeData }) => {
               maxValue={stats.mem_total}
               value={memUsed}
               text={'Memory'}
-              width={220}
-              height={150}
+              width={180}
+              height={135}
               isDisabled={true}
               isGaugeSizeCustomized={false}
+              hideMinMax={false}
               textOverlayClassName={styles.textOverlay}
             />
             <Gauge
@@ -73,10 +74,11 @@ const OpenSVCNodeCard = ({ nodeData }) => {
               maxValue={stats.swap_total}
               value={swapUsed}
               text={'Swap'}
-              width={220}
-              height={150}
+              width={180}
+              height={135}
               isDisabled={true}
               isGaugeSizeCustomized={false}
+              hideMinMax={false}
               textOverlayClassName={styles.textOverlay}
             />
           </Flex>
