@@ -22,7 +22,7 @@ const getLoadColor = (load, cores) => {
 const OpenSVCNodeCard = ({ nodeData, width }) => {
   const { node, stats, cores } = nodeData;
   const loadPercent = ((stats.load_15m / cores) * 100).toFixed(1);
-  const cpuLoadColor = getLoadColor(stats.cpuLoad, node.cpuCores);
+  const cpuLoadColor = getLoadColor(stats.load_15m, cores || 1);
   const memUsed = stats.mem_total - stats.mem_avail;
   const swapUsed = stats.swap_total - stats.swap_avail;
 
