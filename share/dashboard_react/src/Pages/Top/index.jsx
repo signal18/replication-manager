@@ -14,15 +14,16 @@ import Dropdown from '../../components/Dropdown'
 import RunTests from '../Dashboard/components/RunTests'
 import ServerStatus from '../../components/ServerStatus'
 import ShowMoreText from '../../components/ShowMoreText'
+import OpenSVCWorkload from '../Dashboard/components/OpenSVCWorkload'
 
 function Top({ selectedCluster }) {
   const dispatch = useDispatch()
   const [topProcessData, setTopProcessData] = useState([])
   const [numberOfRows, setNumberOfRows] = useState(convertObjectToArrayForDropdown([10, 15, 30, 40, 50]))
   const [selectedNumberOfRows, setSelectedNumberOfRows] = useState({ name: 10, value: 10 })
-  const {
-    cluster: { topProcess, clusterServers }
-  } = useSelector((state) => state)
+  const topProcess = useSelector((state) => state.cluster.topProcess)
+  const clusterServers = useSelector((state) => state.cluster.clusterServers)
+  const opensvcStats = useSelector((state) => state.cluster.opensvcStats)
 
   useEffect(() => {
     dispatch(getTopProcess({ clusterName: selectedCluster?.name }))
@@ -147,6 +148,13 @@ function Top({ selectedCluster }) {
         heading={'Tests'}
         body={<RunTests selectedCluster={selectedCluster} />}
       />
+      {selectedCluster?.config?.provOrchestrator == "opensvc" && opensvcStats && (
+        <AccordionComponent
+          className={styles.accordion}
+          heading={'OpenSVC Workload'}
+          body={<OpenSVCWorkload workload={opensvcStats} />}
+        />
+      )}
       {selectedCluster?.workLoad && (
         <AccordionComponent
           className={styles.accordion}

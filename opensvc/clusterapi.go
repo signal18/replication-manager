@@ -1053,11 +1053,26 @@ type NodeStats struct {
 type DaemonNodeStats struct {
 	Node  string    `json:"node"`
 	Stats NodeStats `json:"stats"`
+	Cores int64     `json:"cores"`
 }
 
 func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
-
 	stats := make([]DaemonNodeStats, 0)
+
+	// Get the list of nodes
+	nodes, err := collector.GetNodes()
+	if err != nil {
+		return nil, err
+	}
+
+	coreList := make(map[string]int64)
+	for _, node := range nodes {
+		if node.Cpu_cores > 0 {
+			coreList[node.Node_name] = node.Cpu_cores
+		} else {
+			coreList[node.Node_name] = 1
+		}
+	}
 
 	urlget := fmt.Sprintf("https://%s:%s/daemon_status", collector.Host, collector.Port)
 
@@ -1106,6 +1121,14 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 	err = json.Unmarshal([]byte(result.Raw), &stats)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
+	}
+
+	for i, stat := range stats {
+		if cores, ok := coreList[stat.Node]; ok {
+			stats[i].Cores = cores
+		} else {
+			stats[i].Cores = 1
+		}
 	}
 
 	return stats, nil

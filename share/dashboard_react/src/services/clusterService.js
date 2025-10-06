@@ -9,6 +9,7 @@ export const clusterService = {
   getClusterProxies,
   getClusterCertificates,
   getTopProcess,
+  getOpenSVCStats,
   getBackupSnapshot,
   getBackupStats,
   getJobs,
@@ -167,6 +168,10 @@ function getClusterCertificates(clusterName, baseURL) {
 
 function getTopProcess(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/top`)
+}
+
+function getOpenSVCStats(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/opensvc-stats`)
 }
 
 function getBackupSnapshot(clusterName, baseURL) {
