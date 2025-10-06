@@ -1071,7 +1071,12 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+	if collector.UseAPI {
+		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+		//		collector.Logrus.WithField("FROM", "OpenSVC").Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
+	} else {
+		req.Header.Set("o-node", "*")
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
