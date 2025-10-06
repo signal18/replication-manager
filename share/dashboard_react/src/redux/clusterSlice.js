@@ -119,6 +119,16 @@ export const getTopProcess = createAsyncThunk('cluster/getTopProcess', async ({ 
   }
 })
 
+export const getOpenSVCStats = createAsyncThunk('cluster/getOpenSVCStats', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getOpenSVCStats(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1697,6 +1707,7 @@ const initialState = {
     stats: null
   },
   topProcess: null,
+  opensvcStats: null,
   jobs: null,
   shardSchema: null,
   queryRules: null,
@@ -1763,6 +1774,7 @@ export const clusterSlice = createSlice({
         getDatabaseService.fulfilled,
         getDatabaseVariables.fulfilled,
         getTopProcess.fulfilled,
+        getOpenSVCStats.fulfilled,
         getBackupSnapshot.fulfilled,
         getBackupStats.fulfilled,
         getShardSchema.fulfilled,
@@ -1797,6 +1809,8 @@ export const clusterSlice = createSlice({
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
           state.topProcess = action.payload.data
+        } else if (action.type.includes('getOpenSVCStats')) {
+          state.opensvcStats = action.payload.data
         } else if (action.type.includes('getBackupSnapshot')) {
           state.backups.snapshots = action.payload.data
         } else if (action.type.includes('getBackupStats')) {

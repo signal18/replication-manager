@@ -24,6 +24,7 @@ import (
 	auth "github.com/hashicorp/vault/api/auth/approle"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
 	"github.com/signal18/replication-manager/utils/archiver"
 	"github.com/signal18/replication-manager/utils/cron"
@@ -1647,4 +1648,18 @@ func (cluster *Cluster) SetAppLocalVolume(app *App, dir string) *config.Volume {
 
 func (cluster *Cluster) SetAppLocalMountVolume(app *App) *config.Volume {
 	return cluster.SetAppLocalVolume(app, "mnt")
+}
+
+func (cluster *Cluster) GetOpenSVCStats() ([]opensvc.DaemonNodeStats, error) {
+	stats := make([]opensvc.DaemonNodeStats, 0)
+
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return stats, errors.New("Not using OpenSVC")
+	}
+
+	stats, ok := cluster.OpenSVCStats.Load().([]opensvc.DaemonNodeStats)
+	if !ok {
+		return stats, errors.New("Failed to load OpenSVC stats")
+	}
+	return stats, nil
 }

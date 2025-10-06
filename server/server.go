@@ -26,6 +26,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 
 	"net/http"
@@ -161,6 +162,7 @@ type ReplicationManager struct {
 	ConfigManager                                    *manager.ConfigManager         `json:"-"`
 	MeetUserID                                       string                         `json:"-"`
 	DiskStatManager                                  *misc.DiskStatManager          `json:"-"`
+	OpenSVCStats                                     atomic.Value                   `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -1253,6 +1255,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	repman.ImmuableFlagMaps = make(map[string]map[string]interface{})
 	repman.DynamicFlagMaps = make(map[string]map[string]interface{})
 	repman.Partners = make([]config.Partner, 0)
+	repman.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
 	ImmuableMap := make(map[string]interface{})
 	DynamicMap := make(map[string]interface{})
 	repman.cloud18CheckSum = nil
@@ -1924,6 +1927,39 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 	return ExpectedUser
 }
 
+func (repman *ReplicationManager) ReloadOpenSVCStats() {
+	if repman.Conf.ProvOrchestrator == "opensvc" {
+		globalstat := make([]opensvc.DaemonNodeStats, 0)
+		fetched := false
+
+		for _, cl := range repman.Clusters {
+			if cl.Conf.ProvOrchestrator == "opensvc" {
+				if cl.Conf.ProvHost == repman.Conf.ProvHost {
+					if !fetched {
+						svc := cl.OpenSVCConnect()
+						stats, err := svc.GetDaemonNodeStats()
+						if err == nil {
+							globalstat = stats
+							fetched = true
+						}
+
+						repman.OpenSVCStats.Swap(globalstat)
+					}
+					cl.OpenSVCStats.Swap(globalstat)
+				} else {
+					clstats := make([]opensvc.DaemonNodeStats, 0)
+					svc := cl.OpenSVCConnect()
+					stats, err2 := svc.GetDaemonNodeStats()
+					if err2 == nil {
+						clstats = stats
+					}
+					cl.OpenSVCStats.Swap(clstats)
+				}
+			}
+		}
+	}
+}
+
 func (repman *ReplicationManager) Run() error {
 	var err error
 
@@ -2272,10 +2308,15 @@ func (repman *ReplicationManager) Run() error {
 			}
 
 			go repman.GetAppTemplates()
+
 		}
 
 		if counter%300 == 0 {
 			repman.RefreshDiskStats()
+		}
+
+		if counter%15 == 0 && repman.Conf.ProvOrchestrator == "opensvc" {
+			repman.ReloadOpenSVCStats()
 		}
 
 		counter++
