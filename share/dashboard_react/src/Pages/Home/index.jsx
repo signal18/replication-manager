@@ -22,7 +22,8 @@ import {
   pauseAutoReload,
   getBackupStats,
   clearCluster,
-  getClusterApps
+  getClusterApps,
+  getOpenSVCStats
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
