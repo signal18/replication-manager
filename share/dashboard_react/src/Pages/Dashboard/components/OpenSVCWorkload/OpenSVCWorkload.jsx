@@ -5,7 +5,6 @@ import Card from '../../../../components/Card';
 import { useSelector } from 'react-redux';
 import TagPill from '../../../../components/TagPill';
 import styles from './styles.module.scss';
-import { convertSize } from '../../../../utility/common';
 
 const getScoreColor = (score) => {
   if (score >= 80) return 'green';
@@ -20,9 +19,7 @@ const getLoadColor = (load, cores) => {
   return 'red';
 };
 
-const OpenSVCNodeCard = ({ nodeData }) => {
-  const isDesktop = useSelector((state) => state.common.isDesktop)
-
+const OpenSVCNodeCard = ({ nodeData, width }) => {
   const { node, stats, cores } = nodeData;
   const loadPercent = ((stats.load_15m / cores) * 100).toFixed(1);
   const cpuLoadColor = getLoadColor(stats.cpuLoad, node.cpuCores);
@@ -31,7 +28,7 @@ const OpenSVCNodeCard = ({ nodeData }) => {
 
   return (
     <Card
-      width={isDesktop ? '30%' : '100%'}
+      width={width}
       header={
         <>
           <Text>{node}</Text>
@@ -89,11 +86,14 @@ const OpenSVCNodeCard = ({ nodeData }) => {
 }
 
 const OpenSVCWorkload = function ({ workload }) {
+  const isDesktop = useSelector((state) => state.common.isDesktop)
+  const third = workload && workload.length > 2 ? true : false;
+  const cardWidth = workload ? (isDesktop ? (third ? `33%` : `${Math.floor(100 / workload.length)}%`) : '100%') : '100%';
   return (
     <Flex direction={'column'} gap='8px' padding={'8px'}>
       <Flex wrap='wrap' gap='8px' align='center' justify='space-evenly'>
         {workload.map((nodeData) => (
-          <OpenSVCNodeCard key={nodeData.node} nodeData={nodeData} />
+          <OpenSVCNodeCard key={nodeData.node} nodeData={nodeData} width={cardWidth} />
         ))}
       </Flex>
     </Flex>
