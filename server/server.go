@@ -2309,13 +2309,14 @@ func (repman *ReplicationManager) Run() error {
 
 			go repman.GetAppTemplates()
 
-			if repman.Conf.ProvOrchestrator == "opensvc" {
-				repman.ReloadOpenSVCStats()
-			}
 		}
 
 		if counter%300 == 0 {
 			repman.RefreshDiskStats()
+		}
+
+		if counter%15 == 0 && repman.Conf.ProvOrchestrator == "opensvc" {
+			repman.ReloadOpenSVCStats()
 		}
 
 		counter++
