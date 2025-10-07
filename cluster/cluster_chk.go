@@ -1035,3 +1035,12 @@ func (cluster *Cluster) CheckOpenSVCTresholds() {
 		cluster.SetState("WARN0151", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0151"], overswap), ErrFrom: "CLUSTER"})
 	}
 }
+
+func (cluster *Cluster) CheckDBCredentials() {
+	// This check is to prevent invalid credentials configuration
+	// when both users are the same but passwords are different
+	// which would lead to a non working replication
+	if cluster.GetDbUser() == cluster.GetRplUser() && cluster.GetDbPass() != cluster.GetRplPass() {
+		cluster.SetState("ERR00101", state.State{ErrType: "ERROR", ErrDesc: config.ClusterError["ERR00101"], ErrFrom: "CLUSTER"})
+	}
+}
