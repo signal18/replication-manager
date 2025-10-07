@@ -1093,10 +1093,23 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 		req.Header.Set("o-node", "ANY")
 	}
 
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
 	resp, err := client.Do(req)
+
+	stopConnect := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
 	if err != nil {
 		return nil, err
 	}
+
+	defer client.CloseIdleConnections()
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
