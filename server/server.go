@@ -2316,14 +2316,12 @@ func (repman *ReplicationManager) Run() error {
 			}
 
 			go repman.GetAppTemplates()
-
+			repman.ReloadOpenSVCStats()
 		}
 
 		if counter%300 == 0 {
 			repman.RefreshDiskStats()
 		}
-
-		go repman.ReloadOpenSVCStats()
 
 		counter++
 	}

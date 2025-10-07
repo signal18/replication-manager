@@ -1079,38 +1079,29 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 	urlget := fmt.Sprintf("https://%s:%s/daemon_status", collector.Host, collector.Port)
 
 	client := collector.GetHttpClient()
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlInfo) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("INFO ", urlget)
-	}
 
 	req, err := http.NewRequest("GET", urlget, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 	if collector.UseAPI {
 		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 		//		collector.Logrus.WithField("FROM", "OpenSVC").Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
 	} else {
-		req.Header.Set("o-node", "*")
+		req.Header.Set("o-node", "ANY")
 	}
+
 	resp, err := client.Do(req)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
-		}
 		return nil, err
 	}
 	defer resp.Body.Close()
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlWarn) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Error: ", err)
-		}
 		return nil, err
-	}
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 
 	// Extract node stats using gjson
