@@ -66,7 +66,7 @@ func (cluster *Cluster) RefreshStaging(source *Cluster, masterGTIDList string) e
 	if cluster.StagingServer == nil || cluster.StagingServer.State != stateUnconn {
 		for _, srv := range cluster.Servers {
 			if srv.State == stateUnconn {
-				cluster.StagingServer = srv
+				cluster.SetStagingServer(srv)
 				break
 			}
 		}

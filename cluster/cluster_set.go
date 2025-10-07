@@ -2473,3 +2473,26 @@ func (cluster *Cluster) RenameCluster(newClusterName string) error {
 func (cluster *Cluster) SetLogStatsLevel(value int) {
 	cluster.Conf.LogStatsLevel = value
 }
+
+func (cluster *Cluster) SetStagingServer(srv *ServerMonitor) {
+	srvhost := ""
+	cluster.StagingServer = srv
+	if srv != nil {
+		srvhost = srv.HostCnf
+	}
+	cluster.Conf.StagingServerHost = srvhost
+}
+
+func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
+	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
+
+	stagingcnf := cluster.GetStagingServerFromConfig()
+	// Check if staging server is valid and standalone
+	if stagingcnf != nil && stagingcnf.IsStandAlone() {
+		stagingsrv = stagingcnf
+	}
+
+	cluster.SetStagingServer(stagingsrv)
+
+	return stagingsrv
+}

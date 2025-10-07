@@ -500,6 +500,17 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		cluster.vmaster = nil
 	}
 
+	// Set staging server from config if not yet set and staging mode is on
+	if cluster.Conf.TopologyStaging && cluster.StagingServer == nil {
+		// Get staging server from config
+		staging := cluster.GetStagingServerFromConfig()
+
+		// Check if staging server is valid and standalone
+		if staging != nil && staging.IsStandAlone() {
+			cluster.SetStagingServer(staging)
+		}
+	}
+
 	if cluster.StateMachine.CanMonitor() {
 		return nil
 	}

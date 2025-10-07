@@ -1508,3 +1508,17 @@ func (cluster *Cluster) GetTerminalManager() tty.TerminalManager {
 
 	return terminalMgr
 }
+
+func (cluster *Cluster) GetStagingServerFromConfig() *ServerMonitor {
+	if !cluster.Conf.TopologyStaging {
+		return nil
+	}
+
+	for _, srv := range cluster.Servers {
+		if srv.HostCnf == cluster.Conf.StagingServerHost {
+			return srv
+		}
+	}
+
+	return nil
+}

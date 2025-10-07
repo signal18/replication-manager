@@ -441,6 +441,7 @@ type Config struct {
 	TopologyStagingRefreshScript              string                 `mapstructure:"topology-staging-refresh-script" toml:"topology-staging-refresh-script" json:"topologyStagingRefreshScript"`
 	TopologyStagingPostDetachScript           string                 `mapstructure:"topology-staging-post-detach-script" toml:"topology-staging-post-detach-script" json:"topologyStagingPostDetachScript"`
 	StagingProxyHosts                         string                 `mapstructure:"staging-proxy-hosts" toml:"staging-proxy-hosts" json:"stagingProxyHosts"`
+	StagingServerHost                         string                 `mapstructure:"staging-server-host" toml:"staging-server-host" json:"stagingServerHost"`
 	GraphiteMetrics                           bool                   `scope:"server" mapstructure:"graphite-metrics" toml:"graphite-metrics" json:"graphiteMetrics"`
 	GraphiteEmbedded                          bool                   `scope:"server" mapstructure:"graphite-embedded" toml:"graphite-embedded" json:"graphiteEmbedded"`
 	GraphiteWhitelist                         bool                   `scope:"server" mapstructure:"graphite-whitelist" toml:"graphite-whitelist" json:"graphiteWhitelist"`
