@@ -117,7 +117,14 @@ export const getTopProcess = createAsyncThunk('cluster/getTopProcess', async ({ 
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.top) {
+      return false;
+    }
+  }
+});
 
 export const getOpenSVCStats = createAsyncThunk('cluster/getOpenSVCStats', async ({ clusterName }, thunkAPI) => {
   try {
@@ -127,7 +134,14 @@ export const getOpenSVCStats = createAsyncThunk('cluster/getOpenSVCStats', async
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.opensvcStats) {
+      return false;
+    }
+  }
+});
 
 export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', async ({ clusterName }, thunkAPI) => {
   try {
@@ -1690,6 +1704,8 @@ const initialState = {
     servers: false,
     proxies: false,
     certificates: false,
+    top: false,
+    opensvcStats: false,
   },
   error: null,
   clusterApps: null,
@@ -1809,8 +1825,10 @@ export const clusterSlice = createSlice({
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
           state.topProcess = action.payload.data
+          state.isFetching.top = false
         } else if (action.type.includes('getOpenSVCStats')) {
           state.opensvcStats = action.payload.data
+          state.isFetching.opensvcStats = false
         } else if (action.type.includes('getBackupSnapshot')) {
           state.backups.snapshots = action.payload.data
         } else if (action.type.includes('getBackupStats')) {
@@ -1858,6 +1876,8 @@ export const clusterSlice = createSlice({
         getClusterServers.pending,
         getClusterProxies.pending,
         getClusterCertificates.pending,
+        getTopProcess.pending,
+        getOpenSVCStats.pending,
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -1872,6 +1892,10 @@ export const clusterSlice = createSlice({
           state.isFetching.proxies = true
         } else if (action.type.includes('getClusterApps')) {
           state.isFetching.apps = true
+        } else if (action.type.includes('getTopProcess')) {
+          state.isFetching.top = true
+        } else if (action.type.includes('getOpenSVCStats')) {
+          state.isFetching.opensvcStats = true
         }
       }
     )
@@ -1897,6 +1921,10 @@ export const clusterSlice = createSlice({
           state.isFetching.proxies = false
         } else if (action.type.includes('getClusterApps')) {
           state.isFetching.apps = false
+        } else if (action.type.includes('getTopProcess')) {
+          state.isFetching.top = false
+        } else if (action.type.includes('getOpenSVCStats')) {
+          state.isFetching.opensvcStats = false
         }
       }
     )
