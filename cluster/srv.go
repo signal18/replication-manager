@@ -618,13 +618,10 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			cluster.backendStateChangeProxies()
 			server.SendAlert()
 
-			// Cancel autorejoin if in topology staging mode
-			if !cluster.Conf.TopologyStaging {
-				if cluster.Conf.Autorejoin && cluster.IsActive() {
-					server.RejoinMaster()
-				} else {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
-				}
+			if cluster.Conf.Autorejoin && cluster.IsActive() {
+				server.RejoinMaster()
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
 			}
 
 		} else if server.State != stateMaster && server.PrevState != stateUnconn && server.State == stateUnconn {
