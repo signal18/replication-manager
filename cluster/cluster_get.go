@@ -1654,7 +1654,7 @@ func (cluster *Cluster) GetOpenSVCStats() ([]opensvc.DaemonNodeStats, error) {
 	stats := make([]opensvc.DaemonNodeStats, 0)
 
 	if cluster.Conf.ProvOrchestrator != "opensvc" {
-		return stats, errors.New("Not using OpenSVC")
+		return stats, nil
 	}
 
 	stats, ok := cluster.OpenSVCStats.Load().([]opensvc.DaemonNodeStats)

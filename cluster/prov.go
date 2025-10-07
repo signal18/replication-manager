@@ -891,12 +891,12 @@ func (cluster *Cluster) ProvisionRotatePasswords(password string) error {
 func (cluster *Cluster) ReloadOpenSVCDaemonNodeStats() error {
 	if cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		svc := cluster.OpenSVCConnect()
-		nodes, err := svc.GetDaemonNodeStats()
+		stats, err := svc.GetDaemonNodeStats()
 		if err != nil {
 			return err
 		}
 
-		cluster.OpenSVCStats.Swap(nodes)
+		cluster.OpenSVCStats.Swap(stats)
 	}
 	return nil
 }

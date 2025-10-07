@@ -990,3 +990,48 @@ func (cluster *Cluster) CheckAvailableCredit() {
 		cluster.SetState("CREDIT01", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["CREDIT01"], cluster.Conf.Cloud18ApplicationCredits, cluster.Conf.Cloud18ApplicationCreditsUsed), ErrFrom: "CLUSTER"})
 	}
 }
+
+type TresholdStat struct {
+	Node     string
+	Avail    int64
+	Treshold int64
+}
+
+func (cluster *Cluster) CheckOpenSVCTresholds() {
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return
+	}
+
+	nodestats, _ := cluster.GetOpenSVCStats()
+	if len(nodestats) == 0 {
+		return
+	}
+
+	overmem := make([]TresholdStat, 0)
+	overswap := make([]TresholdStat, 0)
+
+	for _, ns := range nodestats {
+		if ns.Stats.MemAvail < ns.MinAvailMem {
+			overmem = append(overmem, TresholdStat{
+				Node:     ns.Node,
+				Avail:    ns.Stats.MemAvail,
+				Treshold: ns.MinAvailMem,
+			})
+		}
+
+		if ns.Stats.SwapAvail < ns.MinAvailSwap {
+			overswap = append(overswap, TresholdStat{
+				Node:     ns.Node,
+				Avail:    ns.Stats.SwapAvail,
+				Treshold: ns.MinAvailSwap,
+			})
+		}
+	}
+
+	if len(overmem) > 0 {
+		cluster.SetState("WARN0150", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0150"], overmem), ErrFrom: "CLUSTER"})
+	}
+	if len(overswap) > 0 {
+		cluster.SetState("WARN0151", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0151"], overswap), ErrFrom: "CLUSTER"})
+	}
+}

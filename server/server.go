@@ -163,6 +163,7 @@ type ReplicationManager struct {
 	MeetUserID                                       string                         `json:"-"`
 	DiskStatManager                                  *misc.DiskStatManager          `json:"-"`
 	OpenSVCStats                                     atomic.Value                   `json:"-"`
+	inFetchOpenSVCStats                              bool                           `json:"-"`
 	fileHook                                         log.Hook
 	repmanv3.UnimplementedClusterPublicServiceServer `json:"-"`
 	repmanv3.UnimplementedClusterServiceServer       `json:"-"`
@@ -1928,6 +1929,13 @@ func (repman *ReplicationManager) GetExpectedUser() *user.User {
 }
 
 func (repman *ReplicationManager) ReloadOpenSVCStats() {
+	if repman.inFetchOpenSVCStats {
+		return
+	}
+
+	repman.inFetchOpenSVCStats = true
+	defer func() { repman.inFetchOpenSVCStats = false }()
+
 	if repman.Conf.ProvOrchestrator == "opensvc" {
 		globalstat := make([]opensvc.DaemonNodeStats, 0)
 		fetched := false
@@ -2315,9 +2323,7 @@ func (repman *ReplicationManager) Run() error {
 			repman.RefreshDiskStats()
 		}
 
-		if counter%15 == 0 && repman.Conf.ProvOrchestrator == "opensvc" {
-			repman.ReloadOpenSVCStats()
-		}
+		go repman.ReloadOpenSVCStats()
 
 		counter++
 	}
