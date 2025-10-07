@@ -23,8 +23,8 @@ const OpenSVCNodeCard = ({ nodeData, width }) => {
   const { node, stats, cores } = nodeData;
   const loadPercent = ((stats.load_15m / cores) * 100).toFixed(1);
   const cpuLoadColor = getLoadColor(stats.load_15m, cores || 1);
-  const memUsed = stats.mem_total * (100 - stats.mem_avail) / 100;
-  const swapUsed = stats.swap_total * (100 - stats.swap_avail) / 100;
+  const memUsed = Math.round(stats.mem_total * (100 - stats.mem_avail) / 100);
+  const swapUsed = Math.round(stats.swap_total * (100 - stats.swap_avail) / 100);
 
   return (
     <Card
