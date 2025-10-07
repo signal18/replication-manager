@@ -1051,9 +1051,11 @@ type NodeStats struct {
 }
 
 type DaemonNodeStats struct {
-	Node  string    `json:"node"`
-	Stats NodeStats `json:"stats"`
-	Cores int64     `json:"cores"`
+	Node         string    `json:"node"`
+	Stats        NodeStats `json:"stats"`
+	MinAvailMem  int64     `json:"min_avail_mem"`
+	MinAvailSwap int64     `json:"min_avail_swap"`
+	Cores        int64     `json:"cores"`
 }
 
 func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
@@ -1112,7 +1114,7 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 	}
 
 	// Extract node stats using gjson
-	key := "monitor.nodes.{node:@keys,stats:@values.#.stats}.@group"
+	key := "monitor.nodes.{node:@keys,stats:@values.#.stats,min_avail_mem:@values.#.min_avail_mem, min_avail_swap:@values.#.min_avail_swap}.@group"
 	result := gjson.GetBytes(body, key)
 	if !result.Exists() {
 		return nil, errors.New("No node stats found")

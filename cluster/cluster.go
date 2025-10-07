@@ -736,8 +736,9 @@ func (cluster *Cluster) Run() {
 							cluster.CheckIsOverwrite()
 							cluster.CheckAllBackupFreeSpace()
 							cluster.CheckAvailableCredit()
+							cluster.CheckOpenSVCTresholds()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134", "WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0145", "CREDIT01")
+							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134", "WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0145", "WARN0150", "WARN0151", "CREDIT01")
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
