@@ -791,7 +791,7 @@ func (cluster *Cluster) CheckSameServerID() {
 				continue
 			}
 			if s.ServerID == sothers.ServerID {
-				cluster.SetState("WARN0087", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0087"], s.URL, sothers.URL), ErrFrom: "MON", ServerUrl: s.URL})
+				cluster.SetState("WARN0087", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["WARN0087"], s.URL, sothers.URL), ErrFrom: "MON", ServerUrl: s.URL})
 
 			}
 		}
