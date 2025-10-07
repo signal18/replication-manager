@@ -778,6 +778,7 @@ func (cluster *Cluster) Run() {
 
 				cluster.IsFailable = cluster.GetStatus()
 				cluster.IsMasterDown = cluster.GetMaster() == nil || cluster.GetMaster().IsFailed()
+				cluster.CheckDBCredentials()
 				// CheckFailed trigger failover code if passing all false positiv and constraints
 				cluster.CheckFailed()
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
