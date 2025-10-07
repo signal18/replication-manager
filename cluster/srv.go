@@ -642,6 +642,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			// if autorejoin is set and node is not staging server
 			if cluster.Conf.Autorejoin && cluster.IsActive() && !isStagingServer {
 				server.RejoinMaster()
+			} else if isStagingServer {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Preventing auto rejoin on staging server %s", server.URL)
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
 			}
