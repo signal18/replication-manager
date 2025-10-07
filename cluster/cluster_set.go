@@ -2615,3 +2615,26 @@ func (cluster *Cluster) SetResticPassword(cred string) {
 	new_secret.OldValue = cluster.Conf.GetDecryptedValue("backup-restic-password")
 	cluster.Conf.Secrets["backup-restic-password"] = new_secret
 }
+
+func (cluster *Cluster) SetStagingServer(srv *ServerMonitor) {
+	srvhost := ""
+	cluster.StagingServer = srv
+	if srv != nil {
+		srvhost = srv.HostCnf
+	}
+	cluster.Conf.StagingServerHost = srvhost
+}
+
+func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
+	stagingsrv, _ := cluster.GetStandaloneServerByIndex(0)
+
+	stagingcnf := cluster.GetStagingServerFromConfig()
+	// Check if staging server is valid and standalone
+	if stagingcnf != nil && stagingcnf.IsStandAlone() {
+		stagingsrv = stagingcnf
+	}
+
+	cluster.SetStagingServer(stagingsrv)
+
+	return stagingsrv
+}

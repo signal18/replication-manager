@@ -601,13 +601,17 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 	if errss == sql.ErrNoRows || noChannel {
 		// If we have no replication channel found
 		// This is either a master or a standalone server
+		isStagingServer := false
+		if cluster.Conf.TopologyStaging && cluster.StagingServer != nil && cluster.StagingServer.Id == server.Id {
+			isStagingServer = true
+		}
 
 		if server.PrevState == stateFailed || server.PrevState == stateErrorAuth /*|| server.PrevState == stateSuspect*/ {
 			// If we reached this stage with a previously failed server, reintroduce it as unconnected server.master
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "State changed, init failed server %s as unconnected", server.URL)
 
-			// if the config is read only and we are not in a wsrep cluster and we are not in topology staging mode
-			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !cluster.Conf.TopologyStaging {
+			// if the config is read only and we are not in a wsrep cluster and node is not staging server
+			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !isStagingServer {
 				//GetMaster abstract master for galera multi master and master slave
 				if server.GetCluster().GetMaster() != nil {
 					if cluster.Status == ConstMonitorActif && server.GetCluster().GetMaster().Id != server.Id && !server.IsIgnoredReadonly() && !cluster.IsInFailover() {
@@ -635,7 +639,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			cluster.backendStateChangeProxies()
 			server.SendAlert()
 
-			if cluster.Conf.Autorejoin && cluster.IsActive() {
+			// if autorejoin is set and node is not staging server
+			if cluster.Conf.Autorejoin && cluster.IsActive() && !isStagingServer {
 				server.RejoinMaster()
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Auto Rejoin is disabled")
@@ -652,8 +657,8 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "From state %s to unconnected and non leader on server %s", server.PrevState, server.URL)
 
-			// if the config is read only and we are not in a wsrep cluster and we are not in topology staging mode
-			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !server.IsIgnoredReadonly() && !cluster.IsInFailover() && !cluster.Conf.TopologyStaging {
+			// if the config is read only and we are not in a wsrep cluster and node is not staging server
+			if cluster.Conf.ReadOnly && !server.HaveWsrep && cluster.IsDiscovered() && !server.IsIgnoredReadonly() && !cluster.IsInFailover() && !isStagingServer {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Setting Read Only on unconnected server: %s no master state and replication found", server.URL)
 				server.SetReadOnly()
 			}
