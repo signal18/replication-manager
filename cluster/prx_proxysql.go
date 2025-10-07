@@ -315,7 +315,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 
 	stagingsrv := cluster.StagingServer
 	if stagingsrv == nil {
-		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
+		stagingsrv = cluster.SetStandaloneAsStaging()
 	}
 
 	for _, s := range cluster.Servers {

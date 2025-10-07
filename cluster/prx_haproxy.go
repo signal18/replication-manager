@@ -137,8 +137,7 @@ func (proxy *HaproxyProxy) Init() {
 
 	stagingsrv := cluster.StagingServer
 	if stagingsrv == nil {
-		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
-		cluster.StagingServer = stagingsrv
+		stagingsrv = cluster.SetStandaloneAsStaging()
 	}
 
 	if cluster.Conf.TopologyStaging && proxy.IsStaging && stagingsrv != nil {
@@ -213,8 +212,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
 	stagingsrv := cluster.StagingServer
 	if stagingsrv == nil {
-		stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
-		cluster.StagingServer = stagingsrv
+		stagingsrv = cluster.SetStandaloneAsStaging()
 	}
 	// if proxy.ClusterGroup.Conf.HaproxyStatHttp {
 
@@ -364,11 +362,6 @@ func (proxy *HaproxyProxy) Refresh() error {
 
 					if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
 						if !srv.IsStandAlone() {
-							if stagingsrv == nil {
-								stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
-								cluster.StagingServer = stagingsrv
-							}
-
 							if stagingsrv != nil {
 								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] Detecting wrong master server in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
 								msg, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)
@@ -510,11 +503,6 @@ func (proxy *HaproxyProxy) Refresh() error {
 	}
 	if !foundMasterInStat {
 		if cluster.Conf.TopologyStaging && proxy.IsInStaging() {
-			if stagingsrv == nil {
-				stagingsrv, _ = cluster.GetStandaloneServerByIndex(0)
-				cluster.StagingServer = stagingsrv
-			}
-
 			if stagingsrv != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlInfo, "[Staging] HAProxy has standalone in cluster but not in haproxy %s fixing it to standalone %s %s", proxy.Host+":"+proxy.Port, stagingsrv.Host, stagingsrv.Port)
 				msg, err := haRuntime.SetMaster(cluster.Conf.HaproxyStagingBackend, stagingsrv.Host, stagingsrv.Port)

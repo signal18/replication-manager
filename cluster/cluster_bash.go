@@ -89,7 +89,7 @@ func (cluster *Cluster) BashScriptDbServersChangeState(srv *ServerMonitor, newSt
 				cluster.StagingServer.SetReadOnly() // Set the old staging server to read only
 			}
 
-			cluster.StagingServer = srv          // Set the new staging server as the new staging server
+			cluster.SetStagingServer(srv)        // Set the new staging server as the new staging server
 			cluster.StagingServer.SetReadWrite() // Set the new staging server to read write for proxysql read-only checks
 		}
 

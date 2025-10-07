@@ -1663,3 +1663,17 @@ func (cluster *Cluster) GetOpenSVCStats() ([]opensvc.DaemonNodeStats, error) {
 	}
 	return stats, nil
 }
+
+func (cluster *Cluster) GetStagingServerFromConfig() *ServerMonitor {
+	if !cluster.Conf.TopologyStaging {
+		return nil
+	}
+
+	for _, srv := range cluster.Servers {
+		if srv.HostCnf == cluster.Conf.StagingServerHost {
+			return srv
+		}
+	}
+
+	return nil
+}
