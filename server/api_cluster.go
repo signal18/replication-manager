@@ -4282,7 +4282,7 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 	vars := mux.Vars(r)
 
 	// (?i) = case-insensitive
-	pattern := fmt.Sprintf(`(?i)(^|[^A-Za-z0-9-_])%s([^A-Za-z0-9-_]|$)`, regexp.QuoteMeta(strings.TrimSpace(vars["clusterName"])))
+	pattern := fmt.Sprintf(`(?i)(^|[^A-Za-z0-9_\-])%s([^A-Za-z0-9_\-]|$)`, regexp.QuoteMeta(strings.TrimSpace(vars["clusterName"])))
 	re := regexp.MustCompile(pattern)
 
 	for _, slog := range repman.tlog.Buffer {
