@@ -36,9 +36,9 @@ func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
 	text := fmt.Sprintf("Alert: State changed from %s to %s\nMonitor: %s\nCluster: %s\n%s", a.PrevState, a.State, a.Instance, a.Cluster, host)
 	if a.PrevState == "" {
 		if a.Resolved {
-			text = fmt.Sprintf("Resolved: %s\nMonitor: %s\nCluster: %s\n%s%s\n", a.State, a.Instance, a.Cluster, host, ts)
+			text = fmt.Sprintf("Resolved: %s\nMonitor: %s\nCluster: %s\n%sTime: %s\n", a.State, a.Instance, a.Cluster, host, ts)
 		} else {
-			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s%s\n", a.State, a.Instance, a.Cluster, host, ts)
+			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%sTime: %s\n", a.State, a.Instance, a.Cluster, host, ts)
 		}
 	}
 	e.Text = []byte(text)
