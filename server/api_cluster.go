@@ -4280,8 +4280,13 @@ func (repman *ReplicationManager) handlerMuxSwitchReadOnly(w http.ResponseWriter
 func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.Request) {
 	var clusterlogs []string
 	vars := mux.Vars(r)
+
+	// (?i) = case-insensitive
+	pattern := fmt.Sprintf(`(?i)(^|[^A-Za-z0-9_\-])%s([^A-Za-z0-9_\-]|$)`, regexp.QuoteMeta(strings.TrimSpace(vars["clusterName"])))
+	re := regexp.MustCompile(pattern)
+
 	for _, slog := range repman.tlog.Buffer {
-		if strings.Contains(slog, vars["clusterName"]) {
+		if re.MatchString(slog) {
 			clusterlogs = append(clusterlogs, slog)
 		}
 	}
