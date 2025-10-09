@@ -3,6 +3,7 @@ package alert
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/jordan-wright/email"
 	"github.com/mattermost/mattermost-server/v6/model"
@@ -20,6 +21,8 @@ type Alert struct {
 }
 
 func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
+	ts := time.Now().Format(time.RFC1123)
+
 	e := email.NewEmail()
 	e.From = mailer.From
 	e.To = strings.Split(to, ",")
@@ -33,9 +36,9 @@ func (a *Alert) EmailMessage(to string, mailer *mailer.Mailer) error {
 	text := fmt.Sprintf("Alert: State changed from %s to %s\nMonitor: %s\nCluster: %s\n%s", a.PrevState, a.State, a.Instance, a.Cluster, host)
 	if a.PrevState == "" {
 		if a.Resolved {
-			text = fmt.Sprintf("Resolved: %s\nMonitor: %s\nCluster: %s\n%s", a.State, a.Instance, a.Cluster, host)
+			text = fmt.Sprintf("Resolved: %s\nMonitor: %s\nCluster: %s\n%s%s\n", a.State, a.Instance, a.Cluster, host, ts)
 		} else {
-			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s", a.State, a.Instance, a.Cluster, host)
+			text = fmt.Sprintf("Alert: %s\nMonitor: %s\nCluster: %s\n%s%s\n", a.State, a.Instance, a.Cluster, host, ts)
 		}
 	}
 	e.Text = []byte(text)
