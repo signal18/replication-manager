@@ -3593,6 +3593,14 @@ func MoveLogsToDailyTable(conn *sqlx.Conn, version *version.Version, table strin
 	}
 	cancel()
 
+	query = "CREATE TABLE IF NOT EXISTS `replication_manager_schema`." + copytablename + " LIKE `mysql`." + table
+	ctx, cancel = context.WithTimeout(context.Background(), timeout)
+	if _, err := conn.ExecContext(ctx, query); err != nil {
+		cancel()
+		return fmt.Errorf("Unable to create table replication_manager_schema.%s: %s", copytablename, err.Error())
+	}
+	cancel()
+
 	query = "INSERT INTO `replication_manager_schema`." + desttablename + " SELECT * FROM `replication_manager_schema`." + copytablename
 	ctx, cancel = context.WithTimeout(context.Background(), timeout)
 	if _, err := conn.ExecContext(ctx, query); err != nil {
