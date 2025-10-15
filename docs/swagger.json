@@ -7381,6 +7381,68 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade": {
+            "get": {
+                "description": "Flags a specified server within a cluster to allow jobs upgrade by setting a cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Allow jobs upgrade on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Flagged for jobs upgrade",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance": {
             "get": {
                 "description": "Toggles the maintenance mode on a specified server within a cluster.",
@@ -11291,6 +11353,130 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check": {
+            "get": {
+                "description": "Checks jobs on a specified server within a cluster by initiating a receiver for the current.jobs.tmp file.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Check jobs on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SST_RECEIVER_PORT=\u003cport\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade": {
+            "get": {
+                "description": "Upgrades jobs on a specified server within a cluster by sending the dbjobs_new file.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Upgrade jobs on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sending dbjobs_new file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error sending dbjobs_new file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup": {
             "get": {
                 "description": "Initiates a physical backup on a specified server port within a cluster.",
@@ -11696,7 +11882,9 @@
                             "restart",
                             "start",
                             "printdefault-current",
-                            "printdefault-dummy"
+                            "printdefault-dummy",
+                            "jobs-check",
+                            "jobs-upgrade"
                         ],
                         "type": "string",
                         "description": "taskname",
@@ -12441,7 +12629,9 @@
                             "restart",
                             "start",
                             "printdefault-current",
-                            "printdefault-dummy"
+                            "printdefault-dummy",
+                            "jobs-check",
+                            "jobs-upgrade"
                         ],
                         "type": "string",
                         "description": "Type of check (e.g., 'config-refresh')",
@@ -21790,6 +21980,9 @@
                 "stagingProxyHosts": {
                     "type": "string"
                 },
+                "stagingServerHost": {
+                    "type": "string"
+                },
                 "switchoverAtEqualGtid": {
                     "type": "boolean"
                 },
@@ -22245,6 +22438,15 @@
         "opensvc.DaemonNodeStats": {
             "type": "object",
             "properties": {
+                "cores": {
+                    "type": "integer"
+                },
+                "min_avail_mem": {
+                    "type": "integer"
+                },
+                "min_avail_swap": {
+                    "type": "integer"
+                },
                 "node": {
                     "type": "string"
                 },

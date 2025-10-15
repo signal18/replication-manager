@@ -3096,6 +3096,8 @@ definitions:
         type: integer
       stagingProxyHosts:
         type: string
+      stagingServerHost:
+        type: string
       switchoverAtEqualGtid:
         type: boolean
       switchoverAtSync:
@@ -3396,6 +3398,12 @@ definitions:
     type: object
   opensvc.DaemonNodeStats:
     properties:
+      cores:
+        type: integer
+      min_avail_mem:
+        type: integer
+      min_avail_swap:
+        type: integer
       node:
         type: string
       stats:
@@ -8476,6 +8484,94 @@ paths:
       summary: Get server details
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check:
+    get:
+      description: Checks jobs on a specified server within a cluster by initiating
+        a receiver for the current.jobs.tmp file.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: SST_RECEIVER_PORT=<port>
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error opening
+            receiver ports
+          schema:
+            type: string
+      summary: Check jobs on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade:
+    get:
+      description: Upgrades jobs on a specified server within a cluster by sending
+        the dbjobs_new file.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sending dbjobs_new file
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error sending
+            dbjobs_new file
+          schema:
+            type: string
+      summary: Upgrade jobs on a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup:
     get:
       description: Initiates a physical backup on a specified server port within a
@@ -8765,6 +8861,8 @@ paths:
         - start
         - printdefault-current
         - printdefault-dummy
+        - jobs-check
+        - jobs-upgrade
         in: path
         name: type
         required: true
@@ -9283,6 +9381,8 @@ paths:
         - start
         - printdefault-current
         - printdefault-dummy
+        - jobs-check
+        - jobs-upgrade
         in: path
         name: type
         required: true
@@ -9675,6 +9775,49 @@ paths:
           schema:
             type: string
       summary: Cancel a task on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade:
+    get:
+      description: Flags a specified server within a cluster to allow jobs upgrade
+        by setting a cookie.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Flagged for jobs upgrade
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: Allow jobs upgrade on a server
       tags:
       - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/actions/maintenance:
