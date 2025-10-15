@@ -507,30 +507,59 @@ func (cluster *Cluster) SSTRunSendFile(client net.Conn, backupfile string, sv *S
 		return cluster.SSTRunSendGzip(client, backupfile, sv)
 	}
 	if err != nil {
-		return errors.New(fmt.Sprintf("SST to server %s failed to open backup file, err: %s ", sv.URL, err))
+		return fmt.Errorf("SST to server %s failed to open backup file: %w", sv.URL, err)
 	}
-
-	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
-	//fmt.Println("Start sending file!")
-	var total uint64
-
 	defer file.Close()
 
+	bufSize := cluster.Conf.SSTSendBuffer
+	readaheadDepth := 4 // number of chunks to prefetch
+	ch := make(chan []byte, readaheadDepth)
+	errCh := make(chan error, 1)
+	done := make(chan struct{})
+
+	// --- Reader goroutine (producer) ---
+	go func() {
+		defer close(ch)
+		for {
+			buf := make([]byte, bufSize)
+			n, err := file.Read(buf)
+			if err != nil {
+				if err != io.EOF {
+					errCh <- err
+				}
+				break
+			}
+			if n == 0 {
+				break
+			}
+			ch <- buf[:n]
+		}
+	}()
+
+	// --- Sender (consumer) ---
+	var total uint64
 	for {
-		_, err = file.Read(sendBuffer)
-		if err == io.EOF {
-			break
-		}
+		select {
+		case buf, ok := <-ch:
+			if !ok {
+				// all done
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo,
+					"Backup has been sent (%d bytes), closing connection!", total)
+				close(done)
+				return nil
+			}
+			n, err := client.Write(buf)
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr,
+					"SST failed to write chunk: %s at position %d", err, total)
+				return err
+			}
+			total += uint64(n)
 
-		bts, err := client.Write(sendBuffer)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST failed to write chunk %s at position %d", err, total)
+		case err := <-errCh:
+			return fmt.Errorf("read error: %w", err)
 		}
-		total = total + uint64(bts)
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Backup has been sent, closing connection!")
-
-	return nil
 }
 
 func (cluster *Cluster) SSTRunSenderSSL(backupfile string, sv *ServerMonitor) error {
