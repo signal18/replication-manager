@@ -816,3 +816,11 @@ func (server *ServerMonitor) HasWaitErrorlogCookie() bool {
 func (server *ServerMonitor) HasWaitSlowqueryCookie() bool {
 	return server.hasCookie("cookie_wait_slowquery")
 }
+
+func (server *ServerMonitor) HasWaitJobsCheckCookie() bool {
+	return server.hasCookie("cookie_wait_jobs_check")
+}
+
+func (server *ServerMonitor) HasWaitJobsUpgradeCookie() bool {
+	return server.hasCookie("cookie_wait_jobs_upgrade")
+}

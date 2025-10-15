@@ -220,6 +220,8 @@ var ClusterError = map[string]string{
 	"WARN0144":  "HAProxy inconsistent server ID between haproxy %s and cluster %s for host %s",
 	"WARN0145":  "Failed to backup restic config file: %s",
 	"WARN0146":  "Failed to restore restic config file: %s",
+	"WARN0147":  "Current jobs script is different than the one in node %s. New: %s Current: %s. Err : %s",
+	"WARN0148":  "Running job script upgrade on node %s.",
 	"WARN0150":  "Orchestrator node(s) has reached minimum percentage of available memory threshold. Stats: %v",
 	"WARN0151":  "Orchestrator node(s) has reached minimum percentage of available swap threshold. Stats: %v",
 	"WARN0152":  "Orchestrator node(s) has reached max CPU load threshold. Stats: %v",

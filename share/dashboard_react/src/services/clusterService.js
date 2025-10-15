@@ -51,6 +51,7 @@ export const clusterService = {
 
   // Server management APIs
   setMaintenanceMode,
+  jobsUpgrade,
   promoteToLeader,
   setAsUnrated,
   setAsPreferred,
@@ -339,6 +340,10 @@ function reseedStagingFromParent(clusterName, baseURL) {
 //#region Server management APIs
 function setMaintenanceMode(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/maintenance`)
+}
+
+function jobsUpgrade(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/jobs-upgrade`)
 }
 
 function promoteToLeader(clusterName, serverId, baseURL) {

@@ -1044,3 +1044,9 @@ func (cluster *Cluster) CheckDBCredentials() {
 		cluster.SetState("ERR00101", state.State{ErrType: "ERROR", ErrDesc: config.ClusterError["ERR00101"], ErrFrom: "CLUSTER"})
 	}
 }
+
+func (cluster *Cluster) CheckJobsVersion() {
+	for _, server := range cluster.Servers {
+		server.CheckJobsVersion()
+	}
+}

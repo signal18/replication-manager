@@ -9,8 +9,10 @@ package cluster
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/smtp"
 	"strings"
@@ -18,6 +20,7 @@ import (
 	vault "github.com/hashicorp/vault/api"
 	"github.com/jordan-wright/email"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
@@ -582,4 +585,47 @@ func (cluster *Cluster) RevokeDBUserGrants(user string) error {
 		}
 	}
 	return nil
+}
+
+type DecodedData struct {
+	Data string `json:"data"`
+}
+
+func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, error, int) {
+	var decodedData DecodedData
+	body, err := io.ReadAll(rbody)
+	if err != nil {
+		return nil, fmt.Errorf("Decode reading body :%s", err.Error()), 500
+	}
+
+	err = json.Unmarshal(body, &decodedData)
+	if err != nil {
+		return nil, fmt.Errorf("Decode body :%s. Err: %s", string(body), err.Error()), 400
+	}
+
+	var node *ServerMonitor
+	if vars["serverPort"] == "" {
+		node = cluster.GetServerFromName(vars["serverName"])
+	} else {
+		node = cluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	}
+	if node == nil {
+		return nil, fmt.Errorf("No server"), 500
+	}
+	// Decrypt the encrypted data
+	key := crypto.GetSHA256Hash(node.Pass)
+	iv := crypto.GetMD5Hash(node.Pass)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Received login with encrypted secret %s", decodedData.Data)
+
+	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
+	if err != nil {
+		return nil, fmt.Errorf("Error decrypting data : %s", err.Error()), 500
+	}
+
+	if decrypted != cluster.GetDbPass() {
+		return nil, fmt.Errorf("Invalid secret"), 401
+	}
+
+	return node, nil, 200
 }

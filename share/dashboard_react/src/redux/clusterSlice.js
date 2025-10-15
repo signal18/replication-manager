@@ -594,8 +594,7 @@ export const checksumAllTables = createAsyncThunk('cluster/checksumAllTables', a
   }
 })
 
-export const setMaintenanceMode = createAsyncThunk(
-  'cluster/setMaintenanceMode',
+export const setMaintenanceMode = createAsyncThunk('cluster/setMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -608,8 +607,22 @@ export const setMaintenanceMode = createAsyncThunk(
     }
   }
 )
-export const promoteToLeader = createAsyncThunk(
-  'cluster/promoteToLeader',
+
+export const jobsUpgrade = createAsyncThunk('cluster/jobsUpgrade',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.jobsUpgrade(clusterName, serverId, baseURL)
+      showSuccessBanner('Jobs upgrade initiated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Jobs upgrade failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const promoteToLeader = createAsyncThunk('cluster/promoteToLeader',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

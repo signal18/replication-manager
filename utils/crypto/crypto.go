@@ -135,7 +135,7 @@ func GenerateChecksum(filePath string) (string, error) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		// Skip lines that start with '#' (considered comments)
-		if strings.HasPrefix(line, "#") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
 

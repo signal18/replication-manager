@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -236,6 +237,11 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerQueryResponseTime)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAllowJobsUpgrade)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/start", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStart)),
@@ -449,6 +455,12 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/write-log/{task}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersWriteLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsCheckReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerJobsUpgradeSender)),
 	))
 
 	router.Handle("/api/terminal/connect/clusters/{clusterName}/servers/{serverName}", negroni.New(
@@ -3104,7 +3116,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModOptimize
 		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
-		case "zfssnapback", "stop", "restart", "start", "main":
+		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade":
 			mod = config.ConstLogModTask
 		default:
 			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)
@@ -4054,7 +4066,7 @@ func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, 
 				return
 			}
 			w.Write(data)
-
+			node.SetWaitJobsCheckCookie()
 		} else if proxy != nil {
 			proxy.GetProxyConfig()
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))
@@ -4157,45 +4169,9 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	var decodedData DecodedData
-	body, err := io.ReadAll(r.Body)
+	_, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Decode reading body :%s", err.Error()), http.StatusBadRequest)
-		return
-	}
-
-	err = json.Unmarshal(body, &decodedData)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Decode body :%s. Err: %s", string(body), err.Error()), http.StatusBadRequest)
-		return
-	}
-
-	var node *cluster.ServerMonitor
-	if vars["serverPort"] == "" {
-		node = mycluster.GetServerFromName(vars["serverName"])
-	} else {
-		node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
-	}
-	if node == nil {
-		http.Error(w, "No server", 500)
-		return
-	}
-	// Decrypt the encrypted data
-	key := crypto.GetSHA256Hash(node.Pass)
-	iv := crypto.GetMD5Hash(node.Pass)
-
-	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Received login with encrypted secret %s", decodedData.Data)
-
-	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
-	if err != nil {
-		http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "decrypted string %s", decrypted)
-
-	if decrypted != mycluster.GetDbPass() {
-		http.Error(w, "Invalid secret", http.StatusUnauthorized)
+		http.Error(w, err.Error(), errcode)
 		return
 	}
 
@@ -4480,5 +4456,125 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("500 -No cluster!"))
 		return
+	}
+}
+
+// handlerMuxServerJobsCheck handles the HTTP request to check jobs script on a specific server within a cluster.
+// @Summary Check jobs on a server
+// @Description Checks jobs on a specified server within a cluster by initiating a receiver for the current.jobs.tmp file.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "SST_RECEIVER_PORT=<port>"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error opening receiver ports"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check [get]
+func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		defer mycluster.LogPanicToFile("jobs-check")
+
+		node, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), errcode)
+			return
+		}
+
+		if node != nil {
+			rcv_port, err := mycluster.SSTRunReceiverToFile(node, filepath.Join(node.Datadir, "dbjobs_new.current"), cluster.ConstJobCreateFile, "jobs-check")
+			if err != nil {
+				http.Error(w, "Error opening receiver ports: "+err.Error(), 500)
+				return
+			}
+
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Jobs check receiver port %s opened for %s", rcv_port, node.Name)
+
+			w.WriteHeader(200)
+			w.Write([]byte("RECEIVER_PORT=" + rcv_port))
+			return
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServerAllowJobsUpgrade handles the HTTP request to allow jobs upgrade on a specific server within a cluster.
+// @Summary Allow jobs upgrade on a server
+// @Description Flags a specified server within a cluster to allow jobs upgrade by setting a cookie.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "Flagged for jobs upgrade"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade [get]
+func (repman *ReplicationManager) handlerMuxServerAllowJobsUpgrade(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			node.SetWaitJobsUpgradeCookie()
+			w.WriteHeader(200)
+			w.Write([]byte("Flagged for jobs upgrade"))
+			return
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxServerJobsUpgrade handles the HTTP request to upgrade jobs on a specific server within a cluster.
+// @Summary Upgrade jobs on a server
+// @Description Upgrades jobs on a specified server within a cluster by sending the dbjobs_new file.
+// @Tags DatabaseTasks
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param serverPort path string false "Server Port"
+// @Success 200 {string} string "Sending dbjobs_new file"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error sending dbjobs_new file"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade [get]
+func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		node, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+		if err != nil {
+			http.Error(w, err.Error(), errcode)
+			return
+		}
+
+		if node != nil {
+			mycluster.SetJobsUpgradeSender(node)
+			w.WriteHeader(200)
+			w.Write([]byte("Sending dbjobs_new file"))
+			return
+		} else {
+			http.Error(w, "No server", 500)
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
 	}
 }

@@ -34,6 +34,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
@@ -3458,6 +3459,7 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 
 	var secretKey struct {
 		Secret string `json:"secret"`
+		Server string `json:"server"`
 	}
 
 	err = json.Unmarshal(output, &secretKey)
@@ -3467,4 +3469,65 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 	}
 
 	return strings.TrimSpace(secretKey.Secret), nil
+}
+
+func (server *ServerMonitor) CheckJobsVersion() error {
+	var sum, newsum string
+	var checkerr error
+	cluster := server.ClusterGroup
+
+	if server.IsIgnored() {
+		return nil
+	}
+
+	if cluster.IsInFailover() {
+		return nil
+	}
+
+	scriptPath := filepath.Join(server.Datadir, "init/init", "dbjobs_new")
+	currentScriptPath := filepath.Join(server.Datadir, "dbjobs_new.current")
+
+	// Check if the script exists
+	finfo, err := os.Stat(currentScriptPath)
+	if os.IsNotExist(err) {
+		server.SetWaitJobsCheckCookie()
+	}
+
+	sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
+
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		server.GetDatabaseConfig()
+	}
+
+	newsum, err = crypto.GenerateChecksum(scriptPath)
+	if err != nil {
+		checkerr = err
+	}
+
+	if sum != newsum || checkerr != nil {
+		if checkerr == nil {
+			checkerr = fmt.Errorf("Checksum mismatch")
+		}
+		cluster.SetState("WARN0147", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0147"], server.URL, newsum, sum, checkerr), ErrFrom: "JOB", ServerUrl: server.URL})
+		// Set cookie for next check
+		if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(10*time.Minute).Before(time.Now()) {
+			server.SetWaitJobsCheckCookie()
+		}
+	}
+
+	return checkerr
+}
+
+func (server *ServerMonitor) UpgradeJobsScript() error {
+	cluster := server.ClusterGroup
+	defer cluster.LogPanicToFile("jobs-upgrade")
+
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModAPI, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
+		return err
+	}
+
+	server.SetWaitJobsCheckCookie()
+	return nil
 }

@@ -20,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (cluster *Cluster) JobAnalyzeSQL(persistent bool) error {
@@ -270,4 +271,8 @@ func (cluster *Cluster) JobParseMyDumperMetaOld(dir string) (config.MyDumperMeta
 	}
 
 	return m, nil
+}
+
+func (cluster *Cluster) SetJobsUpgradeSender(server *ServerMonitor) {
+	cluster.SetState("WARN0148", state.State{ErrDesc: fmt.Sprintf(config.ClusterError["WARN0148"], server.URL), ErrType: config.LvlWarn, ErrFrom: "JOBS", ServerUrl: server.URL})
 }
