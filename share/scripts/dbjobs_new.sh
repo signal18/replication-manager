@@ -697,7 +697,7 @@ jobsCheck() {
     fi
 
     mkdir -p "$LOG_DIR/jobs-check.run"
-    process_log_file "jobs-check" &
+
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
     trap 'remove_run_lockdir "$LOG_DIR/jobs-check.run"' EXIT
 
@@ -710,12 +710,15 @@ jobsCheck() {
             echo "No need to run jobs-check." >"$LOG_DIR/jobs-check.process.out"
         fi
 
-        sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+        remove_run_lockdir "$LOG_DIR/jobs-check.run"
         trap - EXIT
         return $checkresult
     fi
 
     socatCleaner
+
+    export LOG_DIR CHECKPOINT_DIR LOCK_DIR  # ensure subshells inherit them
+    process_log_file "jobs-check" &
 
     echo "Waiting for receiver port." >"$LOG_DIR/jobs-check.process.out"
 
@@ -758,7 +761,6 @@ jobsUpgrade() {
     fi
 
     mkdir -p "$LOG_DIR/jobs-upgrade.run"
-    process_log_file "jobs-upgrade" &
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
     trap 'remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"' EXIT
 
@@ -772,12 +774,15 @@ jobsUpgrade() {
             echo "No need to run jobs-upgrade." >"$LOG_DIR/jobs-upgrade.process.out"
         fi
 
-        sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-upgrade.run" &
+        remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
         trap - EXIT
         return
     fi
 
     socatCleaner
+
+    export LOG_DIR CHECKPOINT_DIR LOCK_DIR  # ensure subshells inherit them
+    process_log_file "jobs-upgrade" &
     
     echo "Waiting new script." >"$LOG_DIR/jobs-upgrade.process.out"
 
@@ -822,13 +827,6 @@ jobsUpgrade() {
 # JOB START HERE
 #######################
 
-jobsCheck
-checkresult=$?
-if [ "$checkresult" != "2" ]; then
-    # If jobsCheck did not error, proceed to jobsUpgrade
-    jobsUpgrade "$@"
-fi
-
 create_jobs_table
 
 mkdir -p "$CHECKPOINT_DIR"
@@ -836,6 +834,13 @@ mkdir -p "$LOCK_DIR"
 echo "" > $LOG_DIR/curl_response.txt
 echo "" > $LOG_DIR/request.txt
 echo "" > $LOG_DIR/encrypt.txt
+
+jobsCheck
+checkresult=$?
+if [ "$checkresult" != "2" ]; then
+    # If jobsCheck did not error, proceed to jobsUpgrade
+    jobsUpgrade "$@"
+fi
 
 ####################
 # Check if the configuration file has changed using repman client
