@@ -239,12 +239,12 @@ export const globalClustersSlice = createSlice({
         state.isFetching.monitor = true
        })
       .addCase(getMonitoredData.fulfilled, (state, action) => {
-        state.isFetching.monitor = false
         state.monitor = action.payload.data
+        state.isFetching.monitor = false
       })
       .addCase(getMonitoredData.rejected, (state, action) => {
-        state.isFetching.monitor = false
         state.error = action.error
+        state.isFetching.monitor = false
       })
       .addCase(getTermsData.pending, (state) => { })
       .addCase(getTermsData.fulfilled, (state, action) => {
