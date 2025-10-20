@@ -257,23 +257,23 @@ export const globalClustersSlice = createSlice({
         state.isFetching.peers = true
        })
       .addCase(getClusterPeers.fulfilled, (state, action) => {
-        state.isFetching.peers = false
         state.clusterPeers = action.payload.data
+        state.isFetching.peers = false
       })
       .addCase(getClusterPeers.rejected, (state, action) => {
-        state.isFetching.peers = false
         state.error = action.error
+        state.isFetching.peers = false
       })
       .addCase(getClusterForSale.pending, (state) => {
         state.isFetching.forSale = true
        })
       .addCase(getClusterForSale.fulfilled, (state, action) => {
-        state.isFetching.forSale = false
         state.clusterForSale = action.payload.data
+        state.isFetching.forSale = false
       })
       .addCase(getClusterForSale.rejected, (state, action) => {
-        state.isFetching.forSale = false
         state.error = action.error
+        state.isFetching.forSale = false
       })
   }
 })
