@@ -1496,8 +1496,8 @@ export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async (
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.apps) {
+      const { cluster } = getState();
+      if (cluster.isFetching.apps) {
         return false;
       }
     }
