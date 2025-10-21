@@ -484,7 +484,7 @@ func (cluster *Cluster) HasProxyCredentialsRotation() bool {
 	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail Vault connection: %v", err)
+			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail Vault connection: %v", err)
 			return false
 		}
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
