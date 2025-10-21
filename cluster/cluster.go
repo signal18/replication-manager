@@ -251,6 +251,7 @@ type Cluster struct {
 	MeetUserID                string                      `json:"-"` //To store meet user id
 	ServiceTemplates          []string                    `json:"-"` //To store application templates
 	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
+	VaultAdminClient          *vault.Client               `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table

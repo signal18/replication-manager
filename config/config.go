@@ -762,6 +762,13 @@ type Config struct {
 	VaultMount                                string                 `mapstructure:"vault-mount" toml:"vault-mount" json:"vaultMount"`
 	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 	VaultToken                                string                 `mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
+	VaultAdminToken                           string                 `mapstructure:"vault-admin-token" toml:"vault-admin-token" json:"-"`
+	VaultAdminRoleId                          string                 `mapstructure:"vault-admin-role-id" toml:"vault-admin-role-id" json:"-"`
+	VaultAdminSecretId                        string                 `mapstructure:"vault-admin-secret-id" toml:"vault-admin-secret-id" json:"-"`
+	VaultAutoMount                            bool                   `mapstructure:"vault-auto-mount" toml:"vault-auto-mount" json:"vaultAutoMount"`
+	VaultAutoGenerateRoles                    bool                   `mapstructure:"vault-auto-generate-roles" toml:"vault-auto-generate-roles" json:"vaultAutoGenerateRoles"`
+	VaultTimeout                              int                    `mapstructure:"vault-timeout" toml:"vault-timeout" json:"vaultTimeout"`
+	VaultDBUser                               string                 `mapstructure:"vault-db-user" toml:"vault-db-user" json:"vaultDbUser"`
 	LogVault                                  bool                   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
 	LogVaultLevel                             int                    `mapstructure:"log-vault-level" toml:"log-vault-level" json:"logVaultLevel"`
 	GitUrl                                    string                 `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`

@@ -22,6 +22,7 @@ import (
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
+	"github.com/jmoiron/sqlx"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -1676,4 +1677,16 @@ func (cluster *Cluster) GetStagingServerFromConfig() *ServerMonitor {
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) GetWritableProxy() (DatabaseProxy, *sqlx.DB, error) {
+	for _, proxy := range cluster.Proxies {
+		if proxy.IsRunning() {
+			dbconn, err := proxy.GetClusterConnection()
+			if err == nil && dbconn != nil {
+				return proxy, dbconn, nil
+			}
+		}
+	}
+	return nil, nil, errors.New("No writable proxy found")
 }
