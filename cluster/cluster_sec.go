@@ -40,7 +40,7 @@ func (cluster *Cluster) RotatePasswords() error {
 		client, err := cluster.GetVaultConnection()
 
 		if err != nil {
-			//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to initialize AppRole auth method: %v", err)
 			return err
 		}
 
@@ -50,18 +50,18 @@ func (cluster *Cluster) RotatePasswords() error {
 
 				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 			} else {
 
 				err := client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetDbUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to rotate passwords for %s static role: %v", cluster.GetDbUser(), err)
 				}
 
 				err = client.KVv1("").Put(context.Background(), "database/rotate-role/"+cluster.GetRplUser(), nil)
 				if err != nil {
-					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlInfo, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "unable to rotate passwords for %s static role: %v", cluster.GetRplUser(), err)
 				}
 			}
 		} else {
