@@ -845,7 +845,7 @@ func (cluster *Cluster) SetClusterProxyCredentialsFromConfig() {
 	if cluster.Conf.IsVaultUsed() {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		if cluster.Conf.ProxysqlOn && cluster.Conf.IsPath(cluster.Conf.ProxysqlPassword) {
@@ -903,7 +903,7 @@ func (cluster *Cluster) SetClusterMonitorCredentialsFromConfig() {
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.User) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultMonitorCredentials(client)
@@ -948,7 +948,7 @@ func (cluster *Cluster) SetClusterReplicationCredentialsFromConfig() {
 	if cluster.Conf.IsVaultUsed() && cluster.Conf.IsPath(cluster.Conf.RplUser) {
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		user, pass, _ := cluster.GetVaultReplicationCredentials(client)
@@ -1927,7 +1927,7 @@ func (cluster *Cluster) SetSecretsToVault() {
 		}
 		client, err := cluster.GetVaultConnection()
 		if err != nil {
-			// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlErr, "Unable to initialize AppRole auth method: %v", err)
 			return
 		}
 		secrets_map := make(map[string]interface{})
