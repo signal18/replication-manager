@@ -161,26 +161,44 @@ func (cluster *Cluster) IsVaultConfigExists(path, name string) (bool, error) {
 }
 
 func (cluster *Cluster) PrepareVaultDBUser() (string, string, string, error) {
+	// --- 1. Get master node ---
 	master := cluster.GetMaster()
 	if master == nil {
-		return "", "", "", errors.New("Unable to find master server for database vault config")
+		return "", "", "", errors.New("unable to find master server for database vault config")
 	}
 
+	// --- 2. Prepare Vault user ---
 	vuser := cluster.Conf.VaultDBUser
-	vpass, _ := cluster.GeneratePassword()
+	if strings.ContainsAny(vuser, "'\"\\") {
+		return "", "", "", fmt.Errorf("invalid characters in vault DB username %q", vuser)
+	}
 
+	// --- 3. Generate password (retry once) ---
+	var vpass string
+	var err error
+	for i := 0; i < 2; i++ {
+		vpass, err = cluster.GeneratePassword()
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to generate vault password after retry: %w", err)
+	}
+
+	// --- 4. Parse Vault host ---
 	parsedURL, err := url.Parse(cluster.Conf.VaultServerAddr)
 	if err != nil {
 		return "", "", "", fmt.Errorf("failed to parse vault server address: %w", err)
 	}
 	parsedHost := parsedURL.Hostname()
 
-	// Ensure no conflicting user exists
+	// --- 5. Ensure no conflicting users ---
 	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'%'"); ok {
-		return "", "", "", fmt.Errorf("Unable to create database vault config: '%s'@'%%' user already exists", vuser)
+		return "", "", "", fmt.Errorf("vault user '%s'@'%%' already exists", vuser)
 	}
 	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'" + parsedHost + "'"); ok {
-		return "", "", "", fmt.Errorf("Unable to create database vault config: '%s'@'%s' user already exists", vuser, parsedHost)
+		return "", "", "", fmt.Errorf("vault user '%s'@'%s' already exists", vuser, parsedHost)
 	}
 
 	return vuser, vpass, parsedHost, nil
@@ -253,13 +271,6 @@ func (cluster *Cluster) CreateDBVaultConfig() error {
 		return errors.New("unable to create database vault config without proxy")
 	}
 
-	// --- 2. Parse Vault host ---
-	parsedURL, err := url.Parse(cluster.Conf.VaultServerAddr)
-	if err != nil {
-		return fmt.Errorf("failed to parse vault server address: %w", err)
-	}
-	parsedHost := parsedURL.Hostname()
-
 	// --- 3. Ensure Vault admin connection ---
 	adminClient, err := cluster.GetVaultAdminConnection()
 	if err != nil {
@@ -283,36 +294,15 @@ func (cluster *Cluster) CreateDBVaultConfig() error {
 		return fmt.Errorf("database vault config for %q already exists", cluster.Name)
 	}
 
-	// --- 6. Get master node ---
-	master := cluster.GetMaster()
-	if master == nil {
-		return errors.New("unable to find master server for database vault config")
-	}
-
-	// --- 7. Prepare Vault DB user credentials ---
-	vuser := cluster.Conf.VaultDBUser
-	var vpass string
-	for i := 0; i < 2; i++ { // Try twice
-		vpass, err = cluster.GeneratePassword()
-		if err == nil {
-			break
-		}
-	}
+	// --- 6. Prepare DB User for vault---
+	vuser, vpass, _, err := cluster.PrepareVaultDBUser()
 	if err != nil {
-		return fmt.Errorf("failed to generate vault password after retry: %w", err)
+		return err
 	}
 
 	timeout := time.Duration(cluster.Conf.VaultTimeout) * time.Second
 
-	// --- 8. Ensure user does not already exist ---
-	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'%'"); ok {
-		return fmt.Errorf("vault user '%s'@'%%' already exists", vuser)
-	}
-	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'" + parsedHost + "'"); ok {
-		return fmt.Errorf("vault user '%s'@'%s' already exists", vuser, parsedHost)
-	}
-
-	// --- 9. Create DB user safely ---
+	// --- 7. Create DB user safely ---
 	dbprx, dbconn, err := cluster.GetWritableProxy()
 	if err != nil {
 		return fmt.Errorf("failed to get writable proxy: %w", err)
@@ -323,7 +313,7 @@ func (cluster *Cluster) CreateDBVaultConfig() error {
 		return err
 	}
 
-	// --- 10. Write Vault DB config ---
+	// --- 8. Write Vault DB config ---
 	if err := cluster.WriteVaultDBConfig(vuser, vpass, dbprx.GetHost(), dbprx.GetReadWritePort()); err != nil {
 		return fmt.Errorf("failed to write vault DB config: %w", err)
 	}
