@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	vault "github.com/hashicorp/vault/api"
+	"github.com/jmoiron/sqlx"
 )
 
 func (cluster *Cluster) GetVaultAdminConnection() (*vault.Client, error) {
@@ -86,131 +88,244 @@ func (cluster *Cluster) ListSecretConfigs(mountpath string) (*vault.Secret, erro
 	return secretConfigs, nil
 }
 
-func (cluster *Cluster) MountDatabaseEngine() error {
-	// Currently no action is needed to mount the database secrets engine
+func (cluster *Cluster) MountEngine(path, engineType string) error {
+
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+
+	adminClient, err := cluster.GetVaultAdminConnection()
+	if err != nil {
+		return fmt.Errorf("failed to get vault admin connection: %w", err)
+	}
+
+	mount := &vault.MountInput{
+		Type: engineType,
+	}
+
+	if err := adminClient.Sys().Mount(path, mount); err != nil {
+		return fmt.Errorf("failed to mount vault engine %q at %q: %w", engineType, path, err)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) EnsureEngineMounted(path, engineType string) error {
+	mounts, err := cluster.ListMounts()
+	if err != nil {
+		return fmt.Errorf("failed to list vault mounts: %w", err)
+	}
+
+	if !strings.HasSuffix(path, "/") {
+		path += "/"
+	}
+
+	// Already mounted
+	if _, ok := mounts[path]; ok {
+		return nil
+	}
+
+	// Attempt auto-mount if enabled
+	if cluster.Conf.VaultAutoMount {
+		if err := cluster.MountEngine(path, engineType); err != nil {
+			return fmt.Errorf("failed to mount vault engine %q at %q: %w", engineType, path, err)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("vault secrets engine %q is not mounted at %q and auto-mount is disabled", engineType, path)
+}
+
+func (cluster *Cluster) IsVaultConfigExists(path, name string) (bool, error) {
+	list, err := cluster.ListSecretConfigs(path)
+	if err != nil {
+		return false, fmt.Errorf("failed to list vault configs at %q: %w", path, err)
+	}
+
+	rawKeys, ok := list.Data["keys"].([]interface{})
+	if !ok {
+		return false, nil // no keys → config doesn't exist
+	}
+
+	for _, key := range rawKeys {
+		k, ok := key.(string)
+		if !ok {
+			continue // skip malformed entries
+		}
+		if k == name {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (cluster *Cluster) PrepareVaultDBUser() (string, string, string, error) {
+	master := cluster.GetMaster()
+	if master == nil {
+		return "", "", "", errors.New("Unable to find master server for database vault config")
+	}
+
+	vuser := cluster.Conf.VaultDBUser
+	vpass, _ := cluster.GeneratePassword()
+
+	parsedURL, err := url.Parse(cluster.Conf.VaultServerAddr)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to parse vault server address: %w", err)
+	}
+	parsedHost := parsedURL.Hostname()
+
+	// Ensure no conflicting user exists
+	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'%'"); ok {
+		return "", "", "", fmt.Errorf("Unable to create database vault config: '%s'@'%%' user already exists", vuser)
+	}
+	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'" + parsedHost + "'"); ok {
+		return "", "", "", fmt.Errorf("Unable to create database vault config: '%s'@'%s' user already exists", vuser, parsedHost)
+	}
+
+	return vuser, vpass, parsedHost, nil
+}
+
+func (cluster *Cluster) CreateVaultDBUser(dbconn *sqlx.DB, timeout time.Duration, username, host, password string) error {
+	if strings.ContainsAny(username, "'\"\\") {
+		return fmt.Errorf("invalid characters in username %q", username)
+	}
+
+	if strings.ContainsAny(host, "'\"\\") {
+		return fmt.Errorf("invalid characters in host %q", host)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	query := fmt.Sprintf("CREATE USER IF NOT EXISTS '%s'@'%s' IDENTIFIED BY ?", username, host)
+
+	if _, err := dbconn.ExecContext(ctx, query, password); err != nil {
+		return fmt.Errorf("failed to create database user %q: %w", username, err)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) WriteVaultDBConfig(username, password, dbhost string, dbport int) error {
 	if !cluster.Conf.IsVaultUsed() {
-		return errors.New("Not using Vault")
+		return errors.New("not using Vault")
 	}
 
 	adminClient := cluster.VaultAdminClient
 	if adminClient == nil {
-		adminClient, err := cluster.GetVaultAdminConnection()
+		client, err := cluster.GetVaultAdminConnection()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get Vault admin connection: %w", err)
 		}
-		cluster.VaultAdminClient = adminClient
+		adminClient = client
+		cluster.VaultAdminClient = client
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.VaultTimeout)*time.Second)
+	dbConfigData := map[string]interface{}{
+		"plugin_name": "mysql-database-plugin",
+		"connection_url": fmt.Sprintf(
+			"{{username}}:{{password}}@tcp(%s:%d)/",
+			dbhost, dbport,
+		),
+		"username": username,
+		"password": password,
+	}
+
+	timeout := time.Duration(cluster.Conf.VaultTimeout) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	return adminClient.Sys().MountWithContext(ctx, "database", &vault.MountInput{Type: "database"})
+	path := fmt.Sprintf("database/config/%s", cluster.Name)
+	if _, err := adminClient.Logical().WriteWithContext(ctx, path, dbConfigData); err != nil {
+		return fmt.Errorf("failed to write Vault DB config at %q: %w", path, err)
+	}
+
+	return nil
 }
 
 func (cluster *Cluster) CreateDBVaultConfig() error {
+	// --- 1. Basic validation ---
 	if !cluster.Conf.IsVaultUsed() {
-		return errors.New("Not using Vault")
+		return errors.New("not using Vault")
 	}
-
 	if len(cluster.Proxies) == 0 {
-		return errors.New("Unable to create database vault config without proxy")
+		return errors.New("unable to create database vault config without proxy")
 	}
 
-	// Get the host from a url
+	// --- 2. Parse Vault host ---
 	parsedURL, err := url.Parse(cluster.Conf.VaultServerAddr)
 	if err != nil {
 		return fmt.Errorf("failed to parse vault server address: %w", err)
 	}
 	parsedHost := parsedURL.Hostname()
 
+	// --- 3. Ensure Vault admin connection ---
 	adminClient, err := cluster.GetVaultAdminConnection()
 	if err != nil {
+		return fmt.Errorf("failed to get vault admin connection: %w", err)
+	}
+	cluster.VaultAdminClient = adminClient
+
+	// --- 4. Ensure database engine is mounted ---
+	err = cluster.EnsureEngineMounted("database/", "database")
+	if err != nil {
+		return err // The error already detailed
+	}
+
+	// --- 5. Ensure no existing config ---
+	exists, err := cluster.IsVaultConfigExists("database/config", cluster.Name)
+	if err != nil {
 		return err
 	}
 
-	mounts, err := cluster.ListMounts()
-	if err != nil {
-		return fmt.Errorf("failed to list vault mounts: %w", err)
+	if exists {
+		return fmt.Errorf("database vault config for %q already exists", cluster.Name)
 	}
 
-	if _, ok := mounts["database/"]; !ok {
-		if cluster.Conf.VaultAutoMount {
-			err = cluster.MountDatabaseEngine()
-			if err != nil {
-				return fmt.Errorf("failed to mount database engine: %w", err)
-			}
-		} else {
-			return fmt.Errorf("database secrets engine is not mounted")
-		}
-	}
-
-	list, err := cluster.ListSecretConfigs("database/config")
-	if err != nil {
-		return fmt.Errorf("failed to list database vault configs: %w", err)
-	}
-
-	if len(list.Data) > 0 {
-		if _, ok := list.Data["keys"].([]interface{}); ok {
-			for _, key := range list.Data["keys"].([]interface{}) {
-				if key.(string) == cluster.Name {
-					return errors.New("Database vault config already exists")
-				}
-			}
-		}
-	}
-
+	// --- 6. Get master node ---
 	master := cluster.GetMaster()
 	if master == nil {
-		return errors.New("Unable to find master server for database vault config")
+		return errors.New("unable to find master server for database vault config")
 	}
 
+	// --- 7. Prepare Vault DB user credentials ---
 	vuser := cluster.Conf.VaultDBUser
-	vpass, _ := cluster.GeneratePassword()
-
-	// Make sure 'vaultuser'@'%' or 'vaultuser'@'<host>' does not already exist to avoid conflicts
-	_, ok := master.Users.CheckAndGet("'" + vuser + "'@'%'")
-	if ok {
-		return fmt.Errorf("Unable to create database vault config: '%s'@'%' user already exists", vuser)
+	var vpass string
+	for i := 0; i < 2; i++ { // Try twice
+		vpass, err = cluster.GeneratePassword()
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("failed to generate vault password after retry: %w", err)
 	}
 
-	_, ok = master.Users.CheckAndGet("'" + vuser + "'@'" + parsedHost + "'")
-	if ok {
-		return fmt.Errorf("Unable to create database vault config: '%s'@'%s' user already exists", vuser, parsedHost)
+	timeout := time.Duration(cluster.Conf.VaultTimeout) * time.Second
+
+	// --- 8. Ensure user does not already exist ---
+	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'%'"); ok {
+		return fmt.Errorf("vault user '%s'@'%%' already exists", vuser)
+	}
+	if _, ok := master.Users.CheckAndGet("'" + vuser + "'@'" + parsedHost + "'"); ok {
+		return fmt.Errorf("vault user '%s'@'%s' already exists", vuser, parsedHost)
 	}
 
+	// --- 9. Create DB user safely ---
 	dbprx, dbconn, err := cluster.GetWritableProxy()
 	if err != nil {
+		return fmt.Errorf("failed to get writable proxy: %w", err)
+	}
+	defer dbconn.Close()
+
+	if err := cluster.CreateVaultDBUser(dbconn, timeout, vuser, "%", vpass); err != nil {
 		return err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cluster.Conf.VaultTimeout)*time.Second)
-
-	// Create 'vaultuser'@'%' with necessary privileges
-	_, err = dbconn.ExecContext(ctx, "CREATE USER IF NOT EXISTS '"+vuser+"'@'%' IDENTIFIED BY '"+vpass+"'")
-	if err != nil {
-		cancel()
-		dbconn.Close()
-		return fmt.Errorf("failed to create database user: %w", err)
-	}
-	cancel()
-	dbconn.Close()
-
-	// Prepare database config data
-	dbConfigData := map[string]interface{}{
-		"plugin_name": "mysql-database-plugin",
-		"connection_url": fmt.Sprintf("{{username}}:{{password}}@tcp(%s:%d)/",
-			dbprx.GetHost(),
-			dbprx.GetReadWritePort()),
-		"username": cluster.Conf.GetDecryptedPassword("vault-user", cluster.Conf.VaultDBUser),
-		"password": cluster.Conf.GetDecryptedPassword("vault-password", vpass),
-	}
-
-	ctx, cancel = context.WithTimeout(context.Background(), time.Duration(cluster.Conf.VaultTimeout)*time.Second)
-	defer cancel()
-
-	_, err = adminClient.Logical().WriteWithContext(ctx, fmt.Sprintf("database/config/%s", cluster.Name), dbConfigData)
-	if err != nil {
-		return fmt.Errorf("failed to create database vault config: %w", err)
+	// --- 10. Write Vault DB config ---
+	if err := cluster.WriteVaultDBConfig(vuser, vpass, dbprx.GetHost(), dbprx.GetReadWritePort()); err != nil {
+		return fmt.Errorf("failed to write vault DB config: %w", err)
 	}
 
 	return nil
