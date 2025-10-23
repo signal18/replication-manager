@@ -124,6 +124,13 @@ func (d *Deployment) GetVolumePaths(volumename string) []*PathMapping {
 	return paths
 }
 
+func (d *Deployment) ResolveVolumePaths(volumename string) {
+	paths := d.GetVolumePaths(volumename)
+	for _, p := range paths {
+		d.ResolvePath(p)
+	}
+}
+
 func (d *Deployment) InsertGitClone(gc *GitClone) error {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
@@ -186,13 +193,13 @@ func (d *Deployment) GetGitClone(name string) (*GitClone, error) {
 	return nil, fmt.Errorf("git clone %s not found", name)
 }
 
-func (d *Deployment) HasDuplicateGitVolumePath(volumename, volumedir string) bool {
+func (d *Deployment) HasDuplicateGitVolumePath(gitname, volumename, volumedir string) bool {
 	// Use a mutex to protect concurrent access
 	d.Mutex.RLock()
 	defer d.Mutex.RUnlock()
 
 	for _, g := range d.Storages.GitClones {
-		if g.VolumeName == volumename && g.VolumeDir == volumedir {
+		if g.Name != gitname && g.VolumeName == volumename && g.VolumeDir == volumedir {
 			return true
 		}
 	}
@@ -268,12 +275,23 @@ func (d *Deployment) InsertPath(p PathMapping) error {
 	return nil
 }
 
+func (d *Deployment) ResolveGitPaths(gitname string) {
+	paths := d.GetGitPaths(gitname)
+	for _, p := range paths {
+		d.ResolvePath(p)
+	}
+}
+
+func (d *Deployment) ResolvePath(p *PathMapping) error {
+	return p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
+}
+
 func (d *Deployment) ResolvePaths() {
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
 
-	for i, p := range d.Paths {
+	for _, p := range d.Paths {
 		// Resolve pointers for each path mapping
 		p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
 
@@ -282,9 +300,6 @@ func (d *Deployment) ResolvePaths() {
 				p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
 			}
 		}
-
-		// Update the path mapping in the slice
-		d.Paths[i] = p
 
 		// If the path is not resolved, log a warning
 		if p.SourceType != "" && p.Source == nil {
@@ -431,6 +446,13 @@ func (d *Deployment) HasDuplicateS3VolumePath(volumename, volumedir string) bool
 		}
 	}
 	return false
+}
+
+func (d *Deployment) ResolveS3MountPaths(s3name string) {
+	paths := d.GetS3MountPaths(s3name)
+	for _, p := range paths {
+		d.ResolvePath(p)
+	}
 }
 
 func (d *Deployment) GetVariableByName(name string, lock bool) (*VariableMapping, error) {

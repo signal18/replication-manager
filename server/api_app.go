@@ -1289,15 +1289,28 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing git clone
-					http.Error(w, "Cannot change name of existing git clone. Please drop the git clone and create a new one.", 500)
-					return
+					if newValue == "" {
+						http.Error(w, "Name cannot be empty", 500)
+						return
+					}
+					old, _ := node.GetGitClone(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
+						return
+					}
+
+					paths := deployment.GetGitPaths(gc.Name)
+					gc.Name = newValue
+					for _, p := range paths {
+						p.SourceName = newValue
+						deployment.ResolvePath(p)
+					}
 				case "repo":
 					if newValue == "" {
 						http.Error(w, "Repo cannot be empty", 500)
 						return
 					}
-					gc.GitRepo = newValue
+					gc.GitRepo = strings.TrimSuffix(newValue, ".git")
 				case "branch":
 					if newValue == "" {
 						http.Error(w, "Branch cannot be empty", 500)
@@ -1315,11 +1328,14 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
 							return
 						}
-						if deployment.HasDuplicateGitVolumePath(newValue, gc.VolumeDir) {
+						// Check for duplicate git volume path
+						if deployment.HasDuplicateGitVolumePath(gc.Name, newValue, gc.VolumeDir) {
 							gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
 						}
 						gc.VolumeName = newValue
 						gc.Volume = newvol
+
+						deployment.ResolveGitPaths(gc.Name)
 					}
 				case "volumedir":
 					if newValue == "" {
@@ -1331,12 +1347,13 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
 					}
 					if newValue != gc.VolumeDir {
-						if deployment.HasDuplicateGitVolumePath(gc.VolumeName, newValue) {
+						if deployment.HasDuplicateGitVolumePath(gc.Name, gc.VolumeName, newValue) {
 							http.Error(w, "Duplicate value for git volume path", 500)
 							return
 						}
 						gc.VolumeDir = newValue
 					}
+					deployment.ResolveGitPaths(gc.Name)
 				case "user":
 					gc.GitUser = newValue
 				case "pass":
@@ -1361,9 +1378,19 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing volume
-					http.Error(w, "Cannot change name of existing volume. Please drop the volume and create a new one.", 500)
-					return
+					old, _ := deployment.GetVolumeByName(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate volume with same name", 500)
+						return
+					}
+
+					paths := deployment.GetVolumePaths(vol.Name)
+					vol.Name = newValue
+					for _, p := range paths {
+						p.SourceName = vol.Name
+						deployment.ResolvePath(p)
+					}
+
 				case "poolname":
 					if newValue == "" {
 						http.Error(w, "PoolName cannot be empty", 500)
@@ -1376,6 +1403,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						return
 					}
 					vol.VolumeDir = newValue
+					deployment.ResolveVolumePaths(vol.Name)
 				default:
 					http.Error(w, "Invalid key for volumes", 500)
 					return
@@ -1394,9 +1422,18 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing S3 directory
-					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
-					return
+					old, _ := deployment.GetS3Mount(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate volume with same name", 500)
+						return
+					}
+
+					paths := deployment.GetS3MountPaths(s3Mount.Name)
+					s3Mount.Name = newValue
+					for _, p := range paths {
+						p.SourceName = newValue
+						deployment.ResolvePath(p)
+					}
 				case "endpoint":
 					if newValue == "" {
 						http.Error(w, "Endpoint cannot be empty", 500)
@@ -1450,6 +1487,8 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						}
 						s3Mount.VolumeName = newValue
 					}
+
+					deployment.ResolveS3MountPaths(s3Mount.Name)
 				case "volumedir":
 					if newValue == "" {
 						curvol, err := deployment.GetVolumeByName(s3Mount.VolumeName)
@@ -1466,6 +1505,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						}
 						s3Mount.VolumeDir = newValue
 					}
+					deployment.ResolveS3MountPaths(s3Mount.Name)
 				default:
 					http.Error(w, "Invalid key for s3Mounts", 500)
 					return
