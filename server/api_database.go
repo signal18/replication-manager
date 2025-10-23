@@ -4454,7 +4454,6 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 			clientAddress = r.RemoteAddr
 		}
 
-		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModAPI, config.LvlInfo, "Checking if %s needs to be done on %s:%s from %s", checktype, vars["serverName"], vars["serverPort"], clientAddress)
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && !node.IsDown() {
 			if ok, err := node.CheckTaskNeeded(checktype); err == nil {
