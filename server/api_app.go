@@ -879,9 +879,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				return
 			}
 
-			if node.HasProvisionCookie() {
-				node.SetReprovCookie()
-			}
+			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Deployment field modified"))
@@ -1039,9 +1037,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		return
 	}
 
-	if node.HasProvisionCookie() {
-		node.SetReprovCookie()
-	}
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
@@ -1163,9 +1159,8 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		return
 	}
 
-	if node.HasProvisionCookie() {
-		node.SetReprovCookie()
-	}
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Deployment field row removed"))
@@ -1300,9 +1295,7 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		return
 	}
 
-	if node.HasProvisionCookie() {
-		node.SetReprovCookie()
-	}
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage added successfully"))
@@ -1709,9 +1702,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				return
 			}
 
-			if node.HasProvisionCookie() {
-				node.SetReprovCookie()
-			}
+			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Storage field modified"))
@@ -1811,6 +1802,9 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
 	}
+
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage field row removed"))
