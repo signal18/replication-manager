@@ -128,6 +128,24 @@ func (cluster *Cluster) IsProvisioned() bool {
 	return true
 }
 
+func (cluster *Cluster) IsAppProvisioned() bool {
+	if cluster.Conf.AppHosts == "" {
+		return true
+	}
+
+	for _, app := range cluster.Apps {
+		if !app.HasProvisionCookie() {
+			if app.IsRunning() {
+				app.SetProvisionCookie()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
+			} else {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
 	if server.SourceClusterName != cluster.Name {
@@ -368,6 +386,17 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	for _, p := range cluster.Proxies {
 		if p != nil {
 			if p.HasReprovCookie() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (cluster *Cluster) HasRequestAppReprov() bool {
+	for _, a := range cluster.Apps {
+		if a != nil {
+			if a.HasReprovCookie() {
 				return true
 			}
 		}

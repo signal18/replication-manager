@@ -110,6 +110,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov" groups:"web"`
 	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                   `json:"isNeedDatabasesConfigChange" groups:"web"`
+	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
 	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
 	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
 	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`

@@ -50,6 +50,7 @@ func (cluster *Cluster) SetStatus() {
 	cluster.IsNeedDatabasesRestart = cluster.HasRequestDBRestart()
 	cluster.IsNeedDatabasesReprov = cluster.HasRequestDBReprov()
 	cluster.IsNeedDatabasesConfigChange = cluster.HasRequestDBConfigChange()
+	cluster.IsNeedAppsReprov = cluster.HasRequestAppReprov()
 	cluster.WaitingRejoin = cluster.rejoinCond.Len()
 	cluster.WaitingFailover = cluster.failoverCond.Len()
 	cluster.WaitingSwitchover = cluster.switchoverCond.Len()
