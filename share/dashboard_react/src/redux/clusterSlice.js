@@ -1596,6 +1596,9 @@ export const deploymentFieldChange = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('Deployment field updated!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1611,6 +1614,9 @@ export const deploymentFieldIndexAdd = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New deployment field row added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1625,6 +1631,9 @@ export const deploymentFieldIndexDrop = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('Deployment field row dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1640,6 +1649,9 @@ export const storageFieldChange = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('storage field updated!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1655,6 +1667,9 @@ export const storageFieldIndexAdd = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New storage field row added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1669,6 +1684,9 @@ export const storageFieldIndexDrop = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('storage field row dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1685,6 +1703,9 @@ export const connectDockerRegistry = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.connectDockerRegistry(clusterName, dockerRegistry, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New server added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
