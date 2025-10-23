@@ -283,10 +283,27 @@ func (d *Deployment) ResolveGitPaths(gitname string) {
 }
 
 func (d *Deployment) ResolvePath(p *PathMapping) error {
-	return p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
+	err := p.ResolvePointers(d.Storages.Volumes, d.Storages.GitClones, d.Storages.S3Mounts, d.Paths)
+	if err != nil {
+		return err
+	}
+
+	if p.Parent != nil {
+		if p.VolumeName == "" {
+			p.VolumeName = p.Parent.VolumeName // Inherit volume name from parent if no source is specified
+		}
+	}
+
+	// If the path is not resolved, log a warning
+	if p.SourceType != "" && p.Source == nil {
+		return fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath)
+	}
+
+	return nil
 }
 
-func (d *Deployment) ResolvePaths() {
+func (d *Deployment) ResolvePaths() []error {
+	var errs []error
 	// Use a mutex to protect concurrent access
 	d.Mutex.Lock()
 	defer d.Mutex.Unlock()
@@ -303,9 +320,13 @@ func (d *Deployment) ResolvePaths() {
 
 		// If the path is not resolved, log a warning
 		if p.SourceType != "" && p.Source == nil {
-			fmt.Printf("Warning: Path mapping %s could not be resolved\n", p.DockerPath)
+			if errs == nil {
+				errs = make([]error, 0)
+			}
+			errs = append(errs, fmt.Errorf("source %s not found for path mapping %s", p.SourceName, p.DockerPath))
 		}
 	}
+	return errs
 }
 
 func (d *Deployment) SortPaths() {
