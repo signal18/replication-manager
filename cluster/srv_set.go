@@ -464,7 +464,7 @@ func (server *ServerMonitor) SetReplicationCredentialsRotation(ss *dbhelper.Slav
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Rejoin slave change password error: %s", err)
 		}
-		if server.GetCluster().Conf.VaultMode == VaultConfigStoreV2 {
+		if server.GetCluster().Conf.VaultMode == config.VaultConfigStoreV2 {
 			for _, u := range server.GetCluster().master.Users.ToNewMap() {
 				if u.User == server.GetCluster().GetRplUser() {
 					logs, err := dbhelper.SetUserPassword(server.GetCluster().master.Conn, server.GetCluster().master.DBVersion, u.Host, u.User, server.GetCluster().GetRplPass())

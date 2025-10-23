@@ -585,12 +585,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.StringVar(&conf.VaultRoleId, "vault-role-id", "", "Vault role id")
 	flags.StringVar(&conf.VaultSecretId, "vault-secret-id", "", "Vault secret id")
-	flags.StringVar(&conf.VaultMode, "vault-mode", cluster.VaultConfigStoreV2, "Vault mode : config_store_v2|database_engine")
+	flags.StringVar(&conf.VaultMode, "vault-mode", "config_store_v2", "Vault mode : config_store_v2|database_engine")
 	flags.StringVar(&conf.VaultMount, "vault-mount", "kv", "Vault mount for the secret")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
 	flags.IntVar(&conf.LogVaultLevel, "log-vault-level", 1, "Log level for vault")
-	flags.StringVar(&conf.VaultDBUser, "vault-db-user", "", "Vault database engine admin user")
+	flags.StringVar(&conf.VaultDBUser, "vault-db-user", "vaultuser", "Vault database engine admin user")
+	flags.StringVar(&conf.VaultRotationPeriod, "vault-rotation-period", "", "Vault secret rotation period (Enterprise Edition). Empty to not use auto rotation. Exclusive with vault-rotation-schedule")
+	flags.StringVar(&conf.VaultRotationSchedule, "vault-rotation-schedule", "", "Vault secret rotation schedule in cron format (Enterprise Edition). Exclusive with vault-rotation-period")
 
 	// This is for admin level operation like mounting secret engine or creating roles
 	flags.StringVar(&conf.VaultAdminToken, "vault-admin-token", "", "Vault Admin Token for admin level operations")

@@ -769,6 +769,8 @@ type Config struct {
 	VaultAutoGenerateRoles                    bool                   `mapstructure:"vault-auto-generate-roles" toml:"vault-auto-generate-roles" json:"vaultAutoGenerateRoles"`
 	VaultTimeout                              int                    `mapstructure:"vault-timeout" toml:"vault-timeout" json:"vaultTimeout"`
 	VaultDBUser                               string                 `mapstructure:"vault-db-user" toml:"vault-db-user" json:"vaultDbUser"`
+	VaultRotationPeriod                       string                 `mapstructure:"vault-rotation-period" toml:"vault-rotation-period" json:"vaultRotationPeriod"`
+	VaultRotationSchedule                     string                 `mapstructure:"vault-rotation-schedule" toml:"vault-rotation-schedule" json:"vaultRotationSchedule"`
 	LogVault                                  bool                   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
 	LogVaultLevel                             int                    `mapstructure:"log-vault-level" toml:"log-vault-level" json:"logVaultLevel"`
 	GitUrl                                    string                 `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
@@ -1139,6 +1141,23 @@ type ServerTop struct {
 const (
 	VaultConfigStoreV2 string = "config_store_v2"
 	VaultDbEngine      string = "database_engine"
+)
+
+type VaultAuth string
+
+const (
+	VaultAuthAppRole    VaultAuth = "approle"
+	VaultAuthUserPass   VaultAuth = "userpass"
+	VaultAuthLDAP       VaultAuth = "ldap"
+	VaultAuthToken      VaultAuth = "token"
+	VaultAuthGithub     VaultAuth = "github"
+	VaultAuthAliCloud   VaultAuth = "alicloud"
+	VaultAuthAWS        VaultAuth = "aws"
+	VaultAuthAzure      VaultAuth = "azure"
+	VaultAuthGCP        VaultAuth = "gcp"
+	VaultAuthKerberos   VaultAuth = "kerberos"
+	VaultAuthKubernetes VaultAuth = "kubernetes"
+	VaultAuthRadius     VaultAuth = "radius"
 )
 
 /* replaced by v3.Tag

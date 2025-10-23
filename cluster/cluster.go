@@ -233,7 +233,9 @@ type Cluster struct {
 	CanInitNodes              bool                        `json:"canInitNodes" groups:"web"`
 	errorInitNodes            error                       `json:"-"`
 	CanConnectVault           bool                        `json:"canConnectVault"`
+	CanConnectVaultAdmin      bool                        `json:"canConnectVaultAdmin"`
 	errorConnectVault         error                       `json:"-"`
+	errorConnectVaultAdmin    error                       `json:"-"`
 	SqlErrorLog               *logsql.Logger              `json:"-"`
 	SqlGeneralLog             *logsql.Logger              `json:"-"`
 	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts" groups:"web"`
@@ -350,11 +352,6 @@ const (
 	ConstMonitorStandby string = "S"
 )
 
-const (
-	VaultConfigStoreV2 string = "config_store_v2"
-	VaultDbEngine      string = "database_engine"
-)
-
 type ClusterForm struct {
 	ClusterName  string `json:"clusterName"`
 	Orchestrator string `json:"orchestrator"`
@@ -405,6 +402,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.CanInitNodes = true
 	cluster.canResticFetchRepo = true
 	cluster.CanConnectVault = true
+	cluster.CanConnectVaultAdmin = true
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
@@ -747,6 +745,10 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
+						if !cluster.CanConnectVaultAdmin {
+							cluster.SetState("ERR00102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00102"], cluster.errorConnectVaultAdmin), ErrFrom: "OPENSVC"})
+						}
+						// Run restic purge every 6 hours
 						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
@@ -1903,7 +1905,7 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 			vault_config.Address = cluster.Conf.VaultServerAddr
 			client, err := cluster.Conf.GetVaultConnection()
 			if err == nil {
-				if cluster.Conf.VaultMode == VaultConfigStoreV2 {
+				if cluster.Conf.VaultMode == config.VaultConfigStoreV2 {
 					vault_value, err := cluster.Conf.GetVaultCredentials(client, secret.Value, k)
 					if err != nil {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModVault, config.LvlWarn, "Unable to get %s Vault secret: %v", k, err)

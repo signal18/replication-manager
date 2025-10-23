@@ -1167,7 +1167,7 @@ func (cluster *Cluster) SetDbServersMonitoringCredential(credential string) {
 	}
 	cluster.SetUnDiscovered()
 	cluster.SetDBRestartCookie()
-	if cluster.Conf.VaultMode == VaultConfigStoreV2 && !cluster.isMasterFailed() {
+	if cluster.Conf.VaultMode == config.VaultConfigStoreV2 && !cluster.isMasterFailed() {
 		found_user := false
 		for _, u := range cluster.master.Users.ToNewMap() {
 			if u.User == cluster.GetDbUser() {
