@@ -739,12 +739,14 @@ func (cluster *Cluster) RefreshAppTemplateMD5(app *App) error {
 
 	app.TemplateMD5 = misc.GetMD5HashFromBytes(res)
 
-	if app.HasTemplateMD5Diff() {
-		if app.HasProvisionCookie() {
-			app.SetReprovCookie()
+	if app.TemplateMD5Prov != "" {
+		if app.HasTemplateMD5Diff() {
+			if app.HasProvisionCookie() {
+				app.SetReprovCookie()
+			}
+		} else {
+			app.DelReprovisionCookie()
 		}
-	} else {
-		app.DelReprovisionCookie()
 	}
 	return nil
 }
