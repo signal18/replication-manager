@@ -2316,11 +2316,11 @@ func (repman *ReplicationManager) Run() error {
 				repman.UpdateLocalPeer()
 			}
 
-			go repman.GetAppTemplates()
 			repman.ReloadOpenSVCStats()
 		}
 
 		if counter%300 == 0 {
+			go repman.GetAppTemplates()
 			repman.RefreshDiskStats()
 		}
 
