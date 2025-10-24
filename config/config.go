@@ -4095,5 +4095,14 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 		result = tree.PrintTree(".toml", true, true)
 	}
 
+	// remove empty entries
+	cleaned := make([]string, 0)
+	for _, v := range result {
+		if strings.TrimSpace(v) != "" {
+			cleaned = append(cleaned, v)
+		}
+	}
+	result = cleaned
+
 	return result, nil
 }

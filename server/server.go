@@ -3117,5 +3117,13 @@ func (repman *ReplicationManager) GetAppTemplatesFromLocal() ([]string, error) {
 		}
 	}
 
-	return filelist, nil
+	// Remove empty entries
+	var cleanedFilelist []string
+	for _, file := range filelist {
+		if file != "" {
+			cleanedFilelist = append(cleanedFilelist, file)
+		}
+	}
+
+	return cleanedFilelist, nil
 }
