@@ -139,6 +139,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
@@ -2313,22 +2317,19 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 	}
 }
 
-// @Summary Get App Template Repository Tree
+// @Summary Refresh App Template from Repo
 // @Description Retrieves the tree structure of the application template repository for a specific cluster.
 // @Tags Apps
 // @Accept json
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
-// @Param force path string false "Force refresh of the repository tree"
 // @Success 200 {object} treehelper.FileTreeCache "Application template repository tree structure"
-// @Failure 400 {string} string "Invalid Git repository URL"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree" or "No cluster"
-// @Router /api/clusters/{clusterName}/apps/actions/get-app-template [get]
-// @Router /api/clusters/{clusterName}/apps/actions/get-app-template/{force} [get]
+// @Failure 500 {string} string "Error getting repository tree" or "No cluster"
+// @Router /api/clusters/{clusterName}/actions/refresh-apps-template [get]
 // This endpoint retrieves the tree structure of the application template repository for a specific cluster.
-func (repman *ReplicationManager) handlerMuxAppGetTemplateFromRepo(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
