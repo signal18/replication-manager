@@ -36,12 +36,12 @@ func NewGithubClient(token string) (*GitHubClient, error) {
 }
 
 // GetDirectoryFromRepository
-func (g *GitHubClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+func (g *GitHubClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("directory cannot be empty")
 	}
 
-	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout)
+	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout, refresh)
 	if cache == nil || cache.Tree == nil {
 		return nil, err
 	}
@@ -56,7 +56,9 @@ func (g *GitHubClient) GetDirectoryFromRepository(cacheDir, projectID, branch, d
 	return cache, nil
 }
 
-func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error) {
+	var cache *treehelper.FileTreeCache
+
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -72,9 +74,11 @@ func (g *GitHubClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 		return nil, fmt.Errorf("failed to get commit for branch %s: %w", branch, err)
 	}
 
-	cache := g.LoadTreeFromCache(cacheDir, projectID, commit.GetSHA())
-	if cache != nil {
-		return cache, nil
+	if !refresh {
+		cache = g.LoadTreeFromCache(cacheDir, projectID, commit.GetSHA())
+		if cache != nil {
+			return cache, nil
+		}
 	}
 
 	tree, _, err := g.Client.Git.GetTree(ctx, owner, reponame, branch, true)
