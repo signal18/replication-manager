@@ -2339,21 +2339,17 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 			return
 		}
 
-		force := strings.ToLower(vars["force"]) == "force"
-		gitpass := mycluster.Conf.GetDecryptedPassword("App Template Repo Pass", mycluster.Conf.ProvAppTemplateRepoPassword)
-		gitrepo := mycluster.Conf.ProvAppTemplateRepo
-		gitbranch := mycluster.Conf.ProvAppTemplateRepoBranch
-		cacheDir := filepath.Join(mycluster.Conf.WorkingDir, ".cache", "git", "repos")
-		timeout := mycluster.Conf.Timeout
+		repman.GetAppTemplates()
 
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout, force)
+		jsondata, err := json.Marshal(repman.ServiceTemplates)
 		if err != nil {
 			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tree)
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsondata)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

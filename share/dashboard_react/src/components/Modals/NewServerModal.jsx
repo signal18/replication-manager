@@ -15,13 +15,15 @@ import {
 } from '@chakra-ui/react'
 import React, { useEffect, useReducer, useState } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
-import { addServer, connectDockerRegistry } from '../../redux/clusterSlice'
+import { addServer, connectDockerRegistry, refreshAppTemplateRepo } from '../../redux/clusterSlice'
 import Dropdown from '../Dropdown'
 import RMButton from '../RMButton'
 import { useTheme } from '../../ThemeProvider'
 import parentStyles from './styles.module.scss'
 import PasswordControl from '../PasswordControl'
 import { showSuccessToast } from '../../redux/toastSlice'
+import RMIconButton from '../RMIconButton'
+import { HiRefresh } from 'react-icons/hi'
 
 const initialState = {
   formData: {
@@ -245,6 +247,10 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
     })
   }
 
+  const handleRefreshAppTemplates = () => {
+    dispatch(refreshAppTemplateRepo({ clusterName }))
+  }
+
   useEffect(() => {
     if (!isOpen) {
       formDispatch({ type: 'RESET_FORM' })
@@ -282,6 +288,7 @@ function NewServerModal({ clusterName, isOpen, closeModal }) {
                     options={templateOptions}
                     selectedValue={template}
                   />
+                  <RMIconButton onClick={handleRefreshAppTemplates} icon={HiRefresh} tooltip='Refresh templates from repository' />
                 </FormControl>
 
                 {!template && (
