@@ -785,47 +785,46 @@ func (cluster *Cluster) LoadAllAppTemplateMD5Provisioned() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not load app template MD5 provisioned for app %s:  %s ", app.GetId(), err)
 		}
 
+		if cluster.RefreshTemplateMD5Chan == nil {
+			cluster.RefreshTemplateMD5Chan = make(chan *App, 10)
+		}
 		cluster.EnqueueRefreshAppTemplateMD5(app)
 	}
 }
 
 // InitiateRefreshTemplateMD5Worker starts a worker to refresh app template MD5 hashes.
 // It exits cleanly when the channel is closed.
-func (cluster *Cluster) InitiateRefreshTemplateMD5Worker(length int) {
-	cluster.RefreshTemplateMD5Chan = make(chan *App, length)
+func (cluster *Cluster) CreateTemplateMD5Channel() {
+	cluster.RefreshTemplateMD5Chan = make(chan *App, 10)
+}
 
-	go func() {
-		for app := range cluster.RefreshTemplateMD5Chan {
-			if app == nil {
-				continue
-			}
-
-			if err := cluster.RefreshAppTemplateMD5(app); err != nil {
-				cluster.LogModulePrintf(
-					cluster.Conf.Verbose,
-					config.ConstLogModOrchestrator,
-					config.LvlErr,
-					"Cannot refresh app template MD5 for app %s: %s",
-					app.GetId(), err,
-				)
-			}
+func (cluster *Cluster) InitiateRefreshTemplateMD5Worker() {
+	for app := range cluster.RefreshTemplateMD5Chan {
+		if app == nil {
+			continue
 		}
-		cluster.LogModulePrintf(
-			cluster.Conf.Verbose,
-			config.ConstLogModOrchestrator,
-			config.LvlInfo,
-			"RefreshTemplateMD5 worker stopped (channel closed)",
-		)
-	}()
+
+		if err := cluster.RefreshAppTemplateMD5(app); err != nil {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModOrchestrator,
+				config.LvlErr,
+				"Cannot refresh app template MD5 for app %s: %s",
+				app.GetId(), err,
+			)
+		}
+	}
+
+	cluster.LogModulePrintf(
+		cluster.Conf.Verbose,
+		config.ConstLogModOrchestrator,
+		config.LvlInfo,
+		"RefreshTemplateMD5 worker stopped (channel closed)",
+	)
 }
 
 func (cluster *Cluster) CloseRefreshTemplateMD5Worker() {
 	close(cluster.RefreshTemplateMD5Chan)
-}
-
-func (cluster *Cluster) ReinitializeRefreshTemplateMD5Worker(length int) {
-	cluster.CloseRefreshTemplateMD5Worker()
-	cluster.InitiateRefreshTemplateMD5Worker(length)
 }
 
 func (cluster *Cluster) EnqueueRefreshAppTemplateMD5(app *App) {

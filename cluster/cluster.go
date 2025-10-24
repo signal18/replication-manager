@@ -652,8 +652,6 @@ func (cluster *Cluster) Run() {
 		go cluster.createKeys()
 	}
 
-	cluster.InitiateRefreshTemplateMD5Worker(len(cluster.Apps))
-
 	cluster.Lock()
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()

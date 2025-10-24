@@ -2346,6 +2346,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
 
+	repman.currentCluster.CreateTemplateMD5Channel()
+	go repman.currentCluster.InitiateRefreshTemplateMD5Worker()
+
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
 		myClusterConf.MonitorAddress = repman.resolveHostIp()
