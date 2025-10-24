@@ -784,6 +784,8 @@ func (cluster *Cluster) LoadAllAppTemplateMD5Provisioned() {
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not load app template MD5 provisioned for app %s:  %s ", app.GetId(), err)
 		}
+
+		cluster.EnqueueRefreshAppTemplateMD5(app)
 	}
 }
 
