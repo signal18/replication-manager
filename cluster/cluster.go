@@ -110,6 +110,7 @@ type Cluster struct {
 	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov" groups:"web"`
 	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov" groups:"web"`
 	IsNeedDatabasesConfigChange   bool                   `json:"isNeedDatabasesConfigChange" groups:"web"`
+	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
 	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
 	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
 	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`
@@ -251,6 +252,7 @@ type Cluster struct {
 	MeetUserID                string                      `json:"-"` //To store meet user id
 	ServiceTemplates          []string                    `json:"-"` //To store application templates
 	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
+	RefreshTemplateMD5Chan    chan *App                   `json:"-"`
 	LastDelayStatPrint        time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
@@ -749,6 +751,7 @@ func (cluster *Cluster) Run() {
 						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
+							go cluster.RefreshAllAppTemplateMD5()
 						} else {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
@@ -944,6 +947,7 @@ func (cluster *Cluster) Stop() {
 	if cluster.ResticRepo != nil {
 		cluster.ResticRepo.ShutdownWorker()
 	}
+	cluster.CloseRefreshTemplateMD5Worker()
 	cluster.ConfigManager.SaveConfig(cluster, true)
 	// prevent new cycle
 	cluster.exit = true

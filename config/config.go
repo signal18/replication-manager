@@ -4088,12 +4088,21 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 		gitrepo = conf.ProvAppTemplateRepo
 		gitbranch = conf.ProvAppTemplateRepoBranch
 		cacheDir = filepath.Join(conf.WorkingDir, ".cache", "git", "repos")
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout)
+		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout, true)
 		if err != nil {
 			return result, err
 		}
 		result = tree.PrintTree(".toml", true, true)
 	}
+
+	// remove empty entries
+	cleaned := make([]string, 0)
+	for _, v := range result {
+		if strings.TrimSpace(v) != "" {
+			cleaned = append(cleaned, v)
+		}
+	}
+	result = cleaned
 
 	return result, nil
 }

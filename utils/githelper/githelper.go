@@ -611,8 +611,8 @@ func RegisterToCloud18Project(acces_token, project string, log_git bool) (int, e
 
 type GitClientInterface interface {
 	// GetRepositoryTree retrieves the repository tree for a given project ID and path.
-	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error)
-	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error)
+	GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error)
+	GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error)
 	DownloadFileFromRepo(projectID, branch, filePath string, timeout time.Duration) ([]byte, error)
 }
 
@@ -627,7 +627,7 @@ func (gc GitClient) LoadTreeFromCache(cacheDir, gitRef, commitSHA string) *treeh
 	return nil
 }
 
-func GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir string, timeout int) (*treehelper.FileTreeCache, error) {
+func GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir string, timeout int, refresh bool) (*treehelper.FileTreeCache, error) {
 	var err error
 	var gClient GitClientInterface
 	var baseURL, projectID string
@@ -655,5 +655,5 @@ func GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir string, timeout i
 	if timeout <= 0 {
 		gitTimeout = 15 * time.Second // Default timeout if not specified
 	}
-	return gClient.GetRepositoryTree(cacheDir, projectID, gitbranch, gitTimeout)
+	return gClient.GetRepositoryTree(cacheDir, projectID, gitbranch, gitTimeout, refresh)
 }

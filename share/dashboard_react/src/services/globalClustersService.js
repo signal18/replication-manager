@@ -12,7 +12,8 @@ export const globalClustersService = {
   addCluster,
   dropCluster,
   renameCluster,
-  reloadClustersPlan
+  reloadClustersPlan,
+  refreshAppTemplateRepo
 }
 
 function getClusters(baseURL) {
@@ -61,4 +62,8 @@ function renameCluster(clusterName, newClusterName) {
 
 function reloadClustersPlan() {
   return getApi().get(`clusters/settings/actions/reload-clusters-plans`)
+}
+
+function refreshAppTemplateRepo(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/refresh-apps-template`)
 }

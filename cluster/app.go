@@ -46,6 +46,9 @@ type App struct {
 	Variables            map[string]string    `json:"-"`
 	AppConfig            *config.AppConfig    `json:"config" groups:"apps"`
 	AppClusterSubstitute string               `json:"appClusterSubstitute"`
+	TemplateMD5Prov      string               `json:"templateMD5Prov"`
+	TemplateMD5          string               `json:"templateMD5"`
+	IsHashingTemplate    bool                 `json:"isHashingTemplate"`
 	*sync.Mutex          `json:"-"`
 }
 
@@ -71,6 +74,8 @@ func (cluster *Cluster) newAppList() error {
 	cluster.AppS3Providers = news3providers
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModApp, config.LvlInfo, "Loaded %d apps", len(cluster.Apps))
+
+	cluster.LoadAllAppTemplateMD5Provisioned()
 
 	return nil
 }

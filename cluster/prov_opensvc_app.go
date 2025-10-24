@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -191,6 +193,12 @@ func (cluster *Cluster) OpenSVCProvisionAppService(app *App) error {
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Creating app template %s on OpenSVC", app.GetId())
+
+	templatefile := filepath.Join(app.Datadir, "opensvc_template.json")
+	_ = os.WriteFile(templatefile, res, 0644)
+
+	app.TemplateMD5Prov = misc.GetMD5HashFromBytes(res)
+	app.TemplateMD5 = app.TemplateMD5Prov
 
 	err = svc.CreateTemplateV2(cluster.Name, app.ServiceName, app.Agent, res)
 	if err != nil {
