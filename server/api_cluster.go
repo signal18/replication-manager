@@ -386,11 +386,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendEmail)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/actions/send-alert/{hooktype}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
+
+	router.Handle("/api/clusters/{clusterName}/actions/refresh-apps-template", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRefreshTemplateFromRepo)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/docker/actions/registry-connect", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerDockerRegistryConnect)),

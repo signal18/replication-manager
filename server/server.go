@@ -2316,11 +2316,11 @@ func (repman *ReplicationManager) Run() error {
 				repman.UpdateLocalPeer()
 			}
 
-			go repman.GetAppTemplates()
 			repman.ReloadOpenSVCStats()
 		}
 
 		if counter%300 == 0 {
+			go repman.GetAppTemplates()
 			repman.RefreshDiskStats()
 		}
 
@@ -2345,6 +2345,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
+
+	repman.currentCluster.CreateTemplateMD5Channel()
+	go repman.currentCluster.InitiateRefreshTemplateMD5Worker()
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
@@ -3065,15 +3068,26 @@ func (repman *ReplicationManager) Save() error {
 }
 
 func (repman *ReplicationManager) GetAppTemplates() error {
-	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	filelist, _ := repman.GetAppTemplatesFromLocal()
+
+	repolist, err := repman.Conf.LoadAppTemplateList()
 	if err != nil {
-		return err
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
 	}
 
-	for i, file := range filelist {
-		ext := filepath.Ext(file)
-		if ext == ".toml" {
-			filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+	repman.ServiceTemplates = append(filelist, repolist...)
+
+	return nil
+}
+
+func (repman *ReplicationManager) GetAppTemplatesFromLocal() ([]string, error) {
+	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	if err == nil {
+		for i, file := range filelist {
+			ext := filepath.Ext(file)
+			if ext == ".toml" {
+				filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+			}
 		}
 	}
 
@@ -3084,7 +3098,7 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 		list, err := os.ReadDir(templateDir)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading template directory %s: %v", templateDir, err)
-			return err
+			return filelist, err
 		}
 
 		for _, entry := range list {
@@ -3106,12 +3120,13 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 		}
 	}
 
-	repolist, err := repman.Conf.LoadAppTemplateList()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
+	// Remove empty entries
+	var cleanedFilelist []string
+	for _, file := range filelist {
+		if file != "" {
+			cleanedFilelist = append(cleanedFilelist, file)
+		}
 	}
 
-	repman.ServiceTemplates = append(filelist, repolist...)
-
-	return nil
+	return cleanedFilelist, nil
 }

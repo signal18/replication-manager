@@ -82,3 +82,7 @@ func (app *App) HasDNS() bool {
 	}
 	return false
 }
+
+func (app *App) HasTemplateMD5Diff() bool {
+	return app.TemplateMD5Prov != "" && app.TemplateMD5 != app.TemplateMD5Prov
+}

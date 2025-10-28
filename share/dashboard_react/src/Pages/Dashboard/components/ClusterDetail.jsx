@@ -403,6 +403,7 @@ function ClusterDetail({ selectedCluster }) {
               {selectedCluster?.isConfigPathChange && <TagPill colorScheme='orange' text='DBConfigPathChanged' />}
               {selectedCluster?.isNotMonitoring && <TagPill colorScheme='orange' text='UnMonitored' />}
               {selectedCluster?.isCapturing && <TagPill colorScheme='orange' text='Capturing' />}
+              {selectedCluster?.isNeedAppsReprov && <TagPill colorScheme='orange' text='NeedAppsReprov' />}
             </>
           }
         </Wrap>
