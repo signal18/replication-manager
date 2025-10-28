@@ -372,30 +372,90 @@ request_jobs_upgrade() {
 
 # Function to check if a table exists in a given database
 table_exists() {
-    local db="$1"
-    local table="$2"
+    local query="SELECT CASE WHEN COUNT(*) = 9 THEN 1 ELSE 0 END AS valid
+FROM information_schema.columns
+WHERE table_schema = 'replication_manager_schema'
+  AND table_name = 'jobs'
+  AND (
+      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
+   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
+   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
+   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
+   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
+   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
+  );
+"
 
-    # Ask information_schema if the table exists
     local result
-    result=$(echo "SELECT COUNT(*) 
-                   FROM information_schema.tables 
-                   WHERE table_schema='${db}' 
-                     AND table_name='${table}';" \
-             | $BINARY_CLIENT -N 2>/dev/null)
+    result=$($BINARY_CLIENT -N -e "$query" 2>&1)
+    local status=$?
 
-    if [ "$result" = "1" ]; then
-        return 0  # true, table exists
-    else
-        return 1  # false, table missing
+    if [ $status -ne 0 ]; then
+        send_lines_to_api "Database query failed: $result" "main" "$LVL_ERROR"
+        return 2  # indicate DB error
     fi
+
+    # Defensive check in case of unexpected output
+    result=$(echo "$result" | tr -d '[:space:]')
+    case "$result" in
+        1) return 0 ;;  # table exists
+        0) return 1 ;;  # table does not exist
+        *) 
+           send_lines_to_api "Unexpected query result: '$result'" "main" "$LVL_ERROR"
+           return 2 ;;   # unknown error
+    esac
 }
 
 # Function to create the jobs table if it doesn't exist
 create_jobs_table() {
-    if ! table_exists "replication_manager_schema" "jobs"; then
-        send_lines_to_api "Creating jobs table..." "main" "$LVL_INFO"
-        echo "set sql_log_bin=0;CREATE DATABASE IF NOT EXISTS replication_manager_schema;CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb;set sql_log_bin=1;" | $BINARY_CLIENT
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/jobs-create-table"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response" | head -n1 | awk '{print $2}')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+
+    # Determine output
+    if [ "$http_code" = "200" ]; then
+        return 0
+    else
+        return 1
     fi
+}
+
+check_jobs_table() {
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    table_exists
+    local exists_status=$?
+
+    if [ $exists_status -eq 2 ]; then
+        return 1
+    fi
+
+    if [ $exists_status -eq 1 ]; then
+        create_jobs_table "$host_port" "$cluster" "$server" "$port"
+        return 1
+    fi
+
+    return 0
 }
 
 ################################
@@ -827,8 +887,6 @@ jobsUpgrade() {
 # JOB START HERE
 #######################
 
-create_jobs_table
-
 mkdir -p "$CHECKPOINT_DIR"
 mkdir -p "$LOCK_DIR"
 echo "" > $LOG_DIR/curl_response.txt
@@ -840,6 +898,13 @@ checkresult=$?
 if [ "$checkresult" != "2" ]; then
     # If jobsCheck did not error, proceed to jobsUpgrade
     jobsUpgrade "$@"
+fi
+
+check_jobs_table "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
+checktable=$?
+if [ "$checktable" != "0" ]; then
+    sleep 60;
+    exit 1
 fi
 
 ####################

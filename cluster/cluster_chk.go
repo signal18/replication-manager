@@ -1050,3 +1050,14 @@ func (cluster *Cluster) CheckJobsVersion() {
 		server.CheckJobsVersion()
 	}
 }
+
+func (cluster *Cluster) JobsCheckSchedulerTable() {
+	for _, server := range cluster.Servers {
+		ok, err := server.JobsCheckSchedulerTable()
+		if err != nil {
+			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL), ErrFrom: "CLUSTER"})
+		} else if !ok {
+			cluster.SetState("WARN0154", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0154"], server.URL, ""), ErrFrom: "CLUSTER"})
+		}
+	}
+}

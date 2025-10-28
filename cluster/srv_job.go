@@ -71,7 +71,64 @@ func (server *ServerMonitor) JobRun() {
 
 }
 
+func (server *ServerMonitor) JobsCheckSchedulerTable() (bool, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() || cluster.IsInFailover() {
+		return false, fmt.Errorf("Server %s is down or in failover", server.URL)
+	}
+
+	//If no default connection no alert
+	if server.Conn == nil {
+		return false, fmt.Errorf("No connection pool available for server %s", server.URL)
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, fmt.Errorf("Failed to create connection: %v", err)
+	}
+	defer Conn.Close()
+
+	query := `SELECT
+    COUNT(*) AS columns_present
+FROM information_schema.columns
+WHERE table_schema = 'replication_manager_schema'
+  AND table_name = 'jobs'
+  AND (
+      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
+   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
+   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
+   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
+   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
+   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
+  );`
+
+	var exist int
+	err = server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, query)
+	if err != nil {
+		return false, fmt.Errorf("Failed to check jobs table: %v", err)
+	}
+
+	if exist != 9 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (server *ServerMonitor) JobsCreateTable() error {
+	cluster := server.ClusterGroup
+	if err := server.jobsCreateTable(); err != nil {
+		cluster.SetState("WARN0154", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0154"], server.URL, err), ErrFrom: "JOB"})
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) jobsCreateTable() error {
+
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
 		return nil
@@ -1959,7 +2016,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	dumper := cluster.VersionsMap.Get("mydumper")
 	if dumper == nil {
-		if err = cluster.SetMyDumperVersion(); err != nil {
+		if err = cluster.RefreshMyDumperVersion(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting MyDumper version: %s", err)
 			return err
 		} else {

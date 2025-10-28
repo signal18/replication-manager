@@ -45,6 +45,10 @@ func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Route
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
 	))
+	router.Handle("/api/clusters/{clusterName}/is-in-errstate/{errstate}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterIsInErrState)),
+	))
 
 }
 
@@ -7522,6 +7526,43 @@ func (repman *ReplicationManager) handlerMuxClusterOpenSVCDaemonStatus(w http.Re
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, err = w.Write(statsJSON)
+		if err != nil {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
+			http.Error(w, "Error writing response: "+err.Error(), 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterIsInErrorState handles the HTTP request to check if a cluster is in an error state.
+// @Summary Check if Cluster is in Error State
+// @Description Checks if the specified cluster is in an error state.
+// @Tags ClusterHealth
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param state path string true "State to check"
+// @Success 200 {string} string "true" or "false"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/is-in-errstate/{errstate} [get]
+func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		isInErrorState := mycluster.IsInErrorState(vars["state"], "")
+		w.WriteHeader(http.StatusOK)
+		_, err := w.Write([]byte(fmt.Sprintf("%t", isInErrorState)))
 		if err != nil {
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error writing response: ", err)
 			http.Error(w, "Error writing response: "+err.Error(), 500)
