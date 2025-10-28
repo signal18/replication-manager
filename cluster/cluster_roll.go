@@ -186,10 +186,12 @@ func (cluster *Cluster) RollingOptimize() {
 	}
 }
 
-func (cluster *Cluster) RollingJobsUpgrade() {
+func (cluster *Cluster) RollingJobsUpgrade() error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade")
+	var ts time.Time
+
 	for _, s := range cluster.slaves {
-		timeout := false
-		ts := time.Now()
+		ts = time.Now()
 		s.SetWaitJobsUpgradeCookie()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on %s ", s.URL)
 
@@ -199,14 +201,30 @@ func (cluster *Cluster) RollingJobsUpgrade() {
 
 			if time.Since(ts) > 5*time.Minute {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on %s ", s.URL)
-				timeout = true
-				break
+				return errors.New("Timeout waiting for jobs upgrade")
 			}
 		}
 
-		if !timeout {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
-		}
-
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
 	}
+
+	ts = time.Now()
+	cluster.master.SetWaitJobsUpgradeCookie()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on master %s ", cluster.master.URL)
+
+	// Wait for the server to clear the cookie
+	for cluster.master.HasRollingJobsUpgradeCookie() {
+		time.Sleep(2 * time.Second)
+
+		if time.Since(ts) > 5*time.Minute {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on master %s ", cluster.master.URL)
+			return errors.New("Timeout waiting for jobs upgrade on master")
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on master %s ", cluster.master.URL)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
+
+	return nil
 }
