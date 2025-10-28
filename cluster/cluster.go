@@ -932,6 +932,10 @@ func (cluster *Cluster) StateProcessing() {
 				go servertoreseed.UpgradeJobsScript()
 			}
 
+			if s.ErrKey == "WARN0155" {
+				go cluster.RollingJobsUpgrade()
+			}
+
 			//		cluster.statecloseChan <- s
 			cluster.CheckAlert(s, true)
 			cluster.BashScriptCloseSate(s)

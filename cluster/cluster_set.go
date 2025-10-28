@@ -2501,5 +2501,9 @@ func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
 }
 
 func (cluster *Cluster) SetRollingJobsUpgradeState() {
+	for _, s := range cluster.Servers {
+		s.SetRollingJobsUpgradeCookie()
+	}
+
 	cluster.SetState("WARN0155", state.State{ErrType: "WARN0155", ErrDesc: clusterError["WARN0155"], ErrFrom: "MAINTENANCE"})
 }

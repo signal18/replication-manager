@@ -190,7 +190,6 @@ func (cluster *Cluster) RollingJobsUpgrade() {
 	for _, s := range cluster.slaves {
 		timeout := false
 		ts := time.Now()
-		s.SetRollingJobsUpgradeCookie()
 		s.SetWaitJobsUpgradeCookie()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on %s ", s.URL)
 
@@ -208,5 +207,6 @@ func (cluster *Cluster) RollingJobsUpgrade() {
 		if !timeout {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
 		}
+
 	}
 }
