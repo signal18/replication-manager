@@ -133,6 +133,8 @@ definitions:
         type: string
       id:
         type: string
+      isHashingTemplate:
+        type: boolean
       name:
         type: string
       port:
@@ -150,6 +152,10 @@ definitions:
       slaposDatadir:
         type: string
       state:
+        type: string
+      templateMD5:
+        type: string
+      templateMD5Prov:
         type: string
       type:
         type: string
@@ -305,6 +311,8 @@ definitions:
       isLostMajority:
         type: boolean
       isMasterDown:
+        type: boolean
+      isNeedAppsReprov:
         type: boolean
       isNeedDatabasesConfigChange:
         type: boolean
@@ -4557,6 +4565,42 @@ paths:
       summary: Optimize a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/refresh-apps-template:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of the application template repository
+        for a specific cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Application template repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error getting repository tree" or "No cluster
+          schema:
+            type: string
+      summary: Refresh App Template from Repo
+      tags:
+      - Apps
   /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}:
     post:
       consumes:
@@ -5284,6 +5328,59 @@ paths:
         in: path
         name: gitName
         required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Git repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "400":
+          description: Invalid Git repository URL
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating Git client" or "Error getting repository tree
+          schema:
+            type: string
+      summary: Get Git Repository Tree
+      tags:
+      - GitRepository
+  /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of a specified Git repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: appId
+        required: true
+        type: string
+      - description: Git Name
+        in: path
+        name: gitName
+        required: true
+        type: string
+      - description: Force refresh of the repository tree
+        in: path
+        name: force
         type: string
       produces:
       - application/json
@@ -6484,47 +6581,6 @@ paths:
       summary: Get App Substitution Variables
       tags:
       - Apps
-  /api/clusters/{clusterName}/apps/actions/get-app-template:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves the tree structure of the application template repository
-        for a specific cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Application template repository tree structure
-          schema:
-            $ref: '#/definitions/treehelper.FileTreeCache'
-        "400":
-          description: Invalid Git repository URL
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error creating Git client" or "Error getting repository tree"
-            or "No cluster
-          schema:
-            type: string
-      summary: Get App Template Repository Tree
-      tags:
-      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -7333,6 +7389,44 @@ paths:
           schema:
             type: string
       summary: Get Cluster Health
+      tags:
+      - ClusterHealth
+  /api/clusters/{clusterName}/is-in-errstate/{errstate}:
+    get:
+      description: Checks if the specified cluster is in an error state.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: State to check
+        in: path
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Check if Cluster is in Error State
       tags:
       - ClusterHealth
   /api/clusters/{clusterName}/jobs:
@@ -8484,6 +8578,46 @@ paths:
       summary: Get server details
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table:
+    post:
+      description: Creates a jobs tasks table on a specified server within a cluster
+        if it does not already exist.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Jobs tasks table created
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            jobs tasks table" or "Error creating jobs tasks table
+          schema:
+            type: string
+      summary: Create jobs tasks table on a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check:
     get:
       description: Checks jobs on a specified server within a cluster by initiating
@@ -8822,6 +8956,47 @@ paths:
       summary: Check if a server is failed
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-errstate/{errstate}:
+    get:
+      description: Checks if a specified server within a cluster is currently in a
+        specific error state. Cluster wide error states will not be checked. Use cluster
+        state API for that.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: State to check
+        in: path
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            server state
+          schema:
+            type: string
+      summary: Check if a server is in a specific error state
+      tags:
+      - DatabaseReplication
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}:
     get:
       description: Checks if a specified server within a cluster is currently involved
