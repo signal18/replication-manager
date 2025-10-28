@@ -185,3 +185,28 @@ func (cluster *Cluster) RollingOptimize() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
 }
+
+func (cluster *Cluster) RollingJobsUpgrade() {
+	for _, s := range cluster.slaves {
+		timeout := false
+		ts := time.Now()
+		s.SetRollingJobsUpgradeCookie()
+		s.SetWaitJobsUpgradeCookie()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on %s ", s.URL)
+
+		// Wait for the server to clear the cookie
+		for s.HasRollingJobsUpgradeCookie() {
+			time.Sleep(2 * time.Second)
+
+			if time.Since(ts) > 5*time.Minute {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on %s ", s.URL)
+				timeout = true
+				break
+			}
+		}
+
+		if !timeout {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
+		}
+	}
+}

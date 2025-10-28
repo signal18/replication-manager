@@ -3585,6 +3585,10 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 		return err
 	}
 
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
+
 	server.SetWaitJobsCheckCookie()
 	return nil
 }

@@ -21,6 +21,7 @@ import {
   reloadCertificates,
   resetFailOverCounter,
   resetSLA,
+  rollingJobsUpgrade,
   rollingOptimize,
   rollingRestart,
   rotateCertificates,
@@ -232,6 +233,14 @@ function ClusterDetail({ selectedCluster }) {
             openConfirmModal()
             setConfirmTitle('Rolling optimize?')
             setConfirmHandler(() => () => dispatch(rollingOptimize({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
+          name: 'Rolling Jobs Upgrade',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling jobs upgrade?')
+            setConfirmHandler(() => () => dispatch(rollingJobsUpgrade({ clusterName: selectedCluster?.name })))
           }
         },
         {

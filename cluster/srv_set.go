@@ -763,3 +763,7 @@ func (server *ServerMonitor) SetWaitJobsCheckCookie() error {
 func (server *ServerMonitor) SetWaitJobsUpgradeCookie() error {
 	return server.createCookie("cookie_wait_jobs_upgrade")
 }
+
+func (server *ServerMonitor) SetRollingJobsUpgradeCookie() error {
+	return server.createCookie("cookie_rolling_jobs_upgrade")
+}

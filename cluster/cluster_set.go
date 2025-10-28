@@ -2499,3 +2499,7 @@ func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
 
 	return stagingsrv
 }
+
+func (cluster *Cluster) SetRollingJobsUpgradeState() {
+	cluster.SetState("WARN0155", state.State{ErrType: "WARN0155", ErrDesc: clusterError["WARN0155"], ErrFrom: "MAINTENANCE"})
+}

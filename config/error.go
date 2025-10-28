@@ -227,6 +227,7 @@ var ClusterError = map[string]string{
 	"WARN0152":  "Orchestrator node(s) has reached max CPU load threshold. Stats: %v",
 	"WARN0153":  "Unable to get scheduler jobs table definition on server %s",
 	"WARN0154":  "Missing or outdated scheduler jobs table on server %s. Err: %s",
+	"WARN0155":  "Cluster is flagged for jobs upgrade",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

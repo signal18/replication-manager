@@ -376,7 +376,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerDrop)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/actions/jobs-upgrade", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterAllowJobsUpgrade)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/rolling", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxRolling)),
@@ -394,7 +397,6 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSendAlert)),
 	))
-
 	router.Handle("/api/clusters/{clusterName}/actions/refresh-apps-template", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppRefreshTemplateFromRepo)),
@@ -7571,5 +7573,35 @@ func (repman *ReplicationManager) handlerMuxClusterIsInErrState(w http.ResponseW
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
+	}
+}
+
+// handlerMuxClusterAllowJobsUpgrade handles the HTTP request to allow jobs upgrade on all server within a cluster.
+// @Summary Allow Jobs Upgrade on Cluster Servers
+// @Description Flags all servers within the specified cluster to allow jobs upgrade.
+// @Tags ClusterJobs
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Flagged for jobs upgrade"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster" or "No server"
+// @Router /api/clusters/{clusterName}/actions/jobs-upgrade [get]
+func (repman *ReplicationManager) handlerMuxClusterAllowJobsUpgrade(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		mycluster.SetRollingJobsUpgradeState()
+		w.WriteHeader(200)
+		w.Write([]byte("Cluster flagged for jobs upgrade"))
+		return
+	} else {
+		http.Error(w, "No cluster", 500)
 	}
 }

@@ -167,3 +167,7 @@ func (server *ServerMonitor) DelWaitJobsCheckCookie() error {
 func (server *ServerMonitor) DelWaitJobsUpgradeCookie() error {
 	return server.delCookie("cookie_wait_jobs_upgrade")
 }
+
+func (server *ServerMonitor) DelRollingJobsUpgradeCookie() error {
+	return server.delCookie("cookie_rolling_jobs_upgrade")
+}

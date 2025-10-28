@@ -405,6 +405,18 @@ export const rollingOptimize = createAsyncThunk('cluster/rollingOptimize', async
   }
 })
 
+export const rollingJobsUpgrade = createAsyncThunk('cluster/rollingJobsUpgrade', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.rollingJobsUpgrade(clusterName, baseURL)
+    showSuccessBanner('Rolling jobs upgrade successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Rolling jobs upgrade failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

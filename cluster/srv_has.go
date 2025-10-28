@@ -824,3 +824,7 @@ func (server *ServerMonitor) HasWaitJobsCheckCookie() bool {
 func (server *ServerMonitor) HasWaitJobsUpgradeCookie() bool {
 	return server.hasCookie("cookie_wait_jobs_upgrade")
 }
+
+func (server *ServerMonitor) HasRollingJobsUpgradeCookie() bool {
+	return server.hasCookie("cookie_rolling_jobs_upgrade")
+}
