@@ -799,6 +799,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-reprov") {
 			return true
 		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/jobs-upgrade") {
+			return true
+		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotatePasswords] {
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotate-passwords") {

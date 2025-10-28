@@ -415,7 +415,15 @@ export const rollingJobsUpgrade = createAsyncThunk('cluster/rollingJobsUpgrade',
     showErrorBanner('Rolling jobs upgrade failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.loadingStates.menuActions) {
+      return false;
+    }
+  }
 })
+    
 
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
@@ -2035,7 +2043,8 @@ export const clusterSlice = createSlice({
         stopProxy.pending,
         refreshStaging.pending,
         killThread.pending,
-        killQuery.pending
+        killQuery.pending,
+        rollingJobsUpgrade.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2106,7 +2115,8 @@ export const clusterSlice = createSlice({
         stopProxy.fulfilled,
         refreshStaging.fulfilled,
         killThread.fulfilled,
-        killQuery.fulfilled
+        killQuery.fulfilled,
+        rollingJobsUpgrade.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2178,7 +2188,8 @@ export const clusterSlice = createSlice({
         stopProxy.rejected,
         refreshStaging.rejected,
         killThread.rejected,
-        killQuery.rejected
+        killQuery.rejected,
+        rollingJobsUpgrade.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
