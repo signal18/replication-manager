@@ -197,12 +197,12 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 
 		// Wait for the server to clear the cookie
 		for s.HasRollingJobsUpgradeCookie() {
-			time.Sleep(2 * time.Second)
-
 			if time.Since(ts) > 5*time.Minute {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on %s ", s.URL)
 				return errors.New("Timeout waiting for jobs upgrade")
 			}
+
+			time.Sleep(2 * time.Second)
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
@@ -214,12 +214,12 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 
 	// Wait for the server to clear the cookie
 	for cluster.master.HasRollingJobsUpgradeCookie() {
-		time.Sleep(2 * time.Second)
-
 		if time.Since(ts) > 5*time.Minute {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on master %s ", cluster.master.URL)
 			return errors.New("Timeout waiting for jobs upgrade on master")
 		}
+
+		time.Sleep(2 * time.Second)
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on master %s ", cluster.master.URL)
