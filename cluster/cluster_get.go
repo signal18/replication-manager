@@ -159,7 +159,7 @@ func (cluster *Cluster) GetMysqlDumpPath() string {
 
 func (cluster *Cluster) GetMyDumperPath() string {
 	if cluster.Conf.BackupMyDumperPath == "" {
-		//if mysqldump installed
+		//if mydumper installed
 		if path, err := exec.Command("which", "mydumper").Output(); err == nil {
 			strpath := strings.TrimRight(string(path), "\r\n")
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
@@ -172,8 +172,8 @@ func (cluster *Cluster) GetMyDumperPath() string {
 }
 
 func (cluster *Cluster) GetMyLoaderPath() string {
-	if cluster.Conf.BackupMyDumperPath == "" {
-		//if mysqldump installed
+	if cluster.Conf.BackupMyLoaderPath == "" {
+		//if myloader installed
 		if path, err := exec.Command("which", "myloader").Output(); err == nil {
 			strpath := strings.TrimRight(string(path), "\r\n")
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModConfigLoad, config.LvlDbg, "Using from os package: %s\n", strpath)
