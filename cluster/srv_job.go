@@ -458,6 +458,13 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			master.DelBackupTypeCookie(backtype)
 			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
 		}
+		bckserver = master
+	}
+
+	err := cluster.CheckPhysicalBackupToolVersion(bckserver)
+	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
+		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	//Delete wait physical backup cookie
@@ -489,7 +496,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		cluster.Conf.BackupPhysicalType = backtype
 	}
 
-	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err = server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
@@ -673,6 +680,12 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		}
 
 		bckserver = master
+	}
+
+	err = cluster.CheckLogicalBackupToolVersion(bckserver)
+	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
+		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	if server.HasAnyReseedingState() {

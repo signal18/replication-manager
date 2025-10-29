@@ -475,32 +475,36 @@ func (cluster *Cluster) CheckBackupToolVersions() {
 	cluster.CheckPhysicalBackupToolVersion(bcksrv)
 }
 
-func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) {
+func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
 	_, logical := server.GetLatestMeta("logical")
 	if logical != nil {
 		v, _ := cluster.GetToolsVersion(logical.BackupTool)
 		if v != nil && logical.BackupToolVersion != "" {
 			if v.Lower(logical.BackupToolVersion) {
-				cluster.SetState("WARN0156", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0156"], v.ToString(), logical.BackupToolVersion), ErrFrom: "Check", ServerUrl: server.URL})
-			} else {
+				cluster.SetState("WARN0156", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0156"], v.ToString(), logical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0156", server.URL) {
 				// Remove state if version is now correct
 				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0156@%s", server.URL))
 			}
 		}
 	}
+	return nil
 }
 
-func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) {
+func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) error {
 	_, physical := server.GetLatestMeta("physical")
 	if physical != nil {
 		v, _ := cluster.GetToolsVersion(physical.BackupTool)
 		if v != nil && physical.BackupToolVersion != "" {
 			if v.Lower(physical.BackupToolVersion) {
-				cluster.SetState("WARN0157", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0157"], v.ToString(), physical.BackupToolVersion), ErrFrom: "Check", ServerUrl: server.URL})
-			} else {
+				cluster.SetState("WARN0157", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0157"], v.ToString(), physical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0157", server.URL) {
 				// Remove state if version is now correct
 				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0157@%s", server.URL))
 			}
 		}
 	}
+	return nil
 }
