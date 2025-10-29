@@ -1394,6 +1394,8 @@ const (
 	ConstTaskStart              TaskName = "start"
 	ConstTaskPrintCurrentConfig TaskName = "printdefault-current"
 	ConstTaskPrintDummyConfig   TaskName = "printdefault-dummy"
+	ConstTaskJobsCheck          TaskName = "jobs-check"
+	ConstTaskJobsUpgrade        TaskName = "jobs-upgrade"
 )
 
 /*

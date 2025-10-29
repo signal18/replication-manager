@@ -606,3 +606,13 @@ func (cluster *Cluster) HasDiscoverTopologyReachTarget() bool {
 func (cluster *Cluster) IsTopologyTargetEqual(target string) bool {
 	return cluster.Conf.TopologyTarget == target
 }
+
+func (cluster *Cluster) IsInErrorState(key, serverURL string) bool {
+	if key == "" {
+		return false
+	} else if serverURL == "" {
+		return cluster.StateMachine.IsInState(key)
+	} else {
+		return cluster.StateMachine.IsInState(fmt.Sprintf("%s@%s", key, serverURL))
+	}
+}

@@ -32,6 +32,7 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
+	"github.com/signal18/replication-manager/utils/version"
 )
 
 func (cluster *Cluster) GetCrcTable() *crc64.Table {
@@ -1676,4 +1677,9 @@ func (cluster *Cluster) GetStagingServerFromConfig() *ServerMonitor {
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) GetToolsVersion(name string) (*version.Version, bool) {
+	toolVer, ok := cluster.VersionsMap.CheckAndGet(name)
+	return toolVer, ok
 }

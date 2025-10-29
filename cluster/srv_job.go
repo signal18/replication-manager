@@ -34,6 +34,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
@@ -70,7 +71,64 @@ func (server *ServerMonitor) JobRun() {
 
 }
 
+func (server *ServerMonitor) JobsCheckSchedulerTable() (bool, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() || cluster.IsInFailover() {
+		return false, fmt.Errorf("Server %s is down or in failover", server.URL)
+	}
+
+	//If no default connection no alert
+	if server.Conn == nil {
+		return false, fmt.Errorf("No connection pool available for server %s", server.URL)
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, fmt.Errorf("Failed to create connection: %v", err)
+	}
+	defer Conn.Close()
+
+	query := `SELECT
+    COUNT(*) AS columns_present
+FROM information_schema.columns
+WHERE table_schema = 'replication_manager_schema'
+  AND table_name = 'jobs'
+  AND (
+      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
+   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
+   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
+   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
+   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
+   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
+  );`
+
+	var exist int
+	err = server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, query)
+	if err != nil {
+		return false, fmt.Errorf("Failed to check jobs table: %v", err)
+	}
+
+	if exist != 9 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (server *ServerMonitor) JobsCreateTable() error {
+	cluster := server.ClusterGroup
+	if err := server.jobsCreateTable(); err != nil {
+		cluster.SetState("WARN0154", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0154"], server.URL, err), ErrFrom: "JOB"})
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) jobsCreateTable() error {
+
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
 		return nil
@@ -1958,7 +2016,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	dumper := cluster.VersionsMap.Get("mydumper")
 	if dumper == nil {
-		if err = cluster.SetMyDumperVersion(); err != nil {
+		if err = cluster.RefreshMyDumperVersion(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting MyDumper version: %s", err)
 			return err
 		} else {
@@ -3458,6 +3516,7 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 
 	var secretKey struct {
 		Secret string `json:"secret"`
+		Server string `json:"server"`
 	}
 
 	err = json.Unmarshal(output, &secretKey)
@@ -3467,4 +3526,69 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 	}
 
 	return strings.TrimSpace(secretKey.Secret), nil
+}
+
+func (server *ServerMonitor) CheckJobsVersion() error {
+	var sum, newsum string
+	var checkerr error
+	cluster := server.ClusterGroup
+
+	if server.IsIgnored() {
+		return nil
+	}
+
+	if cluster.IsInFailover() {
+		return nil
+	}
+
+	scriptPath := filepath.Join(server.Datadir, "init/init", "dbjobs_new")
+	currentScriptPath := filepath.Join(server.Datadir, "dbjobs_new.current")
+
+	// Check if the script exists
+	finfo, err := os.Stat(currentScriptPath)
+	if os.IsNotExist(err) {
+		server.SetWaitJobsCheckCookie()
+	}
+
+	sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
+
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		server.GetDatabaseConfig()
+	}
+
+	newsum, err = crypto.GenerateChecksum(scriptPath)
+	if err != nil {
+		checkerr = err
+	}
+
+	if sum != newsum || checkerr != nil {
+		if checkerr == nil {
+			checkerr = fmt.Errorf("Checksum mismatch")
+		}
+		cluster.SetState("WARN0147", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0147"], server.URL, newsum, sum, checkerr), ErrFrom: "JOB", ServerUrl: server.URL})
+		// Set cookie for next check
+		if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(10*time.Minute).Before(time.Now()) {
+			server.SetWaitJobsCheckCookie()
+		}
+	}
+
+	return checkerr
+}
+
+func (server *ServerMonitor) UpgradeJobsScript() error {
+	cluster := server.ClusterGroup
+	defer cluster.LogPanicToFile("jobs-upgrade")
+
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModAPI, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
+		return err
+	}
+
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
+
+	server.SetWaitJobsCheckCookie()
+	return nil
 }

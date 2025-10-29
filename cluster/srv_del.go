@@ -159,3 +159,15 @@ func (server *ServerMonitor) DelWaitErrorlogCookie() error {
 func (server *ServerMonitor) DelWaitSlowqueryCookie() error {
 	return server.delCookie("cookie_wait_slowquery")
 }
+
+func (server *ServerMonitor) DelWaitJobsCheckCookie() error {
+	return server.delCookie("cookie_wait_jobs_check")
+}
+
+func (server *ServerMonitor) DelWaitJobsUpgradeCookie() error {
+	return server.delCookie("cookie_wait_jobs_upgrade")
+}
+
+func (server *ServerMonitor) DelRollingJobsUpgradeCookie() error {
+	return server.delCookie("cookie_rolling_jobs_upgrade")
+}

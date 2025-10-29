@@ -755,3 +755,15 @@ func (server *ServerMonitor) SetWaitErrorlogCookie() error {
 func (server *ServerMonitor) SetWaitSlowqueryCookie() error {
 	return server.createCookie("cookie_wait_slowquery")
 }
+
+func (server *ServerMonitor) SetWaitJobsCheckCookie() error {
+	return server.createCookie("cookie_wait_jobs_check")
+}
+
+func (server *ServerMonitor) SetWaitJobsUpgradeCookie() error {
+	return server.createCookie("cookie_wait_jobs_upgrade")
+}
+
+func (server *ServerMonitor) SetRollingJobsUpgradeCookie() error {
+	return server.createCookie("cookie_rolling_jobs_upgrade")
+}

@@ -1255,6 +1255,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/refresh-apps-template": {
+            "get": {
+                "description": "Retrieves the tree structure of the application template repository for a specific cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Apps"
+                ],
+                "summary": "Refresh App Template from Repo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Application template repository tree structure",
+                        "schema": {
+                            "$ref": "#/definitions/treehelper.FileTreeCache"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error getting repository tree\" or \"No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/replication/bootstrap/{topology}": {
             "post": {
                 "description": "This endpoint triggers the bootstrap replication process for the specified cluster.",
@@ -2229,64 +2281,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/apps/actions/get-app-template": {
-            "get": {
-                "description": "Retrieves the tree structure of the application template repository for a specific cluster.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Apps"
-                ],
-                "summary": "Get App Template Repository Tree",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Application template repository tree structure",
-                        "schema": {
-                            "$ref": "#/definitions/treehelper.FileTreeCache"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid Git repository URL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error creating Git client\" or \"Error getting repository tree\" or \"No cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop": {
             "post": {
                 "description": "Drops the monitoring configuration for a specific app in a cluster.",
@@ -2388,6 +2382,84 @@ const docTemplate = `{
                         "name": "gitName",
                         "in": "path",
                         "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Git repository tree structure",
+                        "schema": {
+                            "$ref": "#/definitions/treehelper.FileTreeCache"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid Git repository URL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error creating Git client\" or \"Error getting repository tree",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force}": {
+            "get": {
+                "description": "Retrieves the tree structure of a specified Git repository.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "GitRepository"
+                ],
+                "summary": "Get Git Repository Tree",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID",
+                        "name": "appId",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Git Name",
+                        "name": "gitName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Force refresh of the repository tree",
+                        "name": "force",
+                        "in": "path"
                     }
                 ],
                 "responses": {
@@ -5312,6 +5384,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/is-in-errstate/{errstate}": {
+            "get": {
+                "description": "Checks if the specified cluster is in an error state.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterHealth"
+                ],
+                "summary": "Check if Cluster is in Error State",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "State to check",
+                        "name": "state",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/jobs": {
             "get": {
                 "description": "This endpoint retrieves the job entries for the specified cluster.",
@@ -7385,6 +7513,68 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error canceling task",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade": {
+            "get": {
+                "description": "Flags a specified server within a cluster to allow jobs upgrade by setting a cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Allow jobs upgrade on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Flagged for jobs upgrade",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -11302,6 +11492,186 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table": {
+            "post": {
+                "description": "Creates a jobs tasks table on a specified server within a cluster if it does not already exist.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Create jobs tasks table on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Jobs tasks table created",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error checking jobs tasks table\" or \"Error creating jobs tasks table",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check": {
+            "get": {
+                "description": "Checks jobs on a specified server within a cluster by initiating a receiver for the current.jobs.tmp file.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Check jobs on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SST_RECEIVER_PORT=\u003cport\u003e",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade": {
+            "get": {
+                "description": "Upgrades jobs on a specified server within a cluster by sending the dbjobs_new file.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseTasks"
+                ],
+                "summary": "Upgrade jobs on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Sending dbjobs_new file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error sending dbjobs_new file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup": {
             "get": {
                 "description": "Initiates a physical backup on a specified server port within a cluster.",
@@ -11657,6 +12027,62 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-errstate/{errstate}": {
+            "get": {
+                "description": "Checks if a specified server within a cluster is currently in a specific error state. Cluster wide error states will not be checked. Use cluster state API for that.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseReplication"
+                ],
+                "summary": "Check if a server is in a specific error state",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "State to check",
+                        "name": "state",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error checking server state",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}": {
             "get": {
                 "description": "Checks if a specified server within a cluster is currently involved in a specific task.",
@@ -11707,7 +12133,9 @@ const docTemplate = `{
                             "restart",
                             "start",
                             "printdefault-current",
-                            "printdefault-dummy"
+                            "printdefault-dummy",
+                            "jobs-check",
+                            "jobs-upgrade"
                         ],
                         "type": "string",
                         "description": "taskname",
@@ -12452,7 +12880,9 @@ const docTemplate = `{
                             "restart",
                             "start",
                             "printdefault-current",
-                            "printdefault-dummy"
+                            "printdefault-dummy",
+                            "jobs-check",
+                            "jobs-upgrade"
                         ],
                         "type": "string",
                         "description": "Type of check (e.g., 'config-refresh')",
@@ -17368,6 +17798,9 @@ const docTemplate = `{
                 "id": {
                     "type": "string"
                 },
+                "isHashingTemplate": {
+                    "type": "boolean"
+                },
                 "name": {
                     "type": "string"
                 },
@@ -17393,6 +17826,12 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "state": {
+                    "type": "string"
+                },
+                "templateMD5": {
+                    "type": "string"
+                },
+                "templateMD5Prov": {
                     "type": "string"
                 },
                 "type": {
@@ -17625,6 +18064,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "isMasterDown": {
+                    "type": "boolean"
+                },
+                "isNeedAppsReprov": {
                     "type": "boolean"
                 },
                 "isNeedDatabasesConfigChange": {
@@ -21801,6 +22243,9 @@ const docTemplate = `{
                 "stagingProxyHosts": {
                     "type": "string"
                 },
+                "stagingServerHost": {
+                    "type": "string"
+                },
                 "switchoverAtEqualGtid": {
                     "type": "boolean"
                 },
@@ -22256,6 +22701,15 @@ const docTemplate = `{
         "opensvc.DaemonNodeStats": {
             "type": "object",
             "properties": {
+                "cores": {
+                    "type": "integer"
+                },
+                "min_avail_mem": {
+                    "type": "integer"
+                },
+                "min_avail_swap": {
+                    "type": "integer"
+                },
                 "node": {
                     "type": "string"
                 },

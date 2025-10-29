@@ -66,12 +66,19 @@ func NewMySQLVersion(version string, versionComment string) (*Version, int) {
 }
 
 func ParseDBFlavor(version string) string {
-	flavorRegex := `MariaDB|PostgreSQL|Percona`
+	flavorRegex := `(?i)mariadb|postgre|percona`
 	re := regexp.MustCompile(flavorRegex)
 
 	flavor := re.FindString(version)
 	if flavor != "" {
-		return flavor
+		switch strings.ToLower(flavor) {
+		case "mariadb":
+			return "MariaDB"
+		case "postgre":
+			return "PostgreSQL"
+		case "percona":
+			return "Percona"
+		}
 	}
 
 	return "MySQL"
@@ -236,6 +243,27 @@ func (mv *Version) Between(minvstring string, maxvstring string) bool {
 	return mv.GreaterEqual(minvstring) && mv.LowerEqual(maxvstring)
 }
 
+func (mv *Version) Compare(newv *Version) (int, error) {
+	if newv == nil {
+		return -1, fmt.Errorf("cannot compare with nil version")
+	}
+
+	if mv.Flavor != newv.Flavor {
+		return -1, fmt.Errorf("cannot compare different flavors: %s vs %s", mv.Flavor, newv.Flavor)
+	}
+
+	mvToInt := mv.ToInt(3)
+	newvToInt := newv.ToInt(3)
+
+	if mvToInt < newvToInt {
+		return -1, nil
+	} else if mvToInt > newvToInt {
+		return 1, nil
+	}
+
+	return 0, nil
+}
+
 /*
 Will check set of versions with Greater Equal Release.
 This will check if the Major and Minor is same, but release is greater e.g. 10.6.4 until 10.6.xx but not 10.7.xx
@@ -333,4 +361,25 @@ func (mv *Version) IsMariaDBGreater113() bool {
 	}
 
 	return mv.Flavor == "MariaDB" && ((mv.Major == 11 && mv.Minor >= 3) || mv.Major > 11)
+}
+
+func HasVersionChanged(oldV, newV *Version) (bool, error) {
+	if newV == nil {
+		return false, fmt.Errorf("nil version provided")
+	}
+
+	if oldV == nil {
+		return true, nil // no previous version → treat as changed
+	}
+
+	if newV.Flavor != oldV.Flavor {
+		return true, nil // MySQL vs MariaDB switch
+	}
+
+	cInt, err := newV.Compare(oldV)
+	if err != nil {
+		return false, err
+	}
+
+	return cInt != 0, nil
 }

@@ -583,7 +583,7 @@ func (cluster *Cluster) InitFromConf() {
 	//cluster.Conf.PrintConf()
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
-	cluster.SetToolVersions()
+	cluster.RefreshToolVersions()
 	cluster.StartResticRepo()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
@@ -640,6 +640,22 @@ func (cluster *Cluster) initScheduler() {
 		cluster.scheduler.Start()
 	}
 
+}
+
+var pstates30 = []string{
+	"WARN0084",             // Variables diff
+	"ERR00090", "WARN0102", // Config related
+	"WARN0093", "WARN0095", "WARN0134", "WARN0145", // Restic related
+	"WARN0101", "WARN0111", "WARN0112", // Backup related
+	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
+	"WARN0147", "WARN0148", "WARN0153", "WARN0154", // Jobs related
+	"CREDIT01", // Credit related
+}
+
+var pstates3600 = []string{
+	"WARN0094",             // Restic
+	"WARN0132", "WARN0137", // App templates
+	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", // Tools versions
 }
 
 func (cluster *Cluster) Run() {
@@ -739,8 +755,10 @@ func (cluster *Cluster) Run() {
 							cluster.CheckAllBackupFreeSpace()
 							cluster.CheckAvailableCredit()
 							cluster.CheckOpenSVCTresholds()
+							cluster.CheckJobsVersion()
+							cluster.JobsCheckSchedulerTable()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0093", "WARN0084", "WARN0095", "WARN0101", "WARN0111", "WARN0112", "ERR00090", "WARN0102", "WARN0134", "WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0145", "WARN0150", "WARN0151", "CREDIT01")
+							cluster.StateMachine.PreserveState(pstates30...)
 						}
 						if !cluster.CanInitNodes {
 							cluster.SetState("ERR00082", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00082"], cluster.errorInitNodes), ErrFrom: "OPENSVC"})
@@ -748,14 +766,14 @@ func (cluster *Cluster) Run() {
 						if !cluster.CanConnectVault {
 							cluster.SetState("ERR00089", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00089"], cluster.errorConnectVault), ErrFrom: "OPENSVC"})
 						}
-						if cluster.StateMachine.GetHeartbeats()%36000 == 0 {
+						if cluster.StateMachine.GetHeartbeats()%3600 == 0 {
 							// Set in parallel since it will wait for fetch to finish
 							go cluster.ResticPurgeRepo()
 							go cluster.RefreshAllAppTemplateMD5()
+							cluster.RefreshToolVersions()
 						} else {
 							// Preserve tools if not installed or has problem
-							cluster.StateMachine.PreserveState("WARN0094", "WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121")
-							cluster.StateMachine.PreserveState("WARN0132", "WARN0137")
+							cluster.StateMachine.PreserveState(pstates3600...)
 						}
 						if cluster.SlavesOldestMasterFile.Suffix == 0 {
 							go cluster.CheckSlavesReplicationsPurge()
@@ -909,6 +927,13 @@ func (cluster *Cluster) StateProcessing() {
 						}()
 					}
 				}
+			}
+			if s.ErrKey == "WARN0148" && servertoreseed != nil {
+				go servertoreseed.UpgradeJobsScript()
+			}
+
+			if s.ErrKey == "WARN0155" {
+				go cluster.RollingJobsUpgrade()
 			}
 
 			//		cluster.statecloseChan <- s

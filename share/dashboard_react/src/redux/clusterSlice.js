@@ -405,6 +405,26 @@ export const rollingOptimize = createAsyncThunk('cluster/rollingOptimize', async
   }
 })
 
+export const rollingJobsUpgrade = createAsyncThunk('cluster/rollingJobsUpgrade', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.rollingJobsUpgrade(clusterName, baseURL)
+    showSuccessBanner('Rolling jobs upgrade successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Rolling jobs upgrade failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.loadingStates.menuActions) {
+      return false;
+    }
+  }
+})
+    
+
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -594,8 +614,7 @@ export const checksumAllTables = createAsyncThunk('cluster/checksumAllTables', a
   }
 })
 
-export const setMaintenanceMode = createAsyncThunk(
-  'cluster/setMaintenanceMode',
+export const setMaintenanceMode = createAsyncThunk('cluster/setMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -608,8 +627,22 @@ export const setMaintenanceMode = createAsyncThunk(
     }
   }
 )
-export const promoteToLeader = createAsyncThunk(
-  'cluster/promoteToLeader',
+
+export const jobsUpgrade = createAsyncThunk('cluster/jobsUpgrade',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.jobsUpgrade(clusterName, serverId, baseURL)
+      showSuccessBanner('Jobs upgrade initiated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Jobs upgrade failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const promoteToLeader = createAsyncThunk('cluster/promoteToLeader',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -2010,7 +2043,8 @@ export const clusterSlice = createSlice({
         stopProxy.pending,
         refreshStaging.pending,
         killThread.pending,
-        killQuery.pending
+        killQuery.pending,
+        rollingJobsUpgrade.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2081,7 +2115,8 @@ export const clusterSlice = createSlice({
         stopProxy.fulfilled,
         refreshStaging.fulfilled,
         killThread.fulfilled,
-        killQuery.fulfilled
+        killQuery.fulfilled,
+        rollingJobsUpgrade.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2153,7 +2188,8 @@ export const clusterSlice = createSlice({
         stopProxy.rejected,
         refreshStaging.rejected,
         killThread.rejected,
-        killQuery.rejected
+        killQuery.rejected,
+        rollingJobsUpgrade.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

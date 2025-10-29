@@ -4,6 +4,7 @@ import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import {
   dropServer,
   flushLogs,
+  jobsUpgrade,
   logicalBackup,
   optimizeServer,
   physicalBackupMaster,
@@ -256,6 +257,18 @@ function ServerMenu({
           {
             name: 'Provision',
             subMenu: [
+              ...(user?.grants['db-maintenance']
+                ? [
+                  {
+                    name: 'Jobs Upgrade',
+                    onClick: () => {
+                      openConfirmModal()
+                      setConfirmTitle(`Confirm jobs upgrade for ${serverName}?`)
+                      setConfirmHandler(() => () => dispatch(jobsUpgrade({ clusterName, serverId: row.id })))
+                    }
+                  }
+                ]
+                : []),
               ...(user?.grants['db-stop']
                 ? [
                   {
@@ -320,7 +333,7 @@ function ServerMenu({
                   },
                 ]
                 : []),
-              ...(user?.grants['db-config-create']
+              ...(user?.grants['db-config-flag']
                 ? [
                   {
                     name: 'Preserve default_path.cnf',
