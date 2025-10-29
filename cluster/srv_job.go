@@ -2282,6 +2282,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
 			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+			oldV, _ := cluster.GetToolsVersion("client-dump")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = filename
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
@@ -2308,6 +2312,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 		case config.ConstBackupLogicalTypeDumpling:
 			outputdir := server.GetMyBackupDirectory() + "dumpling"
+			oldV, _ := cluster.GetToolsVersion("dumpling")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = outputdir
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
@@ -2333,6 +2341,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 		case config.ConstBackupLogicalTypeMydumper:
 			outputdir := server.GetMyBackupDirectory() + "mydumper"
+			oldV, _ := cluster.GetToolsVersion("mydumper")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = outputdir
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
@@ -3265,8 +3277,10 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	switch backtype {
 	case config.BackupMethodLogical:
 		lastmeta = server.LastBackupMeta.Logical
+		defer cluster.CheckLogicalBackupToolVersion(server) // Update backup tool version after backup
 	case config.BackupMethodPhysical:
 		lastmeta = server.LastBackupMeta.Physical
+		defer cluster.CheckPhysicalBackupToolVersion(server) // Update backup tool version after backup
 	default:
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
 		return

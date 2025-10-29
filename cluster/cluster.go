@@ -655,7 +655,7 @@ var pstates30 = []string{
 var pstates3600 = []string{
 	"WARN0094",             // Restic
 	"WARN0132", "WARN0137", // App templates
-	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", // Tools versions
+	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", // Tools versions
 }
 
 func (cluster *Cluster) Run() {
@@ -771,6 +771,7 @@ func (cluster *Cluster) Run() {
 							go cluster.ResticPurgeRepo()
 							go cluster.RefreshAllAppTemplateMD5()
 							cluster.RefreshToolVersions()
+							cluster.CheckBackupToolVersions()
 						} else {
 							// Preserve tools if not installed or has problem
 							cluster.StateMachine.PreserveState(pstates3600...)
