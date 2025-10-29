@@ -841,6 +841,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
+	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")

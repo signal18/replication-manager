@@ -19,6 +19,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -462,5 +463,51 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
 
+	return nil
+}
+
+func (cluster *Cluster) CheckBackupToolVersions() {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.master
+	}
+
+	cluster.CheckLogicalBackupToolVersion(bcksrv)
+	cluster.CheckPhysicalBackupToolVersion(bcksrv)
+}
+
+func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
+	_, logical := server.GetLatestMeta("logical")
+	if logical != nil {
+		v, _ := cluster.GetToolsVersion(logical.BackupTool)
+		if v != nil && logical.BackupToolVersion != "" {
+			backupv, _ := version.NewVersionFromString(logical.BackupTool, logical.BackupToolVersion)
+			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
+				cluster.SetState("WARN0156", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0156"], v.ToString(), logical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0156", server.URL) {
+				// Remove state if version is now correct
+				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0156@%s", server.URL))
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) error {
+	_, physical := server.GetLatestMeta("physical")
+	if physical != nil {
+		v, _ := cluster.GetToolsVersion(physical.BackupTool)
+		if v != nil && physical.BackupToolVersion != "" {
+			backupv, _ := version.NewVersionFromString(physical.BackupTool, physical.BackupToolVersion)
+			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
+				cluster.SetState("WARN0157", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0157"], v.ToString(), physical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not same with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0157", server.URL) {
+				// Remove state if version is now correct
+				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0157@%s", server.URL))
+			}
+		}
+	}
 	return nil
 }
