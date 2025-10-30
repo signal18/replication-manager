@@ -287,7 +287,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 			}
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*ProxySQLProxy); ok {
 						prx.RotateMonitoringPasswords(new_password_db)
@@ -297,7 +297,7 @@ func (cluster *Cluster) RotatePasswords() error {
 
 				}
 			}
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential") {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
 						prx.RotateProxyPasswords(new_password_shard)
