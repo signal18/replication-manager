@@ -209,8 +209,13 @@ func (cluster *Cluster) RotatePasswords() error {
 		}
 	} else {
 		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
-			if cluster.IsVariableImmutable("db-servers-credential") || cluster.IsVariableImmutable("replication-credential") {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation cancel, one of the credential is immutable.")
+			if cluster.IsVariableImmutable("db-servers-credential") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database user credential is immutable, password rotation cancelled.")
+				return nil
+			}
+
+			if cluster.IsVariableImmutable("replication-credential") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Replication user credential is immutable, password rotation cancelled.")
 				return nil
 			}
 
@@ -240,14 +245,14 @@ func (cluster *Cluster) RotatePasswords() error {
 			new_Secret.Value = cluster.GetRplUser() + ":" + new_password_rpl
 			cluster.Conf.Secrets["replication-credential"] = new_Secret
 
-			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().ProxysqlOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("proxysql-password") {
 				new_Secret.OldValue = cluster.Conf.Secrets["proxysql-password"].Value
 				new_Secret.Value = new_password_proxysql
 				cluster.Conf.Secrets["proxysql-password"] = new_Secret
 				cluster.SetClusterProxyCredentialsFromConfig()
 			}
 
-			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() {
+			if cluster.GetConf().MdbsProxyOn && cluster.HasAllProxyUp() && !cluster.IsVariableImmutable("shardproxy-credential") {
 				var new_Secret config.Secret
 				new_Secret.OldValue = cluster.Conf.Secrets["shardproxy-credential"].Value
 				new_Secret.Value = cluster.GetShardUser() + ":" + new_password_shard
