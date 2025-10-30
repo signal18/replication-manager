@@ -209,6 +209,11 @@ func (cluster *Cluster) RotatePasswords() error {
 		}
 	} else {
 		if cluster.Conf.SecretKey != nil && cluster.GetConf().ConfRewrite {
+			if cluster.IsVariableImmutable("db-servers-credential") || cluster.IsVariableImmutable("replication-credential") {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Password rotation cancel, one of the credential is immutable.")
+				return nil
+			}
+
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Start Password rotation")
 			if len(cluster.slaves) > 0 {
 				if !cluster.slaves.HasAllSlavesRunning() {
