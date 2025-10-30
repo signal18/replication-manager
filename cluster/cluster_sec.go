@@ -616,8 +616,6 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 	key := crypto.GetSHA256Hash(node.Pass)
 	iv := crypto.GetMD5Hash(node.Pass)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Received login with encrypted secret %s", decodedData.Data)
-
 	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
 	if err != nil {
 		return nil, fmt.Errorf("Error decrypting data : %s", err.Error()), 500

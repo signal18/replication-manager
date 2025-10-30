@@ -3112,7 +3112,8 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		var mod int
-		switch vars["task"] {
+		task := vars["task"]
+		switch task {
 		case "errorlog":
 			mod = config.ConstLogModFetchErrorlog
 		case "slowquery":
@@ -3148,9 +3149,16 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			key := crypto.GetSHA256Hash(node.Pass)
 			iv := crypto.GetMD5Hash(node.Pass)
 
-			err := node.WriteJobLogs(mod, decodedData.Data, key, iv, vars["task"])
+			decrypted, err := node.DecryptAES256(decodedData.Data, key, iv)
 			if err != nil {
+				node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
 				http.Error(w, "Error decrypting data : "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+
+			if err := node.ParseDecryptedLogs(decrypted, mod, task); err != nil {
+				node.SetErrState("WARN0158", "WARNING", "JOB", config.ClusterError["WARN0158"], node.URL, err.Error())
+				http.Error(w, "Error parsing decrypted data : "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
