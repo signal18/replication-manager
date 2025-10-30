@@ -230,6 +230,7 @@ var ClusterError = map[string]string{
 	"WARN0155":  "Cluster is flagged for jobs upgrade",
 	"WARN0156":  "Logical dump tool version %s is different than last backup version %s",
 	"WARN0157":  "Physical dump tool version %s is different than last backup version %s",
+	"WARN0158":  "Secret mismatch for job script on node %s. Err: %s",
 	"MDEV20821": "MariaDB version has replication issue https://jira.mariadb.org/browse/MDEV-20821",
 	"MDEV28310": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-28310",
 	"MDEV19577": "MariaDB version has replication issue for non row format https://jira.mariadb.org/browse/MDEV-19577",

@@ -3173,48 +3173,46 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	return nil
 }
 
-func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task string) error {
-	cluster := server.ClusterGroup
-	eCmd := exec.Command("echo", encrypted)
-	// Create a pipe for the stdout of lsCmd
-	eStdout, err := eCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating stdout pipe for log message: %s", err.Error())
-		return err
-	}
+// decryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+func decryptAES256(encrypted, key, iv string) ([]byte, error) {
+	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
+	cmd.Stdin = strings.NewReader(encrypted)
 
-	dCmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", ""+key+"", "-iv", ""+iv+"")
-	dCmd.Stdin = eStdout
-	dStdout, err := dCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error piping log message decryption: %s", err.Error())
-		return err
-	}
-	// Start the first command
-	if err := eCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message: %s", err.Error())
-		return err
-	}
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 
-	// Start the second command
-	if err := dCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message decrypt: %s", err.Error())
-		return err
-	}
-
-	// Read the output from grepCmd
-	scanner := bufio.NewScanner(dStdout)
-	for scanner.Scan() {
-		output := scanner.Text()
-		pos := strings.LastIndex(output, "}")
-		if pos > 10 {
-			output = output[:pos+1]
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return nil, fmt.Errorf("openssl decrypt error: %v (%s)", err, msg)
 		}
+		return nil, fmt.Errorf("openssl decrypt error: %v", err)
+	}
 
+	return out.Bytes(), nil
+}
+
+// parseDecryptedLogs parses JSON log entries from decrypted data
+// and feeds them into the server’s log parsing logic.
+func (server *ServerMonitor) parseDecryptedLogs(data []byte, mod int, task string) error {
+	cluster := server.ClusterGroup
+	dec := json.NewDecoder(bytes.NewReader(data))
+
+	for {
 		var logEntry config.LogEntry
-		err = json.Unmarshal([]byte(output), &logEntry)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
+		if err := dec.Decode(&logEntry); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			cluster.SetState("WARN0158", state.State{
+				ErrType:   "WARNING",
+				ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error()),
+				ErrFrom:   "JOB",
+				ServerUrl: server.URL,
+			})
 			continue
 		}
 
@@ -3224,20 +3222,27 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task stri
 
 		server.ParseLogEntries(logEntry, mod, task)
 	}
+	return nil
+}
 
-	if err := scanner.Err(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading from log message decrypt: %s", err.Error())
+// WriteJobLogs decrypts an AES-256-CBC encrypted log stream and parses JSON log entries.
+func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task string) error {
+	cluster := server.ClusterGroup
+
+	// Step 1: Decrypt
+	decrypted, err := decryptAES256(encrypted, key, iv)
+	if err != nil {
+		cluster.SetState("WARN0158", state.State{
+			ErrType:   "WARNING",
+			ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error()),
+			ErrFrom:   "JOB",
+			ServerUrl: server.URL,
+		})
 		return err
 	}
 
-	// Wait for the commands to complete
-	if err := eCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message done: %s", err.Error())
-		return err
-	}
-
-	if err := dCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message decription: %s", err.Error())
+	// Step 2: Parse JSON logs
+	if err := server.parseDecryptedLogs(decrypted, mod, task); err != nil {
 		return err
 	}
 
