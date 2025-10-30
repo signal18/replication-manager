@@ -656,6 +656,7 @@ var pstates3600 = []string{
 	"WARN0094",             // Restic
 	"WARN0132", "WARN0137", // App templates
 	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", // Tools versions
+	"WARN0158", // Job secrets mismatch
 }
 
 func (cluster *Cluster) Run() {
