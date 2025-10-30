@@ -3198,22 +3198,23 @@ func (server *ServerMonitor) DecryptAES256(encrypted, key, iv string) ([]byte, e
 // and feeds them into the server’s log parsing logic.
 func (server *ServerMonitor) ParseDecryptedLogs(data []byte, mod int, task string) error {
 	// Convert to string for cleanup
-	output := string(data)
 
 	// Trim everything after the last '}'
-	if pos := strings.LastIndex(output, "}"); pos != -1 {
-		output = output[:pos+1]
+	if pos := bytes.LastIndex(data, []byte("}")); pos != -1 {
+		data = data[:pos+1]
 	} else {
 		return fmt.Errorf("no valid JSON object found in decrypted data")
 	}
 
 	// Optional: remove any leading non-JSON noise (e.g., shell output)
-	if start := strings.Index(output, "{"); start > 0 {
-		output = output[start:]
+	if start := bytes.Index(data, []byte("{")); start > 0 {
+		data = data[start:]
+	} else if start == -1 {
+		return fmt.Errorf("no valid JSON object found in decrypted data")
 	}
 
 	var logEntry config.LogEntry
-	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+	if err := json.Unmarshal(data, &logEntry); err != nil {
 		return fmt.Errorf("failed to parse JSON log entry: %v", err)
 	}
 
@@ -3468,15 +3469,24 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 
 func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
 	cluster := server.ClusterGroup
-	output, err := server.DecryptAES256(encrypted, key, iv)
+	data, err := server.DecryptAES256(encrypted, key, iv)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error decrypting secret: %s", err.Error())
 		return "", err
 	}
 
-	pos := bytes.LastIndex(output, []byte("}"))
+	pos := bytes.LastIndex(data, []byte("}"))
 	if pos > 1 {
-		output = output[:pos+1]
+		data = data[:pos+1]
+	} else {
+		return "", errors.New("No valid JSON object found in decrypted data")
+	}
+
+	// Optional: remove any leading non-JSON noise (e.g., shell output)
+	if start := bytes.Index(data, []byte("{")); start > 0 {
+		data = data[start:]
+	} else if start == -1 {
+		return "", errors.New("No valid JSON object found in decrypted data")
 	}
 
 	var secretKey struct {
@@ -3484,9 +3494,9 @@ func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, er
 		Server string `json:"server"`
 	}
 
-	err = json.Unmarshal(output, &secretKey)
+	err = json.Unmarshal(data, &secretKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", data, err.Error())
 		return "", err
 	}
 
