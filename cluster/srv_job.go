@@ -3209,7 +3209,7 @@ func (server *ServerMonitor) parseDecryptedLogs(data []byte, mod int, task strin
 
 			cluster.SetState("WARN0158", state.State{
 				ErrType:   "WARNING",
-				ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error()),
+				ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error(), string(data)),
 				ErrFrom:   "JOB",
 				ServerUrl: server.URL,
 			})
