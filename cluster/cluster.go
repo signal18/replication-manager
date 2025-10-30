@@ -649,6 +649,7 @@ var pstates30 = []string{
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0147", "WARN0148", "WARN0153", "WARN0154", // Jobs related
+	"WARN0158", // Job secrets mismatch
 	"CREDIT01", // Credit related
 }
 
@@ -656,7 +657,6 @@ var pstates3600 = []string{
 	"WARN0094",             // Restic
 	"WARN0132", "WARN0137", // App templates
 	"WARN0117", "WARN0118", "WARN0119", "WARN0120", "WARN0121", "WARN0156", "WARN0157", // Tools versions
-	"WARN0158", // Job secrets mismatch
 }
 
 func (cluster *Cluster) Run() {
