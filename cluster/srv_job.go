@@ -3176,7 +3176,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 // decryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
 func decryptAES256(encrypted, key, iv string) ([]byte, error) {
 	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
-	cmd.Stdin = strings.NewReader(encrypted)
+	cmd.Stdin = strings.NewReader(encrypted + "\n")
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
