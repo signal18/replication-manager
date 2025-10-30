@@ -3197,31 +3197,31 @@ func decryptAES256(encrypted, key, iv string) ([]byte, error) {
 // parseDecryptedLogs parses JSON log entries from decrypted data
 // and feeds them into the server’s log parsing logic.
 func (server *ServerMonitor) parseDecryptedLogs(data []byte, mod int, task string) error {
-	cluster := server.ClusterGroup
-	dec := json.NewDecoder(bytes.NewReader(data))
+	// Convert to string for cleanup
+	output := string(data)
 
-	for {
-		var logEntry config.LogEntry
-		if err := dec.Decode(&logEntry); err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-
-			cluster.SetState("WARN0158", state.State{
-				ErrType:   "WARNING",
-				ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error(), string(data)),
-				ErrFrom:   "JOB",
-				ServerUrl: server.URL,
-			})
-			continue
-		}
-
-		if task == "main" && logEntry.Level == "" {
-			logEntry.Level = config.LvlInfo
-		}
-
-		server.ParseLogEntries(logEntry, mod, task)
+	// Trim everything after the last '}'
+	if pos := strings.LastIndex(output, "}"); pos != -1 {
+		output = output[:pos+1]
+	} else {
+		return fmt.Errorf("no valid JSON object found in decrypted data")
 	}
+
+	// Optional: remove any leading non-JSON noise (e.g., shell output)
+	if start := strings.Index(output, "{"); start > 0 {
+		output = output[start:]
+	}
+
+	var logEntry config.LogEntry
+	if err := json.Unmarshal([]byte(output), &logEntry); err != nil {
+		return fmt.Errorf("failed to parse JSON log entry: %v", err)
+	}
+
+	if task == "main" && logEntry.Level == "" {
+		logEntry.Level = config.LvlInfo
+	}
+
+	server.ParseLogEntries(logEntry, mod, task)
 	return nil
 }
 
@@ -3243,7 +3243,12 @@ func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task stri
 
 	// Step 2: Parse JSON logs
 	if err := server.parseDecryptedLogs(decrypted, mod, task); err != nil {
-		return err
+		cluster.SetState("WARN0158", state.State{
+			ErrType:   "WARNING",
+			ErrDesc:   fmt.Sprintf(cluster.GetErrorList()["WARN0158"], server.URL, err.Error()),
+			ErrFrom:   "JOB",
+			ServerUrl: server.URL,
+		})
 	}
 
 	return nil
