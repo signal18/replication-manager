@@ -120,7 +120,7 @@ func (cluster *Cluster) RefreshMysqlDumpVersion() error {
 	}
 
 	if hasChanged {
-		err := cluster.SetDBClientVersion(v)
+		err := cluster.SetMysqlDumpVersion(v)
 		if err != nil {
 			return err
 		}
