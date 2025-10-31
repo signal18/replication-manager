@@ -14,11 +14,11 @@ func (cluster *Cluster) RefreshToolVersions() {
 		cluster.SetState("WARN0117", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0117"], err), ErrFrom: "CLUSTER"})
 	}
 
-	if err := cluster.RefreshMysqlDumpVersion(); err != nil {
+	if err := cluster.RefreshDBClientDumpVersion(); err != nil {
 		cluster.SetState("WARN0118", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0118"], err), ErrFrom: "CLUSTER"})
 	}
 
-	if err := cluster.RefreshMysqlBinlogVersion(); err != nil {
+	if err := cluster.RefreshDBClientBinlogVersion(); err != nil {
 		cluster.SetState("WARN0119", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0119"], err), ErrFrom: "CLUSTER"})
 	}
 
@@ -82,7 +82,7 @@ func (cluster *Cluster) RefreshDBClientVersion() error {
 	return nil
 }
 
-func (cluster *Cluster) SetMysqlDumpVersion(v *version.Version) error {
+func (cluster *Cluster) SetDBClientDumpVersion(v *version.Version) error {
 	if v == nil {
 		return fmt.Errorf("nil version provided")
 	}
@@ -94,7 +94,7 @@ func (cluster *Cluster) SetMysqlDumpVersion(v *version.Version) error {
 	return nil
 }
 
-func (cluster *Cluster) RefreshMysqlDumpVersion() error {
+func (cluster *Cluster) RefreshDBClientDumpVersion() error {
 	cstring := "changed"
 	oldV, _ := cluster.GetToolsVersion("client-dump")
 	if oldV == nil {
@@ -120,7 +120,7 @@ func (cluster *Cluster) RefreshMysqlDumpVersion() error {
 	}
 
 	if hasChanged {
-		err := cluster.SetMysqlDumpVersion(v)
+		err := cluster.SetDBClientDumpVersion(v)
 		if err != nil {
 			return err
 		}
@@ -131,7 +131,7 @@ func (cluster *Cluster) RefreshMysqlDumpVersion() error {
 	return nil
 }
 
-func (cluster *Cluster) SetMysqlBinlogVersion(v *version.Version) error {
+func (cluster *Cluster) SetDBClientBinlogVersion(v *version.Version) error {
 	if v == nil {
 		return fmt.Errorf("nil version provided")
 	}
@@ -143,7 +143,7 @@ func (cluster *Cluster) SetMysqlBinlogVersion(v *version.Version) error {
 	return nil
 }
 
-func (cluster *Cluster) RefreshMysqlBinlogVersion() error {
+func (cluster *Cluster) RefreshDBClientBinlogVersion() error {
 	cstring := "changed"
 	oldV, _ := cluster.GetToolsVersion("client-binlog")
 	if oldV == nil {
@@ -168,7 +168,7 @@ func (cluster *Cluster) RefreshMysqlBinlogVersion() error {
 	}
 
 	if hasChanged {
-		err := cluster.SetMysqlBinlogVersion(v)
+		err := cluster.SetDBClientBinlogVersion(v)
 		if err != nil {
 			return err
 		}
