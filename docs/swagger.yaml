@@ -1074,6 +1074,8 @@ definitions:
         type: integer
       backupTool:
         type: string
+      backupToolVersion:
+        type: string
       binLogFileName:
         type: string
       binLogFilePos:
@@ -1856,6 +1858,8 @@ definitions:
       backupResticTimeout:
         type: integer
       backupRestoreMysqlUser:
+        type: boolean
+      backupRestoreVersionStrict:
         type: boolean
       backupSaveScript:
         type: string
@@ -4499,6 +4503,39 @@ paths:
       summary: Handles the failover process for a given cluster.
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/jobs-upgrade:
+    get:
+      description: Flags all servers within the specified cluster to allow jobs upgrade.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Flagged for jobs upgrade
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Allow Jobs Upgrade on Cluster Servers
+      tags:
+      - ClusterJobs
   /api/clusters/{clusterName}/actions/master-physical-backup:
     post:
       consumes:
@@ -15266,19 +15303,13 @@ paths:
       - Public
   /api/version:
     get:
-      consumes:
-      - application/json
       description: This endpoint processes the replication manager version requests
         and returns the version in JSON format.
       produces:
-      - application/json
+      - text/plain
       responses:
         "200":
-          description: Successful response with replication manager version
-          schema:
-            $ref: '#/definitions/server.ReplicationManager'
-        "500":
-          description: Internal Server Error
+          description: Version
           schema:
             type: string
       summary: Handles replication manager version requests

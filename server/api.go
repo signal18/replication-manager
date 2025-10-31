@@ -897,10 +897,8 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 // @Summary Handles replication manager version requests
 // @Description This endpoint processes the replication manager version requests and returns the version in JSON format.
 // @Tags Public
-// @Accept  json
-// @Produce  json
-// @Success 200 {object} ReplicationManager "Successful response with replication manager version"
-// @Failure 500 {string} string "Internal Server Error"
+// @Produce text/plain
+// @Success 200 {string} string "Version"
 // @Router /api/version [get]
 func (repman *ReplicationManager) handlerVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")

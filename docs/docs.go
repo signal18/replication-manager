@@ -1159,6 +1159,55 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/jobs-upgrade": {
+            "get": {
+                "description": "Flags all servers within the specified cluster to allow jobs upgrade.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterJobs"
+                ],
+                "summary": "Allow Jobs Upgrade on Cluster Servers",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Flagged for jobs upgrade",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/master-physical-backup": {
             "post": {
                 "description": "This endpoint triggers a physical backup for the master of the specified cluster.",
@@ -16403,11 +16452,8 @@ const docTemplate = `{
         "/api/version": {
             "get": {
                 "description": "This endpoint processes the replication manager version requests and returns the version in JSON format.",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
-                    "application/json"
+                    "text/plain"
                 ],
                 "tags": [
                     "Public"
@@ -16415,13 +16461,7 @@ const docTemplate = `{
                 "summary": "Handles replication manager version requests",
                 "responses": {
                     "200": {
-                        "description": "Successful response with replication manager version",
-                        "schema": {
-                            "$ref": "#/definitions/server.ReplicationManager"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
+                        "description": "Version",
                         "schema": {
                             "type": "string"
                         }
@@ -19199,6 +19239,9 @@ const docTemplate = `{
                 "backupTool": {
                     "type": "string"
                 },
+                "backupToolVersion": {
+                    "type": "string"
+                },
                 "binLogFileName": {
                     "type": "string"
                 },
@@ -20372,6 +20415,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "backupRestoreMysqlUser": {
+                    "type": "boolean"
+                },
+                "backupRestoreVersionStrict": {
                     "type": "boolean"
                 },
                 "backupSaveScript": {
