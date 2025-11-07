@@ -247,7 +247,7 @@ function GroupHeaderRow({ row, table, fixedColumnIndex = 0, cellValueAlign = 'le
             : <>{row.original.groupName}</>}
         </Td>
       </Tr>
-      {row.subRows.map((subRow, index) => (<DataRow key={`${row.id}-${subRow.id}`} row={subRow} index={index} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />))}
+      {row.subRows.map((subRow, index) => (<DataRow key={`${row.id}-${subRow.id}`} row={subRow} index={index} table={table} fixedColumnIndex={fixedColumnIndex} cellValueAlign={cellValueAlign} />))}
     </Fragment>
   );
 }
@@ -256,7 +256,7 @@ function GroupHeaderRow({ row, table, fixedColumnIndex = 0, cellValueAlign = 'le
  * @param {{ row: import('@tanstack/react-table').Row<any>, index: number, fixedColumnIndex?: number, cellValueAlign?: 'left' | 'center' | 'right' }} props
  */
 function DataRow({ row, index, table, fixedColumnIndex = 0, cellValueAlign = 'left' }) {
-  const expansionColumn = table.getAllColumns().find(col => col.id === 'expansion');
+  const expansionColumn = table?.getAllColumns().find(col => col.id === 'expansion');
   const meta = expansionColumn?.columnDef?.meta
   const renderExpansionFn = meta?.renderExpansion;
 
