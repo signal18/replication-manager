@@ -19,6 +19,7 @@ import (
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
+	"github.com/signal18/replication-manager/utils/version"
 	"github.com/sirupsen/logrus"
 )
 
@@ -44,7 +45,7 @@ func (cluster *Cluster) ResticGetEnv() []string {
 
 func (cluster *Cluster) CheckResticInstallation() {
 	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
-		if err := cluster.SetResticVersion(); err != nil {
+		if err := cluster.RefreshResticVersion(); err != nil {
 			cluster.SetState("WARN0121", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0121"], err), ErrFrom: "CLUSTER"})
 		} else {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic version: %s", cluster.VersionsMap.Get("restic").ToString())
@@ -323,11 +324,11 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 
 		if free < required {
 			if backtype == "logical" {
-				cluster.SetState("WARN0141", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+				cluster.SetState("WARN0141", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0141"], cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
 			} else if backtype == "physical" {
-				cluster.SetState("WARN0142", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], cluster.Conf.BackupPhysicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+				cluster.SetState("WARN0142", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0142"], cluster.Conf.BackupPhysicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
 			} else if backtype == "binlog" {
-				cluster.SetState("WARN0143", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0141"], bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+				cluster.SetState("WARN0143", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0143"], bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
 			}
 
 			return fmt.Errorf("Not enough free space on %s for backup. Free: %s", diskstat.Path, humanize.Bytes(diskstat.Free))
@@ -462,5 +463,51 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic password changed successfully. New key added and old key removed.")
 
+	return nil
+}
+
+func (cluster *Cluster) CheckBackupToolVersions() {
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.master
+	}
+
+	cluster.CheckLogicalBackupToolVersion(bcksrv)
+	cluster.CheckPhysicalBackupToolVersion(bcksrv)
+}
+
+func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
+	_, logical := server.GetLatestMeta("logical")
+	if logical != nil {
+		v, _ := cluster.GetToolsVersion(logical.BackupTool)
+		if v != nil && logical.BackupToolVersion != "" {
+			backupv, _ := version.NewVersionFromString(logical.BackupTool, logical.BackupToolVersion)
+			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
+				cluster.SetState("WARN0156", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0156"], v.ToString(), logical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0156", server.URL) {
+				// Remove state if version is now correct
+				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0156@%s", server.URL))
+			}
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) error {
+	_, physical := server.GetLatestMeta("physical")
+	if physical != nil {
+		v, _ := cluster.GetToolsVersion(physical.BackupTool)
+		if v != nil && physical.BackupToolVersion != "" {
+			backupv, _ := version.NewVersionFromString(physical.BackupTool, physical.BackupToolVersion)
+			if v.ToInt(2) != backupv.ToInt(2) { // Major and minor version must match
+				cluster.SetState("WARN0157", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0157"], v.ToString(), physical.BackupToolVersion), ErrFrom: "CHECK", ServerUrl: server.URL})
+				return fmt.Errorf("Node %s backup tool version is not same with restore version.", server.URL)
+			} else if cluster.IsInErrorState("WARN0157", server.URL) {
+				// Remove state if version is now correct
+				cluster.GetStateMachine().DeleteState(fmt.Sprintf("WARN0157@%s", server.URL))
+			}
+		}
+	}
 	return nil
 }

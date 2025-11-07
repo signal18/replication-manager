@@ -185,3 +185,46 @@ func (cluster *Cluster) RollingOptimize() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
 }
+
+func (cluster *Cluster) RollingJobsUpgrade() error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade")
+	var ts time.Time
+
+	for _, s := range cluster.slaves {
+		ts = time.Now()
+		s.SetWaitJobsUpgradeCookie()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on %s ", s.URL)
+
+		// Wait for the server to clear the cookie
+		for s.HasRollingJobsUpgradeCookie() {
+			if time.Since(ts) > 5*time.Minute {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on %s ", s.URL)
+				return errors.New("Timeout waiting for jobs upgrade")
+			}
+
+			time.Sleep(2 * time.Second)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
+	}
+
+	ts = time.Now()
+	cluster.master.SetWaitJobsUpgradeCookie()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on master %s ", cluster.master.URL)
+
+	// Wait for the server to clear the cookie
+	for cluster.master.HasRollingJobsUpgradeCookie() {
+		if time.Since(ts) > 5*time.Minute {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on master %s ", cluster.master.URL)
+			return errors.New("Timeout waiting for jobs upgrade on master")
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on master %s ", cluster.master.URL)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
+
+	return nil
+}

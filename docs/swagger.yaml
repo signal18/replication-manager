@@ -133,6 +133,8 @@ definitions:
         type: string
       id:
         type: string
+      isHashingTemplate:
+        type: boolean
       name:
         type: string
       port:
@@ -150,6 +152,10 @@ definitions:
       slaposDatadir:
         type: string
       state:
+        type: string
+      templateMD5:
+        type: string
+      templateMD5Prov:
         type: string
       type:
         type: string
@@ -305,6 +311,8 @@ definitions:
       isLostMajority:
         type: boolean
       isMasterDown:
+        type: boolean
+      isNeedAppsReprov:
         type: boolean
       isNeedDatabasesConfigChange:
         type: boolean
@@ -1065,6 +1073,8 @@ definitions:
       backupStrategy:
         type: integer
       backupTool:
+        type: string
+      backupToolVersion:
         type: string
       binLogFileName:
         type: string
@@ -1848,6 +1858,8 @@ definitions:
       backupResticTimeout:
         type: integer
       backupRestoreMysqlUser:
+        type: boolean
+      backupRestoreVersionStrict:
         type: boolean
       backupSaveScript:
         type: string
@@ -3096,6 +3108,8 @@ definitions:
         type: integer
       stagingProxyHosts:
         type: string
+      stagingServerHost:
+        type: string
       switchoverAtEqualGtid:
         type: boolean
       switchoverAtSync:
@@ -3396,6 +3410,12 @@ definitions:
     type: object
   opensvc.DaemonNodeStats:
     properties:
+      cores:
+        type: integer
+      min_avail_mem:
+        type: integer
+      min_avail_swap:
+        type: integer
       node:
         type: string
       stats:
@@ -4483,6 +4503,39 @@ paths:
       summary: Handles the failover process for a given cluster.
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/jobs-upgrade:
+    get:
+      description: Flags all servers within the specified cluster to allow jobs upgrade.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Flagged for jobs upgrade
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Allow Jobs Upgrade on Cluster Servers
+      tags:
+      - ClusterJobs
   /api/clusters/{clusterName}/actions/master-physical-backup:
     post:
       consumes:
@@ -4549,6 +4602,42 @@ paths:
       summary: Optimize a specific cluster
       tags:
       - ClusterActions
+  /api/clusters/{clusterName}/actions/refresh-apps-template:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of the application template repository
+        for a specific cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Application template repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error getting repository tree" or "No cluster
+          schema:
+            type: string
+      summary: Refresh App Template from Repo
+      tags:
+      - Apps
   /api/clusters/{clusterName}/actions/replication/bootstrap/{topology}:
     post:
       consumes:
@@ -5276,6 +5365,59 @@ paths:
         in: path
         name: gitName
         required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Git repository tree structure
+          schema:
+            $ref: '#/definitions/treehelper.FileTreeCache'
+        "400":
+          description: Invalid Git repository URL
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error creating Git client" or "Error getting repository tree
+          schema:
+            type: string
+      summary: Get Git Repository Tree
+      tags:
+      - GitRepository
+  /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves the tree structure of a specified Git repository.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: App ID
+        in: path
+        name: appId
+        required: true
+        type: string
+      - description: Git Name
+        in: path
+        name: gitName
+        required: true
+        type: string
+      - description: Force refresh of the repository tree
+        in: path
+        name: force
         type: string
       produces:
       - application/json
@@ -6476,47 +6618,6 @@ paths:
       summary: Get App Substitution Variables
       tags:
       - Apps
-  /api/clusters/{clusterName}/apps/actions/get-app-template:
-    get:
-      consumes:
-      - application/json
-      description: Retrieves the tree structure of the application template repository
-        for a specific cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Application template repository tree structure
-          schema:
-            $ref: '#/definitions/treehelper.FileTreeCache'
-        "400":
-          description: Invalid Git repository URL
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error creating Git client" or "Error getting repository tree"
-            or "No cluster
-          schema:
-            type: string
-      summary: Get App Template Repository Tree
-      tags:
-      - Apps
   /api/clusters/{clusterName}/archives:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -7325,6 +7426,44 @@ paths:
           schema:
             type: string
       summary: Get Cluster Health
+      tags:
+      - ClusterHealth
+  /api/clusters/{clusterName}/is-in-errstate/{errstate}:
+    get:
+      description: Checks if the specified cluster is in an error state.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: State to check
+        in: path
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Check if Cluster is in Error State
       tags:
       - ClusterHealth
   /api/clusters/{clusterName}/jobs:
@@ -8476,6 +8615,134 @@ paths:
       summary: Get server details
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/create-jobs-table:
+    post:
+      description: Creates a jobs tasks table on a specified server within a cluster
+        if it does not already exist.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Jobs tasks table created
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            jobs tasks table" or "Error creating jobs tasks table
+          schema:
+            type: string
+      summary: Create jobs tasks table on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/receive-jobs-check:
+    get:
+      description: Checks jobs on a specified server within a cluster by initiating
+        a receiver for the current.jobs.tmp file.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: SST_RECEIVER_PORT=<port>
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error opening
+            receiver ports
+          schema:
+            type: string
+      summary: Check jobs on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/actions/send-jobs-upgrade:
+    get:
+      description: Upgrades jobs on a specified server within a cluster by sending
+        the dbjobs_new file.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Sending dbjobs_new file
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error sending
+            dbjobs_new file
+          schema:
+            type: string
+      summary: Upgrade jobs on a server
+      tags:
+      - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/backup:
     get:
       description: Initiates a physical backup on a specified server port within a
@@ -8726,6 +8993,47 @@ paths:
       summary: Check if a server is failed
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-errstate/{errstate}:
+    get:
+      description: Checks if a specified server within a cluster is currently in a
+        specific error state. Cluster wide error states will not be checked. Use cluster
+        state API for that.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: State to check
+        in: path
+        name: state
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error checking
+            server state
+          schema:
+            type: string
+      summary: Check if a server is in a specific error state
+      tags:
+      - DatabaseReplication
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-in-task/{taskname}:
     get:
       description: Checks if a specified server within a cluster is currently involved
@@ -8765,6 +9073,8 @@ paths:
         - start
         - printdefault-current
         - printdefault-dummy
+        - jobs-check
+        - jobs-upgrade
         in: path
         name: type
         required: true
@@ -9283,6 +9593,8 @@ paths:
         - start
         - printdefault-current
         - printdefault-dummy
+        - jobs-check
+        - jobs-upgrade
         in: path
         name: type
         required: true
@@ -9675,6 +9987,49 @@ paths:
           schema:
             type: string
       summary: Cancel a task on a server
+      tags:
+      - DatabaseTasks
+  /api/clusters/{clusterName}/servers/{serverName}/actions/jobs-upgrade:
+    get:
+      description: Flags a specified server within a cluster to allow jobs upgrade
+        by setting a cookie.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Flagged for jobs upgrade
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found
+          schema:
+            type: string
+      summary: Allow jobs upgrade on a server
       tags:
       - DatabaseTasks
   /api/clusters/{clusterName}/servers/{serverName}/actions/maintenance:
@@ -14948,19 +15303,13 @@ paths:
       - Public
   /api/version:
     get:
-      consumes:
-      - application/json
       description: This endpoint processes the replication manager version requests
         and returns the version in JSON format.
       produces:
-      - application/json
+      - text/plain
       responses:
         "200":
-          description: Successful response with replication manager version
-          schema:
-            $ref: '#/definitions/server.ReplicationManager'
-        "500":
-          description: Internal Server Error
+          description: Version
           schema:
             type: string
       summary: Handles replication manager version requests

@@ -128,6 +128,24 @@ func (cluster *Cluster) IsProvisioned() bool {
 	return true
 }
 
+func (cluster *Cluster) IsAppProvisioned() bool {
+	if cluster.Conf.AppHosts == "" {
+		return true
+	}
+
+	for _, app := range cluster.Apps {
+		if !app.HasProvisionCookie() {
+			if app.IsRunning() {
+				app.SetProvisionCookie()
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Can App Connect creating cookie state:%s", app.GetState())
+			} else {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (cluster *Cluster) IsInIgnoredHosts(server *ServerMonitor) bool {
 	// Ignore if child cluster
 	if server.SourceClusterName != cluster.Name {
@@ -375,6 +393,17 @@ func (cluster *Cluster) HasRequestProxiesReprov() bool {
 	return false
 }
 
+func (cluster *Cluster) HasRequestAppReprov() bool {
+	for _, a := range cluster.Apps {
+		if a != nil {
+			if a.HasReprovCookie() {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (cluster *Cluster) HasConfigPathChanged() bool {
 	for _, srv := range cluster.Servers {
 		if srv != nil {
@@ -576,4 +605,14 @@ func (cluster *Cluster) HasDiscoverTopologyReachTarget() bool {
 
 func (cluster *Cluster) IsTopologyTargetEqual(target string) bool {
 	return cluster.Conf.TopologyTarget == target
+}
+
+func (cluster *Cluster) IsInErrorState(key, serverURL string) bool {
+	if key == "" {
+		return false
+	} else if serverURL == "" {
+		return cluster.StateMachine.IsInState(key)
+	} else {
+		return cluster.StateMachine.IsInState(fmt.Sprintf("%s@%s", key, serverURL))
+	}
 }

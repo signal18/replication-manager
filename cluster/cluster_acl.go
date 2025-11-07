@@ -413,7 +413,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProxyConfigFlag] {
+	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
 		if strings.Contains(URL, "/config") {
 			return true
 		}
@@ -505,6 +505,9 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 			return true
 		}
 		if strings.Contains(URL, "/actions/wait-innodb-purge") {
+			return true
+		}
+		if strings.Contains(URL, "/actions/jobs-upgrade") {
 			return true
 		}
 	}
@@ -606,6 +609,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	case "/api/clusters/" + cluster.Name + "/diffvariables":
 		return true
 	case "/api/clusters/" + cluster.Name + "/opensvc-stats":
+		return true
+	case "/api/clusters/" + cluster.Name + "/actions/refresh-apps-template":
 		return true
 	}
 
@@ -792,6 +797,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 			return true
 		}
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-reprov") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/jobs-upgrade") {
 			return true
 		}
 	}

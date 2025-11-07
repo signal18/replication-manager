@@ -68,58 +68,84 @@ pad_pkcs7() {
 }
 
 derive_key() {
-    local key=$(echo -n "$MYSQL_ROOT_PASSWORD" | sha256sum | awk '{print $1}')
+    local password="${1:-$MYSQL_ROOT_PASSWORD}"
+    local key=$(echo -n "$password" | sha256sum | awk '{print $1}')
     echo "$key"
 }
 
 derive_iv() {
-    local iv=$(echo -n "$MYSQL_ROOT_PASSWORD" | md5sum | awk '{print $1}')
+    local password="${1:-$MYSQL_ROOT_PASSWORD}"
+    local iv=$(echo -n "$password" | md5sum | awk '{print $1}')
     echo "$iv"
 }
 
-# Function to encrypt data using AES-128 in CFB mode
+# Function to encrypt data using AES-256 in CBC mode
 encrypt_data() {
-    local key=$(derive_key)
-    local iv=$(derive_iv)
-    local padded=$(pad_pkcs7 "$1")
+    local data="$1"
+    local password="${2:-$MYSQL_ROOT_PASSWORD}"
+    local key=$(derive_key "$password")
+    local iv=$(derive_iv "$password")
+    local padded=$(pad_pkcs7 "$data")
     local encrypted=$(echo -n "$padded" | openssl aes-256-cbc -a -nosalt -K "$key" -iv "$iv" | tr -d '\n')
-    # echo "$encrypted" >> $LOG_DIR/encrypted.txt
     echo "$encrypted"
 }
 
-# Function to send encrypted data to a JSON API using socat over HTTP
+# Function to send encrypted data via HTTP
 send_encrypted_data_http() {
     local api_host="$1"
     local api_port="$2"
-    local api_host_port="$1:$2"
     local api_endpoint="$3"
-    local data=$(encrypt_data "$4")
+    local data="$4"
     local json_data="{\"data\":\"$data\"}"
+    local api_host_port="$api_host:$api_port"
 
     local request="POST $api_endpoint HTTP/1.1\r\nHost: $api_host\r\nContent-Type: application/json\r\nContent-Length: ${#json_data}\r\n\r\n$json_data"
-    # Use socat to send the request over HTTP
     local response=$(echo -en "$request" | socat - TCP:$api_host_port)
-    # echo "$request" >> $LOG_DIR/request.txt
     echo "$response"
 }
 
-# Function to send encrypted data to a JSON API using socat over HTTPS
+# Function to send encrypted data via HTTPS
 send_encrypted_data_https() {
     local api_host="$1"
     local api_port="$2"
-    local api_host_port="$1:$2"
     local api_endpoint="$3"
-    local data=$(encrypt_data "$4")
+    local data="$4"
     local json_data="{\"data\":\"$data\"}"
+    local api_host_port="$api_host:$api_port"
 
     local request="POST $api_endpoint HTTP/1.1\r\nHost: $api_host\r\nContent-Type: application/json\r\nContent-Length: ${#json_data}\r\n\r\n$json_data"
-    # Use socat with SSL and no verification to send the request over HTTPS
     local response=$(echo -en "$request" | socat - OPENSSL:$api_host_port,verify=0)
-    # echo "$request" >> $LOG_DIR/request.txt
     echo "$response"
 }
 
-# Wrapper function to choose between HTTP and HTTPS based on port
+# Generic function to send encrypted data to any API endpoint
+# Usage: send_encrypted_api_request "host:port" "/api/path" "raw_data" ["password"]
+send_encrypted_api_request() {
+    local host_port="$1"
+    local api_endpoint="$2"
+    local raw_data="$3"
+    local password="${4:-$MYSQL_ROOT_PASSWORD}"
+    
+    local api_host=$(echo "$host_port" | cut -d":" -f1)
+    local api_port=$(echo "$host_port" | cut -d":" -f2)
+    
+    # Default to port 80 if not specified
+    if [ -z "$api_port" ] || [ "$api_port" = "$api_host" ]; then
+        api_port=80
+    fi
+    
+    # Encrypt the data
+    local encrypted_data=$(encrypt_data "$raw_data" "$password")
+    
+    # Choose protocol based on port (443 and 10005 use HTTPS, others use HTTP)
+    if [ "$api_port" = "443" ] || [ "$api_port" = "10005" ]; then
+        send_encrypted_data_https "$api_host" "$api_port" "$api_endpoint" "$encrypted_data"
+    else
+        send_encrypted_data_http "$api_host" "$api_port" "$api_endpoint" "$encrypted_data"
+    fi
+}
+
+# Backward compatible wrapper for the original MySQL replication manager use case
 send_encrypted_data() {
     local api_host=$(echo "$1" | cut -d":" -f1)
     local port=10005
@@ -128,72 +154,96 @@ send_encrypted_data() {
     local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$task"
 
     if [ "$port" = "10005" ]; then
-        send_encrypted_data_https "$api_host" "$port" "$api_endpoint" "$data"
+        local encrypted_data=$(encrypt_data "$data")
+        send_encrypted_data_https "$api_host" "$port" "$api_endpoint" "$encrypted_data"
     else
-        send_encrypted_data_http "$api_host" "$port" "$api_endpoint" "$data"
+        local encrypted_data=$(encrypt_data "$data")
+        send_encrypted_data_http "$api_host" "$port" "$api_endpoint" "$encrypted_data"
     fi
 }
 
-# Function to send a batch of lines to the API and check for success with retry logic
-send_lines_to_api() {
-    local lines="$1"
-    local job="$2"
-    local level="$3"
-    local address="${REPLICATION_MANAGER_URL}"
-    local max_retries=3
+# Generic function to send data to API with retry logic
+# Usage: send_to_api_with_retry "host:port" "/api/path" "raw_data" ["max_retries"] ["password"]
+send_to_api_with_retry() {
+    local host_port="$1"
+    local api_endpoint="$2"
+    local raw_data="$3"
+    local max_retries="${4:-3}"
+    local password="${5:-$MYSQL_ROOT_PASSWORD}"
+    local log_file="${6:-$LOG_DIR/api_calls.log}"
+    
     local attempt=0
     local success=false
-
-    if [ -z "$job" ]; then
-        job="main"
-        level="$LVL_DEBUG"
-    fi
-
-    if [ -z "$level" ]; then
-        level="$LVL_DEBUG"
-    fi
-
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"log\":\"$lines\",\"level\":\"$level\"}"
     local http_code
     local response
 
     while ((attempt < max_retries)); do
-        # Capture response and HTTP status code
-        response=$(send_encrypted_data "$address" "$job" "$data")
-
-        # Extract HTTP status code
-        http_code=$(echo "$response" | grep -oP '(?<=HTTP/1.1 )[0-9]{3}')
+        response=$(send_encrypted_api_request "$host_port" "$api_endpoint" "$raw_data" "$password")
+        # Handles HTTP/1.0, HTTP/1.1, HTTP/2, etc.
+        http_code=$(echo "$response" | grep HTTP | head -n1 | awk '{print $2}')
 
         if [[ "$http_code" == "200" ]]; then
-            # echo "API call successful for job: $job"
             success=true
             break
         else
-            # echo "API call failed for job: $job with status code: $http_code"
-            # cat $LOG_DIR/curl_response.txt
             ((attempt++))
-            sleep 2 # Wait before retrying
+            sleep 2
         fi
     done
 
     if [ "$success" = false ]; then
-        # Backup log file if it exceeds 1MB. Only keep1 old log file.
-        if [ -f "$LOG_DIR/api_calls.log" ]; then
-            local filesize
-            filesize=$(stat -c%s "$LOG_DIR/api_calls.log")
+        # Create log directory if it doesn't exist
+        mkdir -p "$(dirname "$log_file")"
+        
+        # Rotate log file if it exceeds 1MB
+        if [ -f "$log_file" ]; then
+            local filesize=$(stat -c%s "$log_file")
             if ((filesize > 1048576)); then
-                cp -f "$LOG_DIR/api_calls.log" "$LOG_DIR/api_calls.log.bak"
-                : > "$LOG_DIR/api_calls.log"
+                cp -f "$log_file" "${log_file}.bak"
+                : > "$log_file"
             fi
-        else 
-            touch "$LOG_DIR/api_calls.log"
         fi
 
-        echo "API call failed with code: $http_code after $max_retries attempts for job: $job" >> $LOG_DIR/api_calls.log
-        echo "Request Destination: $address Job: $job Data: $data" >> $LOG_DIR/api_calls.log
-        echo "$response" >> $LOG_DIR/api_calls.log
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] API call failed with code: $http_code after $max_retries attempts" >> "$log_file"
+        echo "Destination: $host_port Endpoint: $api_endpoint" >> "$log_file"
+        echo "Response: $response" >> "$log_file"
+        echo "---" >> "$log_file"
+        return 1
     fi
+    
+    return 0
 }
+
+# Backward compatible function for MySQL replication manager logs
+send_lines_to_api() {
+    local lines="$1"
+    local job="${2:-main}"
+    local level="${3:-$LVL_DEBUG}"
+    local address="${REPLICATION_MANAGER_URL}"
+    local max_retries=3
+
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
+    local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
+    
+    send_to_api_with_retry "$address" "$api_endpoint" "$data" "$max_retries"
+}
+
+########################
+# Usage Examples       #
+########################
+
+# Example 1: Send to custom API endpoint
+# send_encrypted_api_request "api.example.com:443" "/api/v1/data" '{"key":"value"}'
+
+# Example 2: Send with retry logic to custom endpoint
+# send_to_api_with_retry "api.example.com:8080" "/api/submit" '{"data":"test"}' 5
+
+# Example 3: Use original replication manager function
+# send_lines_to_api "Log message here" "backup" "INFO"
+
+#########################
+# Check Binaries         #
+#########################
 
 # Determine which binary to use (prefer MariaDB, fallback to MySQL)
 if [ -x "$MARIADB_CLIENT" ]; then
@@ -211,32 +261,201 @@ else
     exit 1
 fi
 
+#########################
+# Check Functions         #
+#########################
+
+# Function to check if a specific task is needed for a server
+check_task_needs() {
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+    local taskname="$5"
+    
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/needs/${taskname}"
+    
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response"  | grep HTTP | head -1 | sed -E 's/.*HTTP\/[0-9.]+ ([0-9]{3}).*/\1/')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+    
+    # echo "$http_code: $body" >> "$LOG_DIR/$taskname.process.out"
+
+    # Determine output
+    if [ "$http_code" = "200" ] && [ "$body" = "true" ]; then
+        return 0
+    elif [ "$http_code" = "500" ] && [ "$body" = "false" ]; then
+        return 1
+    else
+        return 2
+    fi
+}
+
+# Function to check the current script status and return the receiver port if successful
+check_jobs_receiver() {
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-jobs-check"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response" | grep HTTP | head -n1 | awk '{print $2}')
+
+    # Extract body (after the first blank line)
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r')
+
+    # echo "receiver $http_code: $body" >> "$LOG_DIR/jobs-check.process.out"
+
+    # Process successful response
+    if [ "$http_code" = "200" ] && [[ "$body" == RECEIVER_PORT=* ]]; then
+        local recv_port="${body#RECEIVER_PORT=}"
+
+        # Validate the port is numeric and within range
+        if [[ "$recv_port" =~ ^[0-9]+$ ]] && [ "$recv_port" -ge 1 ] && [ "$recv_port" -le 65535 ]; then
+            echo "$recv_port"
+            return 0
+        else
+            echo "error"
+            return 2  # invalid port
+        fi
+    else
+        echo "error"
+        return 1  # API or server error
+    fi
+}
+
+##########################
+# Upgrade Functions        #
+##########################
+
+request_jobs_upgrade() {
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/send-jobs-upgrade"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response" | head -n1 | awk '{print $2}')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+
+    # Determine output
+    if [ "$http_code" = "200" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+
 # Function to check if a table exists in a given database
 table_exists() {
-    local db="$1"
-    local table="$2"
+    local query="SELECT CASE WHEN COUNT(*) = 9 THEN 1 ELSE 0 END AS valid
+FROM information_schema.columns
+WHERE table_schema = 'replication_manager_schema'
+  AND table_name = 'jobs'
+  AND (
+      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
+   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
+   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
+   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
+   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
+   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
+  );
+"
 
-    # Ask information_schema if the table exists
     local result
-    result=$(echo "SELECT COUNT(*) 
-                   FROM information_schema.tables 
-                   WHERE table_schema='${db}' 
-                     AND table_name='${table}';" \
-             | $BINARY_CLIENT -N 2>/dev/null)
+    result=$($BINARY_CLIENT -N -e "$query" 2>&1)
+    local status=$?
 
-    if [ "$result" = "1" ]; then
-        return 0  # true, table exists
-    else
-        return 1  # false, table missing
+    if [ $status -ne 0 ]; then
+        send_lines_to_api "Database query failed: $result" "main" "$LVL_ERROR"
+        return 2  # indicate DB error
     fi
+
+    # Defensive check in case of unexpected output
+    result=$(echo "$result" | tr -d '[:space:]')
+    case "$result" in
+        1) return 0 ;;  # table exists
+        0) return 1 ;;  # table does not exist
+        *) 
+           send_lines_to_api "Unexpected query result: '$result'" "main" "$LVL_ERROR"
+           return 2 ;;   # unknown error
+    esac
 }
 
 # Function to create the jobs table if it doesn't exist
 create_jobs_table() {
-    if ! table_exists "replication_manager_schema" "jobs"; then
-        send_lines_to_api "Creating jobs table..." "main" "$LVL_INFO"
-        echo "set sql_log_bin=0;CREATE DATABASE IF NOT EXISTS replication_manager_schema;CREATE TABLE IF NOT EXISTS replication_manager_schema.jobs(id INT NOT NULL auto_increment PRIMARY KEY, task VARCHAR(20),  port INT, server VARCHAR(255), done TINYINT not null default 0, state tinyint not null default 0, result MEDIUMTEXT, start DATETIME, end DATETIME, KEY idx1(task,done) ,KEY idx2(result(1),task), KEY idx3 (task, state), UNIQUE(task)) engine=innodb;set sql_log_bin=1;" | $BINARY_CLIENT
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/jobs-create-table"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response" | head -n1 | awk '{print $2}')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+
+    # Determine output
+    if [ "$http_code" = "200" ]; then
+        return 0
+    else
+        return 1
     fi
+}
+
+check_jobs_table() {
+    local host_port="$1"
+    local cluster="$2"
+    local server="$3"
+    local port="$4"
+
+    table_exists
+    local exists_status=$?
+
+    if [ $exists_status -eq 2 ]; then
+        return 1
+    fi
+
+    if [ $exists_status -eq 1 ]; then
+        create_jobs_table "$host_port" "$cluster" "$server" "$port"
+        return 1
+    fi
+
+    return 0
 }
 
 ################################
@@ -246,8 +465,9 @@ create_jobs_table() {
 # Function to create a manual lock file
 create_lock_file() {
     local lock_file="$1"
+    local job="$2"
     if [ -e "$lock_file" ]; then
-        send_lines_to_api "Lock file $lock_file exists. Exiting." "main" "$LVL_ERROR"
+        send_lines_to_api "Lock file $lock_file for $job exists. Exiting." "$job" "$LVL_DEBUG"
         return 1
     fi
     touch "$lock_file"
@@ -273,26 +493,28 @@ remove_run_lockdir() {
 # Function to wait for the .run file with a timeout
 wait_for_run_lockdir() {
     local run_lockdir="$1"
+    local job="$2"
     local timeout=30
     local start_time=$(date +%s)
 
-    send_lines_to_api "Waiting for $run_lockdir file...\n" "$job" "$LVL_DEBUG"
+    send_lines_to_api "Waiting for $run_lockdir directory...\n" "$job" "$LVL_DEBUG"
     while [[ ! -d "$run_lockdir" ]]; do
         sleep 0.5
         local current_time=$(date +%s)
         local elapsed=$((current_time - start_time))
         if ((elapsed >= timeout)); then
-            send_lines_to_api "Timeout reached while waiting for .run file.\n" "$job" "$LVL_ERROR"
+            send_lines_to_api "Timeout reached while waiting for $job.run lockdir.\n" "$job" "$LVL_ERROR"
             return 1
         fi
     done
-    send_lines_to_api "$run_lockdir file found...\n" "$job" "$LVL_DEBUG"
+    send_lines_to_api "$run_lockdir directory found...\n" "$job" "$LVL_DEBUG"
     return 0
 }
 
 # Function to wait for the .run file with a timeout
 wait_for_log_file() {
     local logfile="$1"
+    local job="$2"
     local timeout=60
     local start_time=$(date +%s)
 
@@ -313,6 +535,7 @@ wait_for_log_file() {
 read_log_file() {
     local logfile="$1"
     local checkpoint_file=$2
+    local job="$3"
     local last_read=0
     local current_line=$((last_read + 1))
 
@@ -371,19 +594,19 @@ process_log_file() {
     local run_lockdir="$LOG_DIR/$job.run"
     local lock_file="$LOCK_DIR/${job}_lockfile"
 
-    if ! create_lock_file "$lock_file"; then
+    if ! create_lock_file "$lock_file" "$job"; then
         return
     fi
 
     # Ensure lock file is removed on script exit. Using trap to handle unexpected exit. This will not interfere with other traps since it's a separate subshell.
     trap 'remove_lock_file "$lock_file"' EXIT
 
-    if ! wait_for_run_lockdir "$run_lockdir"; then
+    if ! wait_for_run_lockdir "$run_lockdir" "$job"; then
         remove_lock_file "$lock_file"
         return
     fi
 
-    if ! wait_for_log_file "$log_file"; then
+    if ! wait_for_log_file "$log_file" "$job"; then
         remove_lock_file "$lock_file"
         return
     fi
@@ -402,7 +625,7 @@ process_log_file() {
     # processing until the end of the file and loop until run file deleted
     while [[ -d "$run_lockdir" ]] || [[ "$exec_once" -eq 1 ]]; do
         exec_once=0
-        read_log_file "$log_file" "$checkpoint_file"
+        read_log_file "$log_file" "$checkpoint_file" "$job"
     done
 
     # If the run file was deleted, continue processing until the end of the file
@@ -434,7 +657,10 @@ process_log_file() {
 #################################
 
 socatCleaner() {
-    kill -9 $(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN)
+    local pid=$(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN 2>/dev/null)
+    if [[ -n "$pid" ]]; then
+        kill -9 $pid
+    fi
 }
 
 doneJob() {
@@ -517,17 +743,169 @@ partialRestore() {
     send_lines_to_api "Partial restore done." "$job" "$LVL_INFO"
 }
 
+jobsCheck() {
+    if [ -f "$LOG_DIR/jobs-check.process.out" ]; then
+        rm -f "$LOG_DIR/jobs-check.process.out"
+    fi
+
+    if [ -f "$LOG_DIR/jobs-check.out" ]; then
+        rm -f "$LOG_DIR/jobs-check.out"
+    fi
+
+    if [ -d "$CHECKPOINT_DIR/jobs-check.checkpoint" ]; then
+        rm -f "$CHECKPOINT_DIR/jobs-check.checkpoint"
+    fi
+
+    mkdir -p "$LOG_DIR/jobs-check.run"
+
+    # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
+    trap 'remove_run_lockdir "$LOG_DIR/jobs-check.run"' EXIT
+
+    check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-check"
+    checkresult=$?
+    if [ "$checkresult" != "0" ]; then
+        if [ "$checkresult" = "2" ]; then
+            echo "Failed to check task needs from API." >"$LOG_DIR/jobs-check.process.out"
+        else
+            echo "No need to run jobs-check." >"$LOG_DIR/jobs-check.process.out"
+        fi
+
+        remove_run_lockdir "$LOG_DIR/jobs-check.run"
+        trap - EXIT
+        return $checkresult
+    fi
+
+    socatCleaner
+
+    export LOG_DIR CHECKPOINT_DIR LOCK_DIR  # ensure subshells inherit them
+    process_log_file "jobs-check" &
+
+    echo "Waiting for receiver port." >"$LOG_DIR/jobs-check.process.out"
+
+    #Send this script to the monitoring server using socat (using different variables to avoid confusion)
+    RCV_PORT=$(check_jobs_receiver "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")
+    checkresult=$?
+
+    if [ "$checkresult" != "0" ] || [ "$RCV_PORT" == "error" ]; then
+        echo "Failed to get a valid receiver port from the monitoring server." >>"$LOG_DIR/jobs-check.process.out"
+        sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+        trap - EXIT
+        return 2 # error
+    fi
+
+    echo "Sending new script." >>"$LOG_DIR/jobs-check.process.out"
+    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
+
+    if [ $? -ne 0 ]; then
+        echo "Failed to send the script via socat." >>"$LOG_DIR/jobs-check.process.out"
+    else
+        echo "Script sent successfully via socat." >>"$LOG_DIR/jobs-check.process.out"
+    fi
+
+    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+    trap - EXIT
+    return 0
+}
+
+jobsUpgrade() {
+    if [ -f "$LOG_DIR/jobs-upgrade.process.out" ]; then
+        rm -f "$LOG_DIR/jobs-upgrade.process.out"
+    fi
+
+    if [ -f "$LOG_DIR/jobs-upgrade.out" ]; then
+        rm -f "$LOG_DIR/jobs-upgrade.out"
+    fi
+
+    if [ -d "$CHECKPOINT_DIR/jobs-upgrade.checkpoint" ]; then
+        rm -f "$CHECKPOINT_DIR/jobs-upgrade.checkpoint"
+    fi
+
+    mkdir -p "$LOG_DIR/jobs-upgrade.run"
+    # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
+    trap 'remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"' EXIT
+
+    check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-upgrade"
+
+    checkresult=$?
+    if [ "$checkresult" != "0" ]; then
+        if [ "$checkresult" = "2" ]; then
+            echo "Failed to check task needs from API." >"$LOG_DIR/jobs-upgrade.process.out"
+        else
+            echo "No need to run jobs-upgrade." >"$LOG_DIR/jobs-upgrade.process.out"
+        fi
+
+        remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+        trap - EXIT
+        return
+    fi
+
+    socatCleaner
+
+    export LOG_DIR CHECKPOINT_DIR LOCK_DIR  # ensure subshells inherit them
+    process_log_file "jobs-upgrade" &
+    
+    echo "Waiting new script." >"$LOG_DIR/jobs-upgrade.process.out"
+
+    # Open receiver port to get the new script to a temporary file
+    TEMP_FILE="${BASH_SOURCE[0]}.tmp"
+    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    SOCAT_PID=$!
+
+    # Request the upgrade
+    request_jobs_upgrade "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
+
+    # Wait for socat to finish
+    wait $SOCAT_PID
+    SOCAT_EXIT_CODE=$?
+
+    # Only replace if the socat command succeeded
+    if [ $SOCAT_EXIT_CODE -eq 0 ] && [ -s "$TEMP_FILE" ]; then
+        # Check if the new script has # EOF marker
+        if ! grep -q '^# EOF$' "$TEMP_FILE"; then
+            send_lines_to_api "Received script is invalid (missing EOF marker)." "jobs-upgrade" "$LVL_ERROR"
+            rm -f "$TEMP_FILE"
+        else 
+            # Replace the current script
+            chmod +x "$TEMP_FILE"
+            cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
+
+            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"        
+
+            # Re-execute with the new version
+            exec "${BASH_SOURCE[0]}" "$@"
+        fi
+    else
+        send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
+        rm -f "$TEMP_FILE"
+    fi
+
+    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-upgrade.run" &
+    trap - EXIT
+}
+
 #######################
 # JOB START HERE
 #######################
-
-create_jobs_table
 
 mkdir -p "$CHECKPOINT_DIR"
 mkdir -p "$LOCK_DIR"
 echo "" > $LOG_DIR/curl_response.txt
 echo "" > $LOG_DIR/request.txt
 echo "" > $LOG_DIR/encrypt.txt
+
+jobsCheck
+checkresult=$?
+if [ "$checkresult" != "2" ]; then
+    # If jobsCheck did not error, proceed to jobsUpgrade
+    jobsUpgrade "$@"
+fi
+
+check_jobs_table "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
+checktable=$?
+if [ "$checktable" != "0" ]; then
+    sleep 60;
+    exit 1
+fi
 
 ####################
 # Check if the configuration file has changed using repman client
@@ -540,7 +918,7 @@ if [ ! -f "$REPMAN_CLIENT" ]; then
 fi
 
 if [ -f "$REPMAN_CLIENT" ]; then
-    ENC_KEY=$(encrypt_data "{\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    ENC_KEY=$(encrypt_data "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
     $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --log-dir="$LOG_DIR" > $LOG_DIR/repman.out
 fi
 
@@ -707,3 +1085,5 @@ for job in "${JOBS[@]}"; do
         trap - EXIT
     fi
 done
+
+# EOF

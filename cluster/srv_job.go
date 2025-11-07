@@ -34,6 +34,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
@@ -70,7 +71,64 @@ func (server *ServerMonitor) JobRun() {
 
 }
 
+func (server *ServerMonitor) JobsCheckSchedulerTable() (bool, error) {
+	cluster := server.ClusterGroup
+	if server.IsDown() || cluster.IsInFailover() {
+		return false, fmt.Errorf("Server %s is down or in failover", server.URL)
+	}
+
+	//If no default connection no alert
+	if server.Conn == nil {
+		return false, fmt.Errorf("No connection pool available for server %s", server.URL)
+	}
+
+	Conn, err := server.GetConnNoBinlog(server.Conn)
+	if err != nil {
+		return false, fmt.Errorf("Failed to create connection: %v", err)
+	}
+	defer Conn.Close()
+
+	query := `SELECT
+    COUNT(*) AS columns_present
+FROM information_schema.columns
+WHERE table_schema = 'replication_manager_schema'
+  AND table_name = 'jobs'
+  AND (
+      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
+   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
+   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
+   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
+   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
+   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
+   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
+   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
+  );`
+
+	var exist int
+	err = server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, query)
+	if err != nil {
+		return false, fmt.Errorf("Failed to check jobs table: %v", err)
+	}
+
+	if exist != 9 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (server *ServerMonitor) JobsCreateTable() error {
+	cluster := server.ClusterGroup
+	if err := server.jobsCreateTable(); err != nil {
+		cluster.SetState("WARN0154", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0154"], server.URL, err), ErrFrom: "JOB"})
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) jobsCreateTable() error {
+
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
 		return nil
@@ -400,6 +458,13 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			master.DelBackupTypeCookie(backtype)
 			return fmt.Errorf("Cancelling reseed. No backup file found on master for %s", backtype)
 		}
+		bckserver = master
+	}
+
+	err := cluster.CheckPhysicalBackupToolVersion(bckserver)
+	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
+		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	//Delete wait physical backup cookie
@@ -431,7 +496,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 		cluster.Conf.BackupPhysicalType = backtype
 	}
 
-	_, err := server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
+	_, err = server.JobInsertTask(task, server.SSTPort, cluster.Conf.MonitorAddress)
 	if err != nil {
 		if server.HasReseedingState(task) {
 			server.SetInReseedBackup("")
@@ -615,6 +680,12 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 		}
 
 		bckserver = master
+	}
+
+	err = cluster.CheckLogicalBackupToolVersion(bckserver)
+	if err != nil && cluster.Conf.BackupRestoreVersionStrict {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s version is not compatible with restore version on %s. Cancelling reseed for data safety.", backtype, server.URL)
+		return fmt.Errorf("Node %s backup tool version is not compatible with restore version.", server.URL)
 	}
 
 	if server.HasAnyReseedingState() {
@@ -1958,7 +2029,7 @@ func (server *ServerMonitor) JobBackupMyDumper(outputdir string) error {
 
 	dumper := cluster.VersionsMap.Get("mydumper")
 	if dumper == nil {
-		if err = cluster.SetMyDumperVersion(); err != nil {
+		if err = cluster.RefreshMyDumperVersion(); err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting MyDumper version: %s", err)
 			return err
 		} else {
@@ -2224,6 +2295,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		switch cluster.Conf.BackupLogicalType {
 		case config.ConstBackupLogicalTypeMysqldump:
 			filename := server.GetMyBackupDirectory() + "mysqldump.sql.gz"
+			oldV, _ := cluster.GetToolsVersion("client-dump")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = filename
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
@@ -2250,6 +2325,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 		case config.ConstBackupLogicalTypeDumpling:
 			outputdir := server.GetMyBackupDirectory() + "dumpling"
+			oldV, _ := cluster.GetToolsVersion("dumpling")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = outputdir
 			if cluster.Conf.BackupKeepUntilValid {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Rename previous backup to .old")
@@ -2275,6 +2354,10 @@ func (server *ServerMonitor) JobBackupLogical() error {
 			}
 		case config.ConstBackupLogicalTypeMydumper:
 			outputdir := server.GetMyBackupDirectory() + "mydumper"
+			oldV, _ := cluster.GetToolsVersion("mydumper")
+			if oldV != nil {
+				server.LastBackupMeta.Logical.BackupToolVersion = oldV.ToString()
+			}
 			server.LastBackupMeta.Logical.Dest = outputdir
 			server.LastBackupMeta.Logical.Compressed = true
 			if cluster.Conf.BackupKeepUntilValid {
@@ -3090,74 +3173,56 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	return nil
 }
 
-func (server *ServerMonitor) WriteJobLogs(mod int, encrypted, key, iv, task string) error {
-	cluster := server.ClusterGroup
-	eCmd := exec.Command("echo", encrypted)
-	// Create a pipe for the stdout of lsCmd
-	eStdout, err := eCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating stdout pipe for log message: %s", err.Error())
-		return err
-	}
+// decryptAES256 runs openssl AES-256-CBC decryption and returns the plaintext bytes.
+func (server *ServerMonitor) DecryptAES256(encrypted, key, iv string) ([]byte, error) {
+	cmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", key, "-iv", iv)
+	cmd.Stdin = strings.NewReader(encrypted + "\n")
 
-	dCmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", ""+key+"", "-iv", ""+iv+"")
-	dCmd.Stdin = eStdout
-	dStdout, err := dCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error piping log message decryption: %s", err.Error())
-		return err
-	}
-	// Start the first command
-	if err := eCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message: %s", err.Error())
-		return err
-	}
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 
-	// Start the second command
-	if err := dCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message decrypt: %s", err.Error())
-		return err
-	}
-
-	// Read the output from grepCmd
-	scanner := bufio.NewScanner(dStdout)
-	for scanner.Scan() {
-		output := scanner.Text()
-		pos := strings.LastIndex(output, "}")
-		if pos > 10 {
-			output = output[:pos+1]
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return nil, fmt.Errorf("openssl decrypt error: %v (%s)", err, msg)
 		}
-
-		var logEntry config.LogEntry
-		err = json.Unmarshal([]byte(output), &logEntry)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
-			continue
-		}
-
-		if task == "main" && logEntry.Level == "" {
-			logEntry.Level = config.LvlInfo
-		}
-
-		server.ParseLogEntries(logEntry, mod, task)
+		return nil, fmt.Errorf("openssl decrypt error: %v", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading from log message decrypt: %s", err.Error())
-		return err
+	return out.Bytes(), nil
+}
+
+// ParseDecryptedLogs parses JSON log entries from decrypted data
+// and feeds them into the server’s log parsing logic.
+func (server *ServerMonitor) ParseDecryptedLogs(data []byte, mod int, task string) error {
+	// Convert to string for cleanup
+
+	// Trim everything after the last '}'
+	if pos := bytes.LastIndex(data, []byte("}")); pos != -1 {
+		data = data[:pos+1]
+	} else {
+		return fmt.Errorf("no valid JSON object found in decrypted data")
 	}
 
-	// Wait for the commands to complete
-	if err := eCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message done: %s", err.Error())
-		return err
+	// Optional: remove any leading non-JSON noise (e.g., shell output)
+	if start := bytes.Index(data, []byte("{")); start > 0 {
+		data = data[start:]
+	} else if start == -1 {
+		return fmt.Errorf("no valid JSON object found in decrypted data")
 	}
 
-	if err := dCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message decription: %s", err.Error())
-		return err
+	var logEntry config.LogEntry
+	if err := json.Unmarshal(data, &logEntry); err != nil {
+		return fmt.Errorf("failed to parse JSON log entry: %v", err)
 	}
 
+	if task == "main" && logEntry.Level == "" {
+		logEntry.Level = config.LvlInfo
+	}
+
+	server.ParseLogEntries(logEntry, mod, task)
 	return nil
 }
 
@@ -3207,8 +3272,10 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	switch backtype {
 	case config.BackupMethodLogical:
 		lastmeta = server.LastBackupMeta.Logical
+		defer cluster.CheckLogicalBackupToolVersion(server) // Update backup tool version after backup
 	case config.BackupMethodPhysical:
 		lastmeta = server.LastBackupMeta.Physical
+		defer cluster.CheckPhysicalBackupToolVersion(server) // Update backup tool version after backup
 	default:
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Wrong backup type for metadata in %s", server.URL)
 		return
@@ -3402,69 +3469,101 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 
 func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
 	cluster := server.ClusterGroup
-	eCmd := exec.Command("echo", encrypted)
-	// Create a pipe for the stdout of lsCmd
-	eStdout, err := eCmd.StdoutPipe()
+	data, err := server.DecryptAES256(encrypted, key, iv)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error creating stdout pipe for log message: %s", err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error decrypting secret: %s", err.Error())
 		return "", err
 	}
 
-	dCmd := exec.Command("openssl", "aes-256-cbc", "-d", "-a", "-nosalt", "-K", ""+key+"", "-iv", ""+iv+"")
-	dCmd.Stdin = eStdout
-	dStdout, err := dCmd.StdoutPipe()
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error piping log message decryption: %s", err.Error())
-		return "", err
-	}
-	// Start the first command
-	if err := eCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message: %s", err.Error())
-		return "", err
-	}
-
-	// Start the second command
-	if err := dCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error starting log message decrypt: %s", err.Error())
-		return "", err
-	}
-
-	// Create a buffer to hold the decrypted output
-	var decryptedOutput bytes.Buffer
-
-	// Copy the decrypted output to the buffer
-	_, err = io.Copy(&decryptedOutput, dStdout)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reading decrypted output: %s", err.Error())
-		return "", err
-	}
-
-	// Wait for the commands to complete
-	if err := eCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message done: %s", err.Error())
-		return "", err
-	}
-
-	if err := dCmd.Wait(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error waiting for log message decription: %s", err.Error())
-		return "", err
-	}
-
-	output := decryptedOutput.Bytes()
-	pos := bytes.LastIndex(output, []byte("}"))
+	pos := bytes.LastIndex(data, []byte("}"))
 	if pos > 1 {
-		output = output[:pos+1]
+		data = data[:pos+1]
+	} else {
+		return "", errors.New("No valid JSON object found in decrypted data")
+	}
+
+	// Optional: remove any leading non-JSON noise (e.g., shell output)
+	if start := bytes.Index(data, []byte("{")); start > 0 {
+		data = data[start:]
+	} else if start == -1 {
+		return "", errors.New("No valid JSON object found in decrypted data")
 	}
 
 	var secretKey struct {
 		Secret string `json:"secret"`
+		Server string `json:"server"`
 	}
 
-	err = json.Unmarshal(output, &secretKey)
+	err = json.Unmarshal(data, &secretKey)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", output, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error loading JSON Entry: %s. Err: %s", data, err.Error())
 		return "", err
 	}
 
 	return strings.TrimSpace(secretKey.Secret), nil
+}
+
+func (server *ServerMonitor) CheckJobsVersion() error {
+	var sum, newsum string
+	var checkerr error
+	cluster := server.ClusterGroup
+
+	if server.IsIgnored() {
+		return nil
+	}
+
+	if cluster.IsInFailover() {
+		return nil
+	}
+
+	scriptPath := filepath.Join(server.Datadir, "init/init", "dbjobs_new")
+	currentScriptPath := filepath.Join(server.Datadir, "dbjobs_new.current")
+
+	// Check if the script exists
+	finfo, err := os.Stat(currentScriptPath)
+	if os.IsNotExist(err) {
+		server.SetWaitJobsCheckCookie()
+	}
+
+	sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
+
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		server.GetDatabaseConfig()
+	}
+
+	newsum, err = crypto.GenerateChecksum(scriptPath)
+	if err != nil {
+		checkerr = err
+	}
+
+	if sum != newsum || checkerr != nil {
+		if checkerr == nil {
+			checkerr = fmt.Errorf("Checksum mismatch")
+		}
+		cluster.SetState("WARN0147", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0147"], server.URL, newsum, sum, checkerr), ErrFrom: "JOB", ServerUrl: server.URL})
+		// Set cookie for next check
+		if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(10*time.Minute).Before(time.Now()) {
+			server.SetWaitJobsCheckCookie()
+		}
+	}
+
+	return checkerr
+}
+
+func (server *ServerMonitor) UpgradeJobsScript() error {
+	cluster := server.ClusterGroup
+	defer cluster.LogPanicToFile("jobs-upgrade")
+
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModAPI, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
+		return err
+	}
+
+	if server.HasRollingJobsUpgradeCookie() {
+		server.DelRollingJobsUpgradeCookie()
+	}
+
+	server.SetWaitJobsCheckCookie()
+	return nil
 }

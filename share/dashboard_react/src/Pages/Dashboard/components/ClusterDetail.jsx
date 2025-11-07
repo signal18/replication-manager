@@ -21,6 +21,7 @@ import {
   reloadCertificates,
   resetFailOverCounter,
   resetSLA,
+  rollingJobsUpgrade,
   rollingOptimize,
   rollingRestart,
   rotateCertificates,
@@ -235,6 +236,14 @@ function ClusterDetail({ selectedCluster }) {
           }
         },
         {
+          name: 'Rolling Jobs Upgrade',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Rolling jobs upgrade?')
+            setConfirmHandler(() => () => dispatch(rollingJobsUpgrade({ clusterName: selectedCluster?.name })))
+          }
+        },
+        {
           name: 'Rolling Restart',
           onClick: () => {
             openConfirmModal()
@@ -403,6 +412,7 @@ function ClusterDetail({ selectedCluster }) {
               {selectedCluster?.isConfigPathChange && <TagPill colorScheme='orange' text='DBConfigPathChanged' />}
               {selectedCluster?.isNotMonitoring && <TagPill colorScheme='orange' text='UnMonitored' />}
               {selectedCluster?.isCapturing && <TagPill colorScheme='orange' text='Capturing' />}
+              {selectedCluster?.isNeedAppsReprov && <TagPill colorScheme='orange' text='NeedAppsReprov' />}
             </>
           }
         </Wrap>

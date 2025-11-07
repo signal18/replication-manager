@@ -190,6 +190,32 @@ export const getTermsData = createAsyncThunk('globalClusters/getTermsData', asyn
   }
 })
 
+export const refreshAppTemplateRepo = createAsyncThunk(
+  'globalClusters/refreshAppTemplateRepo',
+  async ({ clusterName }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await globalClustersService.refreshAppTemplateRepo(clusterName, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
+      showSuccessBanner('App template repository refresh initiated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Error while refreshing app template repository', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }, 
+  {
+    condition: (_, { getState }) => {
+      const { globalClusters } = getState();
+      if (globalClusters.isFetching.appTemplates) {
+        return false;
+      }
+    }
+  }
+)
+
 const initialState = {
   loading: false,
   error: null,
@@ -198,7 +224,7 @@ const initialState = {
   isFailableList: {},
   clusterPeers: null,
   clusterForSale: null,
-  isFetching: { clusters: false, monitor: false, peers: false, forSale: false },
+  isFetching: { clusters: false, monitor: false, peers: false, forSale: false, appTemplates: false },
   monitor: null,
   terms: ``
 }
@@ -239,12 +265,12 @@ export const globalClustersSlice = createSlice({
         state.isFetching.monitor = true
        })
       .addCase(getMonitoredData.fulfilled, (state, action) => {
-        state.isFetching.monitor = false
         state.monitor = action.payload.data
+        state.isFetching.monitor = false
       })
       .addCase(getMonitoredData.rejected, (state, action) => {
-        state.isFetching.monitor = false
         state.error = action.error
+        state.isFetching.monitor = false
       })
       .addCase(getTermsData.pending, (state) => { })
       .addCase(getTermsData.fulfilled, (state, action) => {
@@ -257,23 +283,34 @@ export const globalClustersSlice = createSlice({
         state.isFetching.peers = true
        })
       .addCase(getClusterPeers.fulfilled, (state, action) => {
-        state.isFetching.peers = false
         state.clusterPeers = action.payload.data
+        state.isFetching.peers = false
       })
       .addCase(getClusterPeers.rejected, (state, action) => {
-        state.isFetching.peers = false
         state.error = action.error
+        state.isFetching.peers = false
       })
       .addCase(getClusterForSale.pending, (state) => {
         state.isFetching.forSale = true
        })
       .addCase(getClusterForSale.fulfilled, (state, action) => {
-        state.isFetching.forSale = false
         state.clusterForSale = action.payload.data
+        state.isFetching.forSale = false
       })
       .addCase(getClusterForSale.rejected, (state, action) => {
-        state.isFetching.forSale = false
         state.error = action.error
+        state.isFetching.forSale = false
+      })
+      .addCase(refreshAppTemplateRepo.pending, (state) => {
+        state.isFetching.appTemplates = true
+       })
+      .addCase(refreshAppTemplateRepo.fulfilled, (state, action) => {
+        state.monitor.serviceTemplates = action.payload.data
+        state.isFetching.appTemplates = false
+      })
+      .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
+        state.error = action.error
+        state.isFetching.appTemplates = false
       })
   }
 })

@@ -15,6 +15,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/githelper"
+	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/spf13/viper"
 )
 
@@ -718,4 +719,129 @@ func (cluster *Cluster) ParseTemplateContent(app *App, content []byte) ([]byte, 
 		}
 	}
 	return []byte(parsed), nil
+}
+
+func (cluster *Cluster) RefreshAppTemplateMD5(app *App) error {
+	if app.IsHashingTemplate {
+		return nil
+	}
+
+	app.IsHashingTemplate = true
+	defer func() {
+		app.IsHashingTemplate = false
+	}()
+
+	// Get the current app template MD5
+	res, err := cluster.OpenSVCGetAppTemplateV2(app)
+	if err != nil {
+		return err
+	}
+
+	app.TemplateMD5 = misc.GetMD5HashFromBytes(res)
+
+	if app.TemplateMD5Prov != "" {
+		if app.HasTemplateMD5Diff() {
+			if app.HasProvisionCookie() {
+				app.SetReprovCookie()
+			}
+		} else {
+			app.DelReprovisionCookie()
+		}
+	}
+	return nil
+}
+
+func (cluster *Cluster) RefreshAllAppTemplateMD5() {
+	for _, app := range cluster.Apps {
+		if app.IsHashingTemplate {
+			continue
+		}
+
+		err := cluster.RefreshAppTemplateMD5(app)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not refresh app template MD5 for app %s:  %s ", app.GetId(), err)
+		}
+	}
+}
+
+func (cluster *Cluster) LoadAppTemplateMD5Provisioned(app *App) error {
+	templatefile := filepath.Join(app.Datadir, "opensvc_template.json")
+	_, err := os.Stat(templatefile)
+	if err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(templatefile)
+	if err != nil {
+		return err
+	}
+
+	app.TemplateMD5Prov = misc.GetMD5HashFromBytes(content)
+	return nil
+}
+
+func (cluster *Cluster) LoadAllAppTemplateMD5Provisioned() {
+	for _, app := range cluster.Apps {
+		err := cluster.LoadAppTemplateMD5Provisioned(app)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not load app template MD5 provisioned for app %s:  %s ", app.GetId(), err)
+		}
+
+		if cluster.RefreshTemplateMD5Chan == nil {
+			cluster.RefreshTemplateMD5Chan = make(chan *App, 10)
+		}
+		cluster.EnqueueRefreshAppTemplateMD5(app)
+	}
+}
+
+// InitiateRefreshTemplateMD5Worker starts a worker to refresh app template MD5 hashes.
+// It exits cleanly when the channel is closed.
+func (cluster *Cluster) CreateTemplateMD5Channel() {
+	cluster.RefreshTemplateMD5Chan = make(chan *App, 10)
+}
+
+func (cluster *Cluster) InitiateRefreshTemplateMD5Worker() {
+	for app := range cluster.RefreshTemplateMD5Chan {
+		if app == nil {
+			continue
+		}
+
+		if err := cluster.RefreshAppTemplateMD5(app); err != nil {
+			cluster.LogModulePrintf(
+				cluster.Conf.Verbose,
+				config.ConstLogModOrchestrator,
+				config.LvlErr,
+				"Cannot refresh app template MD5 for app %s: %s",
+				app.GetId(), err,
+			)
+		}
+	}
+
+	cluster.LogModulePrintf(
+		cluster.Conf.Verbose,
+		config.ConstLogModOrchestrator,
+		config.LvlInfo,
+		"RefreshTemplateMD5 worker stopped (channel closed)",
+	)
+}
+
+func (cluster *Cluster) CloseRefreshTemplateMD5Worker() {
+	close(cluster.RefreshTemplateMD5Chan)
+}
+
+func (cluster *Cluster) EnqueueRefreshAppTemplateMD5(app *App) {
+	if app == nil {
+		return
+	}
+
+	defer func() {
+		_ = recover() // ignore panic if channel is closed
+	}()
+
+	select {
+	case cluster.RefreshTemplateMD5Chan <- app:
+		// Enqueued successfully
+	default:
+		// Channel full — drop silently
+	}
 }

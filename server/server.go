@@ -829,8 +829,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.BackupGrowthPercentage, "backup-growth-percentage", 50, "Percentage of growth according to last backup to check required space. 0 means no growth from last backup. Default 50 percent growth")
 	flags.IntVar(&conf.BackupEstimateSizePercentage, "backup-estimate-size-percentage", 150, "Size ratio estimation for backup using information schema data and index size. Default 150 (50 percent bigger than size from query)")
 	flags.BoolVar(&conf.BackupKeepUntilValid, "backup-keep-until-valid", false, "Backup will rename previous backup to .old before removing after new backup valid")
-	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "/usr/bin/mydumper", "Path to mydumper binary")
-	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "/usr/bin/myloader", "Path to myloader binary")
+	flags.StringVar(&conf.BackupMyDumperPath, "backup-mydumper-path", "", "Path to mydumper binary")
+	flags.StringVar(&conf.BackupMyLoaderPath, "backup-myloader-path", "", "Path to myloader binary")
 	flags.StringVar(&conf.BackupMyLoaderOptions, "backup-myloader-options", "--overwrite-tables --verbose=3 --innodb-optimize-keys=skip --max-threads-for-schema-creation=1 --max-threads-for-index-creation=1", "Extra options")
 	flags.StringVar(&conf.BackupMyDumperOptions, "backup-mydumper-options", "--chunk-filesize=1000 --compress --less-locking --verbose=3 --triggers --routines --events --trx-consistency-only --kill-long-queries", "Extra options")
 	flags.StringVar(&conf.BackupMyDumperRegex, "backup-mydumper-regex", `^(?!(sys\.|performance_schema\.|information_schema\.|replication_manager_schema\.jobs|mysql\.gtid_slave_pos$))`, "Mydumper regex for backup")
@@ -841,6 +841,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
+	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
 	flags.IntVar(&conf.BackupBinlogsKeep, "backup-binlogs-keep", 10, "Number of master binlog to keep")
@@ -2316,11 +2317,11 @@ func (repman *ReplicationManager) Run() error {
 				repman.UpdateLocalPeer()
 			}
 
-			go repman.GetAppTemplates()
 			repman.ReloadOpenSVCStats()
 		}
 
 		if counter%300 == 0 {
+			go repman.GetAppTemplates()
 			repman.RefreshDiskStats()
 		}
 
@@ -2345,6 +2346,9 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.Logrus = repman.Logrus
 	repman.currentCluster.Partner = &repman.Partner
 	repman.currentCluster.ConfigManager = repman.ConfigManager
+
+	repman.currentCluster.CreateTemplateMD5Channel()
+	go repman.currentCluster.InitiateRefreshTemplateMD5Worker()
 
 	myClusterConf := repman.Confs[clusterName]
 	if myClusterConf.MonitorAddress == "localhost" {
@@ -3065,15 +3069,26 @@ func (repman *ReplicationManager) Save() error {
 }
 
 func (repman *ReplicationManager) GetAppTemplates() error {
-	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	filelist, _ := repman.GetAppTemplatesFromLocal()
+
+	repolist, err := repman.Conf.LoadAppTemplateList()
 	if err != nil {
-		return err
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
 	}
 
-	for i, file := range filelist {
-		ext := filepath.Ext(file)
-		if ext == ".toml" {
-			filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+	repman.ServiceTemplates = append(filelist, repolist...)
+
+	return nil
+}
+
+func (repman *ReplicationManager) GetAppTemplatesFromLocal() ([]string, error) {
+	filelist, err := share.ListFilesInSharedDir(repman.Conf.WithEmbed, repman.Conf.ShareDir, "app/deployments")
+	if err == nil {
+		for i, file := range filelist {
+			ext := filepath.Ext(file)
+			if ext == ".toml" {
+				filelist[i] = "shared/" + strings.TrimSuffix(file, ext)
+			}
 		}
 	}
 
@@ -3084,7 +3099,7 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 		list, err := os.ReadDir(templateDir)
 		if err != nil {
 			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading template directory %s: %v", templateDir, err)
-			return err
+			return filelist, err
 		}
 
 		for _, entry := range list {
@@ -3106,12 +3121,13 @@ func (repman *ReplicationManager) GetAppTemplates() error {
 		}
 	}
 
-	repolist, err := repman.Conf.LoadAppTemplateList()
-	if err != nil {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error loading app template list: %v", err)
+	// Remove empty entries
+	var cleanedFilelist []string
+	for _, file := range filelist {
+		if file != "" {
+			cleanedFilelist = append(cleanedFilelist, file)
+		}
 	}
 
-	repman.ServiceTemplates = append(filelist, repolist...)
-
-	return nil
+	return cleanedFilelist, nil
 }

@@ -577,6 +577,16 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitErrorlogCookie()
 			return true, nil
 		}
+	case config.ConstTaskJobsCheck:
+		if server.HasWaitJobsCheckCookie() {
+			server.DelWaitJobsCheckCookie()
+			return true, nil
+		}
+	case config.ConstTaskJobsUpgrade:
+		if server.HasWaitJobsUpgradeCookie() {
+			server.DelWaitJobsUpgradeCookie()
+			return true, nil
+		}
 	default:
 		return false, fmt.Errorf("unknown checktype %s", checktype)
 	}

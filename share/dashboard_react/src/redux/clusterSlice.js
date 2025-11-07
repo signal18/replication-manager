@@ -405,6 +405,26 @@ export const rollingOptimize = createAsyncThunk('cluster/rollingOptimize', async
   }
 })
 
+export const rollingJobsUpgrade = createAsyncThunk('cluster/rollingJobsUpgrade', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.rollingJobsUpgrade(clusterName, baseURL)
+    showSuccessBanner('Rolling jobs upgrade successful!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Rolling jobs upgrade failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.loadingStates.menuActions) {
+      return false;
+    }
+  }
+})
+    
+
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -594,8 +614,7 @@ export const checksumAllTables = createAsyncThunk('cluster/checksumAllTables', a
   }
 })
 
-export const setMaintenanceMode = createAsyncThunk(
-  'cluster/setMaintenanceMode',
+export const setMaintenanceMode = createAsyncThunk('cluster/setMaintenanceMode',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -608,8 +627,22 @@ export const setMaintenanceMode = createAsyncThunk(
     }
   }
 )
-export const promoteToLeader = createAsyncThunk(
-  'cluster/promoteToLeader',
+
+export const jobsUpgrade = createAsyncThunk('cluster/jobsUpgrade',
+  async ({ clusterName, serverId }, thunkAPI) => {
+    try {
+      const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+      const { data, status } = await clusterService.jobsUpgrade(clusterName, serverId, baseURL)
+      showSuccessBanner('Jobs upgrade initiated!', status, thunkAPI)
+      return { data, status }
+    } catch (error) {
+      showErrorBanner('Jobs upgrade failed!', error, thunkAPI)
+      handleError(error, thunkAPI)
+    }
+  }
+)
+
+export const promoteToLeader = createAsyncThunk('cluster/promoteToLeader',
   async ({ clusterName, serverId }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1496,8 +1529,8 @@ export const getClusterApps = createAsyncThunk('cluster/getClusterApps', async (
   // Add a condition to prevent the action from being dispatched if the user is already fetching the info
   {
     condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.apps) {
+      const { cluster } = getState();
+      if (cluster.isFetching.apps) {
         return false;
       }
     }
@@ -1596,6 +1629,9 @@ export const deploymentFieldChange = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('Deployment field updated!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1611,6 +1647,9 @@ export const deploymentFieldIndexAdd = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New deployment field row added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1625,6 +1664,9 @@ export const deploymentFieldIndexDrop = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.deploymentFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('Deployment field row dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1640,6 +1682,9 @@ export const storageFieldChange = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldChange(clusterName, appId, field, index, key, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('storage field updated!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1655,6 +1700,9 @@ export const storageFieldIndexAdd = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldIndexAdd(clusterName, appId, field, value, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New storage field row added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1669,6 +1717,9 @@ export const storageFieldIndexDrop = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.storageFieldIndexDrop(clusterName, appId, field, index, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('storage field row dropped!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1685,6 +1736,9 @@ export const connectDockerRegistry = createAsyncThunk(
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
       const { data, status } = await clusterService.connectDockerRegistry(clusterName, dockerRegistry, baseURL)
+      if (status !== 200) {
+        throw new Error(data)
+      }
       showSuccessBanner('New server added!', status, thunkAPI)
       return { data, status }
     } catch (error) {
@@ -1989,7 +2043,8 @@ export const clusterSlice = createSlice({
         stopProxy.pending,
         refreshStaging.pending,
         killThread.pending,
-        killQuery.pending
+        killQuery.pending,
+        rollingJobsUpgrade.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2060,7 +2115,8 @@ export const clusterSlice = createSlice({
         stopProxy.fulfilled,
         refreshStaging.fulfilled,
         killThread.fulfilled,
-        killQuery.fulfilled
+        killQuery.fulfilled,
+        rollingJobsUpgrade.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2132,7 +2188,8 @@ export const clusterSlice = createSlice({
         stopProxy.rejected,
         refreshStaging.rejected,
         killThread.rejected,
-        killQuery.rejected
+        killQuery.rejected,
+        rollingJobsUpgrade.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {

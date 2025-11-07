@@ -29,12 +29,12 @@ func NewGitlabClient(baseURL, token string) (*GitlabClient, error) {
 }
 
 // GetDirectoryFromRepository
-func (g *GitlabClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+func (g *GitlabClient) GetDirectoryFromRepository(cacheDir, projectID, branch, dir string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error) {
 	if dir == "" {
 		return nil, fmt.Errorf("directory cannot be empty")
 	}
 
-	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout)
+	cache, err := g.GetRepositoryTree(cacheDir, projectID, branch, timeout, refresh)
 	if cache == nil || cache.Tree == nil {
 		return nil, err
 	}
@@ -50,8 +50,9 @@ func (g *GitlabClient) GetDirectoryFromRepository(cacheDir, projectID, branch, d
 }
 
 // GetRepositoryTree retrieves the repository tree for a given project ID and branch or commit ID.
-func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration) (*treehelper.FileTreeCache, error) {
+func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, timeout time.Duration, refresh bool) (*treehelper.FileTreeCache, error) {
 	var recursive bool = true
+	var cache *treehelper.FileTreeCache
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -73,9 +74,11 @@ func (g *GitlabClient) GetRepositoryTree(cacheDir, projectID, branch string, tim
 		return nil, fmt.Errorf("failed to get commit for branch %s: %w", branch, err)
 	}
 
-	cache := g.LoadTreeFromCache(cacheDir, projectID, commit.ID)
-	if cache != nil {
-		return cache, nil
+	if !refresh {
+		cache = g.LoadTreeFromCache(cacheDir, projectID, commit.ID)
+		if cache != nil {
+			return cache, nil
+		}
 	}
 
 	tree, _, err := g.Client.Repositories.ListTree(projectID, opt, gitlab.WithContext(ctx))

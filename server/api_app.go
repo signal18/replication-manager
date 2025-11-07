@@ -139,6 +139,10 @@ func (repman *ReplicationManager) apiAppProtectedHandler(router *mux.Router) {
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
 	))
+	router.Handle("/api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGitRepoTree)),
+	))
 	router.Handle("/api/clusters/{clusterName}/apps/{appHost}/{appPort}/actions/drop", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAppDropByName)),
@@ -637,6 +641,10 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "cname":
+					if node.AppConfig.Deployment.Routes[index].CName == newValue {
+						http.Error(w, "CNAME unchanged", 500)
+						return
+					}
 					for _, existing := range node.AppConfig.Deployment.Routes {
 						if existing.CName == newValue {
 							http.Error(w, "Cannot duplicate route with same CName", http.StatusInternalServerError)
@@ -645,8 +653,17 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 					node.AppConfig.Deployment.Routes[index].CName = newValue
 				case "port":
+					if node.AppConfig.Deployment.Routes[index].Port == newValue {
+						http.Error(w, "Port unchanged", 500)
+						return
+					}
 					node.AppConfig.Deployment.Routes[index].Port = newValue
 				case "protocol":
+					if node.AppConfig.Deployment.Routes[index].Protocol == newValue {
+						http.Error(w, "Protocol unchanged", 500)
+						return
+					}
+
 					if newValue != "tcp" && newValue != "https" {
 						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", 500)
 						return
@@ -670,11 +687,22 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
+					if row.Name == newValue {
+						http.Error(w, "Variable name unchanged", 500)
+						return
+					}
 					row.Name = newValue
 				case "value":
-					// newValue, _ = node.ClusterGroup.ParseAppTemplate(newValue, node.AppClusterSubstitute)
+					if row.Value == newValue {
+						http.Error(w, "Variable value unchanged", 500)
+						return
+					}
 					row.Value = newValue
 				case "type":
+					if row.Type == newValue {
+						http.Error(w, "Variable type unchanged", 500)
+						return
+					}
 					row.Type = newValue
 				case "conditional":
 					old := row.Conditional
@@ -723,6 +751,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					http.Error(w, "Cannot change name of path. Please drop the path and recreate it with the new name.", 500)
 					return
 				case "parent":
+					if pm.ParentName == newValue {
+						http.Error(w, "Parent unchanged", 500)
+						return
+					}
+
 					if newValue == "" {
 						pm.ParentName = ""
 						pm.Parent = nil
@@ -738,56 +771,119 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					}
 
 				case "dockerpath":
+					if pm.DockerPath == newValue {
+						http.Error(w, "Docker path unchanged", 500)
+						return
+					}
+
 					pm.DockerPath = newValue
 				case "srctype":
+					newSourceType := config.SourceType(newValue)
+					if pm.SourceType == newSourceType {
+						http.Error(w, "Source type unchanged", 500)
+						return
+					}
+
+					if newValue == "" {
+						http.Error(w, "Source type cannot be empty", 500)
+						return
+					}
+
 					switch newValue {
 					case string(config.SourceGit), string(config.SourceS3), string(config.SourceVolume):
-						pm.SourceType = config.SourceType(newValue)
+						// Reset source name and path if type changes
+						pm.SourceType = newSourceType
 						pm.SourceName = "" // Reset source name if type changes
+						if node.HasProvisionCookie() {
+							node.SetReprovCookie()
+						}
 					default:
 						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
 						return
 					}
 				case "srcname":
-					if pm.SourceName != newValue {
-						pm.SourceName = newValue
-						pm.SourcePath = "" // Reset source path if source name changes
-						if newValue != "" {
-							switch pm.SourceType {
-							case config.SourceGit:
-								source, err := deployment.GetGitClone(newValue)
-								if err == nil {
-									pm.SourcePath = source.GetSourcePath()
-								}
-							case config.SourceS3:
-								source, err := deployment.GetS3Mount(newValue)
-								if err == nil {
-									pm.SourcePath = source.GetSourcePath()
-								}
-							case config.SourceVolume:
-								source, err := deployment.GetVolumeByName(newValue)
-								if err == nil {
-									pm.SourcePath = source.GetSourcePath()
-								}
-							default:
-								http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
-								return
-							}
-						}
-						pm.SourcePath = "" // Reset source path if source name changes
+					if pm.SourceName == newValue {
+						http.Error(w, "Source name unchanged", 500)
+						return
 					}
 
+					if newValue == "" && pm.SourceType != "" {
+						http.Error(w, "Source name cannot be empty when source type is set", 500)
+						return
+					}
+
+					switch pm.SourceType {
+					case config.SourceGit:
+						source, err := deployment.GetGitClone(newValue)
+						if err == nil {
+							pm.SourcePath = source.GetSourcePath()
+						}
+					case config.SourceS3:
+						source, err := deployment.GetS3Mount(newValue)
+						if err == nil {
+							pm.SourcePath = source.GetSourcePath()
+						}
+					case config.SourceVolume:
+						source, err := deployment.GetVolumeByName(newValue)
+						if err == nil {
+							pm.SourcePath = source.GetSourcePath()
+						}
+					default:
+						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+						return
+					}
+
+					pm.SourceName = newValue
+
 				case "srcpath":
-					pm.SourcePath = newValue
+					if pm.SourcePath == newValue {
+						http.Error(w, "Source path unchanged", 500)
+						return
+					}
+
+					if newValue != "" && newValue != "/" {
+						pm.SourcePath = newValue
+					} else if pm.SourceName != "" {
+						switch pm.SourceType {
+						case config.SourceGit:
+							source, err := deployment.GetGitClone(newValue)
+							if err == nil {
+								pm.SourcePath = source.GetSourcePath()
+							}
+						case config.SourceS3:
+							source, err := deployment.GetS3Mount(newValue)
+							if err == nil {
+								pm.SourcePath = source.GetSourcePath()
+							}
+						case config.SourceVolume:
+							source, err := deployment.GetVolumeByName(newValue)
+							if err == nil {
+								pm.SourcePath = source.GetSourcePath()
+							}
+						default:
+							http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+							return
+						}
+					} else {
+						http.Error(w, "Source path cannot be empty", 500)
+						return
+					}
+
 				default:
 					http.Error(w, "Invalid key for path", 500)
 					return
 				}
 
+				err := deployment.ResolvePath(pm)
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: ", err)
+				}
 			default:
 				http.Error(w, "Invalid field", 500)
 				return
 			}
+
+			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Deployment field modified"))
@@ -945,6 +1041,8 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		return
 	}
 
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	json.NewEncoder(w).Encode(map[string]string{"message": "Deployment field row added"})
 }
@@ -1064,6 +1162,9 @@ func (repman *ReplicationManager) handlerMuxDropDeploymentFieldRow(w http.Respon
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
 	}
+
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Deployment field row removed"))
@@ -1198,6 +1299,8 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 		return
 	}
 
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage added successfully"))
 	return
@@ -1289,38 +1392,77 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing git clone
-					http.Error(w, "Cannot change name of existing git clone. Please drop the git clone and create a new one.", 500)
-					return
+					if gc.Name == newValue {
+						http.Error(w, "Name is the same as the current name", 500)
+						return
+					}
+					if newValue == "" {
+						http.Error(w, "Name cannot be empty", 500)
+						return
+					}
+					old, _ := node.GetGitClone(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate git clone with same name", http.StatusInternalServerError)
+						return
+					}
+
+					paths := deployment.GetGitPaths(gc.Name)
+					gc.Name = newValue
+					for _, p := range paths {
+						p.SourceName = newValue
+						deployment.ResolvePath(p)
+					}
+
 				case "repo":
+					newValue = strings.TrimSuffix(newValue, ".git")
+					if gc.GitRepo == newValue {
+						http.Error(w, "Repo is the same as the current repo", 500)
+						return
+					}
 					if newValue == "" {
 						http.Error(w, "Repo cannot be empty", 500)
 						return
 					}
 					gc.GitRepo = newValue
+
 				case "branch":
+					if gc.GitBranch == newValue {
+						http.Error(w, "Branch is the same as the current branch", 500)
+						return
+					}
+
 					if newValue == "" {
 						http.Error(w, "Branch cannot be empty", 500)
 						return
 					}
+
 					gc.GitBranch = newValue
+
 				case "volumename":
+					if gc.VolumeName == newValue {
+						http.Error(w, "VolumeName is the same as the current volume name", 500)
+						return
+					}
+
 					if newValue == "" {
 						http.Error(w, "VolumeName cannot be empty", 500)
 						return
 					}
-					if newValue != gc.VolumeName {
-						newvol, err := deployment.GetVolumeByName(newValue)
-						if err != nil {
-							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
-							return
-						}
-						if deployment.HasDuplicateGitVolumePath(newValue, gc.VolumeDir) {
-							gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
-						}
-						gc.VolumeName = newValue
-						gc.Volume = newvol
+
+					newvol, err := deployment.GetVolumeByName(newValue)
+					if err != nil {
+						http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+						return
 					}
+					// Check for duplicate git volume path
+					if deployment.HasDuplicateGitVolumePath(gc.Name, newValue, gc.VolumeDir) {
+						gc.VolumeDir = filepath.Join(newvol.VolumeDir, gc.Name)
+					}
+					gc.VolumeName = newValue
+					gc.Volume = newvol
+
+					deployment.ResolveGitPaths(gc.Name)
+
 				case "volumedir":
 					if newValue == "" {
 						curvol, err := deployment.GetVolumeByName(gc.VolumeName)
@@ -1330,16 +1472,31 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						}
 						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
 					}
-					if newValue != gc.VolumeDir {
-						if deployment.HasDuplicateGitVolumePath(gc.VolumeName, newValue) {
-							http.Error(w, "Duplicate value for git volume path", 500)
-							return
-						}
-						gc.VolumeDir = newValue
+
+					if gc.VolumeDir == newValue {
+						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						return
 					}
+
+					if deployment.HasDuplicateGitVolumePath(gc.Name, gc.VolumeName, newValue) {
+						http.Error(w, "Duplicate value for git volume path", 500)
+						return
+					}
+					gc.VolumeDir = newValue
+
+					deployment.ResolveGitPaths(gc.Name)
 				case "user":
+					if gc.GitUser == newValue {
+						http.Error(w, "User is the same as the current user", 500)
+						return
+					}
 					gc.GitUser = newValue
 				case "pass":
+					if mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass) == newValue {
+						http.Error(w, "Password is the same as the current password", 500)
+						return
+					}
+
 					gc.GitPass = mycluster.Conf.GetEncryptedString(newValue)
 				default:
 					http.Error(w, "Invalid key for gitClones", 500)
@@ -1361,21 +1518,48 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing volume
-					http.Error(w, "Cannot change name of existing volume. Please drop the volume and create a new one.", 500)
-					return
+					if vol.Name == newValue {
+						http.Error(w, "Name is the same as the current name", 500)
+						return
+					}
+
+					old, _ := deployment.GetVolumeByName(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate volume with same name", 500)
+						return
+					}
+
+					paths := deployment.GetVolumePaths(vol.Name)
+					vol.Name = newValue
+					for _, p := range paths {
+						p.SourceName = vol.Name
+						deployment.ResolvePath(p)
+					}
+
 				case "poolname":
+					if vol.PoolName == newValue {
+						http.Error(w, "PoolName is the same as the current pool name", 500)
+						return
+					}
+
 					if newValue == "" {
 						http.Error(w, "PoolName cannot be empty", 500)
 						return
 					}
 					vol.PoolName = newValue
+
 				case "volumedir":
+					if vol.VolumeDir == newValue {
+						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						return
+					}
 					if newValue == "" {
 						http.Error(w, "VolumeDir cannot be empty", 500)
 						return
 					}
 					vol.VolumeDir = newValue
+					deployment.ResolveVolumePaths(vol.Name)
+
 				default:
 					http.Error(w, "Invalid key for volumes", 500)
 					return
@@ -1394,10 +1578,35 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				switch vars["key"] {
 				case "name":
-					// Do not allow changing the name of an existing S3 directory
-					http.Error(w, "Cannot change name of existing S3 directory. Please drop the S3 directory and create a new one.", 500)
-					return
+					if s3Mount.Name == newValue {
+						http.Error(w, "Name is the same as the current name", 500)
+						return
+					}
+
+					if newValue == "" {
+						http.Error(w, "Name cannot be empty", 500)
+						return
+					}
+
+					old, _ := deployment.GetS3Mount(newValue)
+					if old != nil {
+						http.Error(w, "Cannot duplicate volume with same name", 500)
+						return
+					}
+
+					paths := deployment.GetS3MountPaths(s3Mount.Name)
+					s3Mount.Name = newValue
+					for _, p := range paths {
+						p.SourceName = newValue
+						deployment.ResolvePath(p)
+					}
+
 				case "endpoint":
+					if s3Mount.Endpoint == newValue {
+						http.Error(w, "Endpoint is the same as the current endpoint", 500)
+						return
+					}
+
 					if newValue == "" {
 						http.Error(w, "Endpoint cannot be empty", 500)
 						return
@@ -1432,25 +1641,46 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					}
 
 					s3Mount.Endpoint = newValue
+
 				case "bucket":
+					if s3Mount.Bucket == newValue {
+						http.Error(w, "Bucket is the same as the current bucket", 500)
+						return
+					}
+					if newValue == "" {
+						http.Error(w, "Bucket cannot be empty", 500)
+						return
+					}
 					s3Mount.Bucket = newValue
 				case "volumename":
+					if s3Mount.VolumeName == newValue {
+						http.Error(w, "VolumeName is the same as the current volume name", 500)
+						return
+					}
+
 					if newValue == "" {
 						http.Error(w, "VolumeName cannot be empty", 500)
 						return
 					}
-					if newValue != s3Mount.VolumeName {
-						newvol, err := deployment.GetVolumeByName(newValue)
-						if err != nil {
-							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
-							return
-						}
-						if deployment.HasDuplicateS3VolumePath(newValue, s3Mount.VolumeDir) {
-							s3Mount.VolumeDir = filepath.Join(newvol.VolumeDir, s3Mount.Name)
-						}
-						s3Mount.VolumeName = newValue
+
+					newvol, err := deployment.GetVolumeByName(newValue)
+					if err != nil {
+						http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+						return
 					}
+
+					if deployment.HasDuplicateS3VolumePath(newValue, s3Mount.VolumeDir) {
+						s3Mount.VolumeDir = filepath.Join(newvol.VolumeDir, s3Mount.Name)
+					}
+					s3Mount.VolumeName = newValue
+
+					deployment.ResolveS3MountPaths(s3Mount.Name)
 				case "volumedir":
+					if s3Mount.VolumeDir == newValue {
+						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						return
+					}
+
 					if newValue == "" {
 						curvol, err := deployment.GetVolumeByName(s3Mount.VolumeName)
 						if err != nil {
@@ -1459,13 +1689,14 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 						}
 						newValue = filepath.Join(curvol.VolumeDir, s3Mount.Name)
 					}
-					if newValue != s3Mount.VolumeDir {
-						if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
-							http.Error(w, "Duplicate value for S3 volume path", 500)
-							return
-						}
-						s3Mount.VolumeDir = newValue
+
+					if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
+						http.Error(w, "Duplicate value for S3 volume path", 500)
+						return
 					}
+					s3Mount.VolumeDir = newValue
+
+					deployment.ResolveS3MountPaths(s3Mount.Name)
 				default:
 					http.Error(w, "Invalid key for s3Mounts", 500)
 					return
@@ -1474,6 +1705,8 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				http.Error(w, "Invalid field", 500)
 				return
 			}
+
+			mycluster.EnqueueRefreshAppTemplateMD5(node)
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Storage field modified"))
@@ -1573,6 +1806,9 @@ func (repman *ReplicationManager) handlerMuxDropStorageFieldRow(w http.ResponseW
 		http.Error(w, "Invalid field", http.StatusInternalServerError)
 		return
 	}
+
+	mycluster.EnqueueRefreshAppTemplateMD5(node)
+
 	// If we reach here, the row was successfully removed
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage field row removed"))
@@ -1738,11 +1974,13 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 // @Param clusterName path string true "Cluster Name"
 // @Param appId path string true "App ID"
 // @Param gitName path string true "Git Name"
+// @Param force path string false "Force refresh of the repository tree"
 // @Success 200 {object} treehelper.FileTreeCache "Git repository tree structure"
 // @Failure 400 {string} string "Invalid Git repository URL"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree"
 // @Router /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree [get]
+// @Router /api/clusters/{clusterName}/apps/{appId}/git/{gitName}/actions/get-repo-tree/{force} [get]
 func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1752,6 +1990,8 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+
+		force := strings.ToLower(vars["force"]) == "force"
 
 		app := mycluster.GetAppFromName(vars["appId"])
 		if app == nil {
@@ -1795,7 +2035,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		if gc.Timeout <= 0 {
 			timeout = 15 * time.Second // Default timeout if not specified
 		}
-		tree, err := gClient.GetRepositoryTree(cacheDir, projectID, gc.GitBranch, timeout)
+		tree, err := gClient.GetRepositoryTree(cacheDir, projectID, gc.GitBranch, timeout, force)
 		if err != nil {
 			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
 			return
@@ -2077,7 +2317,7 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 	}
 }
 
-// @Summary Get App Template Repository Tree
+// @Summary Refresh App Template from Repo
 // @Description Retrieves the tree structure of the application template repository for a specific cluster.
 // @Tags Apps
 // @Accept json
@@ -2085,12 +2325,11 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Success 200 {object} treehelper.FileTreeCache "Application template repository tree structure"
-// @Failure 400 {string} string "Invalid Git repository URL"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Error creating Git client" or "Error getting repository tree" or "No cluster"
-// @Router /api/clusters/{clusterName}/apps/actions/get-app-template [get]
+// @Failure 500 {string} string "Error getting repository tree" or "No cluster"
+// @Router /api/clusters/{clusterName}/actions/refresh-apps-template [get]
 // This endpoint retrieves the tree structure of the application template repository for a specific cluster.
-func (repman *ReplicationManager) handlerMuxAppGetTemplateFromRepo(w http.ResponseWriter, r *http.Request) {
+func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
@@ -2100,20 +2339,17 @@ func (repman *ReplicationManager) handlerMuxAppGetTemplateFromRepo(w http.Respon
 			return
 		}
 
-		gitpass := mycluster.Conf.GetDecryptedPassword("App Template Repo Pass", mycluster.Conf.ProvAppTemplateRepoPassword)
-		gitrepo := mycluster.Conf.ProvAppTemplateRepo
-		gitbranch := mycluster.Conf.ProvAppTemplateRepoBranch
-		cacheDir := filepath.Join(mycluster.Conf.WorkingDir, ".cache", "git", "repos")
-		timeout := mycluster.Conf.Timeout
+		repman.GetAppTemplates()
 
-		tree, err := githelper.GetTemplateFromRepo(gitrepo, gitpass, gitbranch, cacheDir, timeout)
+		jsondata, err := json.Marshal(repman.ServiceTemplates)
 		if err != nil {
 			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(tree)
+		w.WriteHeader(http.StatusOK)
+		w.Write(jsondata)
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

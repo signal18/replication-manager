@@ -24,6 +24,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
+	"github.com/signal18/replication-manager/utils/state"
 )
 
 func (server *ServerMonitor) SetPlacement(k int, ProvAgents string, SlapOSDBPartitions string, SchedulerReceiverPorts string) {
@@ -754,4 +755,26 @@ func (server *ServerMonitor) SetWaitErrorlogCookie() error {
 
 func (server *ServerMonitor) SetWaitSlowqueryCookie() error {
 	return server.createCookie("cookie_wait_slowquery")
+}
+
+func (server *ServerMonitor) SetWaitJobsCheckCookie() error {
+	return server.createCookie("cookie_wait_jobs_check")
+}
+
+func (server *ServerMonitor) SetWaitJobsUpgradeCookie() error {
+	return server.createCookie("cookie_wait_jobs_upgrade")
+}
+
+func (server *ServerMonitor) SetRollingJobsUpgradeCookie() error {
+	return server.createCookie("cookie_rolling_jobs_upgrade")
+}
+
+func (server *ServerMonitor) SetErrState(key, errtype, from, desc string, args ...interface{}) {
+	cluster := server.ClusterGroup
+	cluster.SetState(key, state.State{
+		ErrType:   errtype,
+		ErrDesc:   fmt.Sprintf(desc, args...),
+		ErrFrom:   from,
+		ServerUrl: server.URL,
+	})
 }

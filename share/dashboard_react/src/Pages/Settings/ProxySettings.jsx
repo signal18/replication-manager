@@ -45,7 +45,7 @@ function ProxySettings({ selectedCluster, user, openConfirmModal }) {
             dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'proxysql-bootstrap-users' }))
           }
           isDisabled={user?.grants['cluster-settings'] == false}
-          isChecked={selectedCluster?.config?.proxysqlBootstrapyUsers}
+          isChecked={selectedCluster?.config?.proxysqlBootstrapUsers}
         />
       )
     },

@@ -33,6 +33,7 @@ export const clusterService = {
   setCredentials,
   rotateDBCredential,
   rollingOptimize,
+  rollingJobsUpgrade,
   rollingRestart,
   rotateCertificates,
   reloadCertificates,
@@ -51,6 +52,7 @@ export const clusterService = {
 
   // Server management APIs
   setMaintenanceMode,
+  jobsUpgrade,
   promoteToLeader,
   setAsUnrated,
   setAsPreferred,
@@ -275,6 +277,10 @@ function rollingOptimize(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/optimize`)
 }
 
+function rollingJobsUpgrade(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/jobs-upgrade`)
+}
+
 function rollingRestart(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/actions/rolling`)
 }
@@ -339,6 +345,10 @@ function reseedStagingFromParent(clusterName, baseURL) {
 //#region Server management APIs
 function setMaintenanceMode(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/maintenance`)
+}
+
+function jobsUpgrade(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/jobs-upgrade`)
 }
 
 function promoteToLeader(clusterName, serverId, baseURL) {
