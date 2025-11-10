@@ -2104,7 +2104,7 @@ func (repman *ReplicationManager) Run() error {
 		repman.OpenSVC.RplMgrUser, repman.OpenSVC.RplMgrPassword = misc.SplitPair(repman.Conf.ProvUser) //yaml licence
 		repman.OpenSVC.RplMgrCodeApp = repman.Conf.ProvCodeApp
 		if !repman.Conf.ProvOpensvcUseCollectorAPI {
-			repman.OpenSVC.UseAPI = repman.Conf.ProvOpensvcUseCollectorAPI
+			repman.OpenSVC.UseCollectorAPI = repman.Conf.ProvOpensvcUseCollectorAPI
 			repman.OpenSVC.CertsDERSecret = repman.Conf.GetDecryptedValue("opensvc-p12-secret")
 			err := repman.OpenSVC.LoadCert(repman.Conf.ProvOpensvcP12Certificate)
 			if err != nil {

@@ -25,7 +25,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
 	svc.ClusterConf = cluster.Conf
 	svc.Logrus = cluster.Logrus
-	svc.UseAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
+	svc.UseCollectorAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
@@ -75,6 +75,19 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.Verbose = cluster.GetLogLevel()
 	svc.ContextTimeoutSecond = 10
 
+	if cluster.OrchestratorVersion == "v3" {
+		// Set collector to v3 if already detected
+		svc.SetV3()
+	} else {
+		// Try to detect v3
+		_ = svc.GetAuthInfoV3()
+
+		// Set OrchestratorVersion if v3 detected
+		if svc.IsV3() {
+			cluster.OrchestratorVersion = "v3"
+		}
+	}
+
 	return svc
 }
 
@@ -121,36 +134,37 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return errors.New("No support of Maps in Collector API")
 	}
+
 	svc := cluster.OpenSVCConnect()
-	err := svc.CreateSecretV2(cluster.Name, "env", agent)
+	err := svc.CreateSecret(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
 	}
-	err = svc.CreateConfigV2(cluster.Name, "env", agent)
+	err = svc.CreateConfig(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
 	}

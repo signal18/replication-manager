@@ -40,7 +40,7 @@ type ConfigKeyValueRequest struct {
 func (collector *Collector) GetHttpClient() *http.Client {
 	tlsConfig := &tls.Config{InsecureSkipVerify: true}
 	client := &http.Client{}
-	if !collector.UseAPI {
+	if !collector.UseCollectorAPI {
 		cert, err := collector.FromP12Bytes(collector.CertsDER, collector.CertsDERSecret)
 		if err != nil {
 			if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
@@ -361,6 +361,14 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	return nil
 }
 
+func (collector *Collector) CreateConfigKeyValue(namespace string, service string, key string, value string) error {
+	if collector.IsV3() {
+		return collector.CreateConfigKeyValueV3(namespace, service, key, value)
+	} else {
+		return collector.CreateConfigKeyValueV2(namespace, service, key, value)
+	}
+}
+
 func (collector *Collector) CreateConfigKeyValueV2(namespace string, service string, key string, value string) error {
 	// Construction de l'URL de manière plus propre
 	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
@@ -432,6 +440,14 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 	return nil
 }
 
+func (collector *Collector) CreateSecretKeyValue(namespace string, service string, key string, value string) error {
+	if collector.IsV3() {
+		return collector.CreateSecretKeyValueV3(namespace, service, key, value)
+	} else {
+		return collector.CreateSecretKeyValueV2(namespace, service, key, value)
+	}
+}
+
 func (collector *Collector) CreateSecretKeyValueV2(namespace string, service string, key string, value string) error {
 
 	urlpost := fmt.Sprintf("https://%s:%s/key", collector.Host, collector.Port)
@@ -491,6 +507,14 @@ type CreateRequest struct {
 	Sync      bool                   `json:"sync,omitempty"`
 }
 
+func (collector *Collector) CreateSecret(namespace string, service string, agent string) error {
+	if collector.IsV3() {
+		return collector.CreateSecretV3(namespace, service, agent)
+	} else {
+		return collector.CreateSecretV2(namespace, service, agent)
+	}
+}
+
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
@@ -544,6 +568,14 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
 	}
 	return nil
+}
+
+func (collector *Collector) CreateConfig(namespace string, service string, agent string) error {
+	if collector.IsV3() {
+		return collector.CreateConfigV3(namespace, service, agent)
+	} else {
+		return collector.CreateConfigV2(namespace, service, agent)
+	}
 }
 
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
@@ -796,137 +828,13 @@ func (collector *Collector) WaitServicePropagate(srv string, node string) error 
 }
 
 func (collector *Collector) GetNodes() ([]Host, error) {
-
-	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
-	if !collector.UseAPI {
-		url = "https://" + collector.Host + ":" + collector.Port + "/get_node"
-	}
-	client := collector.GetHttpClient()
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	if collector.UseAPI {
-		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
-		//		collector.Logrus.WithField("FROM", "OpenSVC").Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
+	if collector.UseCollectorAPI {
+		return collector.GetNodesV1()
+	} else if collector.IsV3() {
+		return collector.GetNodesV3()
 	} else {
-		req.Header.Set("content-type", "application/json")
-		req.Header.Set("o-node", "*")
+		return collector.GetNodesV2()
 	}
-	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
-
-	defer cancel()
-	req = req.WithContext(ctx)
-	// Following can be use to cancel context timeout to trace API response time
-	/*	trace := &httptrace.ClientTrace{
-			DNSDone: func(dnsInfo httptrace.DNSDoneInfo) {
-				fmt.Printf("%v DNS Info: %+v\n", time.Now(), dnsInfo)
-			},
-			GotConn: func(connInfo httptrace.GotConnInfo) {
-				fmt.Printf("%v Got Conn: %+v\n", time.Now(), connInfo)
-			},
-		}
-		req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
-	*/
-
-	startConnect := time.Now()
-	resp, err := client.Do(req)
-
-	stopConnect := time.Now()
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
-	}
-	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
-		}
-		return nil, err
-	}
-
-	defer client.CloseIdleConnections()
-	defer resp.Body.Close()
-	startRead := time.Now()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	endRead := time.Now()
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
-	}
-	if collector.UseAPI {
-		type Message struct {
-			Data []Host `json:"data"`
-		}
-		var r Message
-
-		err = json.Unmarshal(body, &r)
-		if err != nil {
-			if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-				collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
-			}
-			return nil, err
-		}
-		for i, agent := range r.Data {
-			r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
-			r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
-		}
-		return r.Data, nil
-	}
-
-	//Procedd with cluster VIP
-	type Property struct {
-		Title  string `json:"title"`
-		Value  string `json:"value"`
-		Source string `json:"source"`
-	}
-	type SHost struct {
-		Nodename   Property `json:"nodename"`
-		Fqdn       Property `json:"fqdn"`
-		Version    Property `json:"version"`
-		Osname     Property `json:"os_name"`
-		Osvendor   Property `json:"os_vendor"`
-		Osrelease  Property `json:"os_release"`
-		Oskernel   Property `json:"os_kernel"`
-		Osarch     Property `json:"os_arch"`
-		Membytes   Property `json:"mem_bytes"`
-		Cpufreq    Property `json:"cpu_freq"`
-		Cputhreads Property `json:"cpu_threads"`
-	}
-
-	type Message struct {
-		Data map[string]SHost `json:"nodes"`
-	}
-	var r Message
-
-	err = json.Unmarshal(body, &r)
-	if err != nil {
-		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
-			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
-		}
-		return nil, err
-	}
-	crcTable := crc64.MakeTable(crc64.ECMA)
-
-	nhosts := make([]Host, len(r.Data), len(r.Data))
-	i := 0
-	for _, agent := range r.Data {
-		//		collector.Logrus.WithField("FROM", "OpenSVC").Println("ERROR ", agent)
-		nhosts[i].Node_id = strconv.FormatUint(crc64.Checksum([]byte(agent.Nodename.Value), crcTable), 10)
-		nhosts[i].Cpu_cores, _ = strconv.ParseInt(agent.Cputhreads.Value, 10, 64)
-		nhosts[i].Cpu_freq, _ = strconv.ParseInt(agent.Cpufreq.Value, 10, 64)
-		nhosts[i].Mem_bytes, _ = strconv.ParseInt(agent.Membytes.Value, 10, 64)
-		nhosts[i].Node_name = agent.Nodename.Value
-		nhosts[i].Os_kernel = agent.Oskernel.Value
-		nhosts[i].Os_name = agent.Osname.Value
-		//		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
-		//		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
-		i++
-	}
-
-	return nhosts, nil
-
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {
@@ -1086,7 +994,7 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	if collector.UseAPI {
+	if collector.UseCollectorAPI {
 		req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
 		//		collector.Logrus.WithField("FROM", "OpenSVC").Printf("Info opensvc login %s %s", collector.RplMgrUser, collector.RplMgrPassword)
 	} else {
@@ -1138,4 +1046,103 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 	}
 
 	return stats, nil
+}
+
+func (collector *Collector) GetNodesV2() ([]Host, error) {
+
+	url := "https://" + collector.Host + ":" + collector.Port + "/get_node"
+
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("o-node", "*")
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+
+	stopConnect := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
+
+	defer client.CloseIdleConnections()
+	defer resp.Body.Close()
+	startRead := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	endRead := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	//Procedd with cluster VIP
+	type Property struct {
+		Title  string `json:"title"`
+		Value  string `json:"value"`
+		Source string `json:"source"`
+	}
+	type SHost struct {
+		Nodename   Property `json:"nodename"`
+		Fqdn       Property `json:"fqdn"`
+		Version    Property `json:"version"`
+		Osname     Property `json:"os_name"`
+		Osvendor   Property `json:"os_vendor"`
+		Osrelease  Property `json:"os_release"`
+		Oskernel   Property `json:"os_kernel"`
+		Osarch     Property `json:"os_arch"`
+		Membytes   Property `json:"mem_bytes"`
+		Cpufreq    Property `json:"cpu_freq"`
+		Cputhreads Property `json:"cpu_threads"`
+	}
+
+	type Message struct {
+		Data map[string]SHost `json:"nodes"`
+	}
+	var r Message
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+	crcTable := crc64.MakeTable(crc64.ECMA)
+
+	nhosts := make([]Host, len(r.Data), len(r.Data))
+	i := 0
+	for _, agent := range r.Data {
+		//		collector.Logrus.WithField("FROM", "OpenSVC").Println("ERROR ", agent)
+		nhosts[i].Node_id = strconv.FormatUint(crc64.Checksum([]byte(agent.Nodename.Value), crcTable), 10)
+		nhosts[i].Cpu_cores, _ = strconv.ParseInt(agent.Cputhreads.Value, 10, 64)
+		nhosts[i].Cpu_freq, _ = strconv.ParseInt(agent.Cpufreq.Value, 10, 64)
+		nhosts[i].Mem_bytes, _ = strconv.ParseInt(agent.Membytes.Value, 10, 64)
+		nhosts[i].Node_name = agent.Nodename.Value
+		nhosts[i].Os_kernel = agent.Oskernel.Value
+		nhosts[i].Os_name = agent.Osname.Value
+		//		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+		//		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
+		i++
+	}
+
+	return nhosts, nil
 }

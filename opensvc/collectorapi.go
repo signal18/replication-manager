@@ -9,6 +9,7 @@ package opensvc
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/md5"
 	"crypto/tls"
@@ -24,6 +25,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	log "github.com/sirupsen/logrus"
@@ -94,7 +96,8 @@ type Collector struct {
 	Port                        string
 	User                        string
 	Pass                        string
-	UseAPI                      bool
+	UseCollectorAPI             bool
+	ClusterApiVersion           string
 	CertsDER                    []byte
 	CertsDERSecret              string
 	RplMgrUser                  string
@@ -1938,4 +1941,69 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 	}
 	return string(body), nil
 
+}
+
+func (collector *Collector) GetNodesV1() ([]Host, error) {
+
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
+
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+
+	stopConnect := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Connect took: %s\n", stopConnect.Sub(startConnect))
+	}
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+
+	defer client.CloseIdleConnections()
+	defer resp.Body.Close()
+	startRead := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	endRead := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
+	type Message struct {
+		Data []Host `json:"data"`
+	}
+	var r Message
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlErr) {
+			collector.Logrus.WithField("FROM", "OpenSVC").Errorln("OpenSVC API Error: ", err)
+		}
+		return nil, err
+	}
+
+	for i, agent := range r.Data {
+		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
+	}
+
+	return r.Data, nil
 }

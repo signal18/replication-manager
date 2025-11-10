@@ -264,6 +264,7 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
+	OrchestratorVersion string       `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {

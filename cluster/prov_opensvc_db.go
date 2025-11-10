@@ -7,6 +7,7 @@
 package cluster
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/utils/state"
+	ini "gopkg.in/ini.v1"
 )
 
 func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) []byte {
@@ -44,6 +46,91 @@ func (cluster *Cluster) GetDatabaseServiceConfig(s *ServerMonitor) []byte {
 	}
 }
 
+func (cluster *Cluster) OpenSVCProvisionDatabaseV1(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
+	var taglist []string
+
+	// Unprovision if already in OpenSVC
+	var idsrv string
+	mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
+	if err == nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/svc/"+s.Name, mysrv.Svc_id)
+		idsrv = mysrv.Svc_id
+	} else {
+		idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC service %s", err)
+			return err
+		}
+	}
+	err = svc.DeleteServiceTags(idsrv)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags: %s", err)
+		return err
+	}
+	taglist = strings.Split(svc.ProvTags, ",")
+	svctags, _ := svc.GetTags()
+	for _, tag := range taglist {
+		idtag, err := svc.GetTagIdFromTags(svctags, tag)
+		if err != nil {
+			idtag, _ = svc.CreateTag(tag)
+		}
+		svc.SetServiceTag(idtag, idsrv)
+	}
+
+	// create template && bootstrap
+	res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, cluster.Name+"/svc/"+s.Name, agent.Node_name)
+	if err != nil {
+		return err
+	}
+	idtemplate, _ := svc.CreateTemplate(cluster.Name+"/svc/"+s.Name, string(res))
+	idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+s.Name)
+	err = cluster.OpenSVCWaitDequeue(svc, idaction)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
+		return err
+	}
+	task := svc.GetAction(strconv.Itoa(idaction))
+	if task != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCProvisionDatabaseV2(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
+	cluster.OpenSVCCreateMaps(s.Agent)
+	res, err := s.GenerateDBTemplateV2()
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+	}
+
+	return nil
+}
+
+func (cluster *Cluster) OpenSVCProvisionDatabaseV3(s *ServerMonitor, svc opensvc.Collector, agent opensvc.Host) error {
+	cluster.OpenSVCCreateMaps(s.Agent)
+	res, err := s.GenerateDBTemplateV3()
+	if err != nil {
+		return err
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
+	err = svc.CreateTemplateV3(cluster.Name, s.ServiceName, s.Agent, res)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
+	}
+
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	svc := cluster.OpenSVCConnect()
 	agent, err := cluster.OpenSVCFoundDatabaseAgent(s)
@@ -51,73 +138,17 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 		cluster.errorChan <- err
 		return
 	}
+
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
-		var taglist []string
-
-		// Unprovision if already in OpenSVC
-		var idsrv string
-		mysrv, err := svc.GetServiceFromName(cluster.Name + "/svc/" + s.Name)
-		if err == nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found opensvc database service %s service %s", cluster.Name+"/svc/"+s.Name, mysrv.Svc_id)
-			idsrv = mysrv.Svc_id
-		} else {
-			idsrv, err = svc.CreateService(cluster.Name+"/svc/"+s.Name, "MariaDB")
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC service %s", err)
-				cluster.errorChan <- err
-				return
-			}
-		}
-		err = svc.DeleteServiceTags(idsrv)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't delete service tags")
-			cluster.errorChan <- err
-			return
-		}
-		taglist = strings.Split(svc.ProvTags, ",")
-		svctags, _ := svc.GetTags()
-		for _, tag := range taglist {
-			idtag, err := svc.GetTagIdFromTags(svctags, tag)
-			if err != nil {
-				idtag, _ = svc.CreateTag(tag)
-			}
-			svc.SetServiceTag(idtag, idsrv)
-		}
-
-		// create template && bootstrap
-		res, err := s.GenerateDBTemplate(svc, []string{s.Host}, []string{s.Port}, []opensvc.Host{agent}, cluster.Name+"/svc/"+s.Name, agent.Node_name)
-		if err != nil {
-			cluster.errorChan <- err
-			return
-		}
-		idtemplate, _ := svc.CreateTemplate(cluster.Name+"/svc/"+s.Name, string(res))
-		idaction, _ := svc.ProvisionTemplate(idtemplate, agent.Node_id, cluster.Name+"/svc/"+s.Name)
-		err = cluster.OpenSVCWaitDequeue(svc, idaction)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
-			cluster.errorChan <- err
-			return
-		}
-		task := svc.GetAction(strconv.Itoa(idaction))
-		if task != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", task.Stderr)
-		} else {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't fetch task")
-		}
+		err = cluster.OpenSVCProvisionDatabaseV1(s, svc, agent)
+	} else if svc.IsV3() {
+		err = cluster.OpenSVCProvisionDatabaseV3(s, svc, agent)
 	} else {
-		cluster.OpenSVCCreateMaps(s.Agent)
-		res, err := s.GenerateDBTemplateV2()
-		if err != nil {
-			cluster.errorChan <- err
-			return
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "%s", res)
-		err = svc.CreateTemplateV2(cluster.Name, s.ServiceName, s.Agent, res)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not provision database:  %s ", err)
-		}
-
+		err = cluster.OpenSVCProvisionDatabaseV2(s, svc, agent)
+	}
+	if err != nil {
+		cluster.errorChan <- err
+		return
 	}
 	cluster.WaitDatabaseStart(s)
 
@@ -653,6 +684,47 @@ func (cluster *Cluster) OpenSVCGetVolumeDockerSection() map[string]string {
 
 func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 
+	svcsection := server.GenerateDBTemplateMap()
+
+	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
+	if err != nil {
+		return []byte(""), err
+	}
+
+	return svcsectionJson, nil
+}
+
+func (server *ServerMonitor) GenerateDBTemplateV3() ([]byte, error) {
+
+	svcsection := server.GenerateDBTemplateMap()
+
+	cfg := ini.Empty()
+
+	for sectionName, kv := range svcsection {
+		sec, err := cfg.NewSection(sectionName)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range kv {
+			_, err := sec.NewKey(k, v)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	var buf bytes.Buffer
+	_, err := cfg.WriteTo(&buf)
+	if err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+
+}
+
+func (server *ServerMonitor) GenerateDBTemplateMap() map[string]map[string]string {
+
 	svcsection := make(map[string]map[string]string)
 	svcsection["DEFAULT"] = server.OpenSVCGetDBDefaultSection()
 	svcsection["ip#01"] = server.ClusterGroup.OpenSVCGetNetSection()
@@ -691,13 +763,7 @@ func (server *ServerMonitor) GenerateDBTemplateV2() ([]byte, error) {
 	//	svcsection["task#01"] = server.ClusterGroup.OpenSVCGetTaskJobsSection()
 	svcsection["env"] = server.OpenSVCGetDBEnvSection()
 
-	svcsectionJson, err := json.MarshalIndent(svcsection, "", "\t")
-	if err != nil {
-		return []byte(""), err
-	}
-
-	return svcsectionJson, nil
-
+	return svcsection
 }
 
 func (server *ServerMonitor) GenerateDBTemplate(collector opensvc.Collector, servers []string, ports []string, agents []opensvc.Host, name string, agent string) (string, error) {
