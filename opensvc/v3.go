@@ -243,6 +243,144 @@ func (collector *Collector) DeleteConfigKeyValueV3(namespace, service, key strin
 	return err
 }
 
+func (collector *Collector) handleObjectActionV3(namespace, kind, service, action string, data []byte) ([]byte, error) {
+	var resp *http.Response
+	var err error
+
+	client, err := collector.GetV3Client()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+	switch strings.ToLower(action) {
+	case "provision":
+		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service)
+	case "unprovision":
+		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service)
+	case "start":
+		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service)
+	case "stop":
+		resp, err = client.PostObjectActionStop(ctx, namespace, oKind, service)
+	case "restart":
+		resp, err = client.PostObjectActionRestartWithBody(ctx, namespace, oKind, service, "application/json", bytes.NewReader(data))
+	case "purge":
+		resp, err = client.PostObjectActionPurge(ctx, namespace, oKind, service)
+	default:
+		return nil, fmt.Errorf("unsupported action: %s", action)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to perform action '%s' on %s/%s/%s: %w", action, namespace, kind, service, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+	}
+
+	return body, nil
+}
+
+func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
+
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.CreateObjectV3(ns, kind, svcname, template)
+	if err != nil {
+		return err
+	}
+
+	_, err = collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
+	return err
+}
+
+func (collector *Collector) ProvisionServiceV3(cluster, svc string) error {
+
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
+	return err
+}
+
+func (collector *Collector) PurgeServiceV3(cluster, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "purge", nil)
+	return err
+}
+
+func (collector *Collector) StartServiceV3(cluster, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "start", nil)
+	return err
+}
+
+func (collector *Collector) StopServiceV3(cluster, svc string) error {
+
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "stop", nil)
+	return err
+}
+
+func (collector *Collector) RestartServiceV3(cluster, svc string) error {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "restart", nil)
+	return err
+}
+
 func (collector *Collector) handleInstanceActionV3(node, namespace, kind, service, action string, params *InstanceActionParams) ([]byte, error) {
 	var resp *http.Response
 	var err error
@@ -305,28 +443,4 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
-}
-
-func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
-
-	svcparts := strings.SplitN(svc, "/", 3)
-	if len(svcparts) != 3 {
-		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
-	}
-
-	ns := svcparts[0]
-	kind := svcparts[1]
-	svcname := svcparts[2]
-
-	_, err := collector.CreateObjectV3(ns, kind, svcname, template)
-	if err != nil {
-		return err
-	}
-
-	_, err = collector.handleInstanceActionV3(node, ns, kind, svcname, "provision", nil)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

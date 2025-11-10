@@ -168,8 +168,13 @@ func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error 
 			return err
 		}
 		svc.StopService(agent.Node_id, service.Svc_id)
+	} else if svc.IsV3() {
+		err := svc.StopServiceV3(cluster.Name, server.ServiceName)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
+			return err
+		}
 	} else {
-
 		err := svc.StopServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not stop database:  %s ", err)
@@ -191,8 +196,13 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 			return err
 		}
 		svc.StartService(agent.Node_id, service.Svc_id)
+	} else if svc.IsV3() {
+		err := svc.StartServiceV3(cluster.Name, server.ServiceName)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
+			return err
+		}
 	} else {
-
 		err := svc.StartServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not start database:  %s ", err)
@@ -217,8 +227,18 @@ func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor)
 				}
 			}
 		}
+	} else if opensvc.IsV3() {
+		err := opensvc.PurgeServiceV3(cluster.Name, server.ServiceName)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)
+			cluster.errorChan <- err
+		}
+		err = opensvc.PurgeServiceV3(cluster.Name, cluster.Name+"/vol/"+server.Name)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database volume:  %s ", err)
+			cluster.errorChan <- err
+		}
 	} else {
-
 		err := opensvc.PurgeServiceV2(cluster.Name, server.ServiceName, server.Agent)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not unprovision database service:  %s ", err)

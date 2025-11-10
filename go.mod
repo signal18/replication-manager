@@ -38,6 +38,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/gonum/matrix v0.0.0-20180124231301-a41cc49d4c29
 	github.com/google/go-containerregistry v0.20.3
+	github.com/google/go-github/v72 v72.0.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/handlers v1.5.1
 	github.com/gorilla/mux v1.8.0
@@ -60,12 +61,14 @@ require (
 	github.com/lestrrat/go-file-rotatelogs v0.0.0-20171229092148-f984502973a0
 	github.com/lestrrat/go-strftime v0.0.0-20170113112000-04ef93e28531
 	github.com/lib/pq v1.10.4
+	github.com/liip/sheriff/v2 v2.0.1
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
 	github.com/mattermost/mattermost-server/v6 v6.7.2
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v1.1.1
+	github.com/opensvc/om3 v1.0.0-alpha1.0.20251030213746-07a53214a29d
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/dumpling v0.0.0-20200319081211-255ce0d25719
@@ -82,10 +85,13 @@ require (
 	github.com/swaggo/http-swagger v1.3.4
 	github.com/swaggo/swag v1.16.4
 	github.com/tebeka/strftime v0.1.5
+	github.com/tidwall/gjson v1.18.0
+	github.com/tidwall/sjson v1.2.5
 	github.com/urfave/cli v1.22.15
 	github.com/wangjohn/quickselect v0.0.0-20161129230411-ed8402a42d5f
 	github.com/xwb1989/sqlparser v0.0.0-20171128062118-da747e0c62c4
 	github.com/yoheimuta/protolint v0.32.0
+	gitlab.com/gitlab-org/api/client-go v0.129.0
 	golang.org/x/crypto v0.40.0
 	golang.org/x/net v0.42.0
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc
@@ -157,7 +163,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/go-github/v72 v72.0.0 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/graph-gophers/graphql-go v1.3.0 // indirect
@@ -187,7 +192,6 @@ require (
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo/v4 v4.11.4 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
-	github.com/liip/sheriff/v2 v2.0.1 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect
@@ -218,7 +222,6 @@ require (
 	github.com/opensvc/fcntllock v1.0.3 // indirect
 	github.com/opensvc/flock v1.1.1 // indirect
 	github.com/opensvc/locker v1.0.3 // indirect
-	github.com/opensvc/om3 v1.0.0-alpha1.0.20251030213746-07a53214a29d // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.4 // indirect
@@ -249,10 +252,8 @@ require (
 	github.com/ssrathi/go-attr v1.3.0 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
-	github.com/tidwall/sjson v1.2.5 // indirect
 	github.com/tinylib/msgp v1.1.6 // indirect
 	github.com/tklauser/go-sysconf v0.3.15 // indirect
 	github.com/tklauser/numcpus v0.10.0 // indirect
@@ -268,7 +269,6 @@ require (
 	github.com/yoheimuta/go-protoparser/v4 v4.3.0 // indirect
 	github.com/yookoala/realpath v1.0.0 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	gitlab.com/gitlab-org/api/client-go v0.129.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.18.1 // indirect
