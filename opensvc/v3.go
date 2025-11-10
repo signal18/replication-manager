@@ -307,14 +307,23 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	return body, nil
 }
 
-func (collector *Collector) CreateTemplateV3(cluster string, srv string, node string, template []byte) error {
+func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
 
-	_, err := collector.CreateObjectV3(cluster, "svc", srv, template)
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+
+	_, err := collector.CreateObjectV3(ns, kind, svcname, template)
 	if err != nil {
 		return err
 	}
 
-	_, err = collector.handleInstanceActionV3(node, cluster, "svc", srv, "provision", nil)
+	_, err = collector.handleInstanceActionV3(node, ns, kind, svcname, "provision", nil)
 	if err != nil {
 		return err
 	}
