@@ -50,7 +50,6 @@ func (collector *Collector) GetHttpClient() *http.Client {
 
 		tlsConfig = &tls.Config{
 			Certificates:       []tls.Certificate{cert},
-			NextProtos:         []string{"h2", "http/1.1"},
 			InsecureSkipVerify: true,
 		}
 		client.Transport = &http2.Transport{
