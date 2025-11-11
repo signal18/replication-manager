@@ -29,18 +29,14 @@ func (collector *Collector) SetV3() {
 func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	client, err := clientv3.New(
 		clientv3.WithURL(collector.Host+":"+collector.Port),
-		clientv3.WithUsername(collector.User),
-		clientv3.WithPassword(collector.Pass),
+		clientv3.WithInsecureSkipVerify(true),
+		clientv3.WithUsername(collector.RplMgrUser),
+		clientv3.WithPassword(collector.RplMgrPassword),
 		clientv3.WithTimeout(time.Duration(collector.ContextTimeoutSecond)*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
-
-	// client, err := apiv3.NewClient(collector.GetServerURLV3(), apiv3.WithHTTPClient(collector.GetHttpClient()))
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to create API client: %w", err)
-	// }
 
 	return client, nil
 }
