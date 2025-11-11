@@ -32,10 +32,16 @@ func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 		clientv3.WithInsecureSkipVerify(true),
 		clientv3.WithUsername(collector.RplMgrUser),
 		clientv3.WithPassword(collector.RplMgrPassword),
-		clientv3.WithTimeout(time.Duration(collector.ContextTimeoutSecond)*time.Second),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
+	}
+
+	if len(collector.CertsDER) > 0 && collector.CertsDERSecret != "" {
+		newcli, err := apiv3.NewClientWithResponses(client.URL(), apiv3.WithHTTPClient(collector.GetHttpClient()))
+		if err == nil {
+			client.ClientWithResponses = newcli
+		}
 	}
 
 	return client, nil
