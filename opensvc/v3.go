@@ -26,13 +26,9 @@ func (collector *Collector) SetV3() {
 	collector.ClusterApiVersion = "v3"
 }
 
-func (collector *Collector) GetServerURLV3() string {
-	return fmt.Sprintf("http://%s:%d", collector.Host, collector.Port)
-}
-
 func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	client, err := clientv3.New(
-		clientv3.WithURL(collector.GetServerURLV3()),
+		clientv3.WithURL(collector.Host+":"+collector.Port),
 		clientv3.WithUsername(collector.User),
 		clientv3.WithPassword(collector.Pass),
 		clientv3.WithTimeout(time.Duration(collector.ContextTimeoutSecond)*time.Second),
