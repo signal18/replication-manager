@@ -59,7 +59,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 	defer cancel()
 
 	// Use the client to check the API version
-	resp, err := client.GetAuthInfo(ctx, nil)
+	resp, err := client.GetAuthInfo(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check API version: %w", err)
 	}

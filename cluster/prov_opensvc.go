@@ -81,7 +81,10 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		svc.SetV3()
 	} else {
 		// Try to detect v3
-		_ = svc.GetAuthInfoV3()
+		err := svc.GetAuthInfoV3()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API: %s ", err)
+		}
 
 		// Set OrchestratorVersion if v3 detected
 		if svc.IsV3() {
