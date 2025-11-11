@@ -3,16 +3,15 @@ package opensvc
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	clientv3 "github.com/opensvc/om3/core/client"
-	"github.com/opensvc/om3/core/event"
 	apiv3 "github.com/opensvc/om3/daemon/api"
 	"github.com/signal18/replication-manager/utils/s18log"
 
@@ -457,46 +456,35 @@ func (collector *Collector) handleEventLogsV3(agents string, kindCloser []string
 	}
 
 	nodes := strings.Split(agents, ",")
-	chans := make([]chan event.Event, 0)
-	donechan := make(chan string)
+	var wg *sync.WaitGroup = &sync.WaitGroup{}
 	for _, node := range nodes {
-		cev, err := collector.OpenNodeEventChannel(client, node, filters...)
-		if err != nil {
-			return err
-		}
-
-		chans = append(chans, cev)
-
-		go collector.ReadNodeEventChannel(cev, donechan, kindCloser...)
+		wg.Add(1)
+		go collector.ReadNodeEventChannel(wg, client, node, filters, kindCloser...)
 	}
-
-	collector.WaitForNodeEventChannels(nodes, chans, donechan)
-
+	wg.Wait()
 	return nil
-}
-
-func (collector *Collector) OpenNodeEventChannel(client *clientv3.T, node string, filters ...string) (chan event.Event, error) {
-	if client == nil {
-		return nil, fmt.Errorf("client is nil")
-	}
-
-	evclient := client.NewGetEvents()
-	evclient.SetDuration(time.Duration(collector.ProvisioningTimeoutSecond) * time.Second)
-	evclient.SetNodename(node)
-	evclient.SetFilter(filters...)
-	return evclient.Do()
 }
 
 type EventData struct {
 	ID string `json:"id"`
 }
 
-func (collector *Collector) ReadNodeEventChannel(cev chan event.Event, done chan string, kindClosers ...string) {
-	if len(kindClosers) == 0 {
+func (collector *Collector) ReadNodeEventChannel(wg *sync.WaitGroup, client *clientv3.T, node string, filters []string, kindClosers ...string) {
+	defer wg.Done()
+	if client == nil {
+		return
+	}
+
+	evclient := client.NewGetEvents()
+	evclient.SetNodename(node)
+	evclient.SetFilter(filters...)
+
+	cev, err := evclient.Do()
+	if err != nil {
 		collector.MessageChan <- s18log.HttpMessage{
 			Level:     "ERROR",
 			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
-			Text:      "No kindClosers provided to ReadNodeEventChannel",
+			Text:      fmt.Sprintf("Failed to open event channel for node %s: %v", node, err),
 		}
 		return
 	}
@@ -516,47 +504,9 @@ func (collector *Collector) ReadNodeEventChannel(cev chan event.Event, done chan
 
 			if slices.Contains(kindClosers, e.Kind) {
 				msg.Level = "INFO"
-				collector.MessageChan <- msg
-
-				var ed EventData
-				err := json.Unmarshal([]byte(e.Data), &ed)
-				if err != nil {
-					msg = s18log.HttpMessage{
-						Level:     "ERROR",
-						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
-						Text:      fmt.Sprintf("Failed to unmarshal event data id: %v", err),
-					}
-					collector.MessageChan <- msg
-				}
-				return
 			}
 
 			collector.MessageChan <- msg
 		}
 	}
-}
-
-func (collector *Collector) WaitForNodeEventChannels(oidlist []string, chans []chan event.Event, done chan string) {
-	newoidlist := make([]string, len(oidlist))
-	copy(newoidlist, oidlist)
-
-	for len(newoidlist) > 0 {
-		select {
-		case oid, ok := <-done:
-			if !ok {
-				return
-			}
-			// remove oid from newoidlist
-			index := slices.Index(newoidlist, oid)
-			if index != -1 {
-				newoidlist = append(newoidlist[:index], newoidlist[index+1:]...)
-			}
-		}
-	}
-
-	for _, ch := range chans {
-		close(ch)
-	}
-
-	close(done)
 }

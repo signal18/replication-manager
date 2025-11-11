@@ -150,7 +150,7 @@ type Collector struct {
 	ProvCores                   string
 	Verbose                     int
 	ContextTimeoutSecond        int
-	ProvisioningTimeoutSecond   int
+	EventTimeoutSecond          int
 	MessageChan                 chan s18log.HttpMessage
 }
 
