@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/s18log"
 	log "github.com/sirupsen/logrus"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 	//"golang.org/x/crypto/pkcs12"
@@ -149,6 +150,8 @@ type Collector struct {
 	ProvCores                   string
 	Verbose                     int
 	ContextTimeoutSecond        int
+	ProvisioningTimeoutSecond   int
+	MessageChan                 chan s18log.HttpMessage
 }
 
 //Imput template URI [system|docker].[zfs|xfs|ext4|btrfs].[none|zpool|lvm].[loopback|physical].[path-to-file|/dev/xx]

@@ -1099,6 +1099,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
+	flags.IntVar(&conf.ProvTimeout, "prov-timeout", 600, "Timeout in seconds for provisionning operations")
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")

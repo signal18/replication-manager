@@ -627,6 +627,7 @@ type Config struct {
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	ProvDockerRegistryCredentials             string                 `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
+	ProvTimeout                               int                    `mapstructure:"prov-timeout" toml:"prov-timeout" json:"provTimeout"`
 	AppOn                                     bool                   `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`

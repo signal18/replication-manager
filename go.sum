@@ -1472,6 +1472,8 @@ github.com/nwaples/rardecode v1.1.0/go.mod h1:5DzqNKiOdpKKBH87u8VlvAnPZMXcGRhxWk
 github.com/nwaples/rardecode v1.1.3/go.mod h1:5DzqNKiOdpKKBH87u8VlvAnPZMXcGRhxWkRpHbbfGS0=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.8/go.mod h1:+ncqLTQzXmGhMZNUePPaPqPvBxHAIsmXswZKocGu+AU=
+github.com/oapi-codegen/oapi-codegen/v2 v2.4.1 h1:ykgG34472DWey7TSjd8vIfNykXgjOgYJZoQbKfEeY/Q=
+github.com/oapi-codegen/oapi-codegen/v2 v2.4.1/go.mod h1:N5+lY1tiTDV3V1BeHtOxeWXHoPVeApvsvjJqegfoaz8=
 github.com/oapi-codegen/runtime v1.1.1 h1:EXLHh0DXIJnWhdRPN2w4MXAzFyE4CskzhNLUmtpMYro=
 github.com/oapi-codegen/runtime v1.1.1/go.mod h1:SK9X900oXmPWilYR5/WKPzt3Kqxn/uS/+lbpREv+eCg=
 github.com/oasdiff/yaml v0.0.0-20250309154309-f31be36b4037 h1:G7ERwszslrBzRxj//JalHPu/3yz+De2J+4aLtSRlHiY=
@@ -1553,6 +1555,8 @@ github.com/opensvc/locker v1.0.3 h1:YvkVbCKrMeiilX+aD+BuBzVqFWhkkoCcDY5U0rlq/sA=
 github.com/opensvc/locker v1.0.3/go.mod h1:H/QSU7f5bULf/5PVOHZ58uEkyMF7RNkPfSEmP+E8qoM=
 github.com/opensvc/om3 v1.0.0-alpha1.0.20251030213746-07a53214a29d h1:sUAjGhUtNh7Bo1FN52t+my/l0jWO/WGvkjA5cVyurrQ=
 github.com/opensvc/om3 v1.0.0-alpha1.0.20251030213746-07a53214a29d/go.mod h1:kYEnDQWsYRr9V02F2bivsSocF+aS1aYgY5yB0IbtEoY=
+github.com/opensvc/om3 v1.0.0-alpha1.0.20251104161046-d8e451467029 h1:aSyKIuDa28oTlmanvsG3Ao6qsautiAE8lHMylLiNMnI=
+github.com/opensvc/om3 v1.0.0-alpha1.0.20251104161046-d8e451467029/go.mod h1:kYEnDQWsYRr9V02F2bivsSocF+aS1aYgY5yB0IbtEoY=
 github.com/opensvc/testhelper v1.0.0/go.mod h1:fUJRZPmQs6iu4/gDlU8oTuTH7+c8vJ3uVOljkR6anL0=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=

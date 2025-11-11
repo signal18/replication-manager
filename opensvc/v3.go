@@ -3,13 +3,19 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
+	clientv3 "github.com/opensvc/om3/core/client"
+	"github.com/opensvc/om3/core/event"
 	apiv3 "github.com/opensvc/om3/daemon/api"
+	"github.com/signal18/replication-manager/utils/s18log"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -25,17 +31,27 @@ func (collector *Collector) GetServerURLV3() string {
 	return fmt.Sprintf("http://%s:%d", collector.Host, collector.Port)
 }
 
-func (collector *Collector) GetV3Client() (*apiv3.Client, error) {
-	client, err := apiv3.NewClient(collector.GetServerURLV3(), apiv3.WithHTTPClient(collector.GetHttpClient()))
+func (collector *Collector) GetClientV3() (*clientv3.T, error) {
+	client, err := clientv3.New(
+		clientv3.WithURL(collector.GetServerURLV3()),
+		clientv3.WithUsername(collector.User),
+		clientv3.WithPassword(collector.Pass),
+		clientv3.WithTimeout(time.Duration(collector.ContextTimeoutSecond)*time.Second),
+	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create API client: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
+
+	// client, err := apiv3.NewClient(collector.GetServerURLV3(), apiv3.WithHTTPClient(collector.GetHttpClient()))
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to create API client: %w", err)
+	// }
 
 	return client, nil
 }
 
 func (collector *Collector) GetAuthInfoV3() error {
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return err
 	}
@@ -66,19 +82,8 @@ func (collector *Collector) GetAuthInfoV3() error {
 	return nil
 }
 
-func GetRequestAgentFnV3(agent string) apiv3.RequestEditorFn {
-	myagent := "ANY"
-	if agent != "" {
-		myagent = agent
-	}
-	return func(ctx context.Context, req *http.Request) error {
-		req.Header.Set("o-node", myagent)
-		return nil
-	}
-}
-
 func (collector *Collector) GetNodesV3() ([]Host, error) {
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +125,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	var resp *http.Response
 	var err error
 
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +166,7 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 	var resp *http.Response
 	var err error
 
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +252,7 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	var resp *http.Response
 	var err error
 
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
@@ -385,7 +390,7 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	var resp *http.Response
 	var err error
 
-	client, err := collector.GetV3Client()
+	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
 	}
@@ -443,4 +448,115 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	}
 
 	return body, nil
+}
+
+func (collector *Collector) handleEventLogsV3(agents string, kindCloser []string, filters []string) error {
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return err
+	}
+
+	nodes := strings.Split(agents, ",")
+	chans := make([]chan event.Event, 0)
+	donechan := make(chan string)
+	for _, node := range nodes {
+		cev, err := collector.OpenNodeEventChannel(client, node, filters...)
+		if err != nil {
+			return err
+		}
+
+		chans = append(chans, cev)
+
+		go collector.ReadNodeEventChannel(cev, donechan, kindCloser...)
+	}
+
+	collector.WaitForNodeEventChannels(nodes, chans, donechan)
+
+	return nil
+}
+
+func (collector *Collector) OpenNodeEventChannel(client *clientv3.T, node string, filters ...string) (chan event.Event, error) {
+	if client == nil {
+		return nil, fmt.Errorf("client is nil")
+	}
+
+	evclient := client.NewGetEvents()
+	evclient.SetDuration(time.Duration(collector.ProvisioningTimeoutSecond) * time.Second)
+	evclient.SetNodename(node)
+	evclient.SetFilter(filters...)
+	return evclient.Do()
+}
+
+type EventData struct {
+	ID string `json:"id"`
+}
+
+func (collector *Collector) ReadNodeEventChannel(cev chan event.Event, done chan string, kindClosers ...string) {
+	if len(kindClosers) == 0 {
+		collector.MessageChan <- s18log.HttpMessage{
+			Level:     "ERROR",
+			Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+			Text:      "No kindClosers provided to ReadNodeEventChannel",
+		}
+		return
+	}
+
+	for {
+		select {
+		case e, ok := <-cev:
+			if !ok {
+				return
+			}
+
+			msg := s18log.HttpMessage{
+				Level:     "DEBUG",
+				Timestamp: e.At.Format("2006/01/02 15:04:05"),
+				Text:      string(e.Data),
+			}
+
+			if slices.Contains(kindClosers, e.Kind) {
+				msg.Level = "INFO"
+				collector.MessageChan <- msg
+
+				var ed EventData
+				err := json.Unmarshal([]byte(e.Data), &ed)
+				if err != nil {
+					msg = s18log.HttpMessage{
+						Level:     "ERROR",
+						Timestamp: time.Now().Format("2006/01/02 15:04:05"),
+						Text:      fmt.Sprintf("Failed to unmarshal event data id: %v", err),
+					}
+					collector.MessageChan <- msg
+				}
+				return
+			}
+
+			collector.MessageChan <- msg
+		}
+	}
+}
+
+func (collector *Collector) WaitForNodeEventChannels(oidlist []string, chans []chan event.Event, done chan string) {
+	newoidlist := make([]string, len(oidlist))
+	copy(newoidlist, oidlist)
+
+	for len(newoidlist) > 0 {
+		select {
+		case oid, ok := <-done:
+			if !ok {
+				return
+			}
+			// remove oid from newoidlist
+			index := slices.Index(newoidlist, oid)
+			if index != -1 {
+				newoidlist = append(newoidlist[:index], newoidlist[index+1:]...)
+			}
+		}
+	}
+
+	for _, ch := range chans {
+		close(ch)
+	}
+
+	close(done)
 }

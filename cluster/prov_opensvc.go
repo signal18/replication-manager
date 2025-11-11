@@ -74,6 +74,7 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
 	svc.Verbose = cluster.GetLogLevel()
 	svc.ContextTimeoutSecond = 10
+	svc.ProvisioningTimeoutSecond = cluster.Conf.ProvTimeout
 
 	if cluster.OrchestratorVersion == "v3" {
 		// Set collector to v3 if already detected
