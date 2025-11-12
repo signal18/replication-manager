@@ -822,7 +822,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
-	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", false, "To check free space before processing backup")
+	flags.BoolVar(&conf.BackupCheckFreeSpace, "backup-check-size", true, "To check free space before processing backup")
 	flags.IntVar(&conf.BackupDiskTresholdWarn, "backup-disk-treshold-warn", 85, "Warning threshold for used disk in percentage")
 	flags.IntVar(&conf.BackupDiskTresholdCrit, "backup-disk-treshold-crit", 95, "Critical threshold for used space in percentage. If disk usage is above this value, backup will be skipped")
 	flags.BoolVar(&conf.BackupEstimateSize, "backup-estimate-size", false, "To estimate size of backup before processing backup")

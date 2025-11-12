@@ -281,6 +281,12 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 		return err
 	}
 
+	if diskstat == nil {
+		err := fmt.Errorf("disk usage is nil for %s", parentDir)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
+		return err
+	}
+
 	cluster.DiskStatManager.UpdateStat(parentDir, diskstat)
 	if diskstat.UsedPercent > float64(cluster.Conf.BackupDiskTresholdCrit) {
 		cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], diskstat.Path, diskstat.UsedPercent, cluster.Conf.BackupDiskTresholdCrit), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
