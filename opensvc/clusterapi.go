@@ -290,10 +290,6 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	b := bytes.NewBuffer(jsondata)
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
 
-	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
-		collector.Logrus.WithField("FROM", "OpenSVC").Println("API Request: ", urlpost, " Payload: ", jsondata)
-	}
-
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err
@@ -301,6 +297,10 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	req.Close = true
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("o-node", node)
+
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("API Request: %s Header: %v Payload: %s", urlpost, req.Header, string(jsondata))
+	}
 
 	client := collector.GetHttpClient()
 	resp, err := client.Do(req)
