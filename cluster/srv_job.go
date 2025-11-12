@@ -3303,6 +3303,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 		}
 		lastmeta.Completed = true
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Metadata completed: %v", lastmeta)
+		cluster.BackupPostScript(server, backtype, lastmeta.Dest)
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Error occured in backup, writing incomplete metadata for backup in %s", server.URL)
 	}

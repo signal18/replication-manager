@@ -819,6 +819,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")
+	flags.StringVar(&conf.BackupLogicalPostScript, "backup-logical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
+	flags.StringVar(&conf.BackupPhysicalPostScript, "backup-physical-post-script", "", "Customized backup post script location. Params: <clustername> <hostname> <port> <backup-path>")
 	flags.BoolVar(&conf.CompressBackups, "compress-backups", false, "To compress backups")
 	flags.BoolVar(&conf.BackupSplitMysqlUser, "backup-split-mysql-user", false, "To split mysql user in backup")
 	flags.BoolVar(&conf.BackupRestoreMysqlUser, "backup-restore-mysql-user", true, "Restore mysql user alongside with backup")
