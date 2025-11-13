@@ -47,6 +47,13 @@ func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	return client, nil
 }
 
+func (collector *Collector) RequestCloserV3() apiv3.RequestEditorFn {
+	return func(ctx context.Context, req *http.Request) error {
+		req.Close = true
+		return nil
+	}
+}
+
 func (collector *Collector) GetAuthInfoV3() error {
 	client, err := collector.GetClientV3()
 	if err != nil {
@@ -57,7 +64,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 	defer cancel()
 
 	// Use the client to check the API version
-	resp, err := client.GetAuthInfo(ctx)
+	resp, err := client.GetAuthInfo(ctx, collector.RequestCloserV3())
 	if err != nil {
 		return fmt.Errorf("failed to check API version: %w", err)
 	}
@@ -89,7 +96,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	defer cancel()
 
 	// Use the client to get the nodes
-	resp, err := client.GetNodes(ctx, nil)
+	resp, err := client.GetNodes(ctx, nil, collector.RequestCloserV3())
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +138,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data))
+	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -180,13 +187,13 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 
 	switch strings.ToLower(operation) {
 	case "get":
-		resp, err = client.GetObjectDataKey(ctx, namespace, oKind, service, &apiv3.GetObjectDataKeyParams{Name: key})
+		resp, err = client.GetObjectDataKey(ctx, namespace, oKind, service, &apiv3.GetObjectDataKeyParams{Name: key}, collector.RequestCloserV3())
 	case "create":
-		resp, err = client.PostObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PostObjectDataKeyParams{Name: key}, "application/octet-stream", vReader)
+		resp, err = client.PostObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PostObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3())
 	case "update":
-		resp, err = client.PutObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PutObjectDataKeyParams{Name: key}, "application/octet-stream", vReader)
+		resp, err = client.PutObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PutObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3())
 	case "delete":
-		resp, err = client.DeleteObjectDataKey(ctx, namespace, oKind, service, &apiv3.DeleteObjectDataKeyParams{Name: key})
+		resp, err = client.DeleteObjectDataKey(ctx, namespace, oKind, service, &apiv3.DeleteObjectDataKeyParams{Name: key}, collector.RequestCloserV3())
 	default:
 		return nil, fmt.Errorf("unsupported operation: %s", operation)
 	}
@@ -260,17 +267,17 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	oKind := apiv3.Kind(kind)
 	switch strings.ToLower(action) {
 	case "provision":
-		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service)
+		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "unprovision":
-		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service)
+		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "start":
-		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service)
+		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "stop":
-		resp, err = client.PostObjectActionStop(ctx, namespace, oKind, service)
+		resp, err = client.PostObjectActionStop(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	case "restart":
-		resp, err = client.PostObjectActionRestartWithBody(ctx, namespace, oKind, service, "application/json", bytes.NewReader(data))
+		resp, err = client.PostObjectActionRestartWithBody(ctx, namespace, oKind, service, "application/json", bytes.NewReader(data), collector.RequestCloserV3())
 	case "purge":
-		resp, err = client.PostObjectActionPurge(ctx, namespace, oKind, service)
+		resp, err = client.PostObjectActionPurge(ctx, namespace, oKind, service, collector.RequestCloserV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
@@ -402,31 +409,31 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 		if params != nil {
 			pvparam = params.ToProvisionParams()
 		}
-		resp, err = client.PostInstanceActionProvision(ctx, node, namespace, oKind, service, pvparam)
+		resp, err = client.PostInstanceActionProvision(ctx, node, namespace, oKind, service, pvparam, collector.RequestCloserV3())
 	case "unprovision":
 		var uparam *apiv3.PostInstanceActionUnprovisionParams
 		if params != nil {
 			uparam = params.ToUnprovisionParams()
 		}
-		resp, err = client.PostInstanceActionUnprovision(ctx, node, namespace, oKind, service, uparam)
+		resp, err = client.PostInstanceActionUnprovision(ctx, node, namespace, oKind, service, uparam, collector.RequestCloserV3())
 	case "start":
 		var stparams *apiv3.PostInstanceActionStartParams
 		if params != nil {
 			stparams = params.ToStartParams()
 		}
-		resp, err = client.PostInstanceActionStart(ctx, node, namespace, oKind, service, stparams)
+		resp, err = client.PostInstanceActionStart(ctx, node, namespace, oKind, service, stparams, collector.RequestCloserV3())
 	case "stop":
 		var spparams *apiv3.PostInstanceActionStopParams
 		if params != nil {
 			spparams = params.ToStopParams()
 		}
-		resp, err = client.PostInstanceActionStop(ctx, node, namespace, oKind, service, spparams)
+		resp, err = client.PostInstanceActionStop(ctx, node, namespace, oKind, service, spparams, collector.RequestCloserV3())
 	case "restart":
 		var rtparams *apiv3.PostInstanceActionRestartParams
 		if params != nil {
 			rtparams = params.ToRestartParams()
 		}
-		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams)
+		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
