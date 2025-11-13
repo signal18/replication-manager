@@ -22,6 +22,7 @@ import (
 
 	vault "github.com/hashicorp/vault/api"
 	auth "github.com/hashicorp/vault/api/auth/approle"
+	"github.com/iancoleman/strcase"
 	"github.com/siddontang/go/log"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
@@ -33,6 +34,7 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	"github.com/signal18/replication-manager/utils/version"
+	"github.com/tidwall/sjson"
 )
 
 func (cluster *Cluster) GetCrcTable() *crc64.Table {
@@ -1680,4 +1682,35 @@ func (cluster *Cluster) GetStagingServerFromConfig() *ServerMonitor {
 func (cluster *Cluster) GetToolsVersion(name string) (*version.Version, bool) {
 	toolVer, ok := cluster.VersionsMap.CheckAndGet(name)
 	return toolVer, ok
+}
+
+func (cluster *Cluster) GetCompactJson() ([]byte, error) {
+	result, err := json.Marshal(cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err = sjson.SetBytes(result, "servers", []interface{}{})
+	if err != nil {
+		return nil, err
+	}
+
+	result, err = sjson.SetBytes(result, "proxies", []interface{}{})
+	if err != nil {
+		return nil, err
+	}
+
+	result, err = sjson.SetBytes(result, "apps", []interface{}{})
+	if err != nil {
+		return nil, err
+	}
+
+	for crkey := range cluster.Conf.Secrets {
+		result, err = sjson.SetBytes(result, fmt.Sprintf("config.%s", strcase.ToLowerCamel(crkey)), "*:*")
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return result, nil
 }
