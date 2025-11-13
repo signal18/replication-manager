@@ -1122,6 +1122,12 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		}
 
 		for i, cluster := range clusters {
+			cl, err := sjson.SetRawBytes(cl, fmt.Sprintf("%d.servers", i), []byte("[]"))
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+
 			for crkey := range cluster.Conf.Secrets {
 				cl, err = sjson.SetBytes(cl, fmt.Sprintf("%d.config.%s", i, strcase.ToLowerCamel(crkey)), "*:*")
 				if err != nil {
