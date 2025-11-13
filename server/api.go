@@ -1113,21 +1113,21 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 
 		sort.Sort(cluster.ClusterSorter(clusters))
 
-		cl, err := json.MarshalIndent(clusters, "", "\t")
-		if err != nil {
-			http.Error(w, "Error Marshal", 500)
-			return
-		}
+		var cl []byte = []byte("[")
 
 		for i, cluster := range clusters {
-			for crkey := range cluster.Conf.Secrets {
-				cl, err = sjson.SetBytes(cl, fmt.Sprintf("%d.config.%s", i, strcase.ToLowerCamel(crkey)), "*:*")
-				if err != nil {
-					http.Error(w, "Encoding error", 500)
-					return
-				}
+			cj, err := cluster.GetCompactJson()
+			if err != nil {
+				http.Error(w, "Error getting compact JSON: "+err.Error(), 500)
+				return
+			}
+			cl = append(cl, cj...)
+			if i < len(clusters)-1 {
+				cl = append(cl, ',')
 			}
 		}
+		cl = append(cl, ']')
+
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(cl)
 
