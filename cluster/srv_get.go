@@ -887,7 +887,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
 				}
 
-				if server.DBVersion.IsMySQLOrPerconaSSLMode() && ver.IsMySQLOrPerconaSSLMode() { // Use","--ssl-mode
+				if ver.IsMySQLOrPerconaSSLMode() { // client supports --ssl-mode
 					switch sslMode {
 					case "DISABLED":
 						return []string{"--ssl-mode=DISABLED"}
@@ -901,6 +901,9 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 				} else { // Use old","--ssl equivalent
 					switch sslMode {
 					case "DISABLED":
+						if tool == "client-dump" || tool == "client-binlog" {
+							return []string{"--ssl=FALSE"}
+						}
 						return []string{"--skip-ssl"}
 					case "PREFERRED", "REQUIRED":
 						return []string{"--ssl", "--ssl-verify-server-cert=false"}
@@ -911,7 +914,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					}
 				}
 			} else {
-				if server.DBVersion.IsMySQLOrPerconaSSLMode() && ver.IsMySQLOrPerconaSSLMode() { // Use","--ssl-mode
+				if ver.IsMySQLOrPerconaSSLMode() { // client supports --ssl-mode
 					if sslMode != "" {
 						return []string{"--ssl-mode=" + sslMode} // No verify server cert
 					} else {
@@ -919,6 +922,9 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					}
 				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
+						if tool == "client-dump" || tool == "client-binlog" {
+							return []string{"--ssl=FALSE"}
+						}
 						return []string{"--skip-ssl"}
 					}
 
