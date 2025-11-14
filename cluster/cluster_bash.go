@@ -226,3 +226,33 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	}
 	return nil
 }
+
+func (cluster *Cluster) BackupPostScript(server *ServerMonitor, backtype config.BackupMethod, filepath string) error {
+	switch backtype {
+	case config.BackupMethodLogical:
+		if cluster.Conf.BackupLogicalPostScript != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling backup logical post script at %s", cluster.Conf.BackupLogicalPostScript)
+			var out []byte
+			out, err := exec.Command(cluster.Conf.BackupLogicalPostScript, cluster.Name, server.Host, server.Port, filepath).CombinedOutput()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+				return err
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup logical post script done: %s", string(out))
+		}
+	case config.BackupMethodPhysical:
+		if cluster.Conf.BackupPhysicalPostScript != "" {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling backup physical post script at %s", cluster.Conf.BackupPhysicalPostScript)
+			var out []byte
+			out, err := exec.Command(cluster.Conf.BackupPhysicalPostScript, cluster.Name, server.Host, server.Port, filepath).CombinedOutput()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "%s", err)
+				return err
+			}
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup physical post script done: %s", string(out))
+		}
+	}
+	return nil
+}
