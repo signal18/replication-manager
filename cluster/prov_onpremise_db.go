@@ -37,9 +37,9 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if server == nil {
 		return nil, errors.New("OnPremise provisioning failed no server instance")
 	}
-	if cluster.IsInFailover() {
-		return nil, errors.New("OnPremise provisioning cancel during failover")
-	}
+	// if cluster.IsInFailover() {
+	// 	return nil, errors.New("OnPremise provisioning cancel during failover")
+	// }
 	if !cluster.Conf.OnPremiseSSH {
 		return nil, errors.New("onpremise-ssh disable ")
 	}
