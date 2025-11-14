@@ -519,9 +519,9 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				return
 			}
 
-			for gidx, v := range node.AppConfig.Deployment.Variables {
+			for vidx, v := range node.AppConfig.Deployment.Variables {
 				if v.Type == "secret" {
-					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", gidx), "*****")
+					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", vidx), "*****")
 					if err != nil {
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 						http.Error(w, "Encoding error", 500)
@@ -532,6 +532,15 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 
 			for gidx := range node.AppConfig.Deployment.Storages.GitClones {
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
+				if err != nil {
+					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
+					http.Error(w, "Encoding error", 500)
+					return
+				}
+			}
+
+			for midx := range node.AppConfig.Deployment.Storages.S3Mounts {
+				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.s3Mounts.%d.secretkey", midx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
 					http.Error(w, "Encoding error", 500)

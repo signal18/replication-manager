@@ -39,6 +39,23 @@ export const getClusterAlerts = createAsyncThunk('cluster/getClusterAlerts', asy
   }
 });
 
+export const getClusterLogs = createAsyncThunk('cluster/getClusterLogs', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getClusterLogs(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.logs) {
+      return false;
+    }
+  }
+});
+
 export const getClusterMaster = createAsyncThunk('cluster/getClusterMaster', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
@@ -1760,12 +1777,17 @@ const initialState = {
     certificates: false,
     top: false,
     opensvcStats: false,
+    logs: false,
   },
   error: null,
   clusterApps: null,
   clusterAppStates: null,
   clusterData: null,
   clusterAlerts: null,
+  clusterLogs: {
+    general : null,
+    task : null,
+  },
   clusterMaster: null,
   clusterServers: null,
   clusterProxies: null,
@@ -1836,6 +1858,7 @@ export const clusterSlice = createSlice({
       isAnyOf(
         getClusterData.fulfilled,
         getClusterAlerts.fulfilled,
+        getClusterLogs.fulfilled,
         getClusterMaster.fulfilled,
         getClusterServers.fulfilled,
         getClusterProxies.fulfilled,
@@ -1853,28 +1876,31 @@ export const clusterSlice = createSlice({
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
-          state.isFetching.cluster = false
           state.clusterData = action.payload.data
+          state.isFetching.cluster = false
         } else if (action.type.includes('getClusterAlerts')) {
-          state.isFetching.alerts = false
           state.clusterAlerts = action.payload.data
+          state.isFetching.alerts = false
+        } else if (action.type.includes('getClusterLogs')) {
+          state.clusterLogs = action.payload.data || {}
+          state.isFetching.logs = false
         } else if (action.type.includes('getClusterMaster')) {
-          state.isFetching.master = false
           state.clusterMaster = action.payload.data
+          state.isFetching.master = false
         } else if (action.type.includes('getClusterServers')) {
-          state.isFetching.servers = false
           if (action.payload?.data && action.meta.arg?.clusterName == state.clusterData?.name) {
             state.clusterServers = action.payload.data
             state.clusterStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
           }
+          state.isFetching.servers = false
         } else if (action.type.includes('getClusterApps')) {
-          state.isFetching.apps = false
           state.clusterApps = action.payload?.data
           state.clusterAppStates = action.payload?.data?.map((server) => `${server.state}-${server.isVirtualMaster}`).join(',') || ''
+          state.isFetching.apps = false
         } else if (action.type.includes('getClusterProxies')) {
-          state.isFetching.proxies = false
           state.clusterProxies = action.payload?.data
           state.clusterProxiesStaging = action.payload?.data?.filter((proxy) => proxy.isStaging).map((proxy) => proxy.name).join(',') || ''
+          state.isFetching.proxies = false
         } else if (action.type.includes('getClusterCertificates')) {
           state.clusterCertificates = action.payload.data
         } else if (action.type.includes('getTopProcess')) {
@@ -1925,6 +1951,7 @@ export const clusterSlice = createSlice({
     builder.addMatcher(
       isAnyOf(
         getClusterData.pending,
+        getClusterLogs.pending,
         getClusterAlerts.pending,
         getClusterMaster.pending,
         getClusterServers.pending,
@@ -1936,6 +1963,8 @@ export const clusterSlice = createSlice({
       (state, action) => {
         if (action.type.includes('getClusterData')) {
           state.isFetching.cluster = true
+        } else if (action.type.includes('getClusterLogs')) {
+          state.isFetching.logs = true
         } else if (action.type.includes('getClusterAlerts')) {
           state.isFetching.alerts = true
         } else if (action.type.includes('getClusterMaster')) {
@@ -1957,6 +1986,7 @@ export const clusterSlice = createSlice({
     builder.addMatcher(
       isAnyOf(
         getClusterData.rejected,
+        getClusterLogs.rejected,
         getClusterAlerts.rejected,
         getClusterMaster.rejected,
         getClusterServers.rejected,
@@ -1965,6 +1995,8 @@ export const clusterSlice = createSlice({
       ), (state, action) => {
         if (action.type.includes('getClusterData')) {
           state.isFetching.cluster = false
+        } else if (action.type.includes('getClusterLogs')) {
+          state.isFetching.logs = false
         } else if (action.type.includes('getClusterAlerts')) {
           state.isFetching.alerts = false
         } else if (action.type.includes('getClusterMaster')) {

@@ -4,6 +4,7 @@ export const clusterService = {
   // Cluster data APIs
   getClusterData,
   getClusterAlerts,
+  getClusterLogs,
   getClusterMaster,
   getClusterServers,
   getClusterProxies,
@@ -162,6 +163,10 @@ function getClusterServers(clusterName, baseURL) {
 
 function getClusterProxies(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/topology/proxies`)
+}
+
+function getClusterLogs(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/topology/http-logs`)
 }
 
 function getClusterCertificates(clusterName, baseURL) {

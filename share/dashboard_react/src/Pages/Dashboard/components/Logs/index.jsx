@@ -3,6 +3,7 @@ import TagPill from '../../../../components/TagPill'
 import { Box, Code } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 import NotFound from '../../../../components/NotFound'
+import { useSelector } from 'react-redux'
 
 function Logs({ logs, className }) {
   const [isScrollable, setIsScrollable] = useState(true)
@@ -61,6 +62,16 @@ function Logs({ logs, className }) {
       </table>
     </Box>
   )
+}
+
+export const GeneralLogs = ({ className }) => {
+  const logs = useSelector((state) => state.cluster.clusterLogs.general)
+  return <Logs logs={logs?.buffer} className={className} />
+}
+
+export const TaskLogs = ({ className }) => {
+  const taskLogs = useSelector((state) => state.cluster.clusterLogs.task)
+  return <Logs logs={taskLogs?.buffer} className={className} />
 }
 
 export default Logs

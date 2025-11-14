@@ -612,6 +612,8 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	case "/api/clusters/" + cluster.Name + "/actions/refresh-apps-template":
 		return true
+	case "/api/clusters/" + cluster.Name + "/topology/http-logs":
+		return true
 	}
 
 	// Terminal ACL
