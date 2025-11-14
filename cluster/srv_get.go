@@ -876,10 +876,8 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 		if !noSSLParams {
 			sslMode = cluster.Conf.HostsTlsSslMode
 
-			if skipVerify {
-				if cluster.Conf.HostsTlsSslMode == "" {
-					sslMode = "REQUIRED" // No verify server cert
-				}
+			if cluster.Conf.HostsTlsSslMode == "" && skipVerify {
+				sslMode = "REQUIRED" // No verify server cert
 			}
 
 			if cacertfile != "" && clicertfile != "" && clikeyfile != "" {
@@ -915,10 +913,10 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 				}
 			} else {
 				if ver.IsMySQLOrPerconaGreater8() { // client removed --ssl support in 8.0, use --ssl-mode
-					if sslMode != "" {
-						return []string{"--ssl-mode=" + sslMode} // No verify server cert
+					if sslMode == "" {
+						return []string{} // Use default SSL mode of client
 					} else {
-						return []string{"--ssl-mode=PREFERRED"} // No verify server cert
+						return []string{"--ssl-mode=" + sslMode} // No verify server cert
 					}
 				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
