@@ -539,6 +539,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxLog)),
 	))
+	router.Handle("/api/clusters/{clusterName}/topology/http-logs", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/topology/http-logs/{logType}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxWebLog)),
+	))
 	router.Handle("/api/clusters/{clusterName}/topology/proxies", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxProxies)),
@@ -4304,6 +4312,47 @@ func (repman *ReplicationManager) handlerMuxLog(w http.ResponseWriter, r *http.R
 	e := json.NewEncoder(w)
 	e.SetIndent("", "\t")
 	err := e.Encode(clusterlogs)
+	if err != nil {
+		http.Error(w, "Encoding error", 500)
+		return
+	}
+}
+
+// handlerMuxWebLog handles the retrieval of web logs.
+// @Summary Retrieve web logs
+// @Description This endpoint retrieves the web logs.
+// @Tags ClusterTopology
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Success 200 {array} string "List of web logs"
+// @Failure 500 {string} string "Internal Server Error"
+// @Router /api/clusters/{clusterName}/topology/http-logs [get]
+// @Router /api/clusters/{clusterName}/topology/http-logs/{logType} [get]
+func (repman *ReplicationManager) handlerMuxWebLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+
+	cl := repman.getClusterByName(vars["clusterName"])
+	if cl == nil {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, cl); !valid {
+		http.Error(w, "No valid ACL", 403)
+		return
+	}
+
+	var logs any
+	if logType, ok := vars["logType"]; ok {
+		logs = cl.GetWebLogsByType(logType)
+	} else {
+		logs = cl.GetAllWebLogs()
+	}
+
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err := e.Encode(logs)
 	if err != nil {
 		http.Error(w, "Encoding error", 500)
 		return

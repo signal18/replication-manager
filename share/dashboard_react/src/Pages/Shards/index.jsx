@@ -10,7 +10,7 @@ import RMButton from '../../components/RMButton'
 import { getTablePct } from '../../utility/common'
 import Gauge from '../../components/Gauge'
 import AccordionComponent from '../../components/AccordionComponent'
-import Logs from '../Dashboard/components/Logs'
+import  { GeneralLogs, TaskLogs } from '../Dashboard/components/Logs'
 import NotFound from '../../components/NotFound'
 
 function Shards({ selectedCluster }) {
@@ -107,12 +107,12 @@ function Shards({ selectedCluster }) {
       <AccordionComponent
         className={styles.accordion}
         heading={'Cluster Logs'}
-        body={<Logs logs={selectedCluster?.log?.buffer} />}
+        body={<GeneralLogs />}
       />
       <AccordionComponent
         className={styles.accordion}
         heading={'Job Logs'}
-        body={<Logs logs={selectedCluster?.logTask?.buffer} />}
+        body={<TaskLogs />}
       />
     </VStack>
   )

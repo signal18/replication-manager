@@ -23,7 +23,8 @@ import {
   getBackupStats,
   clearCluster,
   getClusterApps,
-  getOpenSVCStats
+  getOpenSVCStats,
+  getClusterLogs
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -175,6 +176,7 @@ function Home() {
     } else if (selectedClusterNameRef.current) {
       if (!isAutoReloadPaused) {
         dispatch(getClusterData({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getClusterLogs({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterAlerts({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterMaster({ clusterName: selectedClusterNameRef.current }))
         dispatch(getClusterServers({ clusterName: selectedClusterNameRef.current }))
