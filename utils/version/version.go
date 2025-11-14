@@ -86,7 +86,7 @@ func ParseDBFlavor(version string) string {
 
 func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
+	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	matches := re.FindAllStringSubmatch(vstring, 2)
@@ -131,7 +131,7 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 
 func NewVersionFromString(flavor, vstring string) (*Version, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
+	versionRegex := `([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	match := re.FindStringSubmatch(vstring)
