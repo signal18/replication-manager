@@ -263,7 +263,10 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 	var isWarning bool
 	bcksrv := cluster.GetBackupServer()
 	if bcksrv == nil {
-		bcksrv = cluster.master
+		bcksrv = cluster.GetMaster()
+		if bcksrv == nil {
+			return fmt.Errorf("No backup server or master server found for cluster %s", cluster.Name)
+		}
 	}
 
 	parentDir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name
@@ -277,6 +280,12 @@ func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error
 
 	diskstat, err := disk.Usage(parentDir)
 	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
+		return err
+	}
+
+	if diskstat == nil {
+		err := fmt.Errorf("disk usage is nil for %s", parentDir)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk usage: %s", err)
 		return err
 	}
