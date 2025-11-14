@@ -9,7 +9,7 @@ import TableType3 from '../../components/TableType3'
 import { useDispatch, useSelector } from 'react-redux'
 import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
-import Logs from '../Dashboard/components/Logs'
+import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 
 function Maintenance({ selectedCluster, user }) {
@@ -275,7 +275,7 @@ function Maintenance({ selectedCluster, user }) {
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
         heading={'Job Logs'}
-        body={<Logs logs={selectedCluster?.logTask?.buffer} />}
+        body={<TaskLogs />}
       />
     </VStack>
   )

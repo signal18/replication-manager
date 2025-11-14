@@ -135,8 +135,8 @@ type Cluster struct {
 	WorkLoad                      config.WorkLoad        `json:"workLoad" groups:"web"`
 	Logrus                        *log.Logger            `json:"-"`
 	LogPushover                   *log.Logger            `json:"-"`
-	Log                           s18log.HttpLog         `json:"log" groups:"web"`
-	LogTask                       s18log.HttpLog         `json:"logTask" groups:"web"`
+	Log                           s18log.HttpLog         `json:"-" groups:"web"`
+	LogTask                       s18log.HttpLog         `json:"-" groups:"web"`
 	LogSlack                      *slackman.SlackManager `json:"-"`
 	JobResults                    *config.TasksMap       `json:"jobResults" groups:"web"`
 	FalsePositiveChecks           map[string]bool        `json:"falsePositiveChecks" groups:"web"`

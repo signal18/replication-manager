@@ -5,7 +5,7 @@ import { useSelector } from 'react-redux'
 import ClusterWorkload from './components/ClusterWorkload'
 import { Flex } from '@chakra-ui/react'
 import AccordionComponent from '../../components/AccordionComponent/index.jsx'
-import Logs from './components/Logs'
+import { GeneralLogs, TaskLogs } from './components/Logs'
 import DBServers from './components/DBServers'
 import Proxies from './components/Proxies'
 import Apps from './components/Apps/index.jsx'
@@ -51,8 +51,8 @@ function Dashboard({ selectedCluster, user }) {
           body={<Apps selectedCluster={selectedCluster} user={user} />}
         />)}
 
-      <AccordionComponent heading={'Cluster Logs'} body={<Logs logs={selectedCluster?.log?.buffer} />} />
-      <AccordionComponent heading={'Job Logs'} body={<Logs logs={selectedCluster?.logTask?.buffer} />} />
+      <AccordionComponent heading={'Cluster Logs'} body={<GeneralLogs />} />
+      <AccordionComponent heading={'Job Logs'} body={<TaskLogs />} />
     </Flex>
   )
 }

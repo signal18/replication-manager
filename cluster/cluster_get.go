@@ -1714,3 +1714,21 @@ func (cluster *Cluster) GetCompactJson() ([]byte, error) {
 
 	return result, nil
 }
+
+func (cluster *Cluster) GetWebLogsByType(logtype string) any {
+	switch logtype {
+	case "task":
+		return &cluster.LogTask
+	case "general":
+		return &cluster.Log
+	default:
+		return nil
+	}
+}
+
+func (cluster *Cluster) GetAllWebLogs() map[string]any {
+	logs := make(map[string]any)
+	logs["general"] = &cluster.Log
+	logs["task"] = &cluster.LogTask
+	return logs
+}
