@@ -686,7 +686,17 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 
 func (cluster *Cluster) BootstrapTopology(topology string) error {
 	switch topology {
+	case "active-passive":
+		cluster.SetMultiMasterRing(false)
+		cluster.SetMultiTierSlave(false)
+		cluster.SetForceSlaveNoGtid(false)
+		cluster.SetMultiMaster(false)
+		cluster.SetBinlogServer(false)
+		cluster.SetMultiMasterWsrep(false)
+		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(true)
 	case "master-slave":
+		cluster.SetActivePassive(false)
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
 		cluster.SetForceSlaveNoGtid(false)
@@ -702,6 +712,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "multi-master":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -710,6 +721,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "multi-tier-slave":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(true)
@@ -718,6 +730,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetBinlogServer(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "maxscale-binlog":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -726,6 +739,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetBinlogServer(true)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "multi-master-ring":
 		cluster.SetMultiTierSlave(false)
 		cluster.SetForceSlaveNoGtid(false)
@@ -734,6 +748,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterRing(true)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "multi-master-wsrep":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -743,6 +758,7 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiMasterWsrep(true)
 		cluster.SetMultiMasterGroupRep(false)
+		cluster.SetActivePassive(false)
 	case "multi-master-grprep":
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiTierSlave(false)
@@ -752,8 +768,9 @@ func (cluster *Cluster) BootstrapTopology(topology string) error {
 		cluster.SetMultiMasterRing(false)
 		cluster.SetMultiMasterWsrep(false)
 		cluster.SetMultiMasterGroupRep(true)
+		cluster.SetActivePassive(false)
 	default:
-		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep")
+		return errors.New("Invalid topology type, supported types are: master-slave, master-slave-no-gtid, multi-master, multi-tier-slave, maxscale-binlog, multi-master-ring, multi-master-wsrep, multi-master-grprep, active-passive")
 	}
 	cluster.SetTopologyTarget(topology)
 	return nil

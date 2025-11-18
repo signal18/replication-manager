@@ -683,6 +683,8 @@ type Config struct {
 	BackupDatabaseAnalyzeCron                 string                 `mapstructure:"scheduler-db-servers-analyze-cron" toml:"scheduler-db-servers-analyze-cron" json:"schedulerDbServersAnalyzeCron"`
 	BackupSaveScript                          string                 `mapstructure:"backup-save-script" toml:"backup-save-script" json:"backupSaveScript"`
 	BackupLoadScript                          string                 `mapstructure:"backup-load-script" toml:"backup-load-script" json:"backupLoadScript"`
+	BackupLogicalPostScript                   string                 `mapstructure:"backup-logical-post-script" toml:"backup-logical-post-script" json:"backupLogicalPostScript"`
+	BackupPhysicalPostScript                  string                 `mapstructure:"backup-physical-post-script" toml:"backup-physical-post-script" json:"backupPhysicalPostScript"`
 	CompressBackups                           bool                   `mapstructure:"compress-backups" toml:"compress-backups" json:"compressBackups"`
 	BackupSplitMysqlUser                      bool                   `mapstructure:"backup-split-mysql-user" toml:"backup-split-mysql-user" json:"backupSplitMysqlUser"`
 	BackupRestoreMysqlUser                    bool                   `mapstructure:"backup-restore-mysql-user" toml:"backup-restore-mysql-user" json:"backupRestoreMysqlUser"`

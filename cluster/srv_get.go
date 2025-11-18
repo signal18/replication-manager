@@ -876,10 +876,8 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 		if !noSSLParams {
 			sslMode = cluster.Conf.HostsTlsSslMode
 
-			if skipVerify {
-				if cluster.Conf.HostsTlsSslMode == "" {
-					sslMode = "REQUIRED" // No verify server cert
-				}
+			if cluster.Conf.HostsTlsSslMode == "" && skipVerify {
+				sslMode = "REQUIRED" // No verify server cert
 			}
 
 			if cacertfile != "" && clicertfile != "" && clikeyfile != "" {
@@ -887,7 +885,7 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					sslMode = "VERIFY_CA" // Only verify CA if no SSL mode is set
 				}
 
-				if server.DBVersion.IsMySQLOrPerconaSSLMode() && ver.IsMySQLOrPerconaSSLMode() { // Use","--ssl-mode
+				if ver.IsMySQLOrPerconaGreater8() { // client removed --ssl support in 8.0, use --ssl-mode
 					switch sslMode {
 					case "DISABLED":
 						return []string{"--ssl-mode=DISABLED"}
@@ -901,6 +899,9 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 				} else { // Use old","--ssl equivalent
 					switch sslMode {
 					case "DISABLED":
+						if tool == "client-dump" || tool == "client-binlog" {
+							return []string{"--ssl=FALSE"}
+						}
 						return []string{"--skip-ssl"}
 					case "PREFERRED", "REQUIRED":
 						return []string{"--ssl", "--ssl-verify-server-cert=false"}
@@ -911,14 +912,17 @@ func (server *ServerMonitor) GetSSLClientParam(tool string) []string {
 					}
 				}
 			} else {
-				if server.DBVersion.IsMySQLOrPerconaSSLMode() && ver.IsMySQLOrPerconaSSLMode() { // Use","--ssl-mode
-					if sslMode != "" {
-						return []string{"--ssl-mode=" + sslMode} // No verify server cert
+				if ver.IsMySQLOrPerconaGreater8() { // client removed --ssl support in 8.0, use --ssl-mode
+					if sslMode == "" {
+						return []string{} // Use default SSL mode of client
 					} else {
-						return []string{"--ssl-mode=PREFERRED"} // No verify server cert
+						return []string{"--ssl-mode=" + sslMode} // No verify server cert
 					}
 				} else { // Use old","--ssl equivalent
 					if sslMode == "DISABLED" {
+						if tool == "client-dump" || tool == "client-binlog" {
+							return []string{"--ssl=FALSE"}
+						}
 						return []string{"--skip-ssl"}
 					}
 

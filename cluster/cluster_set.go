@@ -763,6 +763,10 @@ func (cluster *Cluster) SetReplicationNoRelay(norelay bool) {
 }
 
 // topology setter
+func (cluster *Cluster) SetActivePassive(activepassive bool) {
+	cluster.Conf.ActivePassive = activepassive
+}
+
 func (cluster *Cluster) SetMultiTierSlave(multitierslave bool) {
 	cluster.Conf.MultiTierSlave = multitierslave
 }

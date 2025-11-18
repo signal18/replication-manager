@@ -86,7 +86,7 @@ func ParseDBFlavor(version string) string {
 
 func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
+	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z-]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	matches := re.FindAllStringSubmatch(vstring, 2)
@@ -131,7 +131,7 @@ func NewFullVersionFromString(flavor, vstring string) (*Version, int, int) {
 
 func NewVersionFromString(flavor, vstring string) (*Version, int) {
 	// Updated regex to capture numeric version and optional suffix without including dash
-	versionRegex := `[a-zA-Z]*\s*([0-9]{1,3}(?:\.[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
+	versionRegex := `([0-9]{1,3}\.(?:[0-9]{1,3}){0,2})(?:[-_.]([0-9A-Za-z]+))?`
 	re := regexp.MustCompile(versionRegex)
 	// Find all matches and capture numeric version with optional suffix
 	match := re.FindStringSubmatch(vstring)
@@ -345,16 +345,7 @@ func (mv *Version) IsMySQLOrPerconaGreater8() bool {
 	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && (mv.Major >= 8)
 }
 
-// IsMySQLOrPerconaGreater84 checks if the version is MySQL or Percona 8.4 or greater
-func (mv *Version) IsMySQLOrPerconaSSLMode() bool {
-	if mv == nil {
-		return false
-	}
-
-	return (mv.Flavor == "MySQL" || mv.Flavor == "Percona") && mv.GreaterEqual("8.0.26")
-}
-
-// IsMariaDBGreater113 checks if the version is MariaDB 11.3 or greater which introduce breaking changes in SSL
+// IsMariaDBGreater113 checks if the version is MariaDB 11.3 or greater which introduces breaking changes in SSL
 func (mv *Version) IsMariaDBGreater113() bool {
 	if mv == nil {
 		return false
