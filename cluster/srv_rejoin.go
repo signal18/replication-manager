@@ -47,6 +47,12 @@ func (server *ServerMonitor) RejoinMaster() error {
 	defer func() {
 		cluster.rejoinCond.Send <- true
 	}()
+
+	if cluster.Conf.ActivePassive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining %s ignored caused by active-passive mode", server.URL)
+		return nil
+	}
+
 	if cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoining leader %s ignored caused by wsrep protocol", server.URL)
 		return nil

@@ -168,10 +168,13 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	}
 
 	// if only one server
-	if len(cluster.Servers) == 1 {
+	if len(cluster.Servers) == 1 || cluster.Conf.ActivePassive {
 		cluster.Topology = config.TopoActivePassive
-		for _, sv := range cluster.Servers {
-			cluster.master = sv
+
+		if len(cluster.Servers) == 1 {
+			for _, sv := range cluster.Servers {
+				cluster.master = sv
+			}
 		}
 		return nil
 	}

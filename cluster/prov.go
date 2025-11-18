@@ -625,7 +625,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	}
 
 	// Assume master-slave if nothing else is declared
-	if cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
+	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
 
 		for key, server := range cluster.Servers {
 			if server.State == stateFailed {
@@ -674,7 +674,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 	}
 	// Slave Relay
-	if cluster.Conf.MultiTierSlave == true {
+	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiTierSlave == true {
 		relaykey := 1
 		if masterKey == 1 {
 			relaykey = 0
@@ -731,7 +731,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 	}
 	// Multi Master
-	if cluster.Conf.MultiMaster == true {
+	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMaster == true {
 		for _, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue
@@ -773,7 +773,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 	}
 	// Ring
-	if cluster.Conf.MultiMasterRing == true {
+	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMasterRing == true {
 		for _, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue
