@@ -627,7 +627,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 			server.SetConfigRefreshCookie() // set cookie to refresh config
 
 			if cluster.Topology == config.TopoActivePassive {
-				server.SetState(stateMaster)
+				if cluster.GetMaster() == nil {
+					server.SetMaster()
+				} else if cluster.GetMaster().Id != server.Id {
+					server.SetState(stateUnconn)
+				}
 			} else if cluster.GetTopology() != config.TopoMultiMasterWsrep || cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 				if server.IsGroupReplicationSlave {
 					server.SetState(stateSlave)
@@ -682,7 +686,11 @@ func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {
 		} else if server.GetCluster().GetTopology() == config.TopoActivePassive {
 			if server.PrevState == stateSuspect || (server.PrevState == stateMaintenance && !server.IsMaintenance) {
 				//if active-passive topo and no replication, put the state at standalone
-				server.SetState(stateMaster)
+				if cluster.GetMaster() == nil || cluster.GetMaster().Id == server.Id {
+					server.SetState(stateMaster)
+				} else {
+					server.SetState(stateUnconn)
+				}
 			}
 		} else if server.State != stateMaster && server.PrevState == stateSlaveErr { // if not master and was slave error
 			server.SetState(stateUnconn)
