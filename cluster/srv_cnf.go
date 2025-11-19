@@ -94,6 +94,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
 		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
 		"%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%":                         server.GetJobDatadir(),
+		"%%ENV:SVC_CONF_ENV_AUDIT_LOG%%":                            server.GetAuditLog(),
+		"%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%":                        server.GetSqlErrorLog(),
 	}
 
 	//	size = ` + collector.ProvDisk + `
@@ -166,7 +168,11 @@ func (server *ServerMonitor) GetDatabaseClientBasedir() string {
 func (server *ServerMonitor) GetDbErrorLog() string {
 
 	if v, ok := server.SensitiveVariables.CheckAndGet("LOG_ERROR"); ok && v != "" {
-		return v
+		if strings.HasPrefix(v, "/") {
+			return v
+		} else {
+			return server.GetDatabaseDatadir() + "/" + v
+		}
 	}
 
 	// If has nosplitpath
@@ -180,7 +186,11 @@ func (server *ServerMonitor) GetDbErrorLog() string {
 func (server *ServerMonitor) GetDbSlowLog() string {
 
 	if v, ok := server.SensitiveVariables.CheckAndGet("SLOW_QUERY_LOG_FILE"); ok && v != "" {
-		return v
+		if strings.HasPrefix(v, "/") {
+			return v
+		} else {
+			return server.GetDatabaseDatadir() + "/" + v
+		}
 	}
 
 	// If has nosplitpath
@@ -189,6 +199,41 @@ func (server *ServerMonitor) GetDbSlowLog() string {
 	}
 
 	return server.GetDatabaseDatadir() + "/.system/logs/slow-query.log"
+}
+
+func (server *ServerMonitor) GetAuditLog() string {
+
+	if v, ok := server.SensitiveVariables.CheckAndGet("AUDIT_LOG_FILE"); ok && v != "" {
+		if strings.HasPrefix(v, "/") {
+			return v
+		} else {
+			return server.GetDatabaseDatadir() + "/" + v
+		}
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/audit.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/audit.log"
+}
+
+func (server *ServerMonitor) GetSqlErrorLog() string {
+	if v, ok := server.SensitiveVariables.CheckAndGet("SQL_ERROR_LOG_FILE"); ok && v != "" {
+		if strings.HasPrefix(v, "/") {
+			return v
+		} else {
+			return server.GetDatabaseDatadir() + "/" + v
+		}
+	}
+
+	// If has nosplitpath
+	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
+		return server.GetDatabaseDatadir() + "/sql_errors.log"
+	}
+
+	return server.GetDatabaseDatadir() + "/.system/logs/sql_errors.log"
 }
 
 func (server *ServerMonitor) GetConfigVariable(variable string) string {
