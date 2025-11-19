@@ -167,19 +167,23 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		}
 	}
 
+	// Check topology Cluster all servers down
+	cluster.IsDown = cluster.AllServersFailed()
+
 	// if only one server
-	if len(cluster.Servers) == 1 {
+	if len(cluster.Servers) == 1 || cluster.Conf.ActivePassive {
 		cluster.Topology = config.TopoActivePassive
-		for _, sv := range cluster.Servers {
-			cluster.master = sv
+
+		if len(cluster.Servers) == 1 {
+			for _, sv := range cluster.Servers {
+				cluster.master = sv
+			}
 		}
 		return nil
 	}
 
 	// Check topology Cluster is down
 	cluster.TopologyClusterDown()
-	// Check topology Cluster all servers down
-	cluster.IsDown = cluster.AllServersFailed()
 	cluster.CheckSameServerID()
 
 	// Spider shard discover
