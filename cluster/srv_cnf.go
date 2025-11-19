@@ -215,10 +215,10 @@ func (server *ServerMonitor) GetAuditLog() string {
 
 	// If has nosplitpath
 	if server.ClusterGroup.Configurator.HaveDBTag("nosplitpath") {
-		return server.GetDatabaseDatadir() + "/audit.log"
+		return server.GetDatabaseDatadir() + "/server_audit.log"
 	}
 
-	return server.GetDatabaseDatadir() + "/.system/logs/audit.log"
+	return server.GetDatabaseDatadir() + "/.system/logs/server_audit.log"
 }
 
 func (server *ServerMonitor) GetSqlErrorLog() string {
