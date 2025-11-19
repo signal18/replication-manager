@@ -661,7 +661,7 @@ process_log_file() {
 dblogfile() {
     local DBLOG="$1"
     local JOB="$2"
-    local STATEFILE="${JOB}.state"
+    local STATEFILE="$TMP_DIR/${JOB}.state"
 
     # Ensure log file exists
     [ ! -f "$DBLOG" ] && touch "$DBLOG"
@@ -673,7 +673,7 @@ dblogfile() {
 
     if [ -n "$LAST_LINE" ]; then
         # Find the last occurrence of LAST_LINE
-        if grep -Fxn -- "$LAST_LINE" "$LOGFILE" >$TMP_DIR/match_pos; then
+        if grep -Fxn -- "$LAST_LINE" "$DBLOG" >$TMP_DIR/match_pos; then
             local LAST_MATCH_LINE
             LAST_MATCH_LINE=$(cut -d: -f1 $TMP_DIR/match_pos | tail -n 1)
             NEXT_LINE=$((LAST_MATCH_LINE + 1))
@@ -682,7 +682,7 @@ dblogfile() {
 
     # Extract new lines into temporary file
     local TMPLOG="$TMPDIR/${JOB}.newlines"
-    tail -n +"$NEXT_LINE" "$LOGFILE" > "$TMPLOG"
+    tail -n +"$NEXT_LINE" "$DBLOG" > "$TMPLOG"
 
     # If DB log has content
     if [ -s "$TMPLOG" ]; then
