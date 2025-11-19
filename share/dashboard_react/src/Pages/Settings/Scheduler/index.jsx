@@ -236,7 +236,8 @@ function Scheduler({
     selectedFromHour,
     selectedToHour,
     selectedFromMinute,
-    selectedToMinute
+    selectedToMinute,
+    allHours
   ])
 
   const handleTimeChange = (time, section) => {
