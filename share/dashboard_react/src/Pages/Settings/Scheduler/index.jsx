@@ -388,13 +388,14 @@ function Scheduler({
               ))}
             </RadioGroup>
             <Flex className={styles.schedulerItem}>
-              { recurrentOptions == "everyMinute" && (
+              { recurrentType == "everyMinute" && (
               <HStack>
                 <Checkbox isChecked={allHours} onChange={(e) => setAllHours(e.target.checked)}>
                   All Hours
                 </Checkbox>
               </HStack>
               )}
+              { !allHours && (<>
               <Flex className={styles.fromContainer}>
                 <HStack className={styles.timePickerContainer}>
                   <div className={styles.label}>
@@ -482,6 +483,8 @@ function Scheduler({
                   </>
                 )}
               </Flex>
+              </>
+              )}
               {recurrentType === 'hourly' && (
                 <HStack>
                   <div className={styles.label}>Every </div>
