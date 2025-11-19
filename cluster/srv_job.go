@@ -998,6 +998,10 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 		return 0, nil
 	}
 
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
 	if server.HasWaitErrorlogCookie() {
 		return 0, nil
 	}
@@ -1020,6 +1024,10 @@ func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "auditlog"
 	if server.IsDown() {
+		return 0, nil
+	}
+
+	if cluster.IsInFailover() {
 		return 0, nil
 	}
 
@@ -1048,6 +1056,10 @@ func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 		return 0, nil
 	}
 
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
 	if server.HasWaitSqlErrorlogCookie() {
 		return 0, nil
 	}
@@ -1070,6 +1082,10 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 	cluster := server.ClusterGroup
 	task := "slowquery"
 	if server.IsDown() {
+		return 0, nil
+	}
+
+	if cluster.IsInFailover() {
 		return 0, nil
 	}
 
