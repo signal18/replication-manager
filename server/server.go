@@ -355,7 +355,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorLongQueryWithTable, "monitoring-long-query-with-table", false, "Use log_type table to fetch slow queries")
 	flags.BoolVar(&conf.MonitorLongQueryWithProcess, "monitoring-long-query-with-process", true, "Use processlist to fetch slow queries")
 	flags.IntVar(&conf.MonitorLongQueryLogLength, "monitoring-long-query-log-length", 200, "Number of slow queries to keep in monitor")
-	flags.IntVar(&conf.MonitorErrorLogLength, "monitoring-erreur-log-length", 20, "Number of error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorErrorLogLength, "monitoring-error-log-length", 20, "Number of error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorSqlErrorLogLength, "monitoring-sql-error-log-length", 20, "Number of sql error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorAuditLogLength, "monitoring-audit-log-length", 20, "Number of audit log line to keep in monitor")
 	flags.BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
 	flags.BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	flags.BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
@@ -1802,6 +1804,7 @@ func (repman *ReplicationManager) initAlias(v *viper.Viper) {
 	v.RegisterAlias("api-credential", "api-credentials")
 	v.RegisterAlias("backup-binlogs-method", "binlog-copy-mode")
 	v.RegisterAlias("backup-binlogs-script", "binlog-copy-script")
+	v.RegisterAlias("monitoring-erreur-log-length", "monitoring-error-log-length")
 }
 
 func (repman *ReplicationManager) InitRestic() error {
