@@ -240,6 +240,11 @@ function Scheduler({
     allHours
   ])
 
+  const handleAllHoursChange = (val) => {
+    setValuesChanged(true)
+    setAllHours(val)
+  }
+
   const handleTimeChange = (time, section) => {
     setValuesChanged(true)
     setErrorMessage('')
@@ -308,7 +313,7 @@ function Scheduler({
     setValuesChanged(true)
     setRecurrentType(recurrentVal)
     if (recurrentVal !== "everyMinute") {
-      setAllHours(false)
+      handleAllHoursChange(false)
     }
   }
 
@@ -391,7 +396,7 @@ function Scheduler({
             <Flex className={styles.schedulerItem}>
               { recurrentType == "everyMinute" && (
               <HStack>
-                <Checkbox isChecked={allHours} onChange={(e) => setAllHours(e.target.checked)}>
+                <Checkbox isChecked={allHours} onChange={(e) => handleAllHoursChange(e.target.checked)}>
                   All Hours
                 </Checkbox>
               </HStack>
