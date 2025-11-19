@@ -1,4 +1,4 @@
-import { Flex, HStack, Input, Radio, RadioGroup, Text, VStack } from '@chakra-ui/react'
+import { Checkbox, Flex, HStack, Input, Radio, RadioGroup, Text, VStack } from '@chakra-ui/react'
 import React, { useState, useEffect } from 'react'
 import Dropdown from '../../../components/Dropdown'
 import styles from './styles.module.scss'
@@ -82,6 +82,7 @@ function Scheduler({
 
   const [everyHour, setEveryHour] = useState(2)
   const [everyMinute, setEveryMinute] = useState(30)
+  const [allHours, setAllHours] = useState(false)
 
   const [valuesChanged, setValuesChanged] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -187,7 +188,8 @@ function Scheduler({
       let finalStr = ''
       if (recurrentType === 'everyMinute') {
         const everyMin = everyMinute > 0 ? `/${everyMinute}` : ''
-        finalStr = `0 ${`${min}${everyMin}`} ${hr} * * *`
+        const finalhour = allHours ? '*' : hr
+        finalStr = `0 ${`${min}${everyMin}`} ${finalhour} * * *`
       } else if (recurrentType === 'hourly') {
         const everyHr = everyHour > 0 ? `/${everyHour}` : ''
         finalStr = `0 ${min} ${`${hr}${everyHr}`} * * *`
@@ -304,6 +306,9 @@ function Scheduler({
   const handleRecurrentChange = (recurrentVal) => {
     setValuesChanged(true)
     setRecurrentType(recurrentVal)
+    if (recurrentVal !== "everyMinute") {
+      setAllHours(false)
+    }
   }
 
   const handleHourChange = (e) => {
@@ -383,6 +388,13 @@ function Scheduler({
               ))}
             </RadioGroup>
             <Flex className={styles.schedulerItem}>
+              { recurrentOptions == "everyMinute" && (
+              <HStack>
+                <Checkbox isChecked={allHours} onChange={(e) => setAllHours(e.target.checked)}>
+                  All Hours
+                </Checkbox>
+              </HStack>
+              )}
               <Flex className={styles.fromContainer}>
                 <HStack className={styles.timePickerContainer}>
                   <div className={styles.label}>
