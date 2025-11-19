@@ -1952,6 +1952,7 @@ export const clusterSlice = createSlice({
       isAnyOf(
         getClusterData.pending,
         getClusterLogs.pending,
+        getClusterApps.pending,
         getClusterAlerts.pending,
         getClusterMaster.pending,
         getClusterServers.pending,
@@ -1987,6 +1988,7 @@ export const clusterSlice = createSlice({
       isAnyOf(
         getClusterData.rejected,
         getClusterLogs.rejected,
+        getClusterApps.rejected,
         getClusterAlerts.rejected,
         getClusterMaster.rejected,
         getClusterServers.rejected,
