@@ -3507,6 +3507,10 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitErrorlogCookie()
 	case "slowquery":
 		server.DelWaitSlowqueryCookie()
+	case "auditlog":
+		server.DelWaitAuditlogCookie()
+	case "sqlerrorlog":
+		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		server.WriteBackupMetadata(config.BackupMethodPhysical)
