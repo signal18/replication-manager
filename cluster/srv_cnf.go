@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -96,6 +97,7 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%":                         server.GetJobDatadir(),
 		"%%ENV:SVC_CONF_ENV_AUDIT_LOG%%":                            server.GetAuditLog(),
 		"%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%":                        server.GetSqlErrorLog(),
+		"%%ENV:SVC_CONF_ENV_LOG_ROTATE_MAX_AGE%%":                   fmt.Sprintf("%d", server.ClusterGroup.Conf.LogRotateMaxAge),
 	}
 
 	//	size = ` + collector.ProvDisk + `

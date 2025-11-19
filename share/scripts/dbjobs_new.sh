@@ -35,6 +35,7 @@ AUDITLOG=%%ENV:SVC_CONF_ENV_AUDIT_LOG%%
 SQLERRORLOG=%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%
 ERRORLOG=%%ENV:SVC_CONF_ENV_ERROR_LOG%%
 SLOWLOG=%%ENV:SVC_CONF_ENV_SLOW_LOG%%
+RETDAYS=%%ENV:SVC_CONF_ENV_LOG_ROTATE_MAX_AGE%%
 BACKUPDIR=$DATADIR/.system/backup
 TMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%
 
@@ -678,8 +679,8 @@ dblogfile() {
         local YESTERDAY="${DBLOG}_$(date -d '1 day ago' '+%Y-%m-%d')"
         [ -f "$YESTERDAY" ] && gzip "$YESTERDAY"
 
-        # delete log older than 8 days
-        local OLD="${DBLOG}_$(date -d '8 day ago' '+%Y-%m-%d').gz"
+        # delete log older than N days
+        local OLD=`${DBLOG}_$(date -d "${RETDAYS} day ago" '+%Y-%m-%d').gz`
         [ -f "$OLD" ] && rm -f "$OLD"
 
         # Truncate original log
