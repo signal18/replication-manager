@@ -13,6 +13,11 @@ import (
 
 func (regtest *RegTest) TestSwitchoverNoReadOnlyNoRplCheck(cluster *cluster.Cluster, conf string, test *cluster.Test) bool {
 
+	if cluster.Conf.ActivePassive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Test not applicable in active-passive mode")
+		return false
+	}
+
 	err := cluster.DisableSemisync()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err)
