@@ -577,6 +577,16 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 			server.DelWaitErrorlogCookie()
 			return true, nil
 		}
+	case config.ConstTaskAuditLog:
+		if server.HasWaitAuditlogCookie() {
+			server.DelWaitAuditlogCookie()
+			return true, nil
+		}
+	case config.ConstTaskSqlError:
+		if server.HasWaitSqlErrorlogCookie() {
+			server.DelWaitSqlErrorlogCookie()
+			return true, nil
+		}
 	case config.ConstTaskJobsCheck:
 		if server.HasWaitJobsCheckCookie() {
 			server.DelWaitJobsCheckCookie()

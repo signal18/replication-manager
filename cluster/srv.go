@@ -369,6 +369,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
+	go server.AuditLogWatcher()
+	go server.SqlErrorLogWatcher()
 
 	// Prevent child cluster as prefered
 	if server.SourceClusterName == cluster.Name {

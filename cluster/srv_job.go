@@ -1016,59 +1016,54 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
 }
 
-// ErrorLogWatcher monitor the tail of the log and populate ring buffer
-func (server *ServerMonitor) ErrorLogWatcher() {
+func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
 	cluster := server.ClusterGroup
-	for line := range server.ErrorLogTailer.Lines {
-		var log s18log.HttpMessage
-		itext := strings.Index(line.Text, "]")
-		if itext != -1 && len(line.Text) > itext+2 {
-			log.Text = line.Text[itext+2:]
-		} else {
-			log.Text = line.Text
-		}
-		itime := strings.Index(line.Text, "[")
-		if itime != -1 {
-			log.Timestamp = line.Text[0 : itime-1]
-			if itext != -1 && itime+1 < itext {
-				log.Level = line.Text[itime+1 : itext]
-			}
-		} else {
-			log.Timestamp = fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
-		}
-		log.Group = cluster.GetClusterName()
-
-		server.ErrorLog.Add(log)
+	task := "auditlog"
+	if server.IsDown() {
+		return 0, nil
 	}
 
+	if server.HasWaitAuditlogCookie() {
+		return 0, nil
+	}
+	server.SetWaitAuditlogCookie()
+
+	filename := server.Datadir + "/log/log_audit.log"
+	dirname := filepath.Dir(filename)
+	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+		os.MkdirAll(dirname, 0755)
+	}
+
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	if err != nil {
+		return 0, nil
+	}
+	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
 }
 
-func (server *ServerMonitor) SlowLogWatcher() {
+func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
 	cluster := server.ClusterGroup
-	log := s18log.NewSlowMessage()
-	preline := ""
-	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
-	for line := range server.SlowLogTailer.Lines {
-		newlog := s18log.NewSlowMessage()
-		if cluster.Conf.LogSST {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New line %s", line.Text)
-		}
-		log.Group = cluster.GetClusterName()
-		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
-			// new querySelector
-			if cluster.Conf.LogSST {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %s", log)
-			}
-			if log.Query != "" {
-				server.SlowLog.Add(log)
-			}
-			log = newlog
-		}
-		server.SlowLog.ParseLine(line.Text, log)
-
-		preline = line.Text
+	task := "sqlerrorlog"
+	if server.IsDown() {
+		return 0, nil
 	}
 
+	if server.HasWaitSqlErrorlogCookie() {
+		return 0, nil
+	}
+	server.SetWaitSqlErrorlogCookie()
+
+	filename := server.Datadir + "/log/log_sql_error.log"
+	dirname := filepath.Dir(filename)
+	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+		os.MkdirAll(dirname, 0755)
+	}
+
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	if err != nil {
+		return 0, nil
+	}
+	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
@@ -1097,6 +1092,104 @@ func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
 		return 0, nil
 	}
 	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
+}
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) ErrorLogWatcher() {
+	cluster := server.ClusterGroup
+	for line := range server.ErrorLogTailer.Lines {
+		var log s18log.HttpMessage
+		itext := strings.Index(line.Text, "]")
+		if itext != -1 && len(line.Text) > itext+2 {
+			log.Text = line.Text[itext+2:]
+		} else {
+			log.Text = line.Text
+		}
+		itime := strings.Index(line.Text, "[")
+		if itime != -1 {
+			log.Timestamp = line.Text[0 : itime-1]
+			if itext != -1 && itime+1 < itext {
+				log.Level = line.Text[itime+1 : itext]
+			}
+		} else {
+			log.Timestamp = fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
+		}
+		log.Group = cluster.GetClusterName()
+
+		server.ErrorLog.Add(log)
+	}
+}
+
+var spacesRe = regexp.MustCompile(`\s+`)
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) AuditLogWatcher() {
+	cluster := server.ClusterGroup
+	for line := range server.AuditLogTailer.Lines {
+		var log s18log.HttpMessage
+		cleanline := spacesRe.ReplaceAllString(line.Text, " ")
+		if cleanline == " " {
+			continue
+		}
+		parts := strings.SplitN(cleanline, ",", 9)
+		if len(parts) < 9 {
+			continue
+		}
+		log.Group = cluster.GetClusterName()
+		log.Level = "INFO"
+		log.Timestamp = parts[0]
+		log.Text = strings.Join(parts[1:], ", ")
+		server.AuditLog.Add(log)
+	}
+}
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) SqlErrorLogWatcher() {
+	cluster := server.ClusterGroup
+	for line := range server.SqlErrorLogTailer.Lines {
+		var log s18log.HttpMessage
+		cleanline := spacesRe.ReplaceAllString(line.Text, " ")
+		if cleanline == " " {
+			continue
+		}
+		parts := strings.SplitN(cleanline, " ", 7)
+		if len(parts) < 7 {
+			continue
+		}
+		log.Group = cluster.GetClusterName()
+		log.Timestamp = parts[0] + " " + parts[1]
+		log.Level = parts[5]
+		log.Text = strings.Join(parts[2:], " ")
+		server.SqlErrorLog.Add(log)
+	}
+}
+
+func (server *ServerMonitor) SlowLogWatcher() {
+	cluster := server.ClusterGroup
+	log := s18log.NewSlowMessage()
+	preline := ""
+	var headerRe = regexp.MustCompile(`^#\s+[A-Z]`)
+	for line := range server.SlowLogTailer.Lines {
+		newlog := s18log.NewSlowMessage()
+		if cluster.Conf.LogSST {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New line %s", line.Text)
+		}
+		log.Group = cluster.GetClusterName()
+		if headerRe.MatchString(line.Text) && !headerRe.MatchString(preline) {
+			// new querySelector
+			if cluster.Conf.LogSST {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "New query %s", log)
+			}
+			if log.Query != "" {
+				server.SlowLog.Add(log)
+			}
+			log = newlog
+		}
+		server.SlowLog.ParseLine(line.Text, log)
+
+		preline = line.Text
+	}
+
 }
 
 func (server *ServerMonitor) JobOptimize() (int64, error) {

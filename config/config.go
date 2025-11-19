@@ -1386,6 +1386,8 @@ const (
 	ConstTaskMB                 TaskName = "mariabackup"
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
+	ConstTaskSqlError           TaskName = "sqlerrorlog"
+	ConstTaskAuditLog           TaskName = "auditlog"
 	ConstTaskZFS                TaskName = "zfssnapback"
 	ConstTaskOptimize           TaskName = "optimize"
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
