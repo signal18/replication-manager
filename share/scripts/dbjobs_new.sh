@@ -35,7 +35,6 @@ AUDITLOG=%%ENV:SVC_CONF_ENV_AUDIT_LOG%%
 SQLERRORLOG=%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%
 ERRORLOG=%%ENV:SVC_CONF_ENV_ERROR_LOG%%
 SLOWLOG=%%ENV:SVC_CONF_ENV_SLOW_LOG%%
-RETDAYS=%%ENV:SVC_CONF_ENV_LOG_ROTATE_MAX_AGE%%
 BACKUPDIR=$DATADIR/.system/backup
 TMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%
 
@@ -662,29 +661,33 @@ process_log_file() {
 dblogfile() {
     local DBLOG="$1"
     local JOB="$2"
+    local STATEFILE="${JOB}.state"
 
     # Ensure log file exists
     [ ! -f "$DBLOG" ] && touch "$DBLOG"
 
+    local LAST_LINE=""
+    [ -f "$STATEFILE" ] && LAST_LINE=$(cat "$STATEFILE")
+
+    local NEXT_LINE=1
+
+    if [ -n "$LAST_LINE" ]; then
+        # Find the last occurrence of LAST_LINE
+        if grep -Fxn -- "$LAST_LINE" "$LOGFILE" >$TMP_DIR/match_pos; then
+            local LAST_MATCH_LINE
+            LAST_MATCH_LINE=$(cut -d: -f1 $TMP_DIR/match_pos | tail -n 1)
+            NEXT_LINE=$((LAST_MATCH_LINE + 1))
+        fi
+    fi
+
+    # Extract new lines into temporary file
+    local TMPLOG="$TMPDIR/${JOB}.newlines"
+    tail -n +"$NEXT_LINE" "$LOGFILE" > "$TMPLOG"
+
     # If DB log has content
-    if [ -s "$DBLOG" ]; then
-        # Append to daily archived file
-        local TODAY="${DBLOG}_$(date '+%Y-%m-%d')"
-        cat "$DBLOG" >> "$TODAY"
-
+    if [ -s "$TMPLOG" ]; then
         # Send content via socat
-        cat "$DBLOG" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
-
-        # gzip yesterday’s log
-        local YESTERDAY="${DBLOG}_$(date -d '1 day ago' '+%Y-%m-%d')"
-        [ -f "$YESTERDAY" ] && gzip "$YESTERDAY"
-
-        # delete log older than N days
-        local OLD=`${DBLOG}_$(date -d "${RETDAYS} day ago" '+%Y-%m-%d').gz`
-        [ -f "$OLD" ] && rm -f "$OLD"
-
-        # Truncate original log
-        >"$DBLOG"
+        socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"
     else
         # Send empty payload
         echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
