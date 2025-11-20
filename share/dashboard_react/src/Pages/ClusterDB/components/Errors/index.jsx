@@ -8,11 +8,8 @@ import { useEffect } from 'react'
 function Errors({ clusterName, dbId, selectedDBServer }) {
   const dispatch = useDispatch()
 
-  const {
-    cluster: {
-      database: { errors, sqlerrors }
-    }
-  } = useSelector((state) => state)
+  const errors = useSelector((state) => state.cluster.database.errors)
+  const sqlerrors = useSelector((state) => state.cluster.database.sqlerrors)
 
   useEffect(() => {
     dispatch(getDatabaseService({ clusterName, serviceName: 'errorlog', dbId }))
