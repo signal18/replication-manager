@@ -40,13 +40,6 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
     setData(searchData(logsData))
   }, [search])
 
-  useEffect(() => {
-  return () => {
-    prevLogs.current = null
-  }
-}, [])
-
-
   return (
     <Box
       className={`${styles.logContainer} ${className}`}
