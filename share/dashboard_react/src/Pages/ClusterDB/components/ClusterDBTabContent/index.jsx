@@ -15,6 +15,7 @@ import ServiceOpenSvc from '../ServiceOpenSvc'
 import MetadataLocks from '../MetadataLocks'
 import ResponseTime from '../ResponseTime'
 import Errors from '../Errors'
+import ServerAudit from '../ServerAudit'
 
 function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode }) {
   const [currentTab, setCurrentTab] = useState('')
