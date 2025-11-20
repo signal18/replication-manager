@@ -100,6 +100,10 @@ function ClusterDB(props) {
     if (tabs.current[selectedTabRef.current] === 'Process List') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'processlist', dbId }))
     }
+    if (tabs.current[selectedTabRef.current] === 'Errors') {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'errorlog', dbId }))
+      dispatch(getDatabaseService({ clusterName, serviceName: 'sqlerrorlog', dbId }))
+    }
     if (tabs.current[selectedTabRef.current] === 'Slow Queries') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
     }
