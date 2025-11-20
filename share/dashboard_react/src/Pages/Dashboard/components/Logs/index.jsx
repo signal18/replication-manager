@@ -4,13 +4,11 @@ import { Box, Code, Flex, HStack, Input, VStack } from '@chakra-ui/react'
 import styles from './styles.module.scss'
 import NotFound from '../../../../components/NotFound'
 import { useSelector } from 'react-redux'
-import { isEqual } from 'lodash'
 
 function Logs({ logs, className, searchable = false, isScrollable = true }) {
   const [logsData, setLogsData] = useState([])
   const [data, setData] = useState([])
   const [search, setSearch] = useState('')
-  const prevLogs = useRef(logs)
 
   const searchData = (serverData) => {
     const searchedData = serverData.filter((x) => {
@@ -25,11 +23,8 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
   useEffect(() => {
     if (logs?.length > 0) {
       const nonEmptyLogs = logs.filter((log) => log.timestamp)
-      if (!isEqual(nonEmptyLogs, prevLogs.current)) {
-        prevLogs.current = nonEmptyLogs
-        setLogsData(nonEmptyLogs)
-        setData(searchData(nonEmptyLogs))
-      }
+      setLogsData(nonEmptyLogs)
+      setData(searchData(nonEmptyLogs))
     }
   }, [logs])
 
