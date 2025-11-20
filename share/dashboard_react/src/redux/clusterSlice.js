@@ -1824,6 +1824,7 @@ const initialState = {
     digestQueries: null,
     tables: null,
     errors: null,
+    sqlerrors: null,
     variables: null,
     serviceOpensvc: null,
     metadataLocks: null,
@@ -1925,6 +1926,10 @@ export const clusterSlice = createSlice({
             state.database.processList = action.payload.data
           } else if (serviceName === 'slow-queries') {
             state.database.slowQueries = action.payload.data
+           } else if (serviceName === 'errorlog') {
+            state.database.errors = action.payload.data
+          } else if (serviceName === 'sqlerrorlog') {
+            state.database.sqlerrors = action.payload.data
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
           } else if (serviceName === 'tables') {

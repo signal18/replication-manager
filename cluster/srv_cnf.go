@@ -95,8 +95,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_ERROR_LOG%%":                            server.GetDbErrorLog(),
 		"%%ENV:SVC_CONF_ENV_SLOW_LOG%%":                             server.GetDbSlowLog(),
 		"%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%":                         server.GetJobDatadir(),
-		"%%ENV:SVC_CONF_ENV_AUDIT_LOG%%":                            server.GetAuditLog(),
-		"%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%":                        server.GetSqlErrorLog(),
+		"%%ENV:SVC_CONF_ENV_AUDIT_LOG%%":                            server.GetServerAuditFilePath(),
+		"%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%":                        server.GetSqlErrorLogFilename(),
 		"%%ENV:SVC_CONF_ENV_LOG_ROTATE_MAX_AGE%%":                   fmt.Sprintf("%d", server.ClusterGroup.Conf.LogRotateMaxAge),
 	}
 
@@ -203,9 +203,9 @@ func (server *ServerMonitor) GetDbSlowLog() string {
 	return server.GetDatabaseDatadir() + "/.system/logs/slow-query.log"
 }
 
-func (server *ServerMonitor) GetAuditLog() string {
+func (server *ServerMonitor) GetServerAuditFilePath() string {
 
-	if v, ok := server.SensitiveVariables.CheckAndGet("AUDIT_LOG_FILE"); ok && v != "" {
+	if v, ok := server.SensitiveVariables.CheckAndGet("SERVER_AUDIT_FILE_PATH"); ok && v != "" {
 		if strings.HasPrefix(v, "/") {
 			return v
 		} else {
@@ -221,8 +221,8 @@ func (server *ServerMonitor) GetAuditLog() string {
 	return server.GetDatabaseDatadir() + "/.system/logs/server_audit.log"
 }
 
-func (server *ServerMonitor) GetSqlErrorLog() string {
-	if v, ok := server.SensitiveVariables.CheckAndGet("SQL_ERROR_LOG_FILE"); ok && v != "" {
+func (server *ServerMonitor) GetSqlErrorLogFilename() string {
+	if v, ok := server.SensitiveVariables.CheckAndGet("SQL_ERROR_LOG_FILENAME"); ok && v != "" {
 		if strings.HasPrefix(v, "/") {
 			return v
 		} else {

@@ -162,9 +162,9 @@ type ServerMonitor struct {
 	SensitiveVariables          *config.StringsMap         `json:"-"`
 	VariablesMap                *config.VariablesMap       `json:"-"`
 	EngineInnoDB                *config.StringsMap         `json:"engineInnodb"`
-	ErrorLog                    s18log.HttpLog             `json:"errorLog"`
-	SqlErrorLog                 s18log.HttpLog             `json:"sqlErrorLog"`
-	AuditLog                    s18log.HttpLog             `json:"auditLog"`
+	ErrorLog                    s18log.HttpLog             `json:"-"`
+	SqlErrorLog                 s18log.HttpLog             `json:"-"`
+	AuditLog                    s18log.HttpLog             `json:"-"`
 	SlowLog                     s18log.SlowLog             `json:"-"`
 	Status                      *config.StringsMap         `json:"-"`
 	PrevStatus                  *config.StringsMap         `json:"-"`

@@ -186,10 +186,17 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStatusDelta)),
 	))
-
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/auditlog", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerAuditLog)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/errorlog", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerErrorLog)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/sqlerrorlog", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSqlErrorLog)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/slow-queries", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -338,7 +345,7 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerTaskCancel)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetInnoDBMonitor)),
 	))
@@ -348,22 +355,22 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerWaitInnoDBPurge)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQueryCapture)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQueryTable)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchSlowQuery)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSwitchPFSSlowQuery)),
 	))
@@ -373,22 +380,22 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSetLongQueryTime)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchReadOnly)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchMetaDataLocks)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchQueryResponseTime)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerSwitchSqlErrorLog)),
 	))
@@ -1714,7 +1721,7 @@ func (repman *ReplicationManager) handlerWaitInnoDBPurge(w http.ResponseWriter, 
 // @Success 200 {string} string "Read-only mode toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only [get]
 func (repman *ReplicationManager) handlerMuxServerSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1748,7 +1755,7 @@ func (repman *ReplicationManager) handlerMuxServerSwitchReadOnly(w http.Response
 // @Success 200 {string} string "Metadata locks toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks [get]
 func (repman *ReplicationManager) handlerMuxServerSwitchMetaDataLocks(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -1782,7 +1789,7 @@ func (repman *ReplicationManager) handlerMuxServerSwitchMetaDataLocks(w http.Res
 // @Success 200 {string} string "Query response time toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time [get]
 func (repman *ReplicationManager) handlerMuxServerSwitchQueryResponseTime(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -1817,7 +1824,7 @@ func (repman *ReplicationManager) handlerMuxServerSwitchQueryResponseTime(w http
 // @Success 200 {string} string "SQL error log toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log [get]
 func (repman *ReplicationManager) handlerMuxServerSwitchSqlErrorLog(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -2059,7 +2066,7 @@ func (repman *ReplicationManager) handlerMuxServerResetPFSQueries(w http.Respons
 // @Success 200 {string} string "Slow query capture toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture [get]
 func (repman *ReplicationManager) handlerMuxSwitchSlowQueryCapture(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2093,7 +2100,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSlowQueryCapture(w http.Respon
 // @Success 200 {string} string "PFS slow query capture toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query [get]
 func (repman *ReplicationManager) handlerMuxSwitchPFSSlowQuery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2127,7 +2134,7 @@ func (repman *ReplicationManager) handlerMuxSwitchPFSSlowQuery(w http.ResponseWr
 // @Success 200 {string} string "Slow query toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query [get]
 func (repman *ReplicationManager) handlerMuxSwitchSlowQuery(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -2161,7 +2168,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSlowQuery(w http.ResponseWrite
 // @Success 200 {string} string "Slow query table mode toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table [get]
 func (repman *ReplicationManager) handlerMuxSwitchSlowQueryTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -3327,7 +3334,7 @@ func (repman *ReplicationManager) handlerMuxServerErrorLog(w http.ResponseWriter
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetErrorLog()
-			err := e.Encode(l)
+			err := e.Encode(l.Buffer)
 			if err != nil {
 				http.Error(w, "Encoding error", 500)
 				return
@@ -3337,7 +3344,90 @@ func (repman *ReplicationManager) handlerMuxServerErrorLog(w http.ResponseWriter
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
 
+// handlerMuxSqlErrorLog handles the HTTP request to get the SQL error log of a specific server within a cluster.
+// @Summary Get SQL error log of a server
+// @Description Retrieves the SQL error log of a specified server within a cluster.
+// @Tags DatabaseLogs
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {object} map[string]interface{} "SQL error log retrieved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/sqlerrorlog [get]
+func (repman *ReplicationManager) handlerMuxServerSqlErrorLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetSqlErrorLog()
+			err := e.Encode(l.Buffer)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxServerAuditLog handles the HTTP request to get the audit log of a specific server within a cluster.
+// @Summary Get audit log of a server
+// @Description Retrieves the audit log of a specified server within a cluster.
+// @Tags DatabaseLogs
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Success 200 {object} map[string]interface{} "Audit log retrieved successfully"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/auditlog [get]
+func (repman *ReplicationManager) handlerMuxServerAuditLog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil && node.IsDown() == false {
+			e := json.NewEncoder(w)
+			e.SetIndent("", "\t")
+			l := node.GetAuditLog()
+			err := e.Encode(l.Buffer)
+			if err != nil {
+				http.Error(w, "Encoding error", 500)
+				return
+			}
+			return
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("503 -Not a Valid Server!"))
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
@@ -3948,7 +4038,7 @@ func (repman *ReplicationManager) handlerMuxSkipReplicationEvent(w http.Response
 // @Success 200 {string} string "InnoDB monitor toggled successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor [get]
 func (repman *ReplicationManager) handlerMuxSetInnoDBMonitor(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)

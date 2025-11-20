@@ -290,7 +290,7 @@
 | GET | /api/clusters/{clusterName}/need-rolling-reprov | [get API clusters cluster name need rolling reprov](#get-api-clusters-cluster-name-need-rolling-reprov) | Check if a cluster needs a rolling reprovision |
 | GET | /api/clusters/{clusterName}/need-rolling-restart | [get API clusters cluster name need rolling restart](#get-api-clusters-cluster-name-need-rolling-restart) | Check if a cluster needs a rolling restart |
 | GET | /api/clusters/{clusterName}/servers/{serverName} | [get API clusters cluster name servers server name](#get-api-clusters-cluster-name-servers-server-name) | Get server details |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor | [get API clusters cluster name servers server name actions toogle innodb monitor](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor) | Toggle InnoDB monitor on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor | [get API clusters cluster name servers server name actions toggle innodb monitor](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor) | Toggle InnoDB monitor on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/all-slaves-status | [get API clusters cluster name servers server name all slaves status](#get-api-clusters-cluster-name-servers-server-name-all-slaves-status) | Get status of all slaves of a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/attr/{attrName} | [get API clusters cluster name servers server name attr attr name](#get-api-clusters-cluster-name-servers-server-name-attr-attr-name) | Get server details |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/is-failed | [get API clusters cluster name servers server name is failed](#get-api-clusters-cluster-name-servers-server-name-is-failed) | Check if a server is failed |
@@ -333,9 +333,9 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/optimize | [get API clusters cluster name servers server name actions optimize](#get-api-clusters-cluster-name-servers-server-name-actions-optimize) | Optimize a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/start | [get API clusters cluster name servers server name actions start](#get-api-clusters-cluster-name-servers-server-name-actions-start) | Start a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/stop | [get API clusters cluster name servers server name actions stop](#get-api-clusters-cluster-name-servers-server-name-actions-stop) | Stop a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks | [get API clusters cluster name servers server name actions toogle meta data locks](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks) | Toggle metadata locks on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time | [get API clusters cluster name servers server name actions toogle query response time](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time) | Toggle query response time on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only | [get API clusters cluster name servers server name actions toogle read only](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only) | Toggle read-only mode on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks | [get API clusters cluster name servers server name actions toggle meta data locks](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks) | Toggle metadata locks on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time | [get API clusters cluster name servers server name actions toggle query response time](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time) | Toggle query response time on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only | [get API clusters cluster name servers server name actions toggle read only](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only) | Toggle read-only mode on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/wait-innodb-purge | [get API clusters cluster name servers server name actions wait innodb purge](#get-api-clusters-cluster-name-servers-server-name-actions-wait-innodb-purge) | Wait for InnoDB purge on a server |
   
 
@@ -360,7 +360,7 @@
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/backup-error-log | [get API clusters cluster name servers server name actions backup error log](#get-api-clusters-cluster-name-servers-server-name-actions-backup-error-log) | Perform a backup of the error log on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/backup-slowquery-log | [get API clusters cluster name servers server name actions backup slowquery log](#get-api-clusters-cluster-name-servers-server-name-actions-backup-slowquery-log) | Perform a backup of the slow query log on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/flush-logs | [get API clusters cluster name servers server name actions flush logs](#get-api-clusters-cluster-name-servers-server-name-actions-flush-logs) | Flush logs on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log | [get API clusters cluster name servers server name actions toogle SQL error log](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log) | Toggle SQL error log on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log | [get API clusters cluster name servers server name actions toggle SQL error log](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log) | Toggle SQL error log on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/errorlog | [get API clusters cluster name servers server name errorlog](#get-api-clusters-cluster-name-servers-server-name-errorlog) | Get error log of a server |
   
 
@@ -390,10 +390,10 @@
 |---------|---------|--------|---------|
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/reset-pfs-queries | [get API clusters cluster name servers server name actions reset pfs queries](#get-api-clusters-cluster-name-servers-server-name-actions-reset-pfs-queries) | Reset PFS queries on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/actions/set-long-query-time/{queryTime} | [get API clusters cluster name servers server name actions set long query time query time](#get-api-clusters-cluster-name-servers-server-name-actions-set-long-query-time-query-time) | Set long query time on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query | [get API clusters cluster name servers server name actions toogle pfs slow query](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query) | Toggle PFS slow query capture on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query | [get API clusters cluster name servers server name actions toogle slow query](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query) | Toggle slow query on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture | [get API clusters cluster name servers server name actions toogle slow query capture](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture) | Toggle slow query capture on a server |
-| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table | [get API clusters cluster name servers server name actions toogle slow query table](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table) | Toggle slow query table mode on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query | [get API clusters cluster name servers server name actions toggle pfs slow query](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query) | Toggle PFS slow query capture on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query | [get API clusters cluster name servers server name actions toggle slow query](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query) | Toggle slow query on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture | [get API clusters cluster name servers server name actions toggle slow query capture](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture) | Toggle slow query capture on a server |
+| GET | /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table | [get API clusters cluster name servers server name actions toggle slow query table](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table) | Toggle slow query table mode on a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/digest-statements-pfs | [get API clusters cluster name servers server name digest statements pfs](#get-api-clusters-cluster-name-servers-server-name-digest-statements-pfs) | Get PFS statements of a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/digest-statements-slow | [get API clusters cluster name servers server name digest statements slow](#get-api-clusters-cluster-name-servers-server-name-digest-statements-slow) | Get PFS statements from the slow log of a server |
 | GET | /api/clusters/{clusterName}/servers/{serverName}/queries/{queryDigest}/actions/analyze-pfs | [get API clusters cluster name servers server name queries query digest actions analyze pfs](#get-api-clusters-cluster-name-servers-server-name-queries-query-digest-actions-analyze-pfs) | Analyze a query using PFS on a server |
@@ -3201,10 +3201,10 @@ Status: Internal Server Error
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor"></span> Toggle InnoDB monitor on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleInnodbMonitor*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor"></span> Toggle InnoDB monitor on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleInnodbMonitor*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor
 ```
 
 Toggles the InnoDB monitor on a specified server within a cluster.
@@ -3223,44 +3223,44 @@ Toggles the InnoDB monitor on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-200) | OK | InnoDB monitor toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-200) | OK | InnoDB monitor toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-200"></span> 200 - InnoDB monitor toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-200"></span> 200 - InnoDB monitor toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-innodb-monitor-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-innodb-monitor-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks"></span> Toggle metadata locks on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleMetaDataLocks*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks"></span> Toggle metadata locks on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleMetaDataLocks*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks
 ```
 
 Toggles the metadata locks on a specified server within a cluster.
@@ -3279,44 +3279,44 @@ Toggles the metadata locks on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-200) | OK | Metadata locks toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-200) | OK | Metadata locks toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-200"></span> 200 - Metadata locks toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-200"></span> 200 - Metadata locks toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-meta-data-locks-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-meta-data-locks-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query"></span> Toggle PFS slow query capture on a server (*GetAPIClustersClusterNameServersServerNameActionsTooglePfsSlowQuery*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query"></span> Toggle PFS slow query capture on a server (*GetAPIClustersClusterNameServersServerNameActionstogglePfsSlowQuery*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query
 ```
 
 Toggles the PFS slow query capture on a specified server within a cluster.
@@ -3335,44 +3335,44 @@ Toggles the PFS slow query capture on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-200) | OK | PFS slow query capture toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-200) | OK | PFS slow query capture toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-200"></span> 200 - PFS slow query capture toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-200"></span> 200 - PFS slow query capture toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-pfs-slow-query-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-pfs-slow-query-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time"></span> Toggle query response time on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleQueryResponseTime*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time"></span> Toggle query response time on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleQueryResponseTime*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time
 ```
 
 Toggles the query response time on a specified server within a cluster.
@@ -3391,44 +3391,44 @@ Toggles the query response time on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-200) | OK | Query response time toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-200) | OK | Query response time toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-200"></span> 200 - Query response time toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-200"></span> 200 - Query response time toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-query-response-time-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-query-response-time-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only"></span> Toggle read-only mode on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleReadOnly*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only"></span> Toggle read-only mode on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleReadOnly*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only
 ```
 
 Toggles the read-only mode on a specified server within a cluster.
@@ -3447,44 +3447,44 @@ Toggles the read-only mode on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-200) | OK | Read-only mode toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-200) | OK | Read-only mode toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-200"></span> 200 - Read-only mode toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-200"></span> 200 - Read-only mode toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-read-only-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-read-only-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log"></span> Toggle SQL error log on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleSQLErrorLog*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log"></span> Toggle SQL error log on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleSQLErrorLog*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log
 ```
 
 Toggles the SQL error log on a specified server within a cluster.
@@ -3503,44 +3503,44 @@ Toggles the SQL error log on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-200) | OK | SQL error log toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-200) | OK | SQL error log toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-200"></span> 200 - SQL error log toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-200"></span> 200 - SQL error log toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-sql-error-log-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-sql-error-log-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query"></span> Toggle slow query on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleSlowQuery*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query"></span> Toggle slow query on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleSlowQuery*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query
 ```
 
 Toggles the slow query on a specified server within a cluster.
@@ -3559,44 +3559,44 @@ Toggles the slow query on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-200) | OK | Slow query toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-200) | OK | Slow query toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-200"></span> 200 - Slow query toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-200"></span> 200 - Slow query toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture"></span> Toggle slow query capture on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleSlowQueryCapture*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture"></span> Toggle slow query capture on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleSlowQueryCapture*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture
 ```
 
 Toggles the slow query capture on a specified server within a cluster.
@@ -3615,44 +3615,44 @@ Toggles the slow query capture on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-200) | OK | Slow query capture toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-200) | OK | Slow query capture toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-200"></span> 200 - Slow query capture toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-200"></span> 200 - Slow query capture toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-capture-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-capture-500-schema"></span> Schema
    
   
 
 
 
-### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table"></span> Toggle slow query table mode on a server (*GetAPIClustersClusterNameServersServerNameActionsToogleSlowQueryTable*)
+### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table"></span> Toggle slow query table mode on a server (*GetAPIClustersClusterNameServersServerNameActionstoggleSlowQueryTable*)
 
 ```
-GET /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table
+GET /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table
 ```
 
 Toggles the slow query table mode on a specified server within a cluster.
@@ -3671,35 +3671,35 @@ Toggles the slow query table mode on a specified server within a cluster.
 #### All responses
 | Code | Status | Description | Has headers | Schema |
 |------|--------|-------------|:-----------:|--------|
-| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-200) | OK | Slow query table mode toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-200-schema) |
-| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-403-schema) |
-| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-500-schema) |
+| [200](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-200) | OK | Slow query table mode toggled successfully |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-200-schema) |
+| [403](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-403) | Forbidden | No valid ACL |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-403-schema) |
+| [500](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-500) | Internal Server Error | Cluster Not Found" or "Server Not Found |  | [schema](#get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-500-schema) |
 
 #### Responses
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-200"></span> 200 - Slow query table mode toggled successfully
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-200"></span> 200 - Slow query table mode toggled successfully
 Status: OK
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-200-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-200-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-403"></span> 403 - No valid ACL
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-403"></span> 403 - No valid ACL
 Status: Forbidden
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-403-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-403-schema"></span> Schema
    
   
 
 
 
-##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-500"></span> 500 - Cluster Not Found" or "Server Not Found
+##### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-500"></span> 500 - Cluster Not Found" or "Server Not Found
 Status: Internal Server Error
 
-###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toogle-slow-query-table-500-schema"></span> Schema
+###### <span id="get-api-clusters-cluster-name-servers-server-name-actions-toggle-slow-query-table-500-schema"></span> Schema
    
   
 
