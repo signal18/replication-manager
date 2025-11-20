@@ -427,8 +427,8 @@ func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
 	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.LogRotateMaxAge, timeFormat)
 
 	logInfo, err := os.Stat(logfile)
-	if os.IsNotExist(err) || logInfo.Size() > 1024 {
-		// If size is bigger than 1KB when init, rotate it
+	if os.IsNotExist(err) || logInfo.Size() > int64(server.ClusterGroup.Conf.LogRotateMaxSize*1024*1024) {
+		// If size is bigger than LogRotateMaxSize when init, rotate it
 		if !os.IsNotExist(err) {
 			os.Rename(logfile, fmt.Sprintf("%s/%s_%s.log", logDir, logName, time.Now().Format(timeFormat)))
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate %s log for %s on monitor datadir", logName, server.URL)
