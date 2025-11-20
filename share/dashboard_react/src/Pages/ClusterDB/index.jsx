@@ -73,6 +73,7 @@ function ClusterDB(props) {
           authorizedTabs.push('Slow Queries')
           authorizedTabs.push('Digest Queries')
           authorizedTabs.push('Errors')
+          authorizedTabs.push('Server Audit')
         }
         if (apiUser.grants['db-show-schema']) {
           authorizedTabs.push('Tables')
@@ -103,6 +104,9 @@ function ClusterDB(props) {
     if (tabs.current[selectedTabRef.current] === 'Errors') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'errorlog', dbId }))
       dispatch(getDatabaseService({ clusterName, serviceName: 'sqlerrorlog', dbId }))
+    }
+    if (tabs.current[selectedTabRef.current] === 'Server Audit') {
+      dispatch(getDatabaseService({ clusterName, serviceName: 'auditlog', dbId }))
     }
     if (tabs.current[selectedTabRef.current] === 'Slow Queries') {
       dispatch(getDatabaseService({ clusterName, serviceName: 'slow-queries', dbId }))
@@ -195,6 +199,13 @@ function ClusterDB(props) {
                   />,
                   <ClusterDBTabContent
                     tab='errors'
+                    dbId={dbId}
+                    clusterName={clusterName}
+                    user={user}
+                    selectedDBServer={selectedDBServer}
+                  />,
+                  <ClusterDBTabContent
+                    tab='auditlogs'
                     dbId={dbId}
                     clusterName={clusterName}
                     user={user}

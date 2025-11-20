@@ -23,11 +23,13 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
   }
 
   useEffect(() => {
-    if (logs?.length > 0 && !isEqual(logs, prevLogs.current)) {
-      prevLogs.current = logs
+    if (logs?.length > 0) {
       const nonEmptyLogs = logs.filter((log) => log.timestamp)
-      setLogsData(nonEmptyLogs)
-      setData(searchData(nonEmptyLogs))
+      if (!isEqual(nonEmptyLogs, prevLogs.current)) {
+        prevLogs.current = nonEmptyLogs
+        setLogsData(nonEmptyLogs)
+        setData(searchData(nonEmptyLogs))
+      }
     }
   }, [logs])
 
@@ -60,8 +62,8 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
           <Flex direction={'row'} w={'100%'} p={4} >
             <HStack gap='4'>
               <HStack className={styles.search}>
-                <label htmlFor='search'>Search</label>
-                <Input id='search' type='search' onChange={handleSearch} />
+                <label htmlFor='logSearch'>Search</label>
+                <Input id='logSearch' type='search' onChange={handleSearch} />
               </HStack>
             </HStack>
           </Flex>

@@ -1790,6 +1790,7 @@ const initialState = {
       slowQueries: false,
       errors: false,
       sqlerrors: false,
+      auditlogs: false,
       digestQueries: false,
       tables: false,
       statusDelta: false,
@@ -1846,6 +1847,7 @@ const initialState = {
     tables: null,
     errors: null,
     sqlerrors: null,
+    auditlogs: null,
     variables: null,
     serviceOpensvc: null,
     metadataLocks: null,
@@ -1955,6 +1957,9 @@ export const clusterSlice = createSlice({
           } else if (serviceName === 'sqlerrorlog') {
             state.database.sqlerrors = action.payload.data
             state.isFetching.database.sqlerrors = false
+          } else if (serviceName === 'auditlog') {
+            state.database.auditlogs = action.payload.data
+            state.isFetching.database.auditlogs = false 
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
             state.isFetching.database.digestQueries = false
@@ -2029,6 +2034,8 @@ export const clusterSlice = createSlice({
             state.isFetching.database.errors = true
           } else if (serviceName === 'sqlerrorlog') {
             state.isFetching.database.sqlerrors = true
+          } else if (serviceName === 'auditlog') {
+            state.isFetching.database.auditlogs = true
           } else if (serviceName === 'digest-statements-pfs') {
             state.isFetching.database.digestQueries = true
           } else if (serviceName === 'tables') {
@@ -2090,6 +2097,8 @@ export const clusterSlice = createSlice({
             state.isFetching.database.errors = false
           } else if (serviceName === 'sqlerrorlog') {
             state.isFetching.database.sqlerrors = false
+          } else if (serviceName === 'auditlog') {
+            state.isFetching.database.auditlogs = false
           } else if (serviceName === 'digest-statements-pfs') {
             state.isFetching.database.digestQueries = false
           } else if (serviceName === 'tables') {
