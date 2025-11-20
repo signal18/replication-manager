@@ -1569,6 +1569,8 @@ func (cluster *Cluster) BackupLogs() {
 		if s != nil {
 			s.JobBackupErrorLog()
 			s.JobBackupSlowQueryLog()
+			s.JobBackupSqlErrorLog()
+			s.JobBackupAuditLog()
 		}
 
 	}

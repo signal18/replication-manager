@@ -461,7 +461,7 @@ app.controller('DashboardController', function (
     console.log('timeframe:', timeFrame);
   }
 
-  $scope.toogleRefresh = function () {
+  $scope.toggleRefresh = function () {
     if ($scope.menuOpened) {
       $scope.menuOpened = false;
       //   $scope.openedAt = "";
@@ -1086,7 +1086,7 @@ app.controller('DashboardController', function (
     }
   };
 
-  $scope.toogleTable = function () {
+  $scope.toggleTable = function () {
     $scope.showTable = !$scope.showTable;
   };
 
@@ -1287,36 +1287,36 @@ app.controller('DashboardController', function (
   $scope.dbskipreplicationevent = function (server, host, port) {
     if (confirm("Confirm skip replication event for server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/skip-replication-event');
   };
-  $scope.dbtoogleinnodbmonitor = function (server, host, port) {
-    if (confirm("Confirm toogle innodb monitor server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-innodb-monitor');
+  $scope.dbtoggleinnodbmonitor = function (server, host, port) {
+    if (confirm("Confirm toggle innodb monitor server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-innodb-monitor');
   };
-  $scope.dbtooglemetadalocks = function (server, host, port) {
-    if (confirm("Confirm toogle metadata lock plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-meta-data-locks');
+  $scope.dbtogglemetadalocks = function (server, host, port) {
+    if (confirm("Confirm toggle metadata lock plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-meta-data-locks');
   };
-  $scope.dbtooglequeryresponsetime = function (server, host, port) {
-    if (confirm("Confirm toogle query response time plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-query-response-time');
+  $scope.dbtogglequeryresponsetime = function (server, host, port) {
+    if (confirm("Confirm toggle query response time plugin server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-query-response-time');
   };
-  $scope.dbtoogleslowquerycapture = function (server, host, port) {
-    if (confirm("Confirm toogle slow query capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-capture');
+  $scope.dbtoggleslowquerycapture = function (server, host, port) {
+    if (confirm("Confirm toggle slow query capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-slow-query-capture');
   };
 
 
-  $scope.dbtoogleslowquery = function (server, host, port) {
-    if (confirm("Confirm toogle slow query log capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query');
+  $scope.dbtoggleslowquery = function (server, host, port) {
+    if (confirm("Confirm toggle slow query log capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-slow-query');
   };
-  $scope.dbtooglepfsslowquery = function (server, host, port) {
-    if (confirm("Confirm toogle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-pfs-slow-query');
+  $scope.dbtogglepfsslowquery = function (server, host, port) {
+    if (confirm("Confirm toggle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-pfs-slow-query');
   };
   $scope.dbresetpfsslow = function (server, host, port) {
-    if (confirm("Confirm toogle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-pfs-queries');
+    if (confirm("Confirm toggle slow query PFS capture server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/reset-pfs-queries');
   };
-  $scope.dbtoogleslowquerytable = function (server, host, port) {
-    if (confirm("Confirm toogle slow query mode between TABLE and FILE server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-slow-query-table');
+  $scope.dbtoggleslowquerytable = function (server, host, port) {
+    if (confirm("Confirm toggle slow query mode between TABLE and FILE server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-slow-query-table');
   };
 
 
-  $scope.dbtooglepfsslow = function (server, host, port) {
-    confirm("Confirm toogle digest mode between PFS and SLOW server: " + host + ":" + port + " (" + server + ")");
+  $scope.dbtogglepfsslow = function (server, host, port) {
+    confirm("Confirm toggle digest mode between PFS and SLOW server: " + host + ":" + port + " (" + server + ")");
     if ($scope.digestmode == "slow") {
       $scope.digestmode = "pfs";
     } else {
@@ -1324,8 +1324,8 @@ app.controller('DashboardController', function (
     }
   };
 
-  $scope.dbtooglereadonly = function (server, host, port) {
-    if (confirm("Confirm toogle read only on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toogle-read-only');
+  $scope.dbtogglereadonly = function (server, host, port) {
+    if (confirm("Confirm toggle read only on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/toggle-read-only');
   };
   $scope.dbstartslave = function (server, host, port) {
     if (confirm("Confirm start slave on server: " + host + ":" + port + " (" + server + ")")) httpGetWithoutResponse(getClusterUrl() + '/servers/' + server + '/actions/start-slave');
@@ -2353,10 +2353,10 @@ app.controller('DashboardController', function (
 
     };
   }
-  $scope.toogleTabular = function () {
+  $scope.toggleTabular = function () {
     $scope.serverListTabular = !$scope.serverListTabular;
   };
-  $scope.toogleTable = function () {
+  $scope.toggleTable = function () {
     $scope.table = !$scope.table;
   };
 

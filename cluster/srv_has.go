@@ -809,8 +809,16 @@ func (server *ServerMonitor) IsStandAlone() bool {
 	return server.State == stateUnconn
 }
 
+func (server *ServerMonitor) HasWaitAuditlogCookie() bool {
+	return server.hasCookie("cookie_wait_auditlog")
+}
+
 func (server *ServerMonitor) HasWaitErrorlogCookie() bool {
 	return server.hasCookie("cookie_wait_errorlog")
+}
+
+func (server *ServerMonitor) HasWaitSqlErrorlogCookie() bool {
+	return server.hasCookie("cookie_wait_sql_errorlog")
 }
 
 func (server *ServerMonitor) HasWaitSlowqueryCookie() bool {

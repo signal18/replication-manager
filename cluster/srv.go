@@ -162,7 +162,9 @@ type ServerMonitor struct {
 	SensitiveVariables          *config.StringsMap         `json:"-"`
 	VariablesMap                *config.VariablesMap       `json:"-"`
 	EngineInnoDB                *config.StringsMap         `json:"engineInnodb"`
-	ErrorLog                    s18log.HttpLog             `json:"errorLog"`
+	ErrorLog                    s18log.HttpLog             `json:"-"`
+	SqlErrorLog                 s18log.HttpLog             `json:"-"`
+	AuditLog                    s18log.HttpLog             `json:"-"`
 	SlowLog                     s18log.SlowLog             `json:"-"`
 	Status                      *config.StringsMap         `json:"-"`
 	PrevStatus                  *config.StringsMap         `json:"-"`
@@ -177,6 +179,8 @@ type ServerMonitor struct {
 	MetaDataLocks               []dbhelper.MetaDataLock    `json:"-"`
 	ErrorLogTailer              *tail.Tail                 `json:"-"`
 	SlowLogTailer               *tail.Tail                 `json:"-"`
+	SqlErrorLogTailer           *tail.Tail                 `json:"-"`
+	AuditLogTailer              *tail.Tail                 `json:"-"`
 	MonitorTime                 int64                      `json:"-"`
 	PrevMonitorTime             int64                      `json:"-"`
 	maxConn                     string                     `json:"maxConn"` // used to back max connection for failover
@@ -361,41 +365,12 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		os.MkdirAll(server.Datadir+"/init", os.ModePerm)
 	}
 
-	logDir := server.Datadir + "/log"
-	errLogFile := logDir + "/log_error.log"
-	slowLogFile := logDir + "/log_slow_query.log"
-	timeFormat := "20060102_150405"
+	server.InitLogTailers()
 
-	// Remove old files, prevent too many logs
-	misc.RemoveOldLogFiles(logDir, "log_error_", cluster.Conf.LogRotateMaxAge, timeFormat)
-	misc.RemoveOldLogFiles(logDir, "log_slow_query_", cluster.Conf.LogRotateMaxAge, timeFormat)
-
-	logInfo, err := os.Stat(errLogFile)
-	if os.IsNotExist(err) || logInfo.Size() > 1024 {
-		// If size is bigger than 1KB when init, rotate it
-		if !os.IsNotExist(err) {
-			os.Rename(errLogFile, fmt.Sprintf("%s/log_error_%s.log", logDir, time.Now().Format(timeFormat)))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate error log for %s on monitor datadir", server.URL)
-		}
-		nofile, _ := os.OpenFile(errLogFile, os.O_WRONLY|os.O_CREATE, 0600)
-		nofile.Close()
-	}
-	logInfo, err = os.Stat(slowLogFile)
-	if os.IsNotExist(err) || logInfo.Size() > 1024 {
-		// If size is bigger than 1KB when init, rotate it
-		if !os.IsNotExist(err) {
-			os.Rename(slowLogFile, fmt.Sprintf("%s/log_slow_query_%s.log", logDir, time.Now().Format(timeFormat)))
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate slow query log for %s on monitor datadir", server.URL)
-		}
-		nofile, _ := os.OpenFile(slowLogFile, os.O_WRONLY|os.O_CREATE, 0600)
-		nofile.Close()
-	}
-	server.ErrorLogTailer, _ = tail.TailFile(errLogFile, tail.Config{Follow: true, ReOpen: true})
-	server.SlowLogTailer, _ = tail.TailFile(slowLogFile, tail.Config{Follow: true, ReOpen: true})
-	server.ErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorErrorLogLength)
-	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
 	go server.ErrorLogWatcher()
 	go server.SlowLogWatcher()
+	go server.AuditLogWatcher()
+	go server.SqlErrorLogWatcher()
 
 	// Prevent child cluster as prefered
 	if server.SourceClusterName == cluster.Name {
@@ -425,6 +400,44 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.SetConfigRefreshCookie()
 	go server.FetchLastBackupMetadata()
 	return server, err
+}
+
+func (server *ServerMonitor) InitLogTailers() {
+	cluster := server.ClusterGroup
+
+	server.ErrorLogTailer, _ = server.NewLogTailer("error")
+	server.SlowLogTailer, _ = server.NewLogTailer("slow_query")
+	server.AuditLogTailer, _ = server.NewLogTailer("audit")
+	server.SqlErrorLogTailer, _ = server.NewLogTailer("sql_error")
+	server.ErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorErrorLogLength)
+	server.SlowLog = s18log.NewSlowLog(cluster.Conf.MonitorLongQueryLogLength)
+	server.SqlErrorLog = s18log.NewHttpLog(cluster.Conf.MonitorSqlErrorLogLength)
+	server.AuditLog = s18log.NewHttpLog(cluster.Conf.MonitorAuditLogLength)
+}
+
+func (server *ServerMonitor) NewLogTailer(logtype string) (*tail.Tail, error) {
+	cluster := server.ClusterGroup
+
+	logDir := server.Datadir + "/log"
+	logName := "log_" + logtype
+	logfile := fmt.Sprintf("%s/%s.log", logDir, logName)
+	timeFormat := "20060102_150405"
+
+	// Remove old files, prevent too many logs
+	misc.RemoveOldLogFiles(logDir, fmt.Sprintf("%s_", logName), cluster.Conf.LogRotateMaxAge, timeFormat)
+
+	logInfo, err := os.Stat(logfile)
+	if os.IsNotExist(err) || logInfo.Size() > int64(server.ClusterGroup.Conf.LogRotateMaxSize*1024*1024) {
+		// If size is bigger than LogRotateMaxSize when init, rotate it
+		if !os.IsNotExist(err) {
+			os.Rename(logfile, fmt.Sprintf("%s/%s_%s.log", logDir, logName, time.Now().Format(timeFormat)))
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rotate %s log for %s on monitor datadir", logName, server.URL)
+		}
+		nofile, _ := os.OpenFile(logfile, os.O_WRONLY|os.O_CREATE, 0600)
+		nofile.Close()
+	}
+
+	return tail.TailFile(logfile, tail.Config{Follow: true, ReOpen: true})
 }
 
 func (server *ServerMonitor) Ping(wg *sync.WaitGroup) {

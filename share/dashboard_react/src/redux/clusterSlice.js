@@ -440,7 +440,7 @@ export const rollingJobsUpgrade = createAsyncThunk('cluster/rollingJobsUpgrade',
     }
   }
 })
-    
+
 
 export const rollingRestart = createAsyncThunk('cluster/rollingRestart', async ({ clusterName }, thunkAPI) => {
   try {
@@ -1143,8 +1143,15 @@ export const getDatabaseService = createAsyncThunk(
     } catch (error) {
       handleError(error, thunkAPI)
     }
-  }
-)
+  },
+  {
+    condition: ({ serviceName }, { getState }) => {
+      const { cluster } = getState();
+      if (cluster.isFetching.apps) {
+        return false;
+      }
+    }
+  });
 
 export const getDatabaseVariables = createAsyncThunk(
   'cluster/getDatabaseService',
@@ -1778,6 +1785,21 @@ const initialState = {
     top: false,
     opensvcStats: false,
     logs: false,
+    database: {
+      processList: false,
+      slowQueries: false,
+      errors: false,
+      sqlerrors: false,
+      auditlogs: false,
+      digestQueries: false,
+      tables: false,
+      statusDelta: false,
+      statusInnoDB: false,
+      variables: false,
+      serviceOpensvc: false,
+      metadataLocks: false,
+      responsetime: false,
+    }
   },
   error: null,
   clusterApps: null,
@@ -1785,8 +1807,8 @@ const initialState = {
   clusterData: null,
   clusterAlerts: null,
   clusterLogs: {
-    general : null,
-    task : null,
+    general: null,
+    task: null,
   },
   clusterMaster: null,
   clusterServers: null,
@@ -1824,6 +1846,8 @@ const initialState = {
     digestQueries: null,
     tables: null,
     errors: null,
+    sqlerrors: null,
+    auditlogs: null,
     variables: null,
     serviceOpensvc: null,
     metadataLocks: null,
@@ -1923,26 +1947,45 @@ export const clusterSlice = createSlice({
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
             state.database.processList = action.payload.data
+            state.isFetching.database.processList = false
           } else if (serviceName === 'slow-queries') {
             state.database.slowQueries = action.payload.data
+            state.isFetching.database.slowQueries = false
+          } else if (serviceName === 'errorlog') {
+            state.database.errors = action.payload.data
+            state.isFetching.database.errors = false
+          } else if (serviceName === 'sqlerrorlog') {
+            state.database.sqlerrors = action.payload.data
+            state.isFetching.database.sqlerrors = false
+          } else if (serviceName === 'auditlog') {
+            state.database.auditlogs = action.payload.data
+            state.isFetching.database.auditlogs = false 
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
+            state.isFetching.database.digestQueries = false
           } else if (serviceName === 'tables') {
             if (!isEqual(state.database.tables, action.payload?.data)) {
               state.database.tables = action.payload?.data
             }
+            state.isFetching.database.tables = false
           } else if (serviceName === 'status-delta') {
             state.database.status.statusDelta = action.payload.data
+            state.isFetching.database.statusDelta = false
           } else if (serviceName === 'status-innodb') {
             state.database.status.statusInnoDB = action.payload.data
+            state.isFetching.database.statusInnoDB = false
           } else if (serviceName === 'variables') {
             state.database.variables = (action.payload.status == 200) ? action.payload.data : []
+            state.isFetching.database.variables = false
           } else if (serviceName === 'service-opensvc') {
             state.database.serviceOpensvc = action.payload.data
+            state.isFetching.database.serviceOpensvc = false
           } else if (serviceName === 'meta-data-locks') {
             state.database.metadataLocks = action.payload.data
+            state.isFetching.database.metadataLocks = false
           } else if (serviceName === 'query-response-time') {
             state.database.responsetime = action.payload.data
+            state.isFetching.database.responsetime = false
           }
         }
       }
@@ -1952,6 +1995,7 @@ export const clusterSlice = createSlice({
       isAnyOf(
         getClusterData.pending,
         getClusterLogs.pending,
+        getClusterApps.pending,
         getClusterAlerts.pending,
         getClusterMaster.pending,
         getClusterServers.pending,
@@ -1959,6 +2003,7 @@ export const clusterSlice = createSlice({
         getClusterCertificates.pending,
         getTopProcess.pending,
         getOpenSVCStats.pending,
+        getDatabaseService.pending,
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -1979,6 +2024,35 @@ export const clusterSlice = createSlice({
           state.isFetching.top = true
         } else if (action.type.includes('getOpenSVCStats')) {
           state.isFetching.opensvcStats = true
+        } else if (action.type.includes('getDatabaseService')) {
+          const { serviceName } = action.meta.arg
+          if (serviceName === 'processlist') {
+            state.isFetching.database.processList = true
+          } else if (serviceName === 'slow-queries') {
+            state.isFetching.database.slowQueries = true
+          } else if (serviceName === 'errorlog') {
+            state.isFetching.database.errors = true
+          } else if (serviceName === 'sqlerrorlog') {
+            state.isFetching.database.sqlerrors = true
+          } else if (serviceName === 'auditlog') {
+            state.isFetching.database.auditlogs = true
+          } else if (serviceName === 'digest-statements-pfs') {
+            state.isFetching.database.digestQueries = true
+          } else if (serviceName === 'tables') {
+            state.isFetching.database.tables = true
+          } else if (serviceName === 'status-delta') {
+            state.isFetching.database.statusDelta = true
+          } else if (serviceName === 'status-innodb') {
+            state.isFetching.database.statusInnoDB = true
+          } else if (serviceName === 'variables') {
+            state.isFetching.database.variables = true
+          } else if (serviceName === 'service-opensvc') {
+            state.isFetching.database.serviceOpensvc = true
+          } else if (serviceName === 'meta-data-locks') {
+            state.isFetching.database.metadataLocks = true
+          } else if (serviceName === 'query-response-time') {
+            state.isFetching.database.responsetime = true
+          }
         }
       }
     )
@@ -1987,11 +2061,13 @@ export const clusterSlice = createSlice({
       isAnyOf(
         getClusterData.rejected,
         getClusterLogs.rejected,
+        getClusterApps.rejected,
         getClusterAlerts.rejected,
         getClusterMaster.rejected,
         getClusterServers.rejected,
         getClusterProxies.rejected,
         getClusterCertificates.rejected,
+        getDatabaseService.rejected,
       ), (state, action) => {
         if (action.type.includes('getClusterData')) {
           state.isFetching.cluster = false
@@ -2011,6 +2087,35 @@ export const clusterSlice = createSlice({
           state.isFetching.top = false
         } else if (action.type.includes('getOpenSVCStats')) {
           state.isFetching.opensvcStats = false
+        } else if (action.type.includes('getDatabaseService')) {
+          const { serviceName } = action.meta.arg
+          if (serviceName === 'processlist') {
+            state.isFetching.database.processList = false
+          } else if (serviceName === 'slow-queries') {
+            state.isFetching.database.slowQueries = false
+          } else if (serviceName === 'errorlog') {
+            state.isFetching.database.errors = false
+          } else if (serviceName === 'sqlerrorlog') {
+            state.isFetching.database.sqlerrors = false
+          } else if (serviceName === 'auditlog') {
+            state.isFetching.database.auditlogs = false
+          } else if (serviceName === 'digest-statements-pfs') {
+            state.isFetching.database.digestQueries = false
+          } else if (serviceName === 'tables') {
+            state.isFetching.database.tables = false
+          } else if (serviceName === 'status-delta') {
+            state.isFetching.database.statusDelta = false
+          } else if (serviceName === 'status-innodb') {
+            state.isFetching.database.statusInnoDB = false
+          } else if (serviceName === 'variables') {
+            state.isFetching.database.variables = false
+          } else if (serviceName === 'service-opensvc') {
+            state.isFetching.database.serviceOpensvc = false
+          } else if (serviceName === 'meta-data-locks') {
+            state.isFetching.database.metadataLocks = false
+          } else if (serviceName === 'query-response-time') {
+            state.isFetching.database.responsetime = false
+          }
         }
       }
     )

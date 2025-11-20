@@ -283,6 +283,31 @@ func (cluster *Cluster) LoadAPIUsers() error {
 	return nil
 }
 
+var dbloglist = []string{
+	"/processlist",
+	"/status-innodb",
+	"/auditlog",
+	"/errorlog",
+	"/sqlerrorlog",
+	"/slow-queries",
+	"/query-response-time",
+	"/meta-data-locks",
+	"/digest-statements-pfs",
+	"/digest-statements-slow",
+	"/actions/toggle-sql-error-log",
+	"/actions/toggle-server-audit-log",
+	"/actions/toggle-query-response-time",
+	"/actions/toggle-meta-data-locks",
+	"/actions/toggle-slow-query-table",
+	"/actions/toggle-slow-query-capture",
+	"/actions/toggle-slow-query",
+	"/actions/set-long-query-time",
+	"/actions/toggle-pfs-slow-query",
+	"/actions/toggle-innodb-monitor",
+	"/actions/explain-pfs",
+	"/actions/explain-slowlog",
+}
+
 func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
 		if strings.Contains(URL, "/actions/run-jobs") {
@@ -409,7 +434,7 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBReadOnly] {
-		if strings.Contains(URL, "actions/toogle-read-only") {
+		if strings.Contains(URL, "actions/toggle-read-only") {
 			return true
 		}
 	}
@@ -422,72 +447,14 @@ func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
-		if strings.Contains(URL, "/processlist") {
-			return true
-		}
-		if strings.Contains(URL, "/status-innodb") {
-			return true
-		}
-		if strings.Contains(URL, "/errorlog") {
-			return true
-		}
-		if strings.Contains(URL, "/slow-queries") {
-			return true
-		}
-		if strings.Contains(URL, "/query-response-time") {
-			return true
-		}
-		if strings.Contains(URL, "/meta-data-locks") {
-			return true
-		}
-		if strings.Contains(URL, "/digest-statements-pfs") {
-			return true
-		}
-		if strings.Contains(URL, "/digest-statements-slow") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-sql-error-log") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-sql-error-log") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-query-response-time") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-meta-data-locks") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-slow-query-table") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-slow-query-capture") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-slow-query") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/set-long-query-time") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-pfs-slow-query") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/toogle-slow-query") {
-			return true
-		}
-		if strings.Contains(URL, "actions/toogle-innodb-monitor") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/explain-pfs") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/explain-slowlog") {
-			return true
+		for _, path := range dbloglist {
+			if strings.Contains(URL, path) {
+				return true
+			}
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantDBCapture] {
-		if strings.Contains(URL, "/actions/toogle-slow-query-capture") {
+		if strings.Contains(URL, "/actions/toggle-slow-query-capture") {
 			return true
 		}
 	}

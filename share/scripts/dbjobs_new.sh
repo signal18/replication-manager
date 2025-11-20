@@ -31,7 +31,9 @@ MARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup
 XTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup
 INNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex
 
-ERROLOG=%%ENV:SVC_CONF_ENV_ERROR_LOG%%
+AUDITLOG=%%ENV:SVC_CONF_ENV_AUDIT_LOG%%
+SQLERRORLOG=%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%
+ERRORLOG=%%ENV:SVC_CONF_ENV_ERROR_LOG%%
 SLOWLOG=%%ENV:SVC_CONF_ENV_SLOW_LOG%%
 BACKUPDIR=$DATADIR/.system/backup
 TMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%
@@ -43,7 +45,7 @@ CHECKPOINT_DIR="$TMP_DIR/checkpoints"
 # Directory where lock files are stored
 LOCK_DIR="$TMP_DIR/locks"
 BATCH_SIZE=5
-JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
+JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "auditlog" "sqlerrorlog" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
 
 # OSX need socat extra path
 export PATH=$PATH:/usr/local/bin
@@ -656,6 +658,44 @@ process_log_file() {
 # Job Related Functions     #
 #################################
 
+dblogfile() {
+    local DBLOG="$1"
+    local JOB="$2"
+    local STATEFILE="$TMP_DIR/${JOB}.state"
+
+    # Ensure log file exists
+    [ ! -f "$DBLOG" ] && touch "$DBLOG"
+
+    local LAST_LINE=""
+    [ -f "$STATEFILE" ] && LAST_LINE=$(cat "$STATEFILE")
+
+    local NEXT_LINE=1
+
+    if [ -n "$LAST_LINE" ]; then
+        # Find the last occurrence of LAST_LINE
+        if grep -Fxn -- "$LAST_LINE" "$DBLOG" >$TMP_DIR/match_pos; then
+            local LAST_MATCH_LINE
+            LAST_MATCH_LINE=$(cut -d: -f1 $TMP_DIR/match_pos | tail -n 1)
+            NEXT_LINE=$((LAST_MATCH_LINE + 1))
+        fi
+    fi
+
+    # Extract new lines into temporary file
+    local TMPLOG="$TMPDIR/${JOB}.newlines"
+    tail -n +"$NEXT_LINE" "$DBLOG" > "$TMPLOG"
+
+    # If DB log has content
+    if [ -s "$TMPLOG" ]; then
+        # Send content via socat
+        socat -u stdio TCP:$ADDRESS < "$TMPLOG" &>"$LOG_DIR/$JOB.process.out"
+    else
+        # Send empty payload
+        echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$JOB.process.out"
+    fi
+}
+
+##################################
+
 socatCleaner() {
     local pid=$(lsof -t -i:$SST_RECEIVER_PORT -sTCP:LISTEN 2>/dev/null)
     if [[ -n "$pid" ]]; then
@@ -1024,43 +1064,16 @@ for job in "${JOBS[@]}"; do
             $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --databases-exclude=.system --protocol=TCP $BINARY_CLIENT_PARAMETERS --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         errorlog)
-            if [ ! -f $ERROLOG ]; then
-              touch $ERROLOG
-            fi
-            
-            # Check if the error log is not empty
-            if [ -s $ERROLOG ]; then
-                cat $ERROLOG >> $ERROLOG'_'$(date '+%Y-%m-%d')
-                cat $ERROLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
-                if [ -f $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
-                gzip $ERROLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
-                fi
-                if [ -f $ERROLOG'_'$(date -d "8 day ago" '+%Y-%m-%d').gz ]; then
-                rm -f $ERROLOG'_'$(date -d "8 day ago" '+%Y-%m-%d').gz  
-                fi
-                >$ERROLOG
-            else 
-                echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
-            fi
+            dblogfile "$ERRORLOG" "$job"
             ;;
         slowquery)
-            if [ ! -f $SLOWLOG ]; then
-              touch $SLOWLOG
-            fi
-
-            if [ -s $SLOWLOG ]; then
-                cat $SLOWLOG >> $SLOWLOG'_'$(date '+%Y-%m-%d')
-                cat $SLOWLOG | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
-                if [ -f $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d') ]; then
-                gzip $SLOWLOG'_'$(date -d "1 day ago" '+%Y-%m-%d')  
-                fi
-                if [ -f $SLOWLOG'_'$(date -d "8 day ago" '+%Y-%m-%d').gz ]; then
-                rm -f $SLOWLOG'_'$(date -d "8 day ago" '+%Y-%m-%d').gz  
-                fi
-                >$SLOWLOG
-            else 
-                echo -n | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.process.out"
-            fi
+            dblogfile "$SLOWLOG" "$job"
+            ;;
+        auditlog)
+            dblogfile "$AUDITLOG" "$job"
+            ;;
+        sqlerrorlog)
+            dblogfile "$SQLERRORLOG" "$job"
             ;;
         zfssnapback)
             LASTSNAP=$(zfs list -r -t all | grep zp%%ENV:SERVICES_SVCNAME%%_pod01 | grep daily | sort -r | head -n 1 | cut -d" " -f1)

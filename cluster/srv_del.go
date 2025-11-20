@@ -152,6 +152,14 @@ func (server *ServerMonitor) DelMaintenance() {
 	server.ClusterGroup.SetProxyServerMaintenance(server.ServerID)
 }
 
+func (server *ServerMonitor) DelWaitAuditlogCookie() error {
+	return server.delCookie("cookie_wait_auditlog")
+}
+
+func (server *ServerMonitor) DelWaitSqlErrorlogCookie() error {
+	return server.delCookie("cookie_wait_sql_errorlog")
+}
+
 func (server *ServerMonitor) DelWaitErrorlogCookie() error {
 	return server.delCookie("cookie_wait_errorlog")
 }

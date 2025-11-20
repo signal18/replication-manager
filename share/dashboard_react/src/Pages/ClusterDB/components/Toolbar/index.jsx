@@ -21,19 +21,19 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleD
     if (actionType === 'longquery') {
       dispatch(updateLongQueryTime({ clusterName, dbId, time: value }))
     } else if (actionType === 'toggleCapture') {
-      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-slow-query' }))
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toggle-slow-query' }))
     } else if (actionType === 'toggleMode') {
-      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-slow-query-table' }))
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toggle-slow-query-table' }))
     } else if (actionType === 'togglePFSCapture') {
-      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-pfs-slow-query' }))
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toggle-pfs-slow-query' }))
     } else if (actionType === 'togglePFSMode') {
       toggleDigestMode()
     } else if (actionType === 'resetDigestPFSQuery') {
       dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'reset-pfs-queries' }))
     } else if (actionType === 'toggleMetadataLock') {
-      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-meta-data-locks' }))
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toggle-meta-data-locks' }))
     } else if (actionType === 'toggleRespTime') {
-      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toogle-query-response-time' }))
+      dispatch(toggleDatabaseActions({ clusterName, dbId, serviceName: 'toggle-query-response-time' }))
     }
   }
 

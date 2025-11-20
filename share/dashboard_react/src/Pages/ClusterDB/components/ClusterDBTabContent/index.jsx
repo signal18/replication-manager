@@ -15,6 +15,7 @@ import ServiceOpenSvc from '../ServiceOpenSvc'
 import MetadataLocks from '../MetadataLocks'
 import ResponseTime from '../ResponseTime'
 import Errors from '../Errors'
+import ServerAudit from '../ServerAudit'
 
 function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode }) {
   const [currentTab, setCurrentTab] = useState('')
@@ -62,7 +63,9 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           toggleDigestMode={toggleDigestMode}
         />
       ) : currentTab === 'errors' ? (
-        <Errors selectedDBServer={selectedDBServer} />
+        <Errors clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
+      ) : currentTab === 'auditlogs' ? (
+        <ServerAudit clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'tables' ? (
         clusterData?.workLoad?.dbTableSize >= 0 ? (
           <Tables

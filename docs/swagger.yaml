@@ -348,15 +348,11 @@ definitions:
         $ref: '#/definitions/config.TasksMap'
       lastDelayStatPrint:
         type: string
-      log:
-        $ref: '#/definitions/s18log.HttpLog'
       logSlaveServers:
         description: To store slave with log-slave-updates
         items:
           type: string
         type: array
-      logTask:
-        $ref: '#/definitions/s18log.HttpLog'
       monitorSpin:
         type: string
       monitorType:
@@ -668,8 +664,6 @@ definitions:
         type: integer
       engineInnodb:
         $ref: '#/definitions/config.StringsMap'
-      errorLog:
-        $ref: '#/definitions/s18log.HttpLog'
       eventScheduler:
         type: boolean
       eventStatus:
@@ -1819,6 +1813,8 @@ definitions:
         type: integer
       backupLogicalLoadThreads:
         type: integer
+      backupLogicalPostScript:
+        type: string
       backupLogicalType:
         type: string
       backupMyDumperOptions:
@@ -1842,6 +1838,8 @@ definitions:
       backupMysqldumpPath:
         type: string
       backupMytopPath:
+        type: string
+      backupPhysicalPostScript:
         type: string
       backupPhysicalType:
         type: string
@@ -2432,6 +2430,8 @@ definitions:
         type: string
       monitoringAlertTrigger:
         type: string
+      monitoringAuditLogLength:
+        type: integer
       monitoringBasedir:
         type: string
       monitoringCapture:
@@ -2456,7 +2456,7 @@ definitions:
         type: boolean
       monitoringDiskUsagePct:
         type: integer
-      monitoringErreurLogLength:
+      monitoringErrorLogLength:
         type: integer
       monitoringIgnoreErrors:
         type: string
@@ -2528,6 +2528,8 @@ definitions:
         type: string
       monitoringSocket:
         type: string
+      monitoringSqlErrorLogLength:
+        type: integer
       monitoringTenant:
         type: string
       monitoringTicker:
@@ -9060,6 +9062,8 @@ paths:
         - mariabackup
         - errorlog
         - slowquery
+        - sqlerrorlog
+        - auditlog
         - zfssnapback
         - optimize
         - reseedxtrabackup
@@ -9580,6 +9584,8 @@ paths:
         - mariabackup
         - errorlog
         - slowquery
+        - sqlerrorlog
+        - auditlog
         - zfssnapback
         - optimize
         - reseedxtrabackup
@@ -10896,7 +10902,7 @@ paths:
       summary: Perform a switchover on a server
       tags:
       - DatabaseTopology
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor:
     get:
       description: Toggles the InnoDB monitor on a specified server within a cluster.
       parameters:
@@ -10934,7 +10940,7 @@ paths:
       summary: Toggle InnoDB monitor on a server
       tags:
       - Database
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks:
     get:
       description: Toggles the metadata locks on a specified server within a cluster.
       parameters:
@@ -10972,7 +10978,7 @@ paths:
       summary: Toggle metadata locks on a server
       tags:
       - DatabaseActions
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query:
     get:
       description: Toggles the PFS slow query capture on a specified server within
         a cluster.
@@ -11011,7 +11017,7 @@ paths:
       summary: Toggle PFS slow query capture on a server
       tags:
       - DatabaseQueries
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time:
     get:
       description: Toggles the query response time on a specified server within a
         cluster.
@@ -11050,7 +11056,7 @@ paths:
       summary: Toggle query response time on a server
       tags:
       - DatabaseActions
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only:
     get:
       description: Toggles the read-only mode on a specified server within a cluster.
       parameters:
@@ -11088,7 +11094,7 @@ paths:
       summary: Toggle read-only mode on a server
       tags:
       - DatabaseActions
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query:
     get:
       description: Toggles the slow query on a specified server within a cluster.
       parameters:
@@ -11126,7 +11132,7 @@ paths:
       summary: Toggle slow query on a server
       tags:
       - DatabaseQueries
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture:
     get:
       description: Toggles the slow query capture on a specified server within a cluster.
       parameters:
@@ -11164,7 +11170,7 @@ paths:
       summary: Toggle slow query capture on a server
       tags:
       - DatabaseQueries
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table:
     get:
       description: Toggles the slow query table mode on a specified server within
         a cluster.
@@ -11203,7 +11209,7 @@ paths:
       summary: Toggle slow query table mode on a server
       tags:
       - DatabaseQueries
-  /api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log:
+  /api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log:
     get:
       description: Toggles the SQL error log on a specified server within a cluster.
       parameters:
@@ -11397,6 +11403,45 @@ paths:
       summary: Get server details
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/auditlog:
+    get:
+      description: Retrieves the audit log of a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Audit log retrieved successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Encoding error
+          schema:
+            type: string
+      summary: Get audit log of a server
+      tags:
+      - DatabaseLogs
   /api/clusters/{clusterName}/servers/{serverName}/config:
     get:
       description: Retrieves the configuration of a specified server port within a
@@ -12450,6 +12495,45 @@ paths:
       summary: Get slow log of a server
       tags:
       - DatabaseQueries
+  /api/clusters/{clusterName}/servers/{serverName}/sqlerrorlog:
+    get:
+      description: Retrieves the SQL error log of a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: SQL error log retrieved successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Encoding error
+          schema:
+            type: string
+      summary: Get SQL error log of a server
+      tags:
+      - DatabaseLogs
   /api/clusters/{clusterName}/servers/{serverName}/status:
     get:
       description: Retrieves the status of a specified server within a cluster.
@@ -13861,6 +13945,58 @@ paths:
       summary: Retrieve crashes for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/topology/http-logs:
+    get:
+      description: This endpoint retrieves the web logs.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of web logs
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Retrieve web logs
+      tags:
+      - ClusterTopology
+  /api/clusters/{clusterName}/topology/http-logs/{logType}:
+    get:
+      description: This endpoint retrieves the web logs.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of web logs
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            type: string
+      summary: Retrieve web logs
+      tags:
+      - ClusterTopology
   /api/clusters/{clusterName}/topology/logs:
     get:
       description: This endpoint retrieves the logs for the specified cluster.
