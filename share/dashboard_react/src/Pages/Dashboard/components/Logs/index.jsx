@@ -101,12 +101,12 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
 
 export const GeneralLogs = ({ className }) => {
   const logs = useSelector((state) => state.cluster.clusterLogs.general)
-  return <Logs logs={logs?.buffer} className={className} />
+  return <Logs key={"general"} logs={logs?.buffer} className={className} />
 }
 
 export const TaskLogs = ({ className }) => {
   const taskLogs = useSelector((state) => state.cluster.clusterLogs.task)
-  return <Logs logs={taskLogs?.buffer} className={className} />
+  return <Logs key={"task"} logs={taskLogs?.buffer} className={className} />
 }
 
 export default Logs

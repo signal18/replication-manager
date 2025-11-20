@@ -25,13 +25,13 @@ function Errors({ clusterName, dbId, selectedDBServer }) {
         className={styles.accordion}
         heading={'Error logs'}
         allowToggle={true}
-        body={<Logs logs={errors} className={styles.errorLogs} searchable={true} />}
+        body={<Logs key={"errors"} logs={errors} className={styles.errorLogs} searchable={true} />}
       />
       <AccordionComponent
         className={styles.accordion}
         heading={'SQL Error logs'}
         allowToggle={true}
-        body={<Logs logs={sqlerrors} className={styles.errorLogs} searchable={true} />}
+        body={<Logs key={"sqlerrors"} logs={sqlerrors} className={styles.errorLogs} searchable={true} />}
       />
     </>
   )
