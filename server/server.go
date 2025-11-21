@@ -93,6 +93,7 @@ type ReplicationManager struct {
 	SplitBrain           bool                              `json:"spitBrain"`
 	ClusterList          []string                          `json:"clusters"`
 	ImmutableClusterList []string                          `json:"-"`
+	DeprecatedKeys       map[string]map[string]bool        `json:"-"`
 	Tests                []string                          `json:"tests"`
 	Conf                 *config.Config                    `json:"config"`
 	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
@@ -1253,6 +1254,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if repman.ConfigManager == nil {
 		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus))
 	}
+
+	if repman.DeprecatedKeys == nil {
+		repman.DeprecatedKeys = make(map[string]map[string]bool)
+	}
+
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
@@ -1504,6 +1510,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
+		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(cf1, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 		cf1.Unmarshal(&conf)
 
 		//if dynamic config, load modified parameter from the saved config
@@ -1640,6 +1647,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 			repman.initAlias(cf2)
+			repman.DeprecatedKeys[cluster] = repman.GetUsedAliasKeys(cf2, true) //get deprecated keys used in the config file for the cluster in etc/replication-manager/cluster.d/<cluster>.toml
 			cf2.Unmarshal(&clusterconf)
 			//fmt.Printf("saved conf :")
 			//clusterconf.PrintConf()
@@ -1763,88 +1771,125 @@ func CleanupDynamicConfig(clustImmuableMap map[string]interface{}, cf viper.Vipe
 
 }*/
 
-var AliasMap = map[string]string{
-	//"old-name": "new-name",
-	// "user": "db-servers-credential",
-	//"api-user", "api-credential")
-	"monitoring-config-rewrite":     "monitoring-save-config",
-	"api-user":                      "api-credentials",
-	"replication-master-connection": "replication-source-name",
-	"logfile":                       "log-file",
-	"wait-kill":                     "switchover-wait-kill",
-	"hosts":                         "db-servers-hosts",
-	"hosts-tls-ca-cert":             "db-servers-tls-ca-cert",
-	"hosts-tls-client-key":          "db-servers-tls-client-key",
-	"hosts-tls-client-cert":         "db-servers-tls-client-cert",
-	"connect-timeout":               "db-servers-connect-timeout",
-	"rpluser":                       "replication-credential",
-	"prefmaster":                    "db-servers-prefered-master",
-	"ignore-servers":                "db-servers-ignored-hosts",
-	"master-connection":             "replication-master-connection",
-	"master-connect-retry":          "replication-master-connection-retry",
-	"readonly":                      "failover-readonly-state",
-	"mdbshardproxy-hosts":           "mdbshardproxy-servers",
-	"multimaster":                   "replication-multi-master",
-	"multi-tier-slave":              "replication-multi-tier-slave",
-	"pre-failover-script":           "failover-pre-script",
-	"post-failover-script":          "failover-post-script",
-	"rejoin-script":                 "autorejoin-script",
-	"share-directory":               "monitoring-sharedir",
-	"working-directory":             "monitoring-datadir",
-	"interactive":                   "failover-mode",
-	"failcount":                     "failover-falsepositive-ping-counter",
-	"wait-write-query":              "switchover-wait-write-query",
-	"wait-trx":                      "switchover-wait-trx",
-	"gtidcheck":                     "switchover-at-equal-gtid",
-	"maxdelay":                      "failover-max-slave-delay",
-	"maxscale-host":                 "maxscale-servers",
-	"maxscale-pass":                 "maxscale-password",
-	"api-credential":                "api-credentials",
-	"backup-binlogs-method":         "binlog-copy-mode",
-	"backup-binlogs-script":         "binlog-copy-script",
-	"monitoring-erreur-log-length":  "monitoring-error-log-length",
+func (repman *ReplicationManager) GetAliasMap() map[string]string {
+	return map[string]string{
+		//"old-name": "new-name",
+		// "user": "db-servers-credential",
+		//"api-user", "api-credential")
+		"monitoring-config-rewrite":     "monitoring-save-config",
+		"api-user":                      "api-credentials",
+		"replication-master-connection": "replication-source-name",
+		"logfile":                       "log-file",
+		"wait-kill":                     "switchover-wait-kill",
+		"hosts":                         "db-servers-hosts",
+		"hosts-tls-ca-cert":             "db-servers-tls-ca-cert",
+		"hosts-tls-client-key":          "db-servers-tls-client-key",
+		"hosts-tls-client-cert":         "db-servers-tls-client-cert",
+		"connect-timeout":               "db-servers-connect-timeout",
+		"rpluser":                       "replication-credential",
+		"prefmaster":                    "db-servers-prefered-master",
+		"ignore-servers":                "db-servers-ignored-hosts",
+		"master-connection":             "replication-master-connection",
+		"master-connect-retry":          "replication-master-connection-retry",
+		"readonly":                      "failover-readonly-state",
+		"mdbshardproxy-hosts":           "mdbshardproxy-servers",
+		"multimaster":                   "replication-multi-master",
+		"multi-tier-slave":              "replication-multi-tier-slave",
+		"pre-failover-script":           "failover-pre-script",
+		"post-failover-script":          "failover-post-script",
+		"rejoin-script":                 "autorejoin-script",
+		"share-directory":               "monitoring-sharedir",
+		"working-directory":             "monitoring-datadir",
+		"interactive":                   "failover-mode",
+		"failcount":                     "failover-falsepositive-ping-counter",
+		"wait-write-query":              "switchover-wait-write-query",
+		"wait-trx":                      "switchover-wait-trx",
+		"gtidcheck":                     "switchover-at-equal-gtid",
+		"maxdelay":                      "failover-max-slave-delay",
+		"maxscale-host":                 "maxscale-servers",
+		"maxscale-pass":                 "maxscale-password",
+		"api-credential":                "api-credentials",
+		"backup-binlogs-method":         "binlog-copy-mode",
+		"backup-binlogs-script":         "binlog-copy-script",
+		"monitoring-erreur-log-length":  "monitoring-error-log-length",
 
-	// log level aliases
-	"log-file-level":            "log-level-file",
-	"log-task-level":            "log-level-task",
-	"log-sst-level":             "log-level-sst",
-	"log-heartbeat-level":       "log-level-heartbeat",
-	"log-sql-level":             "log-level-sql",
-	"log-app-level":             "log-level-app",
-	"log-writer-election-level": "log-level-writer-election",
-	"log-git-level":             "log-level-git",
-	"log-config-load-level":     "log-level-config-load",
-	"log-backup-stream-level":   "log-level-backup-stream",
-	"log-orchestrator-level":    "log-level-orchestrator",
-	"log-topology-level":        "log-level-topology",
-	"log-proxy-level":           "log-level-proxy",
-	"log-graphite-level":        "log-level-graphite",
-	"log-binlog-purge-level":    "log-level-binlog-purge",
-	"log-archive-level":         "log-level-archive",
-	"log-mailer-level":          "log-level-mailer",
-	"log-support-level":         "log-level-support",
-	"log-external-script-level": "log-level-external-script",
-	"log-stats-level":           "log-level-stats",
-	"log-fetch-errorlog-level":  "log-level-database-errors",
-	"log-fetch-slowquery-level": "log-level-database-slowquery",
-	"log-optimize-level":        "log-level-database-optimize",
-	"log-fetch-auditlog-level":  "log-level-database-audit",
-	"shardproxy-log-level":      "log-level-shardproxy",
-	"maxscale-log-level":        "log-level-maxscale",
-	"myproxy-log-level":         "log-level-myproxy",
-	"haproxy-log-level":         "log-level-haproxy",
-	"proxysql-log-level":        "log-level-proxysql",
-	"proxyjanitor-log-level":    "log-level-proxyjanitor",
-	"mysqlrouter-log-level":     "log-level-mysqlrouter",
-	"sphinx-log-level":          "log-level-sphinx",
-	"registry-consul-log-level": "log-level-registry-consul",
-	"log-vault-level":           "log-level-vault",
+		// log level aliases
+		"log-file-level":            "log-level-file",
+		"log-task-level":            "log-level-task",
+		"log-sst-level":             "log-level-sst",
+		"log-heartbeat-level":       "log-level-heartbeat",
+		"log-sql-level":             "log-level-sql",
+		"log-app-level":             "log-level-app",
+		"log-writer-election-level": "log-level-writer-election",
+		"log-git-level":             "log-level-git",
+		"log-config-load-level":     "log-level-config-load",
+		"log-backup-stream-level":   "log-level-backup-stream",
+		"log-orchestrator-level":    "log-level-orchestrator",
+		"log-topology-level":        "log-level-topology",
+		"log-proxy-level":           "log-level-proxy",
+		"log-graphite-level":        "log-level-graphite",
+		"log-binlog-purge-level":    "log-level-binlog-purge",
+		"log-archive-level":         "log-level-archive",
+		"log-mailer-level":          "log-level-mailer",
+		"log-support-level":         "log-level-support",
+		"log-external-script-level": "log-level-external-script",
+		"log-stats-level":           "log-level-stats",
+		"log-fetch-errorlog-level":  "log-level-database-errors",
+		"log-fetch-slowquery-level": "log-level-database-slowquery",
+		"log-optimize-level":        "log-level-database-optimize",
+		"log-fetch-auditlog-level":  "log-level-database-audit",
+		"shardproxy-log-level":      "log-level-shardproxy",
+		"maxscale-log-level":        "log-level-maxscale",
+		"myproxy-log-level":         "log-level-myproxy",
+		"haproxy-log-level":         "log-level-haproxy",
+		"proxysql-log-level":        "log-level-proxysql",
+		"proxyjanitor-log-level":    "log-level-proxyjanitor",
+		"mysqlrouter-log-level":     "log-level-mysqlrouter",
+		"sphinx-log-level":          "log-level-sphinx",
+		"registry-consul-log-level": "log-level-registry-consul",
+		"log-vault-level":           "log-level-vault",
+	}
 }
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
-	for oldName, newName := range AliasMap {
+	aliasMap := repman.GetAliasMap()
+
+	for oldName, newName := range aliasMap {
 		v.RegisterAlias(oldName, newName)
 	}
+}
+
+func (repman *ReplicationManager) HasGlobalAliasKey(key string) bool {
+	if _, ok := repman.DeprecatedKeys["default"]; ok {
+		if _, found := repman.DeprecatedKeys["default"][key]; found {
+			return true
+		}
+	}
+	return false
+}
+
+func (repman *ReplicationManager) GetUsedAliasKeys(v *viper.Viper, cluster bool) map[string]bool {
+	aliasMap := repman.GetAliasMap()
+	allKeys := v.AllKeys()
+	found := make(map[string]bool)
+
+	for _, key := range allKeys {
+		// get leaf key
+		leaf := key
+		if i := strings.LastIndex(key, "."); i != -1 {
+			leaf = key[i+1:]
+		}
+
+		// check alias
+		if _, ok := aliasMap[leaf]; ok {
+			if cluster && repman.HasGlobalAliasKey(leaf) {
+				continue
+			}
+			found[leaf] = true
+		}
+	}
+
+	return found
 }
 
 func (repman *ReplicationManager) InitRestic() error {
@@ -2252,6 +2297,7 @@ func (repman *ReplicationManager) Run() error {
 
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+		cluster.SetDeprecatedKeys(repman.DeprecatedKeys)
 		cluster.SetCarbonLogger(repman.clog)
 	}
 

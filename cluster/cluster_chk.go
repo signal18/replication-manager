@@ -1061,3 +1061,17 @@ func (cluster *Cluster) JobsCheckSchedulerTable() {
 		}
 	}
 }
+
+func (cluster *Cluster) CheckGlobalDeprecatedKeys() {
+	gkeys := cluster.GetGlobalDeprecatedKeys()
+	if len(gkeys) > 0 {
+		cluster.SetState("WARN0155", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0159"], strings.Join(gkeys, ",")), ErrFrom: "CLUSTER"})
+	}
+}
+
+func (cluster *Cluster) CheckClusterDeprecatedKeys() {
+	dkeys := cluster.GetDeprecatedKeys()
+	if len(dkeys) > 0 {
+		cluster.SetState("WARN0160", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0160"], cluster.Name, strings.Join(dkeys, ",")), ErrFrom: "CLUSTER"})
+	}
+}

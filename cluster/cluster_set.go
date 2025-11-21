@@ -1394,7 +1394,10 @@ func (cluster *Cluster) SetClusterList(clusters map[string]*Cluster) {
 	cluster.Lock()
 	cluster.clusterList = clusters
 	cluster.Unlock()
+}
 
+func (cluster *Cluster) SetDeprecatedKeys(keys map[string]map[string]bool) {
+	cluster.deprecatedKeys = keys
 }
 
 func (cluster *Cluster) SetState(key string, s state.State) {
