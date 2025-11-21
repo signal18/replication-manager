@@ -3121,7 +3121,9 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 		var mod int
 		task := vars["task"]
 		switch task {
-		case "errorlog":
+		case "auditlog":
+			mod = config.ConstLogModFetchAuditLog
+		case "errorlog", "sqlerrorlog":
 			mod = config.ConstLogModFetchErrorlog
 		case "slowquery":
 			mod = config.ConstLogModFetchSlowquery

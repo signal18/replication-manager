@@ -3670,7 +3670,7 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 
 	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModAPI, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
 		return err
 	}
 

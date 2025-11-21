@@ -425,9 +425,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	// Fetchers
 	flags.IntVar(&conf.LogFetchErrorlogLevel, "log-fetch-errorlog-level", 2, "Log Level for fetcher error log")
 	flags.IntVar(&conf.LogFetchSlowqueryLevel, "log-fetch-slowquery-level", 2, "Log Level for fetcher slow query log")
-
-	// API
-	flags.IntVar(&conf.LogAPILevel, "log-api-level", 3, "Log Level for API requests")
+	flags.IntVar(&conf.LogFetchAuditlogLevel, "log-fetch-auditlog-level", 2, "Log Level for fetcher audit log")
 
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
