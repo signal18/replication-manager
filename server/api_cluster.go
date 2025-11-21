@@ -2900,7 +2900,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogLevel(val)
-	case "log-level-writer-election":
+	case "log-writer-election-level", "log-level-writer-election":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogWriterElectionLevel(val)
 	case "log-sst-level", "log-level-sst":
