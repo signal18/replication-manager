@@ -288,6 +288,24 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
             />
           )
         },
+         {
+          key: 'Log Fetch Auditlog Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logFetchAuditlogLevel}
+              confirmTitle={`Confirm change 'log-fetch-auditlog-level' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-fetch-auditlog-level',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
         {
           key: 'Log Fetch Errorlog Level',
           value: (

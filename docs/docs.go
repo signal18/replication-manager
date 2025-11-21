@@ -21235,9 +21235,6 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
-                "logApiLevel": {
-                    "type": "integer"
-                },
                 "logAppLevel": {
                     "type": "integer"
                 },
@@ -21263,6 +21260,9 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "logExternalScriptLevel": {
+                    "type": "integer"
+                },
+                "logFetchAuditlogLevel": {
                     "type": "integer"
                 },
                 "logFetchErrorlogLevel": {

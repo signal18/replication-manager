@@ -2274,8 +2274,6 @@ definitions:
         type: integer
       kubeConfig:
         type: string
-      logApiLevel:
-        type: integer
       logAppLevel:
         type: integer
       logArchiveLevel:
@@ -2293,6 +2291,8 @@ definitions:
       logConfigLoadLevel:
         type: integer
       logExternalScriptLevel:
+        type: integer
+      logFetchAuditlogLevel:
         type: integer
       logFetchErrorlogLevel:
         type: integer

@@ -21224,9 +21224,6 @@
                 "kubeConfig": {
                     "type": "string"
                 },
-                "logApiLevel": {
-                    "type": "integer"
-                },
                 "logAppLevel": {
                     "type": "integer"
                 },
@@ -21252,6 +21249,9 @@
                     "type": "integer"
                 },
                 "logExternalScriptLevel": {
+                    "type": "integer"
+                },
+                "logFetchAuditlogLevel": {
                     "type": "integer"
                 },
                 "logFetchErrorlogLevel": {

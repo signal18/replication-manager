@@ -165,7 +165,7 @@ type Config struct {
 	LogFetchErrorlogLevel                     int                    `mapstructure:"log-fetch-errorlog-level" toml:"log-fetch-errorlog-level" json:"logFetchErrorlogLevel"`
 	LogFetchSlowqueryLevel                    int                    `mapstructure:"log-fetch-slowquery-level" toml:"log-fetch-slowquery-level" json:"logFetchSlowqueryLevel"`
 	LogOptimizeLevel                          int                    `mapstructure:"log-optimize-level" toml:"log-optimize-level" json:"logOptimizeLevel"`
-	LogAPILevel                               int                    `mapstructure:"log-api-level" toml:"log-api-level" json:"logApiLevel"`
+	LogFetchAuditlogLevel                     int                    `mapstructure:"log-fetch-auditlog-level" toml:"log-fetch-auditlog-level" json:"logFetchAuditlogLevel"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -1338,7 +1338,7 @@ const (
 	ConstLogModFetchErrorlog  = 25
 	ConstLogModFetchSlowquery = 26
 	ConstLogModOptimize       = 27
-	ConstLogModAPI            = 28
+	ConstLogModFetchAuditLog  = 28
 )
 
 /*
@@ -1373,7 +1373,7 @@ const (
 	ConstLogNameFetchErrorlog  string = "log-fetch-errorlog"
 	ConstLogNameFetchSlowquery string = "log-fetch-slowquery"
 	ConstLogNameOptimize       string = "log-optimize"
-	ConstLogNameAPI            string = "log-api"
+	ConstLogNameFetchAuditlog  string = "log-fetch-auditlog"
 )
 
 /*
@@ -3248,8 +3248,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogFetchSlowqueryLevel >= lvl
 		case module == ConstLogModOptimize:
 			return conf.LogOptimizeLevel >= lvl
-		case module == ConstLogModAPI:
-			return conf.LogAPILevel >= lvl
+		case module == ConstLogModFetchAuditLog:
+			return conf.LogFetchAuditlogLevel >= lvl
 		}
 	}
 
@@ -3429,8 +3429,10 @@ func GetTagsForLog(module int) string {
 		return "errorlog"
 	case ConstLogModFetchSlowquery:
 		return "slowquery"
-	case ConstLogModAPI:
-		return "api"
+	case ConstLogModOptimize:
+		return "optimize"
+	case ConstLogModFetchAuditLog:
+		return "auditlog"
 	}
 	return ""
 }
@@ -3507,6 +3509,10 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModFetchErrorlog
 	case ConstLogNameFetchSlowquery:
 		return ConstLogModFetchSlowquery
+	case ConstLogNameOptimize:
+		return ConstLogModOptimize
+	case ConstLogNameFetchAuditlog:
+		return ConstLogModFetchAuditLog
 	}
 	return -1
 }

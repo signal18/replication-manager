@@ -2128,6 +2128,10 @@ func (cluster *Cluster) SetLogFetchSlowqueryLevel(value int) {
 	cluster.Conf.LogFetchSlowqueryLevel = value
 }
 
+func (cluster *Cluster) SetLogFetchAuditlogLevel(value int) {
+	cluster.Conf.LogFetchAuditlogLevel = value
+}
+
 func (cluster *Cluster) SetLogOptimizeLevel(value int) {
 	cluster.Conf.LogOptimizeLevel = value
 }
