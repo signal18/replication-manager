@@ -2292,11 +2292,11 @@ definitions:
         type: integer
       logExternalScriptLevel:
         type: integer
-      logFetchAuditlogLevel:
+      logLevelDatabaseAudit:
         type: integer
-      logFetchErrorlogLevel:
+      logLevelDatabaseErrors:
         type: integer
-      logFetchSlowqueryLevel:
+      logLevelDatabaseSlowquery:
         type: integer
       logFile:
         type: string
@@ -2318,7 +2318,7 @@ definitions:
         type: integer
       logMailerLevel:
         type: integer
-      logOptimizeLevel:
+      logLevelDatabaseOptimize:
         type: integer
       logOrchestrator:
         type: boolean

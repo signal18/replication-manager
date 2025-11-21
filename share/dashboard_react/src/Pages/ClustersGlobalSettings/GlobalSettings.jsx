@@ -145,11 +145,11 @@ function GlobalSettings({ config }) {
       value: (
         <LogSlider
           value={config?.logFileLevel}
-          confirmTitle={`Confirm change 'log-file-level' to: `}
+          confirmTitle={`Confirm change 'log-level-file' to: `}
           onChange={(val) =>
             dispatch(
               setGlobalSetting({
-                setting: 'log-file-level',
+                setting: 'log-level-file',
                 value: val
               })
             )
@@ -162,11 +162,11 @@ function GlobalSettings({ config }) {
       value: (
         <LogSlider
           value={config?.logGitLevel}
-          confirmTitle={`Confirm change 'log-git-level' to: `}
+          confirmTitle={`Confirm change 'log-level-git' to: `}
           onChange={(val) =>
             dispatch(
               setGlobalSetting({
-                setting: 'log-git-level',
+                setting: 'log-level-git',
                 value: val
               })
             )
@@ -189,11 +189,11 @@ function GlobalSettings({ config }) {
       value: (
         <LogSlider
           value={config?.logSupportLevel}
-          confirmTitle={`Confirm change 'log-support-level' to: `}
+          confirmTitle={`Confirm change 'log-level-support' to: `}
           onChange={(val) =>
             dispatch(
               setGlobalSetting({
-                setting: 'log-support-level',
+                setting: 'log-level-support',
                 value: val
               })
             )
@@ -206,11 +206,11 @@ function GlobalSettings({ config }) {
       value: (
         <LogSlider
           value={config?.logStatsLevel}
-          confirmTitle={`Confirm change 'log-stats-level' to: `}
+          confirmTitle={`Confirm change 'log-level-stats' to: `}
           onChange={(val) =>
             dispatch(
               setGlobalSetting({
-                setting: 'log-stats-level',
+                setting: 'log-level-stats',
                 value: val
               })
             )

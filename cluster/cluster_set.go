@@ -2120,20 +2120,20 @@ func (cluster *Cluster) SetLogExternalScriptLevel(value int) {
 	}
 }
 
-func (cluster *Cluster) SetLogFetchErrorlogLevel(value int) {
-	cluster.Conf.LogFetchErrorlogLevel = value
+func (cluster *Cluster) SetLogLevelDatabaseErrors(value int) {
+	cluster.Conf.LogLevelDatabaseErrors = value
 }
 
-func (cluster *Cluster) SetLogFetchSlowqueryLevel(value int) {
-	cluster.Conf.LogFetchSlowqueryLevel = value
+func (cluster *Cluster) SetLogLevelDatabaseSlowquery(value int) {
+	cluster.Conf.LogLevelDatabaseSlowquery = value
 }
 
-func (cluster *Cluster) SetLogFetchAuditlogLevel(value int) {
-	cluster.Conf.LogFetchAuditlogLevel = value
+func (cluster *Cluster) SetLogLevelDatabaseAudit(value int) {
+	cluster.Conf.LogLevelDatabaseAudit = value
 }
 
-func (cluster *Cluster) SetLogOptimizeLevel(value int) {
-	cluster.Conf.LogOptimizeLevel = value
+func (cluster *Cluster) SetLogLevelDatabaseOptimize(value int) {
+	cluster.Conf.LogLevelDatabaseOptimize = value
 }
 
 func (cluster *Cluster) SetSlavesOldestMasterFile(value string) error {

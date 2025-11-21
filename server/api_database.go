@@ -3122,13 +3122,13 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 		task := vars["task"]
 		switch task {
 		case "auditlog":
-			mod = config.ConstLogModFetchAuditLog
+			mod = config.ConstLogModDbAudit
 		case "errorlog", "sqlerrorlog":
-			mod = config.ConstLogModFetchErrorlog
+			mod = config.ConstLogModDbErrors
 		case "slowquery":
-			mod = config.ConstLogModFetchSlowquery
+			mod = config.ConstLogModDbSlowquery
 		case "optimize":
-			mod = config.ConstLogModOptimize
+			mod = config.ConstLogModDbOptimize
 		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
 		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade":
