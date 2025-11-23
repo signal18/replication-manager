@@ -1734,10 +1734,11 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 }
 
 func (cluster *Cluster) GetGlobalDeprecatedKeys() []string {
+	aliasMap := config.GetKeyAliasMap()
 	keys := make([]string, 0)
 	if globalkeys, ok := cluster.deprecatedKeys["default"]; ok {
 		for key := range globalkeys {
-			keys = append(keys, key)
+			keys = append(keys, key+" ("+aliasMap[key]+")")
 		}
 	}
 	return keys
@@ -1752,10 +1753,11 @@ func (cluster *Cluster) GetGlobalDeprecatedKeyMap() map[string]bool {
 }
 
 func (cluster *Cluster) GetDeprecatedKeys() []string {
+	aliasMap := config.GetKeyAliasMap()
 	keys := make([]string, 0)
 	if clusterkeys, ok := cluster.deprecatedKeys[cluster.Name]; ok {
 		for key := range clusterkeys {
-			keys = append(keys, key)
+			keys = append(keys, key+" ("+aliasMap[key]+")")
 		}
 	}
 	return keys
