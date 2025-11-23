@@ -1342,6 +1342,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
 	}
 	secRead := fistRead.Sub("DEFAULT")
+	repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
+
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
 
@@ -1405,6 +1407,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
+
+	for _, clusterName := range repman.ImmutableClusterList {
+		clRead := fistRead.Sub(clusterName)
+		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+	}
 
 	tmp_read := fistRead.Sub("default")
 	if tmp_read != nil {
@@ -1510,7 +1517,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 		cf1.SetEnvPrefix("DEFAULT")
 		repman.initAlias(cf1)
-		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(cf1, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 		cf1.Unmarshal(&conf)
 
 		//if dynamic config, load modified parameter from the saved config
@@ -1647,7 +1653,6 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 			repman.initAlias(cf2)
-			repman.DeprecatedKeys[cluster] = repman.GetUsedAliasKeys(cf2, true) //get deprecated keys used in the config file for the cluster in etc/replication-manager/cluster.d/<cluster>.toml
 			cf2.Unmarshal(&clusterconf)
 			//fmt.Printf("saved conf :")
 			//clusterconf.PrintConf()
