@@ -1065,7 +1065,7 @@ func (cluster *Cluster) JobsCheckSchedulerTable() {
 func (cluster *Cluster) CheckGlobalDeprecatedKeys() {
 	gkeys := cluster.GetGlobalDeprecatedKeys()
 	if len(gkeys) > 0 {
-		cluster.SetState("WARN0155", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0159"], strings.Join(gkeys, ",")), ErrFrom: "CLUSTER"})
+		cluster.SetState("WARN0159", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0159"], strings.Join(gkeys, ",")), ErrFrom: "CLUSTER"})
 	}
 }
 
