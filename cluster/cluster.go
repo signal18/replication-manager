@@ -1882,7 +1882,7 @@ func (cluster *Cluster) ReloadCertificates() {
 }
 
 func (cluster *Cluster) ResetStates() {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reload cluster TLS certificates")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reset cluster states")
 	cluster.SetUnDiscovered()
 	cluster.slaves = nil
 	cluster.master = nil
