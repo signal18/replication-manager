@@ -21262,13 +21262,13 @@ const docTemplate = `{
                 "logExternalScriptLevel": {
                     "type": "integer"
                 },
-                "logFetchAuditlogLevel": {
+                "logLevelDatabaseAudit": {
                     "type": "integer"
                 },
-                "logFetchErrorlogLevel": {
+                "logLevelDatabaseErrors": {
                     "type": "integer"
                 },
-                "logFetchSlowqueryLevel": {
+                "logLevelDatabaseSlowquery": {
                     "type": "integer"
                 },
                 "logFile": {
@@ -21301,7 +21301,7 @@ const docTemplate = `{
                 "logMailerLevel": {
                     "type": "integer"
                 },
-                "logOptimizeLevel": {
+                "logLevelDatabaseOptimize": {
                     "type": "integer"
                 },
                 "logOrchestrator": {

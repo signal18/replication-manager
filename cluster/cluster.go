@@ -75,95 +75,96 @@ type ClusterResponse struct {
 }
 
 type Cluster struct {
-	OsUser                        *user.User             `json:"-"`
-	Name                          string                 `json:"name" groups:"apps,web"`
-	Tenant                        string                 `json:"tenant" groups:"web"`
-	WorkingDir                    string                 `json:"workingDir" groups:"web"`
-	Servers                       serverList             `json:"servers" groups:"apps"`
-	LogSlaveServers               []string               `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
-	ServerIdList                  []string               `json:"dbServers" groups:"web"`
-	Crashes                       crashList              `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
-	FailoverHistory               crashList              `json:"failoverHistory" groups:"web"`  //This will be used for PITR
-	Apps                          appList                `json:"apps" groups:"apps" `
-	AppIdList                     []string               `json:"appServers" groups:"web"`
-	Proxies                       proxyList              `json:"proxies" groups:"apps"`
-	ProxyIdList                   []string               `json:"proxyServers" groups:"web"`
-	FailoverCtr                   int                    `json:"failoverCounter" groups:"web"`
-	FailoverTs                    int64                  `json:"failoverLastTime" groups:"web"`
-	Status                        string                 `json:"activePassiveStatus" groups:"web"`
-	IsSplitBrain                  bool                   `json:"isSplitBrain" groups:"web"`
-	IsSplitBrainBck               bool                   `json:"-"`
-	IsFailedArbitrator            bool                   `json:"isFailedArbitrator" groups:"web"`
-	IsLostMajority                bool                   `json:"isLostMajority" groups:"web"`
-	IsDown                        bool                   `json:"isDown" groups:"web"`
-	IsClusterDown                 bool                   `json:"isClusterDown" groups:"web"`
-	IsMasterDown                  bool                   `json:"isMasterDown" groups:"web"`
-	IsAllDbUp                     bool                   `json:"isAllDbUp" groups:"web"`
-	IsFailable                    bool                   `json:"isFailable" groups:"web"`
-	IsPostgres                    bool                   `json:"isPostgres" groups:"web"`
-	IsProvision                   bool                   `json:"isProvision" groups:"web"`
-	IsNeedProxiesRestart          bool                   `json:"isNeedProxiesRestart" groups:"web"`
-	IsNeedProxiesReprov           bool                   `json:"isNeedProxiesReprov" groups:"web"`
-	IsNeedProxiesConfigChange     bool                   `json:"isNeedProxiesConfigChange" groups:"web"`
-	IsNeedDatabasesRestart        bool                   `json:"isNeedDatabasesRestart" groups:"web"`
-	IsNeedDatabasesRollingRestart bool                   `json:"isNeedDatabasesRollingRestart" groups:"web"`
-	IsNeedDatabasesRollingReprov  bool                   `json:"isNeedDatabasesRollingReprov" groups:"web"`
-	IsNeedDatabasesReprov         bool                   `json:"isNeedDatabasesReprov" groups:"web"`
-	IsNeedDatabasesConfigChange   bool                   `json:"isNeedDatabasesConfigChange" groups:"web"`
-	IsNeedAppsReprov              bool                   `json:"isNeedAppsReprov" groups:"web"`
-	IsGettingSlowLog              bool                   `json:"isGettingSlowLog" groups:"web"`
-	IsValidBackup                 bool                   `json:"isValidBackup" groups:"web"`
-	IsNotMonitoring               bool                   `json:"isNotMonitoring" groups:"web"`
-	IsCapturing                   bool                   `json:"isCapturing" groups:"web"`
-	IsGitPull                     bool                   `json:"isGitPull" groups:"web"`
-	IsGitPush                     bool                   `json:"isGitPush" groups:"web"`
-	IsSavingConfig                bool                   `json:"-"`
-	IsNeedGitPush                 bool                   `json:"-"`
-	IsExportPush                  bool                   `json:"isExportPush" groups:"web"`
-	IsAlertDisable                bool                   `json:"isAlertDisable" groups:"web"`
-	IsRefreshStaging              bool                   `json:"isRefreshStaging" groups:"web"`
-	IsNeedStagingChange           bool                   `json:"isNeedStagingChange" groups:"web"`
-	IsConfigPathChange            bool                   `json:"isConfigPathChange" groups:"web"`
-	Conf                          *config.Config         `json:"config" groups:"apps"`
-	Confs                         *config.ConfVersion    `json:"-"`
-	CleanAll                      bool                   `json:"cleanReplication" groups:"web"` //used in testing
-	Topology                      string                 `json:"topology" groups:"web"`
-	Uptime                        string                 `json:"uptime" groups:"web"`
-	UptimeFailable                string                 `json:"uptimeFailable" groups:"web"`
-	UptimeSemiSync                string                 `json:"uptimeSemisync" groups:"web"`
-	MonitorSpin                   string                 `json:"monitorSpin" groups:"web"`
-	WorkLoad                      config.WorkLoad        `json:"workLoad" groups:"web"`
-	Logrus                        *log.Logger            `json:"-"`
-	LogPushover                   *log.Logger            `json:"-"`
-	Log                           s18log.HttpLog         `json:"-" groups:"web"`
-	LogTask                       s18log.HttpLog         `json:"-" groups:"web"`
-	LogSlack                      *slackman.SlackManager `json:"-"`
-	JobResults                    *config.TasksMap       `json:"jobResults" groups:"web"`
-	FalsePositiveChecks           map[string]bool        `json:"falsePositiveChecks" groups:"web"`
-	Grants                        map[string]string      `json:"-"`
-	Roles                         map[string]string      `json:"-"`
-	tlog                          *s18log.TermLog        `json:"-"`
-	htlog                         *s18log.HttpLog        `json:"-"`
-	SQLGeneralLog                 s18log.HttpLog         `json:"sqlGeneralLog" groups:"web"`
-	SQLErrorLog                   s18log.HttpLog         `json:"sqlErrorLog" groups:"web"`
-	MonitorType                   map[string]string      `json:"monitorType" groups:"web"`
-	TopologyType                  map[string]string      `json:"topologyType" groups:"web"`
-	FSType                        map[string]bool        `json:"fsType" groups:"web"`
-	DiskType                      map[string]string      `json:"diskType" groups:"web"`
-	VMType                        map[string]bool        `json:"vmType" groups:"web"`
-	AppS3Providers                []string               `json:"appS3Providers" groups:"web"`
-	Agents                        []Agent                `json:"agents" groups:"web"`
-	AgentMaxFreq                  map[string]int64       `json:"-"`
-	hostList                      []string               `json:"-"`
-	proxyList                     []string               `json:"-"`
-	clusterList                   map[string]*Cluster    `json:"-"`
-	slaves                        serverList             `json:"slaves" groups:"apps"`
-	master                        *ServerMonitor         `json:"master" groups:"apps"`
-	oldMaster                     *ServerMonitor         `json:"oldmaster" groups:"web"`
-	vmaster                       *ServerMonitor         `json:"vmaster" `
-	StagingServer                 *ServerMonitor         `json:"-" groups:"web"`
-	mxs                           *maxscale.MaxScale     `json:"-"`
-	CheckSumConfig                map[string]hash.Hash   `json:"-"`
+	OsUser                        *user.User                 `json:"-"`
+	Name                          string                     `json:"name" groups:"apps,web"`
+	Tenant                        string                     `json:"tenant" groups:"web"`
+	WorkingDir                    string                     `json:"workingDir" groups:"web"`
+	Servers                       serverList                 `json:"servers" groups:"apps"`
+	LogSlaveServers               []string                   `json:"logSlaveServers" groups:"web" ` //To store slave with log-slave-updates
+	ServerIdList                  []string                   `json:"dbServers" groups:"web"`
+	Crashes                       crashList                  `json:"dbServersCrashes" groups:"web"` //This will be purged on all db node up
+	FailoverHistory               crashList                  `json:"failoverHistory" groups:"web"`  //This will be used for PITR
+	Apps                          appList                    `json:"apps" groups:"apps" `
+	AppIdList                     []string                   `json:"appServers" groups:"web"`
+	Proxies                       proxyList                  `json:"proxies" groups:"apps"`
+	ProxyIdList                   []string                   `json:"proxyServers" groups:"web"`
+	FailoverCtr                   int                        `json:"failoverCounter" groups:"web"`
+	FailoverTs                    int64                      `json:"failoverLastTime" groups:"web"`
+	Status                        string                     `json:"activePassiveStatus" groups:"web"`
+	IsSplitBrain                  bool                       `json:"isSplitBrain" groups:"web"`
+	IsSplitBrainBck               bool                       `json:"-"`
+	IsFailedArbitrator            bool                       `json:"isFailedArbitrator" groups:"web"`
+	IsLostMajority                bool                       `json:"isLostMajority" groups:"web"`
+	IsDown                        bool                       `json:"isDown" groups:"web"`
+	IsClusterDown                 bool                       `json:"isClusterDown" groups:"web"`
+	IsMasterDown                  bool                       `json:"isMasterDown" groups:"web"`
+	IsAllDbUp                     bool                       `json:"isAllDbUp" groups:"web"`
+	IsFailable                    bool                       `json:"isFailable" groups:"web"`
+	IsPostgres                    bool                       `json:"isPostgres" groups:"web"`
+	IsProvision                   bool                       `json:"isProvision" groups:"web"`
+	IsNeedProxiesRestart          bool                       `json:"isNeedProxiesRestart" groups:"web"`
+	IsNeedProxiesReprov           bool                       `json:"isNeedProxiesReprov" groups:"web"`
+	IsNeedProxiesConfigChange     bool                       `json:"isNeedProxiesConfigChange" groups:"web"`
+	IsNeedDatabasesRestart        bool                       `json:"isNeedDatabasesRestart" groups:"web"`
+	IsNeedDatabasesRollingRestart bool                       `json:"isNeedDatabasesRollingRestart" groups:"web"`
+	IsNeedDatabasesRollingReprov  bool                       `json:"isNeedDatabasesRollingReprov" groups:"web"`
+	IsNeedDatabasesReprov         bool                       `json:"isNeedDatabasesReprov" groups:"web"`
+	IsNeedDatabasesConfigChange   bool                       `json:"isNeedDatabasesConfigChange" groups:"web"`
+	IsNeedAppsReprov              bool                       `json:"isNeedAppsReprov" groups:"web"`
+	IsGettingSlowLog              bool                       `json:"isGettingSlowLog" groups:"web"`
+	IsValidBackup                 bool                       `json:"isValidBackup" groups:"web"`
+	IsNotMonitoring               bool                       `json:"isNotMonitoring" groups:"web"`
+	IsCapturing                   bool                       `json:"isCapturing" groups:"web"`
+	IsGitPull                     bool                       `json:"isGitPull" groups:"web"`
+	IsGitPush                     bool                       `json:"isGitPush" groups:"web"`
+	IsSavingConfig                bool                       `json:"-"`
+	IsNeedGitPush                 bool                       `json:"-"`
+	IsExportPush                  bool                       `json:"isExportPush" groups:"web"`
+	IsAlertDisable                bool                       `json:"isAlertDisable" groups:"web"`
+	IsRefreshStaging              bool                       `json:"isRefreshStaging" groups:"web"`
+	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
+	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
+	Conf                          *config.Config             `json:"config" groups:"apps"`
+	Confs                         *config.ConfVersion        `json:"-"`
+	CleanAll                      bool                       `json:"cleanReplication" groups:"web"` //used in testing
+	Topology                      string                     `json:"topology" groups:"web"`
+	Uptime                        string                     `json:"uptime" groups:"web"`
+	UptimeFailable                string                     `json:"uptimeFailable" groups:"web"`
+	UptimeSemiSync                string                     `json:"uptimeSemisync" groups:"web"`
+	MonitorSpin                   string                     `json:"monitorSpin" groups:"web"`
+	WorkLoad                      config.WorkLoad            `json:"workLoad" groups:"web"`
+	Logrus                        *log.Logger                `json:"-"`
+	LogPushover                   *log.Logger                `json:"-"`
+	Log                           s18log.HttpLog             `json:"-" groups:"web"`
+	LogTask                       s18log.HttpLog             `json:"-" groups:"web"`
+	LogSlack                      *slackman.SlackManager     `json:"-"`
+	JobResults                    *config.TasksMap           `json:"jobResults" groups:"web"`
+	FalsePositiveChecks           map[string]bool            `json:"falsePositiveChecks" groups:"web"`
+	Grants                        map[string]string          `json:"-"`
+	Roles                         map[string]string          `json:"-"`
+	tlog                          *s18log.TermLog            `json:"-"`
+	htlog                         *s18log.HttpLog            `json:"-"`
+	SQLGeneralLog                 s18log.HttpLog             `json:"sqlGeneralLog" groups:"web"`
+	SQLErrorLog                   s18log.HttpLog             `json:"sqlErrorLog" groups:"web"`
+	MonitorType                   map[string]string          `json:"monitorType" groups:"web"`
+	TopologyType                  map[string]string          `json:"topologyType" groups:"web"`
+	FSType                        map[string]bool            `json:"fsType" groups:"web"`
+	DiskType                      map[string]string          `json:"diskType" groups:"web"`
+	VMType                        map[string]bool            `json:"vmType" groups:"web"`
+	AppS3Providers                []string                   `json:"appS3Providers" groups:"web"`
+	Agents                        []Agent                    `json:"agents" groups:"web"`
+	AgentMaxFreq                  map[string]int64           `json:"-"`
+	hostList                      []string                   `json:"-"`
+	proxyList                     []string                   `json:"-"`
+	clusterList                   map[string]*Cluster        `json:"-"`
+	deprecatedKeys                map[string]map[string]bool `json:"-"`
+	slaves                        serverList                 `json:"slaves" groups:"apps"`
+	master                        *ServerMonitor             `json:"master" groups:"apps"`
+	oldMaster                     *ServerMonitor             `json:"oldmaster" groups:"web"`
+	vmaster                       *ServerMonitor             `json:"vmaster" `
+	StagingServer                 *ServerMonitor             `json:"-" groups:"web"`
+	mxs                           *maxscale.MaxScale         `json:"-"`
+	CheckSumConfig                map[string]hash.Hash       `json:"-"`
 	//dbUser                        string                      `json:"-"`
 	//oldDbUser string `json:"-"`
 	//dbPass                        string                      `json:"-"`
@@ -649,7 +650,8 @@ var pstates30 = []string{
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0147", "WARN0148", "WARN0153", "WARN0154", // Jobs related
-	"WARN0158", // Job secrets mismatch
+	"WARN0158",             // Job secrets mismatch
+	"WARN0159", "WARN0160", // Deprecated config keys
 	"CREDIT01", // Credit related
 }
 
@@ -758,6 +760,8 @@ func (cluster *Cluster) Run() {
 							cluster.CheckOpenSVCTresholds()
 							cluster.CheckJobsVersion()
 							cluster.JobsCheckSchedulerTable()
+							cluster.CheckGlobalDeprecatedKeys()
+							cluster.CheckClusterDeprecatedKeys()
 						} else {
 							cluster.StateMachine.PreserveState(pstates30...)
 						}
@@ -1878,7 +1882,7 @@ func (cluster *Cluster) ReloadCertificates() {
 }
 
 func (cluster *Cluster) ResetStates() {
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reload cluster TLS certificates")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reset cluster states")
 	cluster.SetUnDiscovered()
 	cluster.slaves = nil
 	cluster.master = nil

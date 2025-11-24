@@ -1732,3 +1732,41 @@ func (cluster *Cluster) GetAllWebLogs() map[string]any {
 	logs["task"] = &cluster.LogTask
 	return logs
 }
+
+func (cluster *Cluster) GetGlobalDeprecatedKeys() []string {
+	aliasMap := config.GetKeyAliasMap()
+	keys := make([]string, 0)
+	if globalkeys, ok := cluster.deprecatedKeys["default"]; ok {
+		for key := range globalkeys {
+			keys = append(keys, key+" ("+aliasMap[key]+")")
+		}
+	}
+	return keys
+}
+
+func (cluster *Cluster) GetGlobalDeprecatedKeyMap() map[string]bool {
+	keys := make(map[string]bool)
+	if globalkeys, ok := cluster.deprecatedKeys["default"]; ok {
+		return globalkeys
+	}
+	return keys
+}
+
+func (cluster *Cluster) GetDeprecatedKeys() []string {
+	aliasMap := config.GetKeyAliasMap()
+	keys := make([]string, 0)
+	if clusterkeys, ok := cluster.deprecatedKeys[cluster.Name]; ok {
+		for key := range clusterkeys {
+			keys = append(keys, key+" ("+aliasMap[key]+")")
+		}
+	}
+	return keys
+}
+
+func (cluster *Cluster) GetDeprecatedKeyMap() map[string]bool {
+	keys := make(map[string]bool)
+	if clusterkeys, ok := cluster.deprecatedKeys[cluster.Name]; ok {
+		return clusterkeys
+	}
+	return keys
+}

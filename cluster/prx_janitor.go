@@ -49,7 +49,7 @@ func NewProxyJanitor(placement int, cluster *Cluster, proxyHost string) *ProxyJa
 func (proxy *ProxyJanitor) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 
 	flags.BoolVar(&conf.ProxyJanitorDebug, "proxyjanitor-debug", true, "Extra info on monitoring backend")
-	flags.IntVar(&conf.ProxyJanitorLogLevel, "proxyjanitor-log-level", 1, "Log level for monitoring backed")
+	flags.IntVar(&conf.ProxyJanitorLogLevel, "log-level-proxyjanitor", 1, "Log level for monitoring backed")
 	flags.StringVar(&conf.ProxyJanitorHosts, "proxyjanitor-servers", "", "ProxyJanitor hosts")
 	flags.StringVar(&conf.ProxyJanitorHostsIPV6, "proxyjanitor-servers-ipv6", "", "ProxyJanitor extra IPV6 bind for interfaces")
 	flags.StringVar(&conf.ProxyJanitorPort, "proxyjanitor-port", "3306", "ProxyJanitor read/write proxy port")
