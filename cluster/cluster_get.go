@@ -245,6 +245,18 @@ func (cluster *Cluster) GetGottyClientPath() string {
 	return cluster.Conf.BackupGottyClientPath
 }
 
+func (cluster *Cluster) GetTtyShareClientPath() string {
+	if cluster.Conf.BackupTtySharePath == "" {
+		// Return installed mysql client on repman host instead of embedded if exists
+		if out, err := exec.Command("which", "tty-share").Output(); err == nil {
+			path := strings.Trim(string(out), "\r\n")
+			return path
+		}
+		return "" // Use embedded tty-share in tty package
+	}
+	return cluster.Conf.BackupTtySharePath
+}
+
 func (cluster *Cluster) GetMysqlServerBinaryPath() string {
 	if cluster.Conf.BackupMysqlclientPath == "" {
 		// Return installed mysql client on repman host instead of embedded if exists

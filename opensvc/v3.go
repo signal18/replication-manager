@@ -454,6 +454,57 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 	return body, nil
 }
 
+func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, service, rid string) ([]byte, error) {
+	var resp *http.Response
+	var err error
+
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+	oRid := apiv3.InQueryRid(rid)
+	oTimeout := apiv3.InQueryGreetTimeout(fmt.Sprintf("%ds", collector.ContextTimeoutSecond*2))
+	params := &apiv3.PostInstanceResourceConsoleParams{Rid: &oRid, GreetTimeout: &oTimeout}
+	resp, err = client.PostInstanceResourceConsole(ctx, node, namespace, oKind, service, params, collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get console resource '%s' on %s/%s/%s: %w", rid, namespace, kind, service, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+	}
+
+	return body, nil
+}
+
+func (collector *Collector) GetGottyServerV3(node, srv, rid string) (string, error) {
+	svcparts := strings.SplitN(srv, "/", 3)
+	if len(svcparts) != 3 {
+		return "", fmt.Errorf("invalid service format: %s, expected namespace/kind/name", srv)
+	}
+
+	ns := svcparts[0]
+	kind := svcparts[1]
+	svcname := svcparts[2]
+	body, err := collector.handleInstanceConsoleV3(node, ns, kind, svcname, rid)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
 func (collector *Collector) handleEventLogsV3(agents string, kindCloser []string, filters []string) error {
 	client, err := collector.GetClientV3()
 	if err != nil {

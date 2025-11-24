@@ -45,6 +45,7 @@ const (
 	TerminalMySQL
 	TerminalMyTop
 	TerminalGottyClient
+	TerminalTtyShare
 )
 
 // TerminalManager interface defines the methods for terminal management.
@@ -79,37 +80,40 @@ func (tm *ScreenManager) LaunchSSHTerminal(sessionID string) []byte {
 
 // Session represents a single terminal session (SSH or local shell).
 type Session struct {
-	ID                   string              `json:"id"`
-	Owner                string              `json:"owner"`
-	WorkingDir           string              `json:"working_dir"`
-	AllowResume          bool                `json:"-"`
-	TerminalMgr          TerminalManager     `json:"-"`
-	Conn                 *websocket.Conn     `json:"-"`
-	SSHClient            *ssh.Client         `json:"-"`
-	SSHSession           *ssh.Session        `json:"-"`
-	Cmd                  *exec.Cmd           `json:"-"`
-	Command              string              `json:"-"`
-	Arguments            []string            `json:"-"`
-	CmdType              TerminalCommandType `json:"-"`
-	PTY                  *os.File            `json:"-"`
-	Stdin                io.WriteCloser      `json:"-"`
-	Stdout               io.Reader           `json:"-"`
-	Stderr               io.Reader           `json:"-"`
-	Host                 string              `json:"host"`
-	Port                 string              `json:"port"`
-	Username             string              `json:"-"`
-	Password             string              `json:"-"`
-	Orchestrator         string              `json:"orchestrator"`
-	ServiceContainerName string              `json:"serviceContainerName"`
-	ServiceName          string              `json:"serviceName"`
-	ServiceGottyUrl      string              `json:"-"`
-	Keys                 []ssh.Signer        `json:"-"`
-	WG                   sync.WaitGroup      `json:"-"`
-	Logger               *logrus.Logger      `json:"-"`
-	Manager              *SessionManager     `json:"-"`
-	writeMu              sync.Mutex          `json:"-"`
-	Line                 string              `json:"-"`
-	closeOnce            sync.Once           `json:"-"`
+	ID                   string               `json:"id"`
+	Owner                string               `json:"owner"`
+	WorkingDir           string               `json:"working_dir"`
+	AllowResume          bool                 `json:"-"`
+	TerminalMgr          TerminalManager      `json:"-"`
+	Conn                 *websocket.Conn      `json:"-"`
+	SourceConn           *TTYProtocolWSLocked `json:"-"`
+	TunnelAddresses      string               `json:"-"`
+	TunnelConn           *websocket.Conn      `json:"-"`
+	SSHClient            *ssh.Client          `json:"-"`
+	SSHSession           *ssh.Session         `json:"-"`
+	Cmd                  *exec.Cmd            `json:"-"`
+	Command              string               `json:"-"`
+	Arguments            []string             `json:"-"`
+	CmdType              TerminalCommandType  `json:"-"`
+	PTY                  *os.File             `json:"-"`
+	Stdin                io.WriteCloser       `json:"-"`
+	Stdout               io.Reader            `json:"-"`
+	Stderr               io.Reader            `json:"-"`
+	Host                 string               `json:"host"`
+	Port                 string               `json:"port"`
+	Username             string               `json:"-"`
+	Password             string               `json:"-"`
+	Orchestrator         string               `json:"orchestrator"`
+	ServiceContainerName string               `json:"serviceContainerName"`
+	ServiceName          string               `json:"serviceName"`
+	ServiceTtyUrl        string               `json:"-"`
+	Keys                 []ssh.Signer         `json:"-"`
+	WG                   sync.WaitGroup       `json:"-"`
+	Logger               *logrus.Logger       `json:"-"`
+	Manager              *SessionManager      `json:"-"`
+	writeMu              sync.Mutex           `json:"-"`
+	Line                 string               `json:"-"`
+	closeOnce            sync.Once            `json:"-"`
 }
 
 type SignerList []ssh.Signer
@@ -247,7 +251,7 @@ func (sm *SessionManager) CreateSession(conn *websocket.Conn) *Session {
 }
 
 // NewSession creates a new session, resuming if allowed.
-func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
+func (sm *SessionManager) RunSession(session *Session) error {
 	var err error
 
 	oldSession, found := sm.GetSession(session.ID)
@@ -259,13 +263,15 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	session.SafeWriteMessage(websocket.TextMessage, []byte("Starting new session...\n"))
 
 	var cmd *exec.Cmd
-	if session.CmdType == TerminalMySQL || session.CmdType == TerminalMyTop || session.CmdType == TerminalGottyClient {
+	if session.CmdType == TerminalTtyShare && session.Command == "" { // tty-share embedded mode
+		return sm.HandleTtyShare(session)
+	} else if session.CmdType == TerminalMySQL || session.CmdType == TerminalMyTop || session.CmdType == TerminalGottyClient || session.CmdType == TerminalTtyShare {
 		cmd = exec.Command(session.Command, session.Arguments...)
 	} else {
 		if session.AllowResume && session.TerminalMgr != nil {
 			cmd, err = session.TerminalMgr.LaunchTerminal(session.ID)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		} else {
 			cmd = exec.Command("bash")
@@ -280,7 +286,7 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 	ptyFile, err := pty.Start(cmd)
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error starting shell session: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.PTY = ptyFile
 	session.Stdin = ptyFile
@@ -353,7 +359,9 @@ func (sm *SessionManager) RunSession(session *Session) (*Session, error) {
 		session.Close()
 	}()
 
-	return session, nil
+	session.WG.Wait()
+
+	return nil
 }
 
 type ResizeMessage struct {
@@ -405,13 +413,18 @@ func (s *Session) HandleWebSocketInput() {
 		var resizeMessage ResizeMessage
 		if err := json.Unmarshal(msg, &resizeMessage); err == nil {
 			if resizeMessage.Type_ == "resize" {
-				if s.SSHClient == nil {
+				if s.SourceConn != nil {
+					err := s.SourceConn.SetWinSize(resizeMessage.Cols, resizeMessage.Rows)
+					if err != nil {
+						s.SafeWriteMessage(websocket.TextMessage, []byte("Error resizing tty-share session: "+err.Error()+"\n"))
+					}
+				} else if s.SSHClient == nil {
 					if err := pty.Setsize(s.PTY, &pty.Winsize{Cols: uint16(resizeMessage.Cols), Rows: uint16(resizeMessage.Rows)}); err != nil {
-						s.Logger.Println("Error resizing pty:", err)
+						s.SafeWriteMessage(websocket.TextMessage, []byte("Error resizing pty: "+err.Error()+"\n"))
 					}
 				} else {
 					if err := s.SSHSession.WindowChange(resizeMessage.Rows, resizeMessage.Cols); err != nil {
-						s.Logger.Println("Error resizing SSH session:", err)
+						s.SafeWriteMessage(websocket.TextMessage, []byte("Error resizing SSH session: "+err.Error()+"\n"))
 					}
 				}
 			}
@@ -566,8 +579,12 @@ func (s *Session) SafeWriteMessage(messageType int, data []byte) error {
 	return s.Conn.WriteMessage(messageType, data)
 }
 
+func (s *Session) SafeWriteTextMessage(data []byte) {
+	s.SafeWriteMessage(websocket.TextMessage, data)
+}
+
 // NewSSHSession creates a new SSH session and WebSocket connection, with resumption logic.
-func (sm *SessionManager) RunSSHSession(session *Session) (*Session, error) {
+func (sm *SessionManager) RunSSHSession(session *Session) error {
 	var err error
 
 	oldSession, found := sm.GetSession(session.ID)
@@ -581,35 +598,35 @@ func (sm *SessionManager) RunSSHSession(session *Session) (*Session, error) {
 	client, err := session.connectSSH()
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error connecting to SSH server: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.SSHClient = client
 
 	sshSession, err := client.NewSession()
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error creating SSH session: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.SSHSession = sshSession
 
 	stdin, err := sshSession.StdinPipe()
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdin: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.Stdin = stdin
 
 	stdout, err := sshSession.StdoutPipe()
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stdout: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.Stdout = stdout
 
 	stderr, err := sshSession.StderrPipe()
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error getting SSH stderr: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 	session.Stderr = stderr
 
@@ -620,12 +637,12 @@ func (sm *SessionManager) RunSSHSession(session *Session) (*Session, error) {
 	})
 	if err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error requesting PTY: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 
 	if err := sshSession.Shell(); err != nil {
 		session.SafeWriteMessage(websocket.TextMessage, []byte("Error starting shell: "+err.Error()+"\n"))
-		return nil, err
+		return err
 	}
 
 	// Send the terminal command to the SSH session
@@ -656,7 +673,9 @@ func (sm *SessionManager) RunSSHSession(session *Session) (*Session, error) {
 		session.keepAliveWebSocket()
 	}()
 
-	return session, nil
+	session.WG.Wait()
+
+	return nil
 }
 
 func (s *Session) AppendKey(keypath string) error {

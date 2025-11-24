@@ -95,16 +95,28 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	return svc
 }
 
-func (cluster *Cluster) GetGottyServer(srv string, rid string) (string, string) {
+func (cluster *Cluster) GetGottyServer(srv string, rid string) (string, string, string) {
+	var url, node, ver string
+	var err error
 	svc := cluster.OpenSVCConnect()
-	url, node, err := svc.GetGottyServer(srv, rid)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
-		return "", ""
+	if svc.IsV3() {
+		ver = "v3"
+		url, err = svc.GetGottyServerV3(node, srv, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
+			return "", "", ver
+		}
+	} else {
+		ver = "v2"
+		url, node, err = svc.GetGottyServer(srv, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
+			return "", "", ver
+		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Response from GetGottyServer: %s %s", url, node)
 
-	return url, node
+	return url, node, ver
 }
 
 func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
