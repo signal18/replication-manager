@@ -425,7 +425,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 
 	// Fetchers
 	flags.IntVar(&conf.LogLevelDatabaseErrors, "log-level-database-errors", 1, "Log Level for fetcher error log")
-	flags.IntVar(&conf.LogLevelDatabaseSlowquery, "log-level-database-slowquery", 1, "Log Level for fetcher slow query log")
+	flags.IntVar(&conf.LogLevelDatabaseSqlErrors, "log-level-database-errors", 1, "Log Level for fetcher error log")
+	flags.IntVar(&conf.LogLevelDatabaseSlowquery, "log-level-database-slowquery", 2, "Log Level for fetcher slow query log")
 	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 
 	// DB Credentials
