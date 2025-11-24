@@ -33,7 +33,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
-     {
+    {
       key: 'Log SQL in Monitoring',
       value: (
         <LogSlider
@@ -288,7 +288,7 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
             />
           )
         },
-         {
+        {
           key: 'Log Fetch Auditlog Level',
           value: (
             <LogSlider
@@ -324,7 +324,25 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
             />
           )
         },
-         {
+        {
+          key: 'Log Fetch SQL Error log Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logLevelDatabaseSqlErrors}
+              confirmTitle={`Confirm change 'log-level-database-sql-errors' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-level-database-sql-errors',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
           key: 'Log Fetch Slowquery Level',
           value: (
             <LogSlider
