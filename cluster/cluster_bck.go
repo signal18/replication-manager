@@ -486,6 +486,10 @@ func (cluster *Cluster) CheckBackupToolVersions() {
 }
 
 func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) error {
+	if server == nil {
+		return fmt.Errorf("Server is nil")
+	}
+
 	_, logical := server.GetLatestMeta("logical")
 	if logical != nil {
 		v, _ := cluster.GetToolsVersion(logical.BackupTool)

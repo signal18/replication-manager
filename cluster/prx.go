@@ -452,11 +452,6 @@ func (cluster *Cluster) SendProxyStats(proxy DatabaseProxy) error {
 }
 
 func (proxy *Proxy) SendStats() error {
-	cluster := proxy.ClusterGroup
-	graph, err := graphite.NewGraphite(cluster.Conf.GraphiteCarbonHost, cluster.Conf.GraphiteCarbonPort)
-	if err != nil {
-		return err
-	}
 	for _, wbackend := range proxy.BackendsWrite {
 		var metrics = make([]graphite.Metric, 4)
 
@@ -473,7 +468,7 @@ func (proxy *Proxy) SendStats() error {
 		metrics[1] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_received", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
 		metrics[2] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.connections", proxy.Type, proxy.Id, server), wbackend.PrxConnections, time.Now().Unix())
 		metrics[3] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix())
-		graph.SendMetrics(metrics)
+		proxy.GetCluster().SendMetrics(metrics)
 	}
 	for _, wbackend := range proxy.BackendsRead {
 		var metrics = make([]graphite.Metric, 4)
@@ -483,10 +478,8 @@ func (proxy *Proxy) SendStats() error {
 		metrics[1] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_received", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix())
 		metrics[2] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.connections", proxy.Type, proxy.Id, server), wbackend.PrxConnections, time.Now().Unix())
 		metrics[3] = graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix())
-		graph.SendMetrics(metrics)
+		proxy.GetCluster().SendMetrics(metrics)
 	}
-
-	graph.Disconnect()
 
 	return nil
 }
