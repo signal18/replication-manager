@@ -1182,28 +1182,28 @@ const (
 )
 
 const (
-	GrantDBStart                   string = "db-start"
-	GrantDBStop                    string = "db-stop"
-	GrantDBKill                    string = "db-kill"
-	GrantDBOptimize                string = "db-optimize"
-	GrantDBAnalyse                 string = "db-analyse"
-	GrantDBReplication             string = "db-replication"
-	GrantDBBackup                  string = "db-backup"
-	GrantDBRestore                 string = "db-restore"
-	GrantDBReadOnly                string = "db-readonly"
-	GrantDBLogs                    string = "db-logs"
-	GrantDBShowVariables           string = "db-show-variables"
-	GrantDBShowStatus              string = "db-show-status"
-	GrantDBShowSchema              string = "db-show-schema"
-	GrantDBShowProcess             string = "db-show-process"
-	GrantDBShowLogs                string = "db-show-logs"
-	GrantDBCapture                 string = "db-capture"
-	GrantDBMaintenance             string = "db-maintenance"
-	GrantDBConfigCreate            string = "db-config-create"
-	GrantDBConfigRessource         string = "db-config-ressource"
-	GrantDBConfigFlag              string = "db-config-flag"
-	GrantDBConfigGet               string = "db-config-get"
-	GrantDBTerminal                string = "db-terminal"
+	GrantDBStart           string = "db-start"
+	GrantDBStop            string = "db-stop"
+	GrantDBKill            string = "db-kill"
+	GrantDBOptimize        string = "db-optimize"
+	GrantDBAnalyse         string = "db-analyse"
+	GrantDBReplication     string = "db-replication"
+	GrantDBBackup          string = "db-backup"
+	GrantDBRestore         string = "db-restore"
+	GrantDBReadOnly        string = "db-readonly"
+	GrantDBLogs            string = "db-logs"
+	GrantDBShowVariables   string = "db-show-variables"
+	GrantDBShowStatus      string = "db-show-status"
+	GrantDBShowSchema      string = "db-show-schema"
+	GrantDBShowProcess     string = "db-show-process"
+	GrantDBShowLogs        string = "db-show-logs"
+	GrantDBCapture         string = "db-capture"
+	GrantDBMaintenance     string = "db-maintenance"
+	GrantDBConfigCreate    string = "db-config-create"
+	GrantDBConfigRessource string = "db-config-ressource"
+	GrantDBConfigFlag      string = "db-config-flag"
+	GrantDBConfigGet       string = "db-config-get"
+
 	GrantClusterCreate             string = "cluster-create"
 	GrantClusterDelete             string = "cluster-delete"
 	GrantClusterCreateMonitor      string = "cluster-create-monitor"
@@ -1242,7 +1242,6 @@ const (
 	GrantProxyConfigFlag      string = "proxy-config-flag"
 	GrantProxyStart           string = "proxy-start"
 	GrantProxyStop            string = "proxy-stop"
-	GrantProxyTerminal        string = "proxy-terminal"
 
 	GrantAppConfig     string = "app-config"
 	GrantAppDocker     string = "app-docker"
@@ -1264,7 +1263,6 @@ const (
 
 	GrantGlobalSettings string = "global-settings" // Can update global settings
 	GrantGlobalGrant    string = "global-grant"    // Can grant global settings
-	GrantGlobalTerminal string = "global-terminal" // Can use global terminal
 
 	GrantGrantShow   string = "grant-show"   // Can show users settings
 	GrantGrantAdd    string = "grant-add"    // Can add new user
@@ -1278,6 +1276,10 @@ const (
 	GrantSalesValidate    string = "sales-validate"    // Can validate sales
 	GrantSalesRefuse      string = "sales-refuse"      // Can refuse sales
 	GrantSalesUnsubscribe string = "sales-unsubscribe" // Can unsubscribe sales
+
+	GrantTerminalDatabase string = "terminal-db"
+	GrantTerminalProxy    string = "terminal-proxy"
+	GrantTerminalGlobal   string = "terminal-global" // Can use global terminal
 )
 
 const (
@@ -2313,7 +2315,6 @@ func GetGrantType() map[string]string {
 		GrantDBShowSchema:              GrantDBShowSchema,
 		GrantDBShowProcess:             GrantDBShowProcess,
 		GrantDBShowLogs:                GrantDBShowLogs,
-		GrantDBTerminal:                GrantDBTerminal,
 		GrantClusterCreate:             GrantClusterCreate,
 		GrantClusterDelete:             GrantClusterDelete,
 		GrantClusterCreateMonitor:      GrantClusterCreateMonitor,
@@ -2351,7 +2352,6 @@ func GetGrantType() map[string]string {
 		GrantProxyConfigFlag:           GrantProxyConfigFlag,
 		GrantProxyStart:                GrantProxyStart,
 		GrantProxyStop:                 GrantProxyStop,
-		GrantProxyTerminal:             GrantProxyTerminal,
 		GrantProvSettings:              GrantProvSettings,
 		GrantProvCluster:               GrantProvCluster,
 		GrantProvClusterProvision:      GrantProvClusterProvision,
@@ -2370,7 +2370,6 @@ func GetGrantType() map[string]string {
 		GrantAppGit:                    GrantAppGit,
 		GrantGlobalGrant:               GrantGlobalGrant,
 		GrantGlobalSettings:            GrantGlobalSettings,
-		GrantGlobalTerminal:            GrantGlobalTerminal,
 		GrantSalesValidate:             GrantSalesValidate,
 		GrantSalesRefuse:               GrantSalesRefuse,
 		GrantSalesUnsubscribe:          GrantSalesUnsubscribe,
@@ -2381,6 +2380,9 @@ func GetGrantType() map[string]string {
 		GrantGrantDrop:                 GrantGrantDrop,
 		GrantGrantGlobal:               GrantGrantGlobal,
 		GrantShow:                      GrantShow,
+		GrantTerminalDatabase:          GrantTerminalDatabase,
+		GrantTerminalProxy:             GrantTerminalProxy,
+		GrantTerminalGlobal:            GrantTerminalGlobal,
 	}
 }
 
@@ -2407,7 +2409,6 @@ func GetGrantDB() []string {
 		GrantDBShowSchema,
 		GrantDBShowProcess,
 		GrantDBShowLogs,
-		GrantDBTerminal,
 	}
 }
 
@@ -2473,7 +2474,6 @@ func GetGrantProxy() []string {
 		GrantProxyConfigFlag,
 		GrantProxyStart,
 		GrantProxyStop,
-		GrantProxyTerminal,
 	}
 }
 
@@ -2532,7 +2532,6 @@ func GetGrantGlobal() []string {
 	return []string{
 		GrantGlobalGrant,
 		GrantGlobalSettings,
-		GrantGlobalTerminal,
 	}
 }
 
@@ -2574,6 +2573,23 @@ func GetGrantGrant() []string {
 
 func HasAllGrantGrants(grants map[string]bool) bool {
 	for _, grant := range GetGrantGrant() {
+		if !grants[grant] {
+			return false
+		}
+	}
+	return true
+}
+
+func GetGrantTerminal() []string {
+	return []string{
+		GrantTerminalDatabase,
+		GrantTerminalProxy,
+		GrantTerminalGlobal,
+	}
+}
+
+func HasAllTerminalGrants(grants map[string]bool) bool {
+	for _, grant := range GetGrantTerminal() {
 		if !grants[grant] {
 			return false
 		}
@@ -2748,6 +2764,27 @@ func GetCompactGrants(grants map[string]bool) ([]string, []string) {
 		}
 		if counter == 0 {
 			compactDiscardGrants = append(compactDiscardGrants, "grant")
+		} else {
+			compactDiscardGrants = append(compactDiscardGrants, tmp...)
+		}
+	}
+
+	// Grant
+	tmp = make([]string, 0)
+	counter = 0
+	if HasAllTerminalGrants(grants) {
+		compactGrants = append(compactGrants, "terminal")
+	} else {
+		for _, grant := range GetGrantTerminal() {
+			if grants[grant] {
+				compactGrants = append(compactGrants, grant)
+				counter++
+			} else {
+				tmp = append(tmp, grant)
+			}
+		}
+		if counter == 0 {
+			compactDiscardGrants = append(compactDiscardGrants, "terminal")
 		} else {
 			compactDiscardGrants = append(compactDiscardGrants, tmp...)
 		}

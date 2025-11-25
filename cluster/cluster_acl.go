@@ -586,15 +586,15 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	// Terminal ACL
 	if strings.HasPrefix(URL, "/api/terminal") {
 		if URL == "/api/terminal/connect" || URL == "/api/terminal/list" {
-			return cluster.APIUsers[strUser].Grants[config.GrantGlobalTerminal]
+			return cluster.APIUsers[strUser].Grants[config.GrantTerminalGlobal]
 		}
 
 		if strings.Contains(URL, "clusters/"+cluster.Name+"/servers") {
-			return cluster.APIUsers[strUser].Grants[config.GrantDBTerminal]
+			return cluster.APIUsers[strUser].Grants[config.GrantTerminalDatabase]
 		}
 
 		if strings.Contains(URL, "clusters/"+cluster.Name+"/proxies") {
-			return cluster.APIUsers[strUser].Grants[config.GrantProxyTerminal]
+			return cluster.APIUsers[strUser].Grants[config.GrantTerminalProxy]
 		}
 	}
 
