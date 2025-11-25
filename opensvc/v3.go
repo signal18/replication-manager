@@ -554,7 +554,7 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !slices.Contains([]int{200, 201}, resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
