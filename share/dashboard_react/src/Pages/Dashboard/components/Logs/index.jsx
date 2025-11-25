@@ -77,7 +77,7 @@ function Logs({ logs, className, searchable = false, isScrollable = true }) {
                       <TagPill text={log.level} colorScheme={levelColor} />
                     </td>
                     <td className={`${styles.td} ${styles.text}`}>
-                      <Code bg='transparent'>{log.text}</Code>
+                      <Code bg='transparent' overflowWrap='break-word'>{log.text}</Code>
                     </td>
                   </tr>
                 )
