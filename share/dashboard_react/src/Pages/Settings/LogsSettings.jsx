@@ -33,17 +33,17 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
         />
       )
     },
-     {
+    {
       key: 'Log SQL in Monitoring',
       value: (
         <LogSlider
           value={selectedCluster?.config?.logSqlLevel}
-          confirmTitle={`Confirm change 'log-sql-level' to: `}
+          confirmTitle={`Confirm change 'log-level-sql' to: `}
           onChange={(val) =>
             dispatch(
               setSetting({
                 clusterName: selectedCluster?.name,
-                setting: 'log-sql-level',
+                setting: 'log-level-sql',
                 value: val
               })
             )
@@ -77,12 +77,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logTaskLevel}
-              confirmTitle={`Confirm change 'log-task-level' to: `}
+              confirmTitle={`Confirm change 'log-level-task' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-task-level',
+                    setting: 'log-level-task',
                     value: val
                   })
                 )
@@ -95,12 +95,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logWriterElectionLevel}
-              confirmTitle={`Confirm change 'log-writer-election-level' to: `}
+              confirmTitle={`Confirm change 'log-level-writer-election' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-writer-election-level',
+                    setting: 'log-level-writer-election',
                     value: val
                   })
                 )
@@ -113,12 +113,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logSstLevel}
-              confirmTitle={`Confirm change 'log-sst-level' to: `}
+              confirmTitle={`Confirm change 'log-level-sst' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-sst-level',
+                    setting: 'log-level-sst',
                     value: val
                   })
                 )
@@ -131,12 +131,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logHeartbeatLevel}
-              confirmTitle={`Confirm change 'log-heartbeat-level' to: `}
+              confirmTitle={`Confirm change 'log-level-heartbeat' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-heartbeat-level',
+                    setting: 'log-level-heartbeat',
                     value: val
                   })
                 )
@@ -149,12 +149,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logConfigLoadLevel}
-              confirmTitle={`Confirm change 'log-config-load-level' to: `}
+              confirmTitle={`Confirm change 'log-level-config-load' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-config-load-level',
+                    setting: 'log-level-config-load',
                     value: val
                   })
                 )
@@ -167,12 +167,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logBackupStreamLevel}
-              confirmTitle={`Confirm change 'log-backup-stream-level' to: `}
+              confirmTitle={`Confirm change 'log-level-backup-stream' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-backup-stream-level',
+                    setting: 'log-level-backup-stream',
                     value: val
                   })
                 )
@@ -185,12 +185,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logOrchestratorLevel}
-              confirmTitle={`Confirm change 'log-orchestrator-level' to: `}
+              confirmTitle={`Confirm change 'log-level-orchestrator' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-orchestrator-level',
+                    setting: 'log-level-orchestrator',
                     value: val
                   })
                 )
@@ -203,12 +203,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logVaultLevel}
-              confirmTitle={`Confirm change 'log-vault-level' to: `}
+              confirmTitle={`Confirm change 'log-level-vault' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-vault-level',
+                    setting: 'log-level-vault',
                     value: val
                   })
                 )
@@ -221,12 +221,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logTopologyLevel}
-              confirmTitle={`Confirm change 'log-topology-level' to: `}
+              confirmTitle={`Confirm change 'log-level-topology' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-topology-level',
+                    setting: 'log-level-topology',
                     value: val
                   })
                 )
@@ -239,12 +239,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logGraphiteLevel}
-              confirmTitle={`Confirm change 'log-graphite-level' to: `}
+              confirmTitle={`Confirm change 'log-level-graphite' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-graphite-level',
+                    setting: 'log-level-graphite',
                     value: val
                   })
                 )
@@ -257,12 +257,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logBinlogPurgeLevel}
-              confirmTitle={`Confirm change 'log-binlog-purge-level' to: `}
+              confirmTitle={`Confirm change 'log-level-binlog-purge' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-binlog-purge-level',
+                    setting: 'log-level-binlog-purge',
                     value: val
                   })
                 )
@@ -275,12 +275,30 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logArchiveLevel}
-              confirmTitle={`Confirm change 'log-archive-level' to: `}
+              confirmTitle={`Confirm change 'log-level-archive' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-archive-level',
+                    setting: 'log-level-archive',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Log Fetch Auditlog Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logLevelDatabaseAudit}
+              confirmTitle={`Confirm change 'log-level-database-audit' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-level-database-audit',
                     value: val
                   })
                 )
@@ -292,13 +310,13 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Log Fetch Errorlog Level',
           value: (
             <LogSlider
-              value={selectedCluster?.config?.logFetchErrorlogLevel}
-              confirmTitle={`Confirm change 'log-fetch-errorlog-level' to: `}
+              value={selectedCluster?.config?.logLevelDatabaseErrors}
+              confirmTitle={`Confirm change 'log-level-database-errors' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-fetch-errorlog-level',
+                    setting: 'log-level-database-errors',
                     value: val
                   })
                 )
@@ -306,17 +324,35 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
             />
           )
         },
-         {
-          key: 'Log Fetch Slowquery Level',
+        {
+          key: 'Log Fetch SQL Error log Level',
           value: (
             <LogSlider
-              value={selectedCluster?.config?.logFetchSlowqueryLevel}
-              confirmTitle={`Confirm change 'log-fetch-slowquery-level' to: `}
+              value={selectedCluster?.config?.logLevelDatabaseSqlErrors}
+              confirmTitle={`Confirm change 'log-level-database-sql-errors' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-fetch-slowquery-level',
+                    setting: 'log-level-database-sql-errors',
+                    value: val
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
+          key: 'Log Fetch Slowquery Level',
+          value: (
+            <LogSlider
+              value={selectedCluster?.config?.logLevelDatabaseSlowquery}
+              confirmTitle={`Confirm change 'log-level-database-slowquery' to: `}
+              onChange={(val) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'log-level-database-slowquery',
                     value: val
                   })
                 )
@@ -328,13 +364,13 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           key: 'Log DB Optimize Level',
           value: (
             <LogSlider
-              value={selectedCluster?.config?.logOptimizeLevel}
-              confirmTitle={`Confirm change 'log-optimize-level' to: `}
+              value={selectedCluster?.config?.logLevelDatabaseOptimize}
+              confirmTitle={`Confirm change 'log-level-database-optimize' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-optimize-level',
+                    setting: 'log-level-database-optimize',
                     value: val
                   })
                 )
@@ -347,12 +383,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logMailerLevel}
-              confirmTitle={`Confirm change 'log-mailer-level' to: `}
+              confirmTitle={`Confirm change 'log-level-mailer' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-mailer-level',
+                    setting: 'log-level-mailer',
                     value: val
                   })
                 )
@@ -365,12 +401,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logSupportLevel}
-              confirmTitle={`Confirm change 'log-support-level' to: `}
+              confirmTitle={`Confirm change 'log-level-support' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-support-level',
+                    setting: 'log-level-support',
                     value: val
                   })
                 )
@@ -383,12 +419,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logExternalScriptLevel}
-              confirmTitle={`Confirm change 'log-external-script-level' to: `}
+              confirmTitle={`Confirm change 'log-level-external-script' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-external-script-level',
+                    setting: 'log-level-external-script',
                     value: val
                   })
                 )
@@ -407,12 +443,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.logProxyLevel}
-              confirmTitle={`Confirm change 'log-proxy-level' to: `}
+              confirmTitle={`Confirm change 'log-level-proxy' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-proxy-level',
+                    setting: 'log-level-proxy',
                     value: val
                   })
                 )
@@ -425,12 +461,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.haproxyLogLevel}
-              confirmTitle={`Confirm change 'haproxy-log-level' to: `}
+              confirmTitle={`Confirm change 'log-level-haproxy' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'haproxy-log-level',
+                    setting: 'log-level-haproxy',
                     value: val
                   })
                 )
@@ -443,12 +479,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.proxysqlLogLevel}
-              confirmTitle={`Confirm change 'proxysql-log-level' to: `}
+              confirmTitle={`Confirm change 'log-level-proxysql' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'proxysql-log-level',
+                    setting: 'log-level-proxysql',
                     value: val
                   })
                 )
@@ -461,12 +497,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.proxyjanitorLogLevel}
-              confirmTitle={`Confirm change 'proxyjanitor-log-level' to: `}
+              confirmTitle={`Confirm change 'log-level-proxyjanitor' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'proxyjanitor-log-level',
+                    setting: 'log-level-proxyjanitor',
                     value: val
                   })
                 )
@@ -479,12 +515,12 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           value: (
             <LogSlider
               value={selectedCluster?.config?.maxscaleLogLevel}
-              confirmTitle={`Confirm change 'maxscale-log-level' to: `}
+              confirmTitle={`Confirm change 'log-level-maxscale' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'maxscale-log-level',
+                    setting: 'log-level-maxscale',
                     value: val
                   })
                 )

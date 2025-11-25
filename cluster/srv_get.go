@@ -430,8 +430,16 @@ func (server *ServerMonitor) GetStatusDelta() []dbhelper.Variable {
 	return delta
 }
 
-func (server *ServerMonitor) GetErrorLog() s18log.HttpLog {
-	return server.ErrorLog
+func (server *ServerMonitor) GetErrorLog() *s18log.HttpLog {
+	return &server.ErrorLog
+}
+
+func (server *ServerMonitor) GetSqlErrorLog() *s18log.HttpLog {
+	return &server.SqlErrorLog
+}
+
+func (server *ServerMonitor) GetAuditLog() *s18log.HttpLog {
+	return &server.AuditLog
 }
 
 func (server *ServerMonitor) GetPFSQueries() {

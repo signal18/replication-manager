@@ -998,12 +998,106 @@ func (server *ServerMonitor) JobBackupErrorLog() (int64, error) {
 		return 0, nil
 	}
 
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
 	if server.HasWaitErrorlogCookie() {
 		return 0, nil
 	}
 	server.SetWaitErrorlogCookie()
 
 	filename := server.Datadir + "/log/log_error.log"
+	dirname := filepath.Dir(filename)
+	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+		os.MkdirAll(dirname, 0755)
+	}
+
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	if err != nil {
+		return 0, nil
+	}
+	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
+}
+
+func (server *ServerMonitor) JobBackupAuditLog() (int64, error) {
+	cluster := server.ClusterGroup
+	task := "auditlog"
+	if server.IsDown() {
+		return 0, nil
+	}
+
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
+	if server.HasWaitAuditlogCookie() {
+		return 0, nil
+	}
+	server.SetWaitAuditlogCookie()
+
+	filename := server.Datadir + "/log/log_audit.log"
+	dirname := filepath.Dir(filename)
+	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+		os.MkdirAll(dirname, 0755)
+	}
+
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	if err != nil {
+		return 0, nil
+	}
+	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
+}
+
+func (server *ServerMonitor) JobBackupSqlErrorLog() (int64, error) {
+	cluster := server.ClusterGroup
+	task := "sqlerrorlog"
+	if server.IsDown() {
+		return 0, nil
+	}
+
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
+	if server.HasWaitSqlErrorlogCookie() {
+		return 0, nil
+	}
+	server.SetWaitSqlErrorlogCookie()
+
+	filename := server.Datadir + "/log/log_sql_error.log"
+	dirname := filepath.Dir(filename)
+	if _, err := os.Stat(dirname); os.IsNotExist(err) {
+		os.MkdirAll(dirname, 0755)
+	}
+
+	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
+	if err != nil {
+		return 0, nil
+	}
+	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
+}
+
+func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
+	cluster := server.ClusterGroup
+	task := "slowquery"
+	if server.IsDown() {
+		return 0, nil
+	}
+
+	if cluster.IsInFailover() {
+		return 0, nil
+	}
+
+	if server.HasLogsInSystemTables() {
+		return 0, nil
+	}
+
+	if server.HasWaitSlowqueryCookie() {
+		return 0, nil
+	}
+
+	filename := server.Datadir + "/log/log_slow_query.log"
 	dirname := filepath.Dir(filename)
 	if _, err := os.Stat(dirname); os.IsNotExist(err) {
 		os.MkdirAll(dirname, 0755)
@@ -1040,7 +1134,50 @@ func (server *ServerMonitor) ErrorLogWatcher() {
 
 		server.ErrorLog.Add(log)
 	}
+}
 
+var spacesRe = regexp.MustCompile(`\s+`)
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) AuditLogWatcher() {
+	cluster := server.ClusterGroup
+	for line := range server.AuditLogTailer.Lines {
+		var log s18log.HttpMessage
+		cleanline := spacesRe.ReplaceAllString(line.Text, " ")
+		if cleanline == " " {
+			continue
+		}
+		parts := strings.SplitN(cleanline, ",", 9)
+		if len(parts) < 9 {
+			continue
+		}
+		log.Group = cluster.GetClusterName()
+		log.Level = "INFO"
+		log.Timestamp = parts[0]
+		log.Text = strings.Join(parts[1:], ", ")
+		server.AuditLog.Add(log)
+	}
+}
+
+// ErrorLogWatcher monitor the tail of the log and populate ring buffer
+func (server *ServerMonitor) SqlErrorLogWatcher() {
+	cluster := server.ClusterGroup
+	for line := range server.SqlErrorLogTailer.Lines {
+		var log s18log.HttpMessage
+		cleanline := spacesRe.ReplaceAllString(line.Text, " ")
+		if cleanline == " " {
+			continue
+		}
+		parts := strings.SplitN(cleanline, " ", 7)
+		if len(parts) < 7 {
+			continue
+		}
+		log.Group = cluster.GetClusterName()
+		log.Timestamp = parts[0] + " " + parts[1]
+		log.Level = parts[5]
+		log.Text = strings.Join(parts[2:], " ")
+		server.SqlErrorLog.Add(log)
+	}
 }
 
 func (server *ServerMonitor) SlowLogWatcher() {
@@ -1069,34 +1206,6 @@ func (server *ServerMonitor) SlowLogWatcher() {
 		preline = line.Text
 	}
 
-}
-
-func (server *ServerMonitor) JobBackupSlowQueryLog() (int64, error) {
-	cluster := server.ClusterGroup
-	task := "slowquery"
-	if server.IsDown() {
-		return 0, nil
-	}
-
-	if server.HasLogsInSystemTables() {
-		return 0, nil
-	}
-
-	if server.HasWaitSlowqueryCookie() {
-		return 0, nil
-	}
-
-	filename := server.Datadir + "/log/log_slow_query.log"
-	dirname := filepath.Dir(filename)
-	if _, err := os.Stat(dirname); os.IsNotExist(err) {
-		os.MkdirAll(dirname, 0755)
-	}
-
-	port, err := cluster.SSTRunReceiverToFile(server, filename, ConstJobAppendFile, task)
-	if err != nil {
-		return 0, nil
-	}
-	return server.JobInsertTask(task, port, cluster.Conf.MonitorAddress)
 }
 
 func (server *ServerMonitor) JobOptimize() (int64, error) {
@@ -3398,6 +3507,10 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitErrorlogCookie()
 	case "slowquery":
 		server.DelWaitSlowqueryCookie()
+	case "auditlog":
+		server.DelWaitAuditlogCookie()
+	case "sqlerrorlog":
+		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		server.WriteBackupMetadata(config.BackupMethodPhysical)
@@ -3557,7 +3670,7 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 
 	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModAPI, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
 		return err
 	}
 

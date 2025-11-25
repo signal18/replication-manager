@@ -751,8 +751,16 @@ func (server *ServerMonitor) RevokeDBUserGrants(user, host string) error {
 	return nil
 }
 
+func (server *ServerMonitor) SetWaitAuditlogCookie() error {
+	return server.createCookie("cookie_wait_auditlog")
+}
+
 func (server *ServerMonitor) SetWaitErrorlogCookie() error {
 	return server.createCookie("cookie_wait_errorlog")
+}
+
+func (server *ServerMonitor) SetWaitSqlErrorlogCookie() error {
+	return server.createCookie("cookie_wait_sql_errorlog")
 }
 
 func (server *ServerMonitor) SetWaitSlowqueryCookie() error {

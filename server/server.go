@@ -93,6 +93,7 @@ type ReplicationManager struct {
 	SplitBrain           bool                              `json:"spitBrain"`
 	ClusterList          []string                          `json:"clusters"`
 	ImmutableClusterList []string                          `json:"-"`
+	DeprecatedKeys       map[string]map[string]bool        `json:"-"`
 	Tests                []string                          `json:"tests"`
 	Conf                 *config.Config                    `json:"config"`
 	ImmuableFlagMaps     map[string]map[string]interface{} `json:"-"`
@@ -355,7 +356,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorLongQueryWithTable, "monitoring-long-query-with-table", false, "Use log_type table to fetch slow queries")
 	flags.BoolVar(&conf.MonitorLongQueryWithProcess, "monitoring-long-query-with-process", true, "Use processlist to fetch slow queries")
 	flags.IntVar(&conf.MonitorLongQueryLogLength, "monitoring-long-query-log-length", 200, "Number of slow queries to keep in monitor")
-	flags.IntVar(&conf.MonitorErrorLogLength, "monitoring-erreur-log-length", 20, "Number of error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorErrorLogLength, "monitoring-error-log-length", 20, "Number of error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorSqlErrorLogLength, "monitoring-sql-error-log-length", 20, "Number of sql error log line to keep in monitor")
+	flags.IntVar(&conf.MonitorAuditLogLength, "monitoring-audit-log-length", 20, "Number of audit log line to keep in monitor")
 	flags.BoolVar(&conf.MonitorScheduler, "monitoring-scheduler", false, "Enable internal scheduler")
 	flags.BoolVar(&conf.MonitorCheckGrants, "monitoring-check-grants", true, "Check grants for replication and monitoring users, it use DNS Lookup")
 	flags.BoolVar(&conf.MonitorPause, "monitoring-pause", false, "Disable monitoring")
@@ -376,56 +379,55 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.MonitoringAlertTrigger, "monitoring-alert-trigger", "ERR00027,ERR00042,ERR00087,ERR00002,WARN0023,WARN0100,WARN0115,WARN0116,WARN0139,WARN0140,WARN0141", "List of errno triggering an alert to be send")
 
 	flags.BoolVar(&conf.LogSQLInMonitoring, "log-sql-in-monitoring", false, "Log SQL queries send to servers in monitoring")
-	flags.IntVar(&conf.LogSQLLevel, "log-sql-level", 2, "Log SQL Level")
+	flags.IntVar(&conf.LogSQLLevel, "log-level-sql", 2, "Log SQL Level")
 
 	flags.BoolVar(&conf.LogHeartbeat, "log-heartbeat", false, "Log Heartbeat")
-	flags.IntVar(&conf.LogHeartbeatLevel, "log-heartbeat-level", 1, "Log Heartbeat Level")
+	flags.IntVar(&conf.LogHeartbeatLevel, "log-level-heartbeat", 1, "Log Heartbeat Level")
 
 	flags.BoolVar(&conf.LogWriterElection, "log-writer-election", true, "Log writer election")
-	flags.IntVar(&conf.LogWriterElectionLevel, "log-writer-election-level", 1, "Log writer election Level")
+	flags.IntVar(&conf.LogWriterElectionLevel, "log-level-writer-election", 1, "Log writer election Level")
 
 	flags.BoolVar(&conf.LogBinlogPurge, "log-binlog-purge", false, "Log Binlog Purge")
-	flags.IntVar(&conf.LogBinlogPurgeLevel, "log-binlog-purge-level", 1, "Log Binlog Purge Level")
+	flags.IntVar(&conf.LogBinlogPurgeLevel, "log-level-binlog-purge", 1, "Log Binlog Purge Level")
 
 	flags.BoolVar(&conf.LogGraphite, "log-graphite", true, "Log Graphite")
-	flags.IntVar(&conf.LogGraphiteLevel, "log-graphite-level", 2, "Log Graphite Level")
+	flags.IntVar(&conf.LogGraphiteLevel, "log-level-graphite", 2, "Log Graphite Level")
 
 	// SST
 	flags.IntVar(&conf.SSTSendBuffer, "sst-send-buffer", 16384, "SST send buffer size")
 	flags.BoolVar(&conf.LogSST, "log-sst", true, "Log open and close SST transfert")
-	flags.IntVar(&conf.LogSSTLevel, "log-sst-level", 1, "Log SST Level")
+	flags.IntVar(&conf.LogSSTLevel, "log-level-sst", 1, "Log SST Level")
 
 	// Backup Stream
 	flags.BoolVar(&conf.LogBackupStream, "log-backup-stream", true, "To log backup stream process")
-	flags.IntVar(&conf.LogBackupStreamLevel, "log-backup-stream-level", 4, "Log Backup Stream Level")
+	flags.IntVar(&conf.LogBackupStreamLevel, "log-level-backup-stream", 4, "Log Backup Stream Level")
 
 	// Log orchestrator
 	flags.BoolVar(&conf.LogOrchestrator, "log-orchestrator", true, "To log orchestrator process")
-	flags.IntVar(&conf.LogOrchestratorLevel, "log-orchestrator-level", 2, "Log orchestrator Level")
+	flags.IntVar(&conf.LogOrchestratorLevel, "log-level-orchestrator", 2, "Log orchestrator Level")
 
 	// Log topology
 	flags.BoolVar(&conf.LogTopology, "log-topology", true, "To log topology process")
-	flags.IntVar(&conf.LogTopologyLevel, "log-topology-level", 2, "Log topology Level")
+	flags.IntVar(&conf.LogTopologyLevel, "log-level-topology", 2, "Log topology Level")
 
 	// Log DB Jobs
 	flags.BoolVar(&conf.LogTask, "log-task", true, "To log DB job process")
-	flags.IntVar(&conf.LogTaskLevel, "log-task-level", 3, "Log Task Level")
+	flags.IntVar(&conf.LogTaskLevel, "log-level-task", 3, "Log Task Level")
 
-	flags.IntVar(&conf.LogOptimizeLevel, "log-optimize-level", 4, "Log Level for optimizer")
+	flags.IntVar(&conf.LogLevelDatabaseOptimize, "log-level-database-optimize", 4, "Log Level for optimizer")
 
 	// Log external script
 	flags.BoolVar(&conf.LogExternalScript, "log-external-script", true, "To log external scripts output")
-	flags.IntVar(&conf.LogExternalScriptLevel, "log-external-script-level", 3, "Log external scripts Level")
+	flags.IntVar(&conf.LogExternalScriptLevel, "log-level-external-script", 3, "Log external scripts Level")
 
-	flags.IntVar(&conf.LogArchiveLevel, "log-archive-level", 2, "Log Level for backup archive (restic)")
-	flags.IntVar(&conf.LogMailerLevel, "log-mailer-level", 3, "Log Level for mailer")
+	flags.IntVar(&conf.LogArchiveLevel, "log-level-archive", 2, "Log Level for backup archive (restic)")
+	flags.IntVar(&conf.LogMailerLevel, "log-level-mailer", 3, "Log Level for mailer")
 
 	// Fetchers
-	flags.IntVar(&conf.LogFetchErrorlogLevel, "log-fetch-errorlog-level", 2, "Log Level for fetcher error log")
-	flags.IntVar(&conf.LogFetchSlowqueryLevel, "log-fetch-slowquery-level", 2, "Log Level for fetcher slow query log")
-
-	// API
-	flags.IntVar(&conf.LogAPILevel, "log-api-level", 3, "Log Level for API requests")
+	flags.IntVar(&conf.LogLevelDatabaseErrors, "log-level-database-errors", 1, "Log Level for fetcher error log")
+	flags.IntVar(&conf.LogLevelDatabaseSqlErrors, "log-level-database-sql-errors", 1, "Log Level for fetcher error log")
+	flags.IntVar(&conf.LogLevelDatabaseSlowquery, "log-level-database-slowquery", 2, "Log Level for fetcher slow query log")
+	flags.IntVar(&conf.LogLevelDatabaseAudit, "log-level-database-audit", 3, "Log Level for fetcher audit log")
 
 	// DB Credentials
 	flags.StringVar(&conf.User, "db-servers-credential", "root:mariadb", "Database login, specified in the [user]:[password] format")
@@ -587,7 +589,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.VaultAuth, "vault-auth", "approle", "Vault auth method : approle|userpass|ldap|token|github|alicloud|aws|azure|gcp|kerberos|kubernetes|radius")
 	flags.StringVar(&conf.VaultToken, "vault-token", "", "Vault Token")
 	flags.BoolVar(&conf.LogVault, "log-vault", true, "Log vault debug")
-	flags.IntVar(&conf.LogVaultLevel, "log-vault-level", 1, "Log level for vault")
+	flags.IntVar(&conf.LogVaultLevel, "log-level-vault", 1, "Log level for vault")
 
 	flags.StringVar(&conf.GitUrl, "git-url", "", "GitHub URL repository to store config file")
 	flags.StringVar(&conf.GitUsername, "git-username", "", "GitHub username")
@@ -596,12 +598,12 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	// flags.IntVar(&conf.GitMinWorker, "git-min-worker", 1, "Minimum number of worker to add files for git commit")
 	// flags.IntVar(&conf.GitMaxWorker, "git-max-worker", 5, "Maximum number of worker to add files for git commit")
 	flags.BoolVar(&conf.LogGit, "log-git", true, "To log clone/push/pull from git")
-	flags.IntVar(&conf.LogGitLevel, "log-git-level", 2, "Log GIT Level")
+	flags.IntVar(&conf.LogGitLevel, "log-level-git", 2, "Log GIT Level")
 
 	flags.BoolVar(&conf.LogSupport, "log-support", true, "To log errors or warns about cloud18 connect")
-	flags.IntVar(&conf.LogSupportLevel, "log-support-level", 2, "Log Support Level")
+	flags.IntVar(&conf.LogSupportLevel, "log-level-support", 2, "Log Support Level")
 
-	flags.IntVar(&conf.LogStatsLevel, "log-stats-level", 1, "Log Stats Level")
+	flags.IntVar(&conf.LogStatsLevel, "log-level-stats", 1, "Log Stats Level")
 
 	//flags.BoolVar(&conf.Daemon, "daemon", true, "Daemon mode. Do not start the Termbox console")
 	conf.Daemon = true
@@ -687,7 +689,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	if WithMySQLRouter == "ON" {
 		flags.BoolVar(&conf.MysqlRouterOn, "mysqlrouter", false, "MySQLRouter proxy server is query for backend status")
 		flags.BoolVar(&conf.MysqlRouterDebug, "mysqlrouter-debug", true, "MySQLRouter log debug")
-		flags.IntVar(&conf.MysqlRouterLogLevel, "mysqlrouter-log-level", 1, "MySQLRouter log debug level")
+		flags.IntVar(&conf.MysqlRouterLogLevel, "log-level-mysqlrouter", 1, "MySQLRouter log debug level")
 		flags.StringVar(&conf.MysqlRouterHosts, "mysqlrouter-servers", "127.0.0.1", "MaxScale hosts ")
 		flags.StringVar(&conf.MysqlRouterPort, "mysqlrouter-port", "6603", "MySQLRouter admin port")
 		flags.StringVar(&conf.MysqlRouterUser, "mysqlrouter-user", "admin", "MySQLRouter admin user")
@@ -1255,6 +1257,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if repman.ConfigManager == nil {
 		repman.ConfigManager = manager.NewConfigManager(config.NewLogrusWrapper(repman.Conf, repman.Logrus))
 	}
+
+	if repman.DeprecatedKeys == nil {
+		repman.DeprecatedKeys = make(map[string]map[string]bool)
+	}
+
 	repman.PeerManager = peer.NewPeerManager(repman.Conf.Cloud18HealthRefreshInterval)
 	repman.ModTimes = make(map[string]time.Time)
 	repman.ServerScopeList = make(map[string]bool)
@@ -1338,6 +1345,8 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
 	}
 	secRead := fistRead.Sub("DEFAULT")
+	repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
+
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
 
@@ -1401,6 +1410,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
+
+	for _, clusterName := range repman.ImmutableClusterList {
+		clRead := fistRead.Sub(clusterName)
+		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+	}
 
 	tmp_read := fistRead.Sub("default")
 	if tmp_read != nil {
@@ -1766,44 +1780,44 @@ func CleanupDynamicConfig(clustImmuableMap map[string]interface{}, cf viper.Vipe
 }*/
 
 func (repman *ReplicationManager) initAlias(v *viper.Viper) {
-	v.RegisterAlias("monitoring-config-rewrite", "monitoring-save-config")
-	v.RegisterAlias("api-user", "api-credentials")
-	v.RegisterAlias("replication-master-connection", "replication-source-name")
-	v.RegisterAlias("logfile", "log-file")
-	v.RegisterAlias("wait-kill", "switchover-wait-kill")
-	// v.RegisterAlias("user", "db-servers-credential")
-	v.RegisterAlias("hosts", "db-servers-hosts")
-	v.RegisterAlias("hosts-tls-ca-cert", "db-servers-tls-ca-cert")
-	v.RegisterAlias("hosts-tls-client-key", "db-servers-tls-client-key")
-	v.RegisterAlias("hosts-tls-client-cert", "db-servers-tls-client-cert")
-	v.RegisterAlias("connect-timeout", "db-servers-connect-timeout")
-	v.RegisterAlias("rpluser", "replication-credential")
-	v.RegisterAlias("prefmaster", "db-servers-prefered-master")
-	v.RegisterAlias("ignore-servers", "db-servers-ignored-hosts")
-	v.RegisterAlias("master-connection", "replication-master-connection")
-	v.RegisterAlias("master-connect-retry", "replication-master-connection-retry")
-	//v.RegisterAlias("api-user", "api-credential")
-	v.RegisterAlias("readonly", "failover-readonly-state")
-	v.RegisterAlias("maxscale-host", "maxscale-servers")
-	v.RegisterAlias("mdbshardproxy-hosts", "mdbshardproxy-servers")
-	v.RegisterAlias("multimaster", "replication-multi-master")
-	v.RegisterAlias("multi-tier-slave", "replication-multi-tier-slave")
-	v.RegisterAlias("pre-failover-script", "failover-pre-script")
-	v.RegisterAlias("post-failover-script", "failover-post-script")
-	v.RegisterAlias("rejoin-script", "autorejoin-script")
-	v.RegisterAlias("share-directory", "monitoring-sharedir")
-	v.RegisterAlias("working-directory", "monitoring-datadir")
-	v.RegisterAlias("interactive", "failover-mode")
-	v.RegisterAlias("failcount", "failover-falsepositive-ping-counter")
-	v.RegisterAlias("wait-write-query", "switchover-wait-write-query")
-	v.RegisterAlias("wait-trx", "switchover-wait-trx")
-	v.RegisterAlias("gtidcheck", "switchover-at-equal-gtid")
-	v.RegisterAlias("maxdelay", "failover-max-slave-delay")
-	v.RegisterAlias("maxscale-host", "maxscale-servers")
-	v.RegisterAlias("maxscale-pass", "maxscale-password")
-	v.RegisterAlias("api-credential", "api-credentials")
-	v.RegisterAlias("backup-binlogs-method", "binlog-copy-mode")
-	v.RegisterAlias("backup-binlogs-script", "binlog-copy-script")
+	aliasMap := config.GetKeyAliasMap()
+
+	for oldName, newName := range aliasMap {
+		v.RegisterAlias(oldName, newName)
+	}
+}
+
+func (repman *ReplicationManager) HasGlobalAliasKey(key string) bool {
+	if _, ok := repman.DeprecatedKeys["default"]; ok {
+		if _, found := repman.DeprecatedKeys["default"][key]; found {
+			return true
+		}
+	}
+	return false
+}
+
+func (repman *ReplicationManager) GetUsedAliasKeys(v *viper.Viper, cluster bool) map[string]bool {
+	aliasMap := config.GetKeyAliasMap()
+	allKeys := v.AllKeys()
+	found := make(map[string]bool)
+
+	for _, key := range allKeys {
+		// get leaf key
+		leaf := key
+		if i := strings.LastIndex(key, "."); i != -1 {
+			leaf = key[i+1:]
+		}
+
+		// check alias
+		if _, ok := aliasMap[leaf]; ok {
+			if cluster && repman.HasGlobalAliasKey(leaf) {
+				continue
+			}
+			found[leaf] = true
+		}
+	}
+
+	return found
 }
 
 func (repman *ReplicationManager) InitRestic() error {
@@ -2211,6 +2225,7 @@ func (repman *ReplicationManager) Run() error {
 
 	for _, cluster := range repman.Clusters {
 		cluster.SetClusterList(repman.Clusters)
+		cluster.SetDeprecatedKeys(repman.DeprecatedKeys)
 		cluster.SetCarbonLogger(repman.clog)
 	}
 

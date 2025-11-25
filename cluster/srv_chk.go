@@ -265,7 +265,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 		//galera or binlog flashback need row based binlog
 		cluster.SetState("WARN0049", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["WARN0049"], sl.URL), ErrFrom: "TOPO", ServerUrl: sl.URL})
 	}
-	if cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() && !server.IsMaster() {
+	if cluster.Conf.ActivePassive == false && cluster.Conf.ForceSlaveReadOnly && sl.ReadOnly == "OFF" && !server.IsIgnoredReadonly() && !cluster.IsMultiMaster() && !server.IsMaster() {
 		// In non-multimaster mode, enforce read-only flag if the option is set
 		sl.SetReadOnly()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce read only on slave %s, ReadOnly:%s, InIgnored:%t MultiMaster:%t", sl.URL, sl.ReadOnly, server.IsIgnoredReadonly(), cluster.IsMultiMaster())
@@ -575,6 +575,16 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	case config.ConstTaskError:
 		if server.HasWaitErrorlogCookie() {
 			server.DelWaitErrorlogCookie()
+			return true, nil
+		}
+	case config.ConstTaskAuditLog:
+		if server.HasWaitAuditlogCookie() {
+			server.DelWaitAuditlogCookie()
+			return true, nil
+		}
+	case config.ConstTaskSqlError:
+		if server.HasWaitSqlErrorlogCookie() {
+			server.DelWaitSqlErrorlogCookie()
 			return true, nil
 		}
 	case config.ConstTaskJobsCheck:

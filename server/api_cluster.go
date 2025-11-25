@@ -2900,52 +2900,52 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-level":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogLevel(val)
-	case "log-writer-election-level":
+	case "log-writer-election-level", "log-level-writer-election":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogWriterElectionLevel(val)
-	case "log-sst-level":
+	case "log-sst-level", "log-level-sst":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogSSTLevel(val)
-	case "log-heartbeat-level":
+	case "log-heartbeat-level", "log-level-heartbeat":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogHeartbeatLevel(val)
-	case "log-sql-level":
+	case "log-sql-level", "log-level-sql":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogSQLLevel(val)
-	case "log-config-load-level":
+	case "log-config-load-level", "log-level-config-load":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogConfigLoadLevel(val)
-	case "log-git-level":
+	case "log-git-level", "log-level-git":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetLogGitLevel(val)
-	case "log-support-level":
+	case "log-support-level", "log-level-support":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.SetLogSupportLevel(val)
-	case "log-backup-stream-level":
+	case "log-backup-stream-level", "log-level-backup-stream":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBackupStreamLevel(val)
-	case "log-orchestrator-level":
+	case "log-orchestrator-level", "log-level-orchestrator":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogOrchestratorLevel(val)
-	case "log-vault-level":
+	case "log-vault-level", "log-level-vault":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogVaultLevel(val)
-	case "log-topology-level":
+	case "log-topology-level", "log-level-topology":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTopologyLevel(val)
-	case "log-proxy-level":
+	case "log-proxy-level", "log-level-proxy":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogProxyLevel(val)
-	case "proxysql-log-level":
+	case "proxysql-log-level", "log-level-proxysql":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetProxysqlLogLevel(val)
-	case "haproxy-log-level":
+	case "haproxy-log-level", "log-level-haproxy":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetHaproxyLogLevel(val)
-	case "proxyjanitor-log-level":
+	case "proxyjanitor-log-level", "log-level-proxyjanitor":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetProxyJanitorLogLevel(val)
-	case "maxscale-log-level":
+	case "maxscale-log-level", "log-level-maxscale":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetMxsLogLevel(val)
 	case "force-binlog-purge-total-size":
@@ -2954,40 +2954,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "force-binlog-purge-min-replica":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetForceBinlogPurgeMinReplica(val)
-	case "log-graphite-level":
+	case "log-graphite-level", "log-level-graphite":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogGraphiteLevel(val)
-	case "log-binlog-purge-level":
+	case "log-binlog-purge-level", "log-level-binlog-purge":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBinlogPurgeLevel(val)
-	case "log-archive-level":
+	case "log-archive-level", "log-level-archive":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogArchiveLevel(val)
-	case "log-mailer-level":
+	case "log-mailer-level", "log-level-mailer":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogMailerLevel(val)
 	case "graphite-whitelist-template":
 		mycluster.SetGraphiteWhitelistTemplate(value)
 	case "topology-target":
 		mycluster.BootstrapTopology(value)
-	case "log-task-level":
+	case "log-task-level", "log-level-task":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogTaskLevel(val)
-	case "log-optimize-level":
+	case "log-optimize-level", "log-level-database-optimize":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetLogOptimizeLevel(val)
-	case "log-external-script-level":
+		mycluster.SetLogLevelDatabaseOptimize(val)
+	case "log-external-script-level", "log-level-external-script":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogExternalScriptLevel(val)
-	case "log-stats-level":
+	case "log-stats-level", "log-level-stats":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogStatsLevel = val
-	case "log-fetch-errorlog-level":
+	case "log-fetch-errorlog-level", "log-level-database-errors":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetLogFetchErrorlogLevel(val)
-	case "log-fetch-slowquery-level":
+		mycluster.SetLogLevelDatabaseErrors(val)
+	case "log-fetch-slowquery-level", "log-level-database-slowquery":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetLogFetchSlowqueryLevel(val)
+		mycluster.SetLogLevelDatabaseSlowquery(val)
+	case "log-fetch-auditlog-level", "log-level-database-audit":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogLevelDatabaseAudit(val)
 	case "monitoring-ignore-errors":
 		mycluster.SetMonitorIgnoreErrors(value)
 	case "monitoring-capture-trigger":
@@ -3106,7 +3109,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.Secrets["cloud18-gitlab-password"] = new_secret
 	case "cloud18-platform-description":
 		mycluster.Conf.Cloud18PlatformDescription = value
-	case "log-file-level":
+	case "log-level-file":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.LogFileLevel = val
 	case "backup-restic-repository":
@@ -3927,19 +3930,19 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.BackupResticBinaryPath = value
 	case "haproxy-binary-path":
 		repman.Conf.HaproxyBinaryPath = value
-	case "maxscale-binary-pat":
+	case "maxscale-binary-path":
 		repman.Conf.MxsBinaryPath = value
-	case "log-file-level":
+	case "log-file-level", "log-level-file":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogFileLevel = val
 		repman.UpdateFileHookLogLevel(repman.fileHook.(*s18log.RotateFileHook), val)
-	case "log-git-level":
+	case "log-git-level", "log-level-git":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetLogGitLevel(val)
-	case "log-support-level":
+	case "log-support-level", "log-level-support":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.SetLogSupportLevel(val)
-	case "log-stats-level":
+	case "log-stats-level", "log-level-stats":
 		val, _ := strconv.Atoi(value)
 		repman.Conf.LogStatsLevel = val
 	case "mail-smtp-addr":

@@ -26,6 +26,11 @@ import (
 
 // MasterFailover triggers a leader change and returns the new master URL when single possible leader
 func (cluster *Cluster) MasterFailover(fail bool) bool {
+	if cluster.Conf.ActivePassive {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover/Switchover not allowed in active-passive mode")
+		return false
+	}
+
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep || cluster.GetTopology() == config.TopoMultiMasterGrouprep {
 		res := cluster.VMasterFailover(fail)
 		return res
@@ -353,7 +358,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Start slave failed on old master,%s reason:  %s ", cluster.oldMaster.URL, err)
 		}
 
-		if cluster.Conf.ReadOnly {
+		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly {
 			logs, err = cluster.oldMaster.SetReadOnly()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not set old master as read-only, %s", err)
 			/*	} else {
@@ -557,7 +562,7 @@ func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting old master replication relay server ready")
 			cluster.oldMaster.StartSlave()
 		}
-		if cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false && !sl.IsIgnoredReadonly() {
+		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly && cluster.Conf.MxsBinlogOn == false && !sl.IsIgnoredReadonly() {
 			logs, err = sl.SetReadOnly()
 			cluster.LogSQL(logs, err, sl.URL, "MasterFailover", config.LvlErr, "Could not set slave %s as read-only, %s", sl.URL, err)
 		} else {
@@ -1395,8 +1400,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 		logs, err := dbhelper.UnlockTables(cluster.oldMaster.Conn)
 		cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not unlock tables on old master %s", err)
 
-		if cluster.Conf.ReadOnly {
-
+		if !cluster.Conf.ActivePassive && cluster.Conf.ReadOnly {
 			logs, err = cluster.oldMaster.SetReadOnly()
 			cluster.LogSQL(logs, err, cluster.oldMaster.URL, "MasterFailover", config.LvlErr, "Could not set old master as read-only, %s", err)
 

@@ -175,16 +175,16 @@
                   Skip 1 Replication Event
                </md-button>
             </md-menu-item>
-            <md-menu-item ng-click="dbtoogleinnodbmonitor(server.id,server.host,server.port)">
+            <md-menu-item ng-click="dbtoggleinnodbmonitor(server.id,server.host,server.port)">
                <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-logs']==false">
                   <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                  Toogle InnoDB Monitor
+                  toggle InnoDB Monitor
                </md-button>
             </md-menu-item>
-            <md-menu-item ng-click="dbtoogleslowquerycapture(server.id,server.host,server.port)">
+            <md-menu-item ng-click="dbtoggleslowquerycapture(server.id,server.host,server.port)">
                <md-button ng-disabled="selectedCluster.apiUsers[user].grants['db-capture']==false">
                   <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                  Toogle Slow Query Capture
+                  toggle Slow Query Capture
                </md-button>
             </md-menu-item>
             <md-menu-item ng-click="dbstartslave(server.id,server.host,server.port)">
@@ -199,10 +199,10 @@
                   Stop slave
                </md-button>
             </md-menu-item>
-            <md-menu-item ng-click="dbtooglereadonly(server.id,server.host,server.port)">
+            <md-menu-item ng-click="dbtogglereadonly(server.id,server.host,server.port)">
                <md-button  ng-disabled="selectedCluster.apiUsers[user].grants['db-readonly']==false">
                   <md-icon md-menu-align-target class="fas fa-tv"></md-icon>
-                  Toogle read only
+                  toggle read only
                </md-button>
             </md-menu-item>
             <md-menu-item ng-click="dbresetmaster(server.id,server.host,server.port)">

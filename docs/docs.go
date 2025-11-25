@@ -8890,7 +8890,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-innodb-monitor": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-innodb-monitor": {
             "get": {
                 "description": "Toggles the InnoDB monitor on a specified server within a cluster.",
                 "produces": [
@@ -8946,7 +8946,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-meta-data-locks": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-meta-data-locks": {
             "get": {
                 "description": "Toggles the metadata locks on a specified server within a cluster.",
                 "produces": [
@@ -9002,7 +9002,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-pfs-slow-query": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-pfs-slow-query": {
             "get": {
                 "description": "Toggles the PFS slow query capture on a specified server within a cluster.",
                 "produces": [
@@ -9058,7 +9058,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-query-response-time": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-query-response-time": {
             "get": {
                 "description": "Toggles the query response time on a specified server within a cluster.",
                 "produces": [
@@ -9114,7 +9114,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-read-only": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-read-only": {
             "get": {
                 "description": "Toggles the read-only mode on a specified server within a cluster.",
                 "produces": [
@@ -9170,7 +9170,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query": {
             "get": {
                 "description": "Toggles the slow query on a specified server within a cluster.",
                 "produces": [
@@ -9226,7 +9226,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-capture": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-capture": {
             "get": {
                 "description": "Toggles the slow query capture on a specified server within a cluster.",
                 "produces": [
@@ -9282,7 +9282,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-slow-query-table": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-slow-query-table": {
             "get": {
                 "description": "Toggles the slow query table mode on a specified server within a cluster.",
                 "produces": [
@@ -9338,7 +9338,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/actions/toogle-sql-error-log": {
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/toggle-sql-error-log": {
             "get": {
                 "description": "Toggles the SQL error log on a specified server within a cluster.",
                 "produces": [
@@ -9613,6 +9613,63 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster\" or \"Server Not Found\" or \"Attribute not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/auditlog": {
+            "get": {
+                "description": "Retrieves the audit log of a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseLogs"
+                ],
+                "summary": "Get audit log of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Audit log retrieved successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
                         "schema": {
                             "type": "string"
                         }
@@ -11136,6 +11193,63 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/sqlerrorlog": {
+            "get": {
+                "description": "Retrieves the SQL error log of a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseLogs"
+                ],
+                "summary": "Get SQL error log of a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "SQL error log retrieved successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/status": {
             "get": {
                 "description": "Retrieves the status of a specified server within a cluster.",
@@ -12170,6 +12284,8 @@ const docTemplate = `{
                             "mariabackup",
                             "errorlog",
                             "slowquery",
+                            "sqlerrorlog",
+                            "auditlog",
                             "zfssnapback",
                             "optimize",
                             "reseedxtrabackup",
@@ -12917,6 +13033,8 @@ const docTemplate = `{
                             "mariabackup",
                             "errorlog",
                             "slowquery",
+                            "sqlerrorlog",
+                            "auditlog",
                             "zfssnapback",
                             "optimize",
                             "reseedxtrabackup",
@@ -14763,6 +14881,84 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/http-logs": {
+            "get": {
+                "description": "This endpoint retrieves the web logs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve web logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of web logs",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/topology/http-logs/{logType}": {
+            "get": {
+                "description": "This endpoint retrieves the web logs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterTopology"
+                ],
+                "summary": "Retrieve web logs",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of web logs",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "type": "string"
                         }
@@ -18160,18 +18356,12 @@ const docTemplate = `{
                 "lastDelayStatPrint": {
                     "type": "string"
                 },
-                "log": {
-                    "$ref": "#/definitions/s18log.HttpLog"
-                },
                 "logSlaveServers": {
                     "description": "To store slave with log-slave-updates",
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
-                },
-                "logTask": {
-                    "$ref": "#/definitions/s18log.HttpLog"
                 },
                 "monitorSpin": {
                     "type": "string"
@@ -18631,9 +18821,6 @@ const docTemplate = `{
                 },
                 "engineInnodb": {
                     "$ref": "#/definitions/config.StringsMap"
-                },
-                "errorLog": {
-                    "$ref": "#/definitions/s18log.HttpLog"
                 },
                 "eventScheduler": {
                     "type": "boolean"
@@ -20357,6 +20544,9 @@ const docTemplate = `{
                 "backupLogicalLoadThreads": {
                     "type": "integer"
                 },
+                "backupLogicalPostScript": {
+                    "type": "string"
+                },
                 "backupLogicalType": {
                     "type": "string"
                 },
@@ -20391,6 +20581,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "backupMytopPath": {
+                    "type": "string"
+                },
+                "backupPhysicalPostScript": {
                     "type": "string"
                 },
                 "backupPhysicalType": {
@@ -21042,9 +21235,6 @@ const docTemplate = `{
                 "kubeConfig": {
                     "type": "string"
                 },
-                "logApiLevel": {
-                    "type": "integer"
-                },
                 "logAppLevel": {
                     "type": "integer"
                 },
@@ -21072,10 +21262,13 @@ const docTemplate = `{
                 "logExternalScriptLevel": {
                     "type": "integer"
                 },
-                "logFetchErrorlogLevel": {
+                "logLevelDatabaseAudit": {
                     "type": "integer"
                 },
-                "logFetchSlowqueryLevel": {
+                "logLevelDatabaseErrors": {
+                    "type": "integer"
+                },
+                "logLevelDatabaseSlowquery": {
                     "type": "integer"
                 },
                 "logFile": {
@@ -21108,7 +21301,7 @@ const docTemplate = `{
                 "logMailerLevel": {
                     "type": "integer"
                 },
-                "logOptimizeLevel": {
+                "logLevelDatabaseOptimize": {
                     "type": "integer"
                 },
                 "logOrchestrator": {
@@ -21275,6 +21468,9 @@ const docTemplate = `{
                 "monitoringAlertTrigger": {
                     "type": "string"
                 },
+                "monitoringAuditLogLength": {
+                    "type": "integer"
+                },
                 "monitoringBasedir": {
                     "type": "string"
                 },
@@ -21311,7 +21507,7 @@ const docTemplate = `{
                 "monitoringDiskUsagePct": {
                     "type": "integer"
                 },
-                "monitoringErreurLogLength": {
+                "monitoringErrorLogLength": {
                     "type": "integer"
                 },
                 "monitoringIgnoreErrors": {
@@ -21418,6 +21614,9 @@ const docTemplate = `{
                 },
                 "monitoringSocket": {
                     "type": "string"
+                },
+                "monitoringSqlErrorLogLength": {
+                    "type": "integer"
                 },
                 "monitoringTenant": {
                     "type": "string"

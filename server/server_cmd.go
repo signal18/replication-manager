@@ -114,9 +114,9 @@ func initLogFlags(cmd *cobra.Command) {
 	cmd.Flags().IntVar(&conf.LogRotateMaxBackup, "log-rotate-max-backup", 7, "Log rotate max backup")
 	cmd.Flags().IntVar(&conf.LogRotateMaxAge, "log-rotate-max-age", 7, "Log rotate max age")
 	cmd.Flags().IntVar(&conf.LogLevel, "log-level", 3, "Log verbosity level. Default 3 (INFO)")
-	cmd.Flags().IntVar(&conf.LogFileLevel, "log-file-level", 3, "Log verbosity level. Default 3 (INFO)")
+	cmd.Flags().IntVar(&conf.LogFileLevel, "log-level-file", 3, "Log verbosity level. Default 3 (INFO)")
 	cmd.Flags().BoolVar(&conf.LogConfigLoad, "log-config-load", true, "Log config decryption")
-	cmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-config-load-level", 2, "Log Config Load Level. Default 2 (WARNING)")
+	cmd.Flags().IntVar(&conf.LogConfigLoadLevel, "log-level-config-load", 2, "Log Config Load Level. Default 2 (WARNING)")
 	cmd.Flags().BoolVar(&conf.LogSecrets, "log-secrets", false, "Decrypt values of secrets and log them")
 
 	viper.BindPFlags(cmd.Flags())

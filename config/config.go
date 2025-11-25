@@ -104,7 +104,9 @@ type Config struct {
 	MonitorLongQueryScript                    string                 `mapstructure:"monitoring-long-query-script" toml:"monitoring-long-query-script" json:"monitoringLongQueryScript"`
 	MonitorLongQueryWithTable                 bool                   `mapstructure:"monitoring-long-query-with-table" toml:"monitoring-long-query-with-table" json:"monitoringLongQueryWithTable"`
 	MonitorLongQueryLogLength                 int                    `mapstructure:"monitoring-long-query-log-length" toml:"monitoring-long-query-log-length" json:"monitoringLongQueryLogLength"`
-	MonitorErrorLogLength                     int                    `mapstructure:"monitoring-erreur-log-length" toml:"monitoring-erreur-log-length" json:"monitoringErreurLogLength"`
+	MonitorErrorLogLength                     int                    `mapstructure:"monitoring-error-log-length" toml:"monitoring-error-log-length" json:"monitoringErrorLogLength"`
+	MonitorSqlErrorLogLength                  int                    `mapstructure:"monitoring-sql-error-log-length" toml:"monitoring-sql-error-log-length" json:"monitoringSqlErrorLogLength"`
+	MonitorAuditLogLength                     int                    `mapstructure:"monitoring-audit-log-length" toml:"monitoring-audit-log-length" json:"monitoringAuditLogLength"`
 	MonitorCapture                            bool                   `mapstructure:"monitoring-capture" toml:"monitoring-capture" json:"monitoringCapture"`
 	MonitorCaptureFileKeep                    int                    `mapstructure:"monitoring-capture-file-keep" toml:"monitoring-capture-file-keep" json:"monitoringCaptureFileKeep"`
 	MonitorDiskUsage                          bool                   `mapstructure:"monitoring-disk-usage" toml:"monitoring-disk-usage" json:"monitoringDiskUsage"`
@@ -119,51 +121,52 @@ type Config struct {
 	Interactive                               bool                   `mapstructure:"interactive" toml:"-" json:"interactive"`
 	Verbose                                   bool                   `mapstructure:"verbose" toml:"verbose" json:"verbose"`
 	LogFile                                   string                 `scope:"server" mapstructure:"log-file" toml:"log-file" json:"logFile"`
-	LogFileLevel                              int                    `scope:"server" mapstructure:"log-file-level" toml:"log-file-level" json:"logFileLevel"`
+	LogFileLevel                              int                    `scope:"server" mapstructure:"log-level-file" toml:"log-level-file" json:"logFileLevel"`
 	LogSyslog                                 bool                   `scope:"server" mapstructure:"log-syslog" toml:"log-syslog" json:"logSyslog"`
 	LogLevel                                  int                    `mapstructure:"log-level" toml:"log-level" json:"logLevel"`
 	LogRotateMaxSize                          int                    `mapstructure:"log-rotate-max-size" toml:"log-rotate-max-size" json:"logRotateMaxSize"`
 	LogRotateMaxBackup                        int                    `mapstructure:"log-rotate-max-backup" toml:"log-rotate-max-backup" json:"logRotateMaxBackup"`
 	LogRotateMaxAge                           int                    `mapstructure:"log-rotate-max-age" toml:"log-rotate-max-age" json:"logRotateMaxAge"`
 	LogTask                                   bool                   `mapstructure:"log-task" toml:"log-task" json:"logTask"`
-	LogTaskLevel                              int                    `mapstructure:"log-task-level" toml:"log-task-level" json:"logTaskLevel"`
+	LogTaskLevel                              int                    `mapstructure:"log-level-task" toml:"log-level-task" json:"logTaskLevel"`
 	LogSST                                    bool                   `mapstructure:"log-sst" toml:"log-sst" json:"logSst"`                  // internal replication-manager sst
-	LogSSTLevel                               int                    `mapstructure:"log-sst-level" toml:"log-sst-level" json:"logSstLevel"` // internal replication-manager sst
+	LogSSTLevel                               int                    `mapstructure:"log-level-sst" toml:"log-level-sst" json:"logSstLevel"` // internal replication-manager sst
 	SSTSendBuffer                             int                    `mapstructure:"sst-send-buffer" toml:"sst-send-buffer" json:"sstSendBuffer"`
 	LogHeartbeat                              bool                   `mapstructure:"log-heartbeat" toml:"log-heartbeat" json:"logHeartbeat"`
-	LogHeartbeatLevel                         int                    `mapstructure:"log-heartbeat-level" toml:"log-heartbeat-level" json:"logHeartbeatLevel"`
+	LogHeartbeatLevel                         int                    `mapstructure:"log-level-heartbeat" toml:"log-level-heartbeat" json:"logHeartbeatLevel"`
 	LogSQLInMonitoring                        bool                   `mapstructure:"log-sql-in-monitoring"  toml:"log-sql-in-monitoring" json:"logSqlInMonitoring"`
-	LogSQLLevel                               int                    `mapstructure:"log-sql-level"  toml:"log-sql-level" json:"logSqlLevel"`
-	LogAppLevel                               int                    `mapstructure:"log-app-level"  toml:"log-app-level" json:"logAppLevel"`
+	LogSQLLevel                               int                    `mapstructure:"log-level-sql"  toml:"log-level-sql" json:"logSqlLevel"`
+	LogAppLevel                               int                    `mapstructure:"log-level-app"  toml:"log-level-app" json:"logAppLevel"`
 	LogWriterElection                         bool                   `mapstructure:"log-writer-election"  toml:"log-writer-election" json:"logWriterElection"`
-	LogWriterElectionLevel                    int                    `mapstructure:"log-writer-election-level"  toml:"log-writer-election-level" json:"logWriterElectionLevel"`
+	LogWriterElectionLevel                    int                    `mapstructure:"log-level-writer-election"  toml:"log-level-writer-election" json:"logWriterElectionLevel"`
 	LogGit                                    bool                   `scope:"server" mapstructure:"log-git" toml:"log-git" json:"logGit"`
-	LogGitLevel                               int                    `scope:"server" mapstructure:"log-git-level" toml:"log-git-level" json:"logGitLevel"`
+	LogGitLevel                               int                    `scope:"server" mapstructure:"log-level-git" toml:"log-level-git" json:"logGitLevel"`
 	LogConfigLoad                             bool                   `mapstructure:"log-config-load" toml:"log-config-load" json:"logConfigLoad"`
-	LogConfigLoadLevel                        int                    `mapstructure:"log-config-load-level" toml:"log-config-load-level" json:"logConfigLoadLevel"`
+	LogConfigLoadLevel                        int                    `mapstructure:"log-level-config-load" toml:"log-level-config-load" json:"logConfigLoadLevel"`
 	LogBackupStream                           bool                   `mapstructure:"log-backup-stream" toml:"log-backup-stream" json:"logBackupStream"`
-	LogBackupStreamLevel                      int                    `mapstructure:"log-backup-stream-level" toml:"log-backup-stream-level" json:"logBackupStreamLevel"`
+	LogBackupStreamLevel                      int                    `mapstructure:"log-level-backup-stream" toml:"log-level-backup-stream" json:"logBackupStreamLevel"`
 	LogOrchestrator                           bool                   `mapstructure:"log-orchestrator" toml:"log-orchestrator" json:"logOrchestrator"`
-	LogOrchestratorLevel                      int                    `mapstructure:"log-orchestrator-level" toml:"log-orchestrator-level" json:"logOrchestratorLevel"`
+	LogOrchestratorLevel                      int                    `mapstructure:"log-level-orchestrator" toml:"log-level-orchestrator" json:"logOrchestratorLevel"`
 	LogTopology                               bool                   `mapstructure:"log-topology" toml:"log-topology" json:"logTopology"`
-	LogTopologyLevel                          int                    `mapstructure:"log-topology-level" toml:"log-topology-level" json:"logTopologyLevel"`
+	LogTopologyLevel                          int                    `mapstructure:"log-level-topology" toml:"log-level-topology" json:"logTopologyLevel"`
 	LogProxy                                  bool                   `mapstructure:"log-proxy" toml:"log-proxy" json:"logProxy"`
-	LogProxyLevel                             int                    `mapstructure:"log-proxy-level" toml:"log-proxy-level" json:"logProxyLevel"`
+	LogProxyLevel                             int                    `mapstructure:"log-level-proxy" toml:"log-level-proxy" json:"logProxyLevel"`
 	LogGraphite                               bool                   `mapstructure:"log-graphite" toml:"log-graphite" json:"logGraphite"`
-	LogGraphiteLevel                          int                    `mapstructure:"log-graphite-level" toml:"log-graphite-level" json:"logGraphiteLevel"`
+	LogGraphiteLevel                          int                    `mapstructure:"log-level-graphite" toml:"log-level-graphite" json:"logGraphiteLevel"`
 	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
-	LogBinlogPurgeLevel                       int                    `mapstructure:"log-binlog-purge-level" toml:"log-binlog-purge-level" json:"logBinlogPurgeLevel"`
-	LogArchiveLevel                           int                    `mapstructure:"log-archive-level" toml:"log-archive-level" json:"logArchiveLevel"`
-	LogMailerLevel                            int                    `mapstructure:"log-mailer-level" toml:"log-mailer-level" json:"logMailerLevel"`
+	LogBinlogPurgeLevel                       int                    `mapstructure:"log-level-binlog-purge" toml:"log-level-binlog-purge" json:"logBinlogPurgeLevel"`
+	LogArchiveLevel                           int                    `mapstructure:"log-level-archive" toml:"log-level-archive" json:"logArchiveLevel"`
+	LogMailerLevel                            int                    `mapstructure:"log-level-mailer" toml:"log-level-mailer" json:"logMailerLevel"`
 	LogSupport                                bool                   `scope:"server" mapstructure:"log-support" toml:"log-support" json:"logSupport"`
-	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-support-level" toml:"log-support-level" json:"logSupportLevel"`
+	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-level-support" toml:"log-level-support" json:"logSupportLevel"`
 	LogExternalScript                         bool                   `mapstructure:"log-external-script" toml:"log-external-script" json:"ExternalScript"`
-	LogExternalScriptLevel                    int                    `mapstructure:"log-external-script-level" toml:"log-external-script-level" json:"logExternalScriptLevel"`
-	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-stats-level" toml:"log-stats-level" json:"logStatsLevel"`
-	LogFetchErrorlogLevel                     int                    `mapstructure:"log-fetch-errorlog-level" toml:"log-fetch-errorlog-level" json:"logFetchErrorlogLevel"`
-	LogFetchSlowqueryLevel                    int                    `mapstructure:"log-fetch-slowquery-level" toml:"log-fetch-slowquery-level" json:"logFetchSlowqueryLevel"`
-	LogOptimizeLevel                          int                    `mapstructure:"log-optimize-level" toml:"log-optimize-level" json:"logOptimizeLevel"`
-	LogAPILevel                               int                    `mapstructure:"log-api-level" toml:"log-api-level" json:"logApiLevel"`
+	LogExternalScriptLevel                    int                    `mapstructure:"log-level-external-script" toml:"log-level-external-script" json:"logExternalScriptLevel"`
+	LogStatsLevel                             int                    `scope:"server" mapstructure:"log-level-stats" toml:"log-level-stats" json:"logStatsLevel"`
+	LogLevelDatabaseErrors                    int                    `mapstructure:"log-level-database-errors" toml:"log-level-database-errors" json:"logLevelDatabaseErrors"`
+	LogLevelDatabaseSqlErrors                 int                    `mapstructure:"log-level-database-sql-errors" toml:"log-level-database-sql-errors" json:"logLevelDatabaseSqlErrors"`
+	LogLevelDatabaseSlowquery                 int                    `mapstructure:"log-level-database-slowquery" toml:"log-level-database-slowquery" json:"logLevelDatabaseSlowquery"`
+	LogLevelDatabaseOptimize                  int                    `mapstructure:"log-level-database-optimize" toml:"log-level-database-optimize" json:"logLevelDatabaseOptimize"`
+	LogLevelDatabaseAudit                     int                    `mapstructure:"log-level-database-audit" toml:"log-level-database-audit" json:"logLevelDatabaseAudit"`
 	User                                      string                 `mapstructure:"db-servers-credential" toml:"db-servers-credential" json:"dbServersCredential"`
 	Hosts                                     string                 `mapstructure:"db-servers-hosts" toml:"db-servers-hosts" json:"dbServersHosts"`
 	DbServersChangeStateScript                string                 `mapstructure:"db-servers-state-change-script" toml:"db-servers-state-change-script" json:"dbServersStateChangeScript"`
@@ -337,7 +340,7 @@ type Config struct {
 	ExtProxyVIP                               string                 `mapstructure:"extproxy-address" toml:"extproxy-address" json:"extproxyAddress"`
 	MdbsProxyOn                               bool                   `mapstructure:"shardproxy" toml:"shardproxy" json:"shardproxy"`
 	MdbsProxyDebug                            bool                   `mapstructure:"shardproxy-debug" toml:"shardproxy-debug" json:"shardproxyDebug"`
-	MdbsProxyLogLevel                         int                    `mapstructure:"shardproxy-log-level" toml:"shardproxy-log-level" json:"shardproxyLogLevel"`
+	MdbsProxyLogLevel                         int                    `mapstructure:"log-level-shardproxy" toml:"log-level-shardproxy" json:"shardproxyLogLevel"`
 	MdbsProxyHosts                            string                 `mapstructure:"shardproxy-servers" toml:"shardproxy-servers" json:"shardproxyServers"`
 	MdbsJanitorWeights                        string                 `mapstructure:"shardproxy-janitor-weights" toml:"shardproxy-janitor-weights" json:"shardproxyJanitorWeights"`
 	MdbsProxyCredential                       string                 `mapstructure:"shardproxy-credential" toml:"shardproxy-credential" json:"shardproxyCredential"`
@@ -348,7 +351,7 @@ type Config struct {
 	MdbsIgnoreTables                          string                 `mapstructure:"shardproxy-ignore-tables" toml:"shardproxy-ignore-tables" json:"shardproxyIgnoreTables"`
 	MxsOn                                     bool                   `mapstructure:"maxscale" toml:"maxscale" json:"maxscale"`
 	MxsDebug                                  bool                   `mapstructure:"maxscale-debug" toml:"maxscale-debug" json:"maxscaleDebug"`
-	MxsLogLevel                               int                    `mapstructure:"maxscale-log-level" toml:"maxscale-log-level" json:"maxscaleLogLevel"`
+	MxsLogLevel                               int                    `mapstructure:"log-level-maxscale" toml:"log-level-maxscale" json:"maxscaleLogLevel"`
 	MxsHost                                   string                 `mapstructure:"maxscale-servers" toml:"maxscale-servers" json:"maxscaleServers"`
 	MxsPort                                   string                 `mapstructure:"maxscale-port" toml:"maxscale-port" json:"maxscalePort"`
 	MxsUser                                   string                 `mapstructure:"maxscale-user" toml:"maxscale-user" json:"maxscaleUser"`
@@ -367,13 +370,13 @@ type Config struct {
 	MxsBinaryPath                             string                 `mapstructure:"maxscale-binary-path" toml:"maxscale-binary-path" json:"maxscalemBinaryPath"`
 	MyproxyOn                                 bool                   `mapstructure:"myproxy" toml:"myproxy" json:"myproxy"`
 	MyproxyDebug                              bool                   `mapstructure:"myproxy-debug" toml:"myproxy-debug" json:"myproxyDebug"`
-	MyproxyLogLevel                           int                    `mapstructure:"myproxy-log-level" toml:"myproxy-log-level" json:"myproxyLogLevel"`
+	MyproxyLogLevel                           int                    `mapstructure:"log-level-myproxy" toml:"log-level-myproxy" json:"myproxyLogLevel"`
 	MyproxyPort                               int                    `mapstructure:"myproxy-port" toml:"myproxy-port" json:"myproxyPort"`
 	MyproxyUser                               string                 `mapstructure:"myproxy-user" toml:"myproxy-user" json:"myproxyUser"`
 	MyproxyPassword                           string                 `mapstructure:"myproxy-password" toml:"myproxy-password" json:"myproxyPassword"`
 	HaproxyOn                                 bool                   `mapstructure:"haproxy" toml:"haproxy" json:"haproxy"`
 	HaproxyDebug                              bool                   `mapstructure:"haproxy-debug" toml:"haproxy-debug" json:"haproxyDebug"`
-	HaproxyLogLevel                           int                    `mapstructure:"haproxy-log-level" toml:"haproxy-log-level" json:"haproxyLogLevel"`
+	HaproxyLogLevel                           int                    `mapstructure:"log-level-haproxy" toml:"log-level-haproxy" json:"haproxyLogLevel"`
 	HaproxyUser                               string                 `mapstructure:"haproxy-user" toml:"haproxy-user" json:"haproxylUser"`
 	HaproxyPassword                           string                 `mapstructure:"haproxy-password" toml:"haproxy-password" json:"haproxyPassword"`
 	HaproxyMode                               string                 `mapstructure:"haproxy-mode" toml:"haproxy-mode" json:"haproxyMode"`
@@ -394,7 +397,7 @@ type Config struct {
 	HaproxyStagingBackend                     string                 `mapstructure:"haproxy-staging-backend" toml:"haproxy-staging-backend" json:"haproxyStagingBackend"`
 	ProxysqlOn                                bool                   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
-	ProxysqlLogLevel                          int                    `mapstructure:"proxysql-log-level" toml:"proxysql-log-level" json:"proxysqlLogLevel"`
+	ProxysqlLogLevel                          int                    `mapstructure:"log-level-proxysql" toml:"log-level-proxysql" json:"proxysqlLogLevel"`
 	ProxysqlSaveToDisk                        bool                   `mapstructure:"proxysql-save-to-disk" toml:"proxysql-save-to-disk" json:"proxysqlSaveToDisk"`
 	ProxysqlHosts                             string                 `mapstructure:"proxysql-servers" toml:"proxysql-servers" json:"proxysqlServers"`
 	ProxysqlHostsIPV6                         string                 `mapstructure:"proxysql-servers-ipv6" toml:"proxysql-servers-ipv6" json:"proxysqlServersIpv6"`
@@ -415,7 +418,7 @@ type Config struct {
 	ProxysqlWriteTrackState                   string                 `mapstructure:"proxysql-write-track-state" toml:"proxysql-write-track-state" json:"proxysqlWriteTrackState"`
 	ProxysqlreadTrackState                    string                 `mapstructure:"proxysql-read-track-state" toml:"proxysql-read-track-state" json:"proxysqlReadTrackState"`
 	ProxyJanitorDebug                         bool                   `mapstructure:"proxyjanitor-debug" toml:"proxyjanitor-debug" json:"proxyjanitorDebug"`
-	ProxyJanitorLogLevel                      int                    `mapstructure:"proxyjanitor-log-level" toml:"proxyjanitor-log-level" json:"proxyjanitorLogLevel"`
+	ProxyJanitorLogLevel                      int                    `mapstructure:"log-level-proxyjanitor" toml:"log-level-proxyjanitor" json:"proxyjanitorLogLevel"`
 	ProxyJanitorHosts                         string                 `mapstructure:"proxyjanitor-servers" toml:"proxyjanitor-servers" json:"proxyjanitorServers"`
 	ProxyJanitorHostsIPV6                     string                 `mapstructure:"proxyjanitor-servers-ipv6" toml:"proxyjanitor-servers-ipv6" json:"proxyjanitorServers-ipv6"`
 	ProxyJanitorPort                          string                 `mapstructure:"proxyjanitor-port" toml:"proxyjanitor-port" json:"proxyjanitorPort"`
@@ -425,7 +428,7 @@ type Config struct {
 	ProxyJanitorBinaryPath                    string                 `mapstructure:"proxyjanitor-binary-path" toml:"proxyjanitor-binary-path" json:"proxyjanitorBinaryPath"`
 	MysqlRouterOn                             bool                   `mapstructure:"mysqlrouter" toml:"mysqlrouter" json:"mysqlrouter"`
 	MysqlRouterDebug                          bool                   `mapstructure:"mysqlrouter-debug" toml:"mysqlrouter-debug" json:"mysqlrouterDebug"`
-	MysqlRouterLogLevel                       int                    `mapstructure:"mysqlrouter-log-level" toml:"mysqlrouter-log-level" json:"mysqlrouterLogLevel"`
+	MysqlRouterLogLevel                       int                    `mapstructure:"log-level-mysqlrouter" toml:"log-level-mysqlrouter" json:"mysqlrouterLogLevel"`
 	MysqlRouterHosts                          string                 `mapstructure:"mysqlrouter-servers" toml:"mysqlrouter-servers" json:"mysqlrouterServers"`
 	MysqlRouterJanitorWeights                 string                 `mapstructure:"mysqlrouter-janitor-weights" toml:"mysqlrouter-janitor-weights" json:"mysqlrouterJanitorWeights"`
 	MysqlRouterPort                           string                 `mapstructure:"mysqlrouter-port" toml:"mysqlrouter-port" json:"mysqlrouterPort"`
@@ -436,7 +439,7 @@ type Config struct {
 	MysqlRouterReadWritePort                  int                    `mapstructure:"mysqlrouter-read-write-port" toml:"mysqlrouter-read-write-port" json:"mysqlrouterReadWritePort"`
 	SphinxOn                                  bool                   `mapstructure:"sphinx" toml:"sphinx" json:"sphinx"`
 	SphinxDebug                               bool                   `mapstructure:"sphinx-debug" toml:"sphinx-debug" json:"sphinxDebug"`
-	SphinxLogLevel                            int                    `mapstructure:"sphinx-log-level" toml:"sphinx-log-level" json:"sphinxLogLevel"`
+	SphinxLogLevel                            int                    `mapstructure:"log-level-sphinx" toml:"log-level-sphinx" json:"sphinxLogLevel"`
 	SphinxHosts                               string                 `mapstructure:"sphinx-servers" toml:"sphinx-servers" json:"sphinxServers"`
 	SphinxHostsIPV6                           string                 `mapstructure:"sphinx-servers-ipv6" toml:"sphinx-servers-ipv6" json:"sphinxServers-ipv6"`
 	SphinxJanitorWeights                      string                 `mapstructure:"sphinx-janitor-weights" toml:"sphinx-janitor-weights" json:"sphinxJanitorWeights"`
@@ -445,7 +448,7 @@ type Config struct {
 	SphinxPort                                string                 `mapstructure:"sphinx-port" toml:"sphinx-port" json:"sphinxPort"`
 	RegistryConsul                            bool                   `mapstructure:"registry-consul" toml:"registry-consul" json:"registryConsul"`
 	RegistryConsulDebug                       bool                   `mapstructure:"registry-consul-debug" toml:"registry-consul-debug" json:"registryConsulDebug"`
-	RegistryConsulLogLevel                    int                    `mapstructure:"registry-consul-log-level" toml:"registry-consul-log-level" json:"registryConsulLogLevel"`
+	RegistryConsulLogLevel                    int                    `mapstructure:"log-level-registry-consul" toml:"log-level-registry-consul" json:"registryConsulLogLevel"`
 	RegistryConsulCredential                  string                 `mapstructure:"registry-consul-credential" toml:"registry-consul-credential" json:"registryConsulCredential"`
 	RegistryConsulToken                       string                 `mapstructure:"registry-consul-token" toml:"registry-consul-token" json:"registryConsulToken"`
 	RegistryConsulHosts                       string                 `mapstructure:"registry-servers" toml:"registry-servers" json:"registryServers"`
@@ -768,7 +771,7 @@ type Config struct {
 	VaultAuth                                 string                 `mapstructure:"vault-auth" toml:"vault-auth" json:"vaultAuth"`
 	VaultToken                                string                 `mapstructure:"vault-token" toml:"vault-token" json:"vaultToken"`
 	LogVault                                  bool                   `mapstructure:"log-vault" toml:"log-vault" json:"logVault"`
-	LogVaultLevel                             int                    `mapstructure:"log-vault-level" toml:"log-vault-level" json:"logVaultLevel"`
+	LogVaultLevel                             int                    `mapstructure:"log-level-vault" toml:"log-level-vault" json:"logVaultLevel"`
 	GitUrl                                    string                 `scope:"server" mapstructure:"git-url" toml:"git-url" json:"gitUrl"`
 	GitUrlPull                                string                 `scope:"server" mapstructure:"git-url-pull" toml:"git-url-pull" json:"gitUrlPull"`
 	GitUsername                               string                 `scope:"server" mapstructure:"git-username" toml:"git-username" json:"gitUsername"`
@@ -1335,10 +1338,11 @@ const (
 	ConstLogModStats          = 22
 	ConstLogModSQL            = 23
 	ConstLogModApp            = 24
-	ConstLogModFetchErrorlog  = 25
-	ConstLogModFetchSlowquery = 26
-	ConstLogModOptimize       = 27
-	ConstLogModAPI            = 28
+	ConstLogModDbErrors       = 25
+	ConstLogModDbSlowquery    = 26
+	ConstLogModDbOptimize     = 27
+	ConstLogModDbAudit        = 28
+	ConstLogModDbSqlErrors    = 29
 )
 
 /*
@@ -1370,10 +1374,11 @@ const (
 	ConstLogNameSupport        string = "log-support"
 	ConstLogNameStats          string = "log-stats"
 	ConstLogNameApp            string = "log-app"
-	ConstLogNameFetchErrorlog  string = "log-fetch-errorlog"
-	ConstLogNameFetchSlowquery string = "log-fetch-slowquery"
-	ConstLogNameOptimize       string = "log-optimize"
-	ConstLogNameAPI            string = "log-api"
+	ConstLogNameDbErrors       string = "log-database-errors"
+	ConstLogNameDbSlowquery    string = "log-database-slowquery"
+	ConstLogNameDbOptimize     string = "log-database-optimize"
+	ConstLogNameDbAuditlog     string = "log-database-auditlog"
+	ConstLogNameDbSqlError     string = "log-database-sqlerrorlog"
 )
 
 /*
@@ -1386,6 +1391,8 @@ const (
 	ConstTaskMB                 TaskName = "mariabackup"
 	ConstTaskError              TaskName = "errorlog"
 	ConstTaskSlowQuery          TaskName = "slowquery"
+	ConstTaskSqlError           TaskName = "sqlerrorlog"
+	ConstTaskAuditLog           TaskName = "auditlog"
 	ConstTaskZFS                TaskName = "zfssnapback"
 	ConstTaskOptimize           TaskName = "optimize"
 	ConstTaskReseedXB           TaskName = "reseedxtrabackup"
@@ -3240,14 +3247,16 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			return conf.LogSQLLevel >= lvl
 		case module == ConstLogModApp:
 			return conf.LogAppLevel >= lvl
-		case module == ConstLogModFetchErrorlog:
-			return conf.LogFetchErrorlogLevel >= lvl
-		case module == ConstLogModFetchSlowquery:
-			return conf.LogFetchSlowqueryLevel >= lvl
-		case module == ConstLogModOptimize:
-			return conf.LogOptimizeLevel >= lvl
-		case module == ConstLogModAPI:
-			return conf.LogAPILevel >= lvl
+		case module == ConstLogModDbErrors:
+			return conf.LogLevelDatabaseErrors >= lvl
+		case module == ConstLogModDbSlowquery:
+			return conf.LogLevelDatabaseSlowquery >= lvl
+		case module == ConstLogModDbOptimize:
+			return conf.LogLevelDatabaseOptimize >= lvl
+		case module == ConstLogModDbAudit:
+			return conf.LogLevelDatabaseAudit >= lvl
+		case module == ConstLogModDbSqlErrors:
+			return conf.LogLevelDatabaseSqlErrors >= lvl
 		}
 	}
 
@@ -3423,12 +3432,14 @@ func GetTagsForLog(module int) string {
 		return "archive"
 	case ConstLogModMailer:
 		return "mailer"
-	case ConstLogModFetchErrorlog:
+	case ConstLogModDbErrors:
 		return "errorlog"
-	case ConstLogModFetchSlowquery:
+	case ConstLogModDbSlowquery:
 		return "slowquery"
-	case ConstLogModAPI:
-		return "api"
+	case ConstLogModDbOptimize:
+		return "optimize"
+	case ConstLogModDbAudit:
+		return "auditlog"
 	}
 	return ""
 }
@@ -3441,9 +3452,9 @@ func GetModuleNameForTask(task string) string {
 	case ConstTaskXB, ConstTaskMB, ConstTaskReseedXB, ConstTaskReseedMB, ConstTaskDump, ConstTaskFlashXB, ConstTaskFlashMB, ConstTaskFlashDump:
 		return ConstLogNameBackupStream
 	case ConstTaskError:
-		return ConstLogNameFetchErrorlog
+		return ConstLogNameDbErrors
 	case ConstTaskSlowQuery:
-		return ConstLogNameFetchSlowquery
+		return ConstLogNameDbSlowquery
 	default:
 		return ConstLogNameTask
 	}
@@ -3501,10 +3512,14 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModArchive
 	case ConstLogNameMailer:
 		return ConstLogModMailer
-	case ConstLogNameFetchErrorlog:
-		return ConstLogModFetchErrorlog
-	case ConstLogNameFetchSlowquery:
-		return ConstLogModFetchSlowquery
+	case ConstLogNameDbErrors:
+		return ConstLogModDbErrors
+	case ConstLogNameDbSlowquery:
+		return ConstLogModDbSlowquery
+	case ConstLogNameDbOptimize:
+		return ConstLogModDbOptimize
+	case ConstLogNameDbAuditlog:
+		return ConstLogModDbAudit
 	}
 	return -1
 }
@@ -4112,4 +4127,84 @@ func (conf *Config) LoadAppTemplateList() ([]string, error) {
 	result = cleaned
 
 	return result, nil
+}
+
+func GetKeyAliasMap() map[string]string {
+	return map[string]string{
+		//"old-name": "new-name",
+		// "user": "db-servers-credential",
+		//"api-user", "api-credential")
+		"monitoring-config-rewrite":     "monitoring-save-config",
+		"api-user":                      "api-credentials",
+		"replication-master-connection": "replication-source-name",
+		"logfile":                       "log-file",
+		"wait-kill":                     "switchover-wait-kill",
+		"hosts":                         "db-servers-hosts",
+		"hosts-tls-ca-cert":             "db-servers-tls-ca-cert",
+		"hosts-tls-client-key":          "db-servers-tls-client-key",
+		"hosts-tls-client-cert":         "db-servers-tls-client-cert",
+		"connect-timeout":               "db-servers-connect-timeout",
+		"rpluser":                       "replication-credential",
+		"prefmaster":                    "db-servers-prefered-master",
+		"ignore-servers":                "db-servers-ignored-hosts",
+		"master-connection":             "replication-master-connection",
+		"master-connect-retry":          "replication-master-connection-retry",
+		"readonly":                      "failover-readonly-state",
+		"mdbshardproxy-hosts":           "mdbshardproxy-servers",
+		"multimaster":                   "replication-multi-master",
+		"multi-tier-slave":              "replication-multi-tier-slave",
+		"pre-failover-script":           "failover-pre-script",
+		"post-failover-script":          "failover-post-script",
+		"rejoin-script":                 "autorejoin-script",
+		"share-directory":               "monitoring-sharedir",
+		"working-directory":             "monitoring-datadir",
+		"interactive":                   "failover-mode",
+		"failcount":                     "failover-falsepositive-ping-counter",
+		"wait-write-query":              "switchover-wait-write-query",
+		"wait-trx":                      "switchover-wait-trx",
+		"gtidcheck":                     "switchover-at-equal-gtid",
+		"maxdelay":                      "failover-max-slave-delay",
+		"maxscale-host":                 "maxscale-servers",
+		"maxscale-pass":                 "maxscale-password",
+		"api-credential":                "api-credentials",
+		"backup-binlogs-method":         "binlog-copy-mode",
+		"backup-binlogs-script":         "binlog-copy-script",
+		"monitoring-erreur-log-length":  "monitoring-error-log-length",
+
+		// log level aliases
+		"log-file-level":            "log-level-file",
+		"log-task-level":            "log-level-task",
+		"log-sst-level":             "log-level-sst",
+		"log-heartbeat-level":       "log-level-heartbeat",
+		"log-sql-level":             "log-level-sql",
+		"log-app-level":             "log-level-app",
+		"log-writer-election-level": "log-level-writer-election",
+		"log-git-level":             "log-level-git",
+		"log-config-load-level":     "log-level-config-load",
+		"log-backup-stream-level":   "log-level-backup-stream",
+		"log-orchestrator-level":    "log-level-orchestrator",
+		"log-topology-level":        "log-level-topology",
+		"log-proxy-level":           "log-level-proxy",
+		"log-graphite-level":        "log-level-graphite",
+		"log-binlog-purge-level":    "log-level-binlog-purge",
+		"log-archive-level":         "log-level-archive",
+		"log-mailer-level":          "log-level-mailer",
+		"log-support-level":         "log-level-support",
+		"log-external-script-level": "log-level-external-script",
+		"log-stats-level":           "log-level-stats",
+		"log-fetch-errorlog-level":  "log-level-database-errors",
+		"log-fetch-slowquery-level": "log-level-database-slowquery",
+		"log-optimize-level":        "log-level-database-optimize",
+		"log-fetch-auditlog-level":  "log-level-database-audit",
+		"shardproxy-log-level":      "log-level-shardproxy",
+		"maxscale-log-level":        "log-level-maxscale",
+		"myproxy-log-level":         "log-level-myproxy",
+		"haproxy-log-level":         "log-level-haproxy",
+		"proxysql-log-level":        "log-level-proxysql",
+		"proxyjanitor-log-level":    "log-level-proxyjanitor",
+		"mysqlrouter-log-level":     "log-level-mysqlrouter",
+		"sphinx-log-level":          "log-level-sphinx",
+		"registry-consul-log-level": "log-level-registry-consul",
+		"log-vault-level":           "log-level-vault",
+	}
 }
