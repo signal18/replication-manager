@@ -113,7 +113,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 
 	var hosts []Host
 	// Process the response to extract node information
-	nodes := gjson.GetBytes(body, "items.{nodename:#.meta.node}").Array()
+	nodes := gjson.GetBytes(body, "items.#.meta.node").Array()
 	for _, node := range nodes {
 		h := Host{
 			Node_name: node.String(),
