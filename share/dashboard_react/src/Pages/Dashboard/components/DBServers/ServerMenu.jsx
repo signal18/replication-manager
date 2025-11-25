@@ -102,7 +102,7 @@ function ServerMenu({
               setConfirmHandler(() => () => dispatch(setMaintenanceMode({ clusterName, serverId: row.id })))
             }
           },
-          ...(user?.grants['db-terminal'] && showTerminal ? [
+          ...(user?.grants['terminal-db'] && showTerminal ? [
             {
               name: 'Web Terminal',
               subMenu: [
@@ -114,7 +114,7 @@ function ServerMenu({
                   name: 'MyTop Terminal',
                   onClick: () => openTerminalPage(clusterName, row.id, 'mytop')
                 },
-                ...(user?.grants['global-terminal'] ? [
+                ...(user?.grants['terminal-global'] ? [
                   {
                     name: 'Shell Terminal',
                     onClick: () => openTerminalPage(clusterName, row.id)

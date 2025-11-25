@@ -105,7 +105,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                 }
               ]
             : []),
-          ...(user?.grants['proxy-terminal'] && showTerminal 
+          ...(user?.grants['terminal-proxy'] && showTerminal 
             ? [
                 {
                   name: 'Web Terminal',
@@ -118,7 +118,7 @@ function ProxyMenu({ clusterName, row, isDesktop, colorScheme, from = 'tableView
                       name: 'MyTop Terminal',
                       onClick: () => openTerminalPage(clusterName, row.proxyId, 'mytop')
                     },
-                    ...(user?.grants['global-terminal'] ? [
+                    ...(user?.grants['terminal-global'] ? [
                       {
                         name: 'Shell Terminal',
                         onClick: () => openTerminalPage(clusterName, row.proxyId)
