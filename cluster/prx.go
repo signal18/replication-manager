@@ -470,7 +470,6 @@ func (proxy *Proxy) SendStats() error {
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix()))
 	}
 	for _, wbackend := range proxy.BackendsRead {
-		var metrics = make([]graphite.Metric, 4)
 		replacer := strings.NewReplacer("`", "", "?", "", " ", "_", ".", "-", "(", "-", ")", "-", "/", "_", "<", "-", "'", "-", "\"", "-", ":", "-")
 		server := "ro-" + replacer.Replace(wbackend.PrxName)
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.bytes_send", proxy.Type, proxy.Id, server), wbackend.PrxByteOut, time.Now().Unix()))
