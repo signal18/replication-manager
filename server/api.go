@@ -2007,8 +2007,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 
 		if session.CmdType == tty.TerminalBash {
 			if session.Orchestrator == config.ConstOrchestratorOpenSVC {
-				url, node, ver := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName)
-
+				url, node, ver := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName, session.ServiceAgentName)
 				if ver == "v2" {
 					session.ServiceTtyUrl = strings.Replace(url, node, node+".signal18.io", 1)
 					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)

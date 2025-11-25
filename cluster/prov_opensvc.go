@@ -95,13 +95,14 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	return svc
 }
 
-func (cluster *Cluster) GetGottyServer(srv string, rid string) (string, string, string) {
+func (cluster *Cluster) GetGottyServer(srv string, rid string, agent string) (string, string, string) {
 	var url, node, ver string
 	var err error
 	svc := cluster.OpenSVCConnect()
 	if svc.IsV3() {
 		ver = "v3"
-		url, err = svc.GetGottyServerV3(node, srv, rid)
+		node = agent
+		url, err = svc.GetGottyServerV3(agent, srv, rid)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
 			return "", "", ver

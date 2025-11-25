@@ -35,12 +35,15 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		return false
 	}
 
+	if !fail {
+		cluster.SetState("ERR00100", state.State{ErrType: "ERR00100", ErrDesc: fmt.Sprintf(clusterError["ERR00100"], time.Now().Format(time.RFC3339)), ErrFrom: "SWITCHOVER"})
+	}
+
 	cluster.StateMachine.SetFailoverState()
 	defer cluster.StateMachine.RemoveFailoverState()
 	// Phase 1: Cleanup and election
 	var err error
 	if fail == false {
-		cluster.SetState("ERR00100", state.State{ErrType: "ERR00100", ErrDesc: fmt.Sprintf(clusterError["ERR00100"], time.Now().Format(time.RFC3339)), ErrFrom: "SWITCHOVER"})
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "--------------------------")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting master switchover")
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "--------------------------")

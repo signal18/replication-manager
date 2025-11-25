@@ -156,6 +156,79 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	return body, nil
 }
 
+type ObjectGetterFunc func([]byte) ([]byte, error)
+
+func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc ObjectGetterFunc) ([]byte, error) {
+	var resp *http.Response
+	var err error
+
+	client, err := collector.GetClientV3()
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(collector.ContextTimeoutSecond)*time.Second)
+	defer cancel()
+
+	oKind := apiv3.Kind(kind)
+
+	resp, err = client.GetObject(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	if err != nil {
+		return nil, fmt.Errorf("failed to get object path in %s/%s/%s: %w", namespace, kind, service, err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
+	}
+
+	if getFunc == nil {
+		return body, nil
+	} else {
+		return getFunc(body)
+	}
+}
+
+func (collector *Collector) GetServiceNodeFromStateV3(svc string) ([]string, error) {
+	svcparts := strings.SplitN(svc, "/", 3)
+	if len(svcparts) != 3 {
+		return nil, fmt.Errorf("invalid service format: %s, expected namespace/kind/name", svc)
+	}
+
+	namespace := svcparts[0]
+	kind := svcparts[1]
+	service := svcparts[2]
+
+	// Agents getter function
+	getfunc := func(body []byte) ([]byte, error) {
+		result := gjson.GetBytes(body, `data.instances.{node:@keys,value:@values}.@group.#(value.status.avail=="up")#.node`)
+		if !result.Exists() {
+			return nil, fmt.Errorf("no agents found for service %s/%s/%s", namespace, kind, service)
+		}
+
+		return []byte(result.Raw), nil
+	}
+
+	data, err := collector.GetObjectV3(namespace, kind, service, getfunc)
+	if err != nil {
+		return nil, err
+	}
+
+	var agents []string
+	result := gjson.ParseBytes(data)
+	result.ForEach(func(key, value gjson.Result) bool {
+		agents = append(agents, key.String())
+		return true
+	})
+
+	return agents, nil
+}
+
 func (collector *Collector) CreateSecretV3(namespace, service, agent string) error {
 	_, err := collector.CreateObjectV3(namespace, "sec", service, []byte{})
 	return err

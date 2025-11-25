@@ -105,6 +105,7 @@ type Session struct {
 	Password             string               `json:"-"`
 	Orchestrator         string               `json:"orchestrator"`
 	ServiceContainerName string               `json:"serviceContainerName"`
+	ServiceAgentName     string               `json:"-"`
 	ServiceName          string               `json:"serviceName"`
 	ServiceTtyUrl        string               `json:"-"`
 	Keys                 []ssh.Signer         `json:"-"`

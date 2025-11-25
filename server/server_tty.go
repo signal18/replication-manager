@@ -61,6 +61,8 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + node.Name
 	session.ServiceContainerName = "container#db"
+	session.ServiceAgentName = node.Agent
+
 	apiUser, ok := mycluster.APIUsers[session.Owner]
 	if !ok {
 		return fmt.Errorf("user %s not found in cluster %s", session.Owner, mycluster.Name)
@@ -119,10 +121,13 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 }
 
 func (repman *ReplicationManager) SetSessionValuesFromProxy(session *tty.Session, proxy cluster.DatabaseProxy) error {
+
 	session.Host = proxy.GetHost()
 	mycluster := proxy.GetCluster()
-	session.Orchestrator = mycluster.GetOrchestrator()
 	session.ServiceName = mycluster.Name + "/svc/" + proxy.GetName()
+	session.Orchestrator = mycluster.GetOrchestrator()
+	session.ServiceAgentName = proxy.GetAgent()
+
 	session.ServiceContainerName = "container#prx"
 	switch session.CmdType {
 	case tty.TerminalBash:

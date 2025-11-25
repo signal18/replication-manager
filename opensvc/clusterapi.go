@@ -839,6 +839,14 @@ func (collector *Collector) GetNodes() ([]Host, error) {
 }
 
 func (collector *Collector) GetServiceNodeFromState(svc string) ([]string, error) {
+	if collector.IsV3() {
+		return collector.GetServiceNodeFromStateV3(svc)
+	} else {
+		return collector.GetServiceNodeFromStateV2(svc)
+	}
+}
+
+func (collector *Collector) GetServiceNodeFromStateV2(svc string) ([]string, error) {
 	url := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(svc))
 	client := collector.GetHttpClient()
 	req, err := http.NewRequest("GET", url, nil)
