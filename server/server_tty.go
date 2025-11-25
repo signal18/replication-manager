@@ -95,7 +95,7 @@ func (repman *ReplicationManager) SetSessionValuesFromNode(session *tty.Session,
 				session.Password = mycluster.GetSponsorPass()
 			}
 			session.Arguments = mycluster.GetMySQLClientParams(node, config.RoleSponsor, true)
-		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantDBTerminal] {
+		} else if apiUser.Roles[config.RoleDBOps] || apiUser.Roles[config.RoleExtSysOps] || apiUser.Roles[config.RoleExtDBOps] || apiUser.Grants[config.GrantTerminalDatabase] {
 			// External SysOps, DBOps and the user has the grant can connect to the database using the dba user
 			session.Username = mycluster.GetDbaUser()
 			session.Password = mycluster.GetDbaPass()

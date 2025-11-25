@@ -562,7 +562,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.APIPort, "api-port", "10005", "Rest API listen port")
 	flags.StringVar(&conf.APIUsers, "api-credentials", "admin:repman", "Rest API user list user:password,..")
 	flags.StringVar(&conf.APIUsersExternal, "api-credentials-external", "", "Rest API user list user:password,.. as dba:repman,foo:bar")
-	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole,dba:cluster proxy db,foo:", "User acl allow")
+	flags.StringVar(&conf.APIUsersACLAllow, "api-credentials-acl-allow", "admin:cluster db proxy prov global grant show sale extrole terminal,dba:cluster proxy db,foo:", "User acl allow")
 	flags.StringVar(&conf.APIUsersACLAllowExternal, "api-credentials-acl-allow-external", "", "User dynamic acl allow")
 	flags.StringVar(&conf.APIUsersACLDiscard, "api-credentials-acl-discard", "", "User acl discard")
 	flags.StringVar(&conf.APIUsersACLDiscardExternal, "api-credentials-acl-discard-external", "", "User dynamic acl discard")
@@ -1119,9 +1119,14 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.ProvAppTemplateRepoUser, "prov-app-template-repo-user", "", "Git repository user for application templates")
 	flags.StringVar(&conf.ProvAppTemplateRepoPassword, "prov-app-template-repo-password", "", "Git repository password for application templates")
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
-	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
+
+	if WithProvisioning == "ON" {
+		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
+	} else {
+		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
+	}
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -1357,7 +1362,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 			if v != nil {
 				ImmuableMap[f] = secRead.Get(f)
 			}
+		}
+	}
 
+	_, terminalImmu := ImmuableMap["terminal-session-enabled"]
+	if conf.ProvOrchestrator != "opensvc" {
+		if !terminalImmu {
+			conf.TerminalSessionEnabled = false
 		}
 	}
 
@@ -1414,6 +1425,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := fistRead.Sub(clusterName)
 		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+		clOrch := conf.ProvOrchestrator
+		if clRead != nil {
+			if v := clRead.Get("prov-orchestrator"); v != nil {
+				clOrch = clRead.GetString("prov-orchestrator")
+			}
+
+			if clOrch != "opensvc" && conf.TerminalSessionEnabled {
+				if v := clRead.Get("terminal-session-enabled"); v == nil {
+					conf.TerminalSessionEnabled = false
+				}
+			}
+		}
 	}
 
 	tmp_read := fistRead.Sub("default")
