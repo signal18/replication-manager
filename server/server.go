@@ -1360,7 +1360,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 			if v != nil {
 				ImmuableMap[f] = secRead.Get(f)
 			}
+		}
+	}
 
+	_, terminalImmu := ImmuableMap["terminal-session-enabled"]
+	if conf.ProvOrchestrator != "opensvc" {
+		if !terminalImmu {
+			conf.TerminalSessionEnabled = false
 		}
 	}
 
@@ -1417,6 +1423,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := fistRead.Sub(clusterName)
 		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+		clOrch := conf.ProvOrchestrator
+		if clRead != nil {
+			if v := clRead.Get("prov-orchestrator"); v != nil {
+				clOrch = clRead.GetString("prov-orchestrator")
+			}
+
+			if clOrch != "opensvc" && conf.TerminalSessionEnabled {
+				if v := clRead.Get("terminal-session-enabled"); v == nil {
+					conf.TerminalSessionEnabled = false
+				}
+			}
+		}
 	}
 
 	tmp_read := fistRead.Sub("default")
