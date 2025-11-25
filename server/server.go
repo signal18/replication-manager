@@ -1076,6 +1076,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 
+		flags.BoolVar(&conf.ProvUseIpv6, "prov-use-ipv6", false, "Use IPv6 addresses for provisioned services")
+
 		if WithOpenSVC == "ON" {
 
 			flags.BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
