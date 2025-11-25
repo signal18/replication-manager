@@ -222,7 +222,7 @@ func (collector *Collector) GetServiceNodeFromStateV3(svc string) ([]string, err
 	var agents []string
 	result := gjson.ParseBytes(data)
 	result.ForEach(func(key, value gjson.Result) bool {
-		agents = append(agents, key.String())
+		agents = append(agents, value.String())
 		return true
 	})
 
