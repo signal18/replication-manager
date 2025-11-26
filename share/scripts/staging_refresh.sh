@@ -1,4 +1,5 @@
 #!/bin/bash
+# This script is given as sample and might be overwritten on upgrade.
 
 function help {
 	echo "Required Environment:" >&2
