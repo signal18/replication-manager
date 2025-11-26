@@ -182,7 +182,7 @@ func (server *ServerMonitor) GetBindAddress() string {
 	}
 
 	if server.ClusterGroup.Conf.ProvUseIpv6 {
-		return "::"
+		return "[::]"
 	}
 
 	return "0.0.0.0"

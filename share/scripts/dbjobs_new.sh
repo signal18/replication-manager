@@ -837,7 +837,7 @@ jobsCheck() {
     fi
 
     echo "Sending new script." >>"$LOG_DIR/jobs-check.process.out"
-    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 2>>"$LOG_DIR/jobs-check.process.out"
+    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 2>>"$LOG_DIR/jobs-check.process.out"
 
     if [ $? -ne 0 ]; then
         echo "Failed to send the script via socat." >>"$LOG_DIR/jobs-check.process.out"
@@ -891,7 +891,7 @@ jobsUpgrade() {
 
     # Open receiver port to get the new script to a temporary file
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
-    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
     SOCAT_PID=$!
 
     # Request the upgrade
@@ -1023,7 +1023,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
             ;;
@@ -1033,7 +1033,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 STDOUT | mbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | mbstream -x -C $BACKUPDIR
             # mbstream -p, --parallel
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
@@ -1044,7 +1044,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
@@ -1054,7 +1054,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=[$SOCAT_BIND],ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
