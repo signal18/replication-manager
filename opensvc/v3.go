@@ -14,6 +14,7 @@ import (
 	clientv3 "github.com/opensvc/om3/core/client"
 	apiv3 "github.com/opensvc/om3/daemon/api"
 	"github.com/opensvc/om3/util/funcopt"
+	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
 
 	"github.com/tidwall/gjson"
@@ -109,7 +110,17 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	}
 	defer resp.Body.Close()
 
+	startRead := time.Now()
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	endRead := time.Now()
+	if collector.ClusterConf.IsEligibleForPrinting(config.ConstLogModOrchestrator, config.LvlDbg) {
+		collector.Logrus.WithField("FROM", "OpenSVC").Printf("OpenSVC Read response took: %s\n", endRead.Sub(startRead))
+		collector.Logrus.WithField("FROM", "OpenSVC").Println("OpenSVC API Response: ", string(body))
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
