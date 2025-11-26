@@ -2010,7 +2010,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 				url, node, ver := mycluster.GetGottyServer(session.ServiceName, session.ServiceContainerName, session.ServiceAgentName)
 				if ver == "v2" {
 					session.ServiceTtyUrl = strings.Replace(url, node, node+".signal18.io", 1)
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
+					// repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service Gotty Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
 					session.Arguments = append(session.Arguments, "--v2")
 					session.Arguments = append(session.Arguments, "--skip-tls-verify")
 					session.Arguments = append(session.Arguments, session.ServiceTtyUrl)
@@ -2019,7 +2019,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 					session.Command = mycluster.GetGottyClientPath()
 				} else {
 					session.ServiceTtyUrl = url
-					repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service TTY Share Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
+					// repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Terminal session OpenSVC Service TTY Share Url  %s on cluster %s", session.ServiceTtyUrl, mycluster.Name)
 					session.Arguments = append(session.Arguments, session.ServiceTtyUrl)
 					session.CmdType = tty.TerminalTtyShare
 					session.Command = mycluster.GetTtyShareClientPath()
