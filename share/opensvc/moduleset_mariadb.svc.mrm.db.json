@@ -4206,6 +4206,14 @@
                     "var_updated": "2025-04-17 13:32:35",
                     "var_name": "db_cnf_log_with_latch",
                     "id": 6349
+                },
+                {
+                    "var_author": "admin Manager",
+                    "var_class": "file",
+                    "var_value": "{\"path\":\"%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%/init/dbjobs_launcher_with_sigterm\",\"mode\":755,\"uid\":\"%%ENV:MYSQL_UID%%\",\"gid\":\"%%ENV:MYSQL_GID%%\",\"fmt\":\"#!/bin/bash\\nTMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%\\n\\ntrap 'sigterm_handler' SIGTERM\\n\\nfunction sigterm_handler() {\\n    kill -TERM 1\\n    sleep 1\\n    exit 0\\n}\\n\\ncleanup_run_dirs() {\\n    local base_dir=\\\"${1:?Error: base directory argument is required.}\\\"\\n\\n    # Ensure directory exists\\n    if [ ! -d \\\"$base_dir\\\" ]; then\\n        echo \\\"Error: Directory '$base_dir' does not exist.\\\"\\n        return 1\\n    fi\\n\\n    # Find and count .run directories\\n    local count\\n    count=$(find \\\"$base_dir\\\" -type d -name \\\"*.run\\\" | wc -l)\\n\\n    if [ \\\"$count\\\" -eq 0 ]; then\\n        echo \\\"No .run directories found under $base_dir.\\\"\\n        return 0\\n    fi\\n\\n    echo \\\"Found $count .run directories under $base_dir.\\\"\\n    echo \\\"Deleting...\\\"\\n\\n    # Delete safely\\n    find \\\"$base_dir\\\" -type d -name \\\"*.run\\\" -print0 | xargs -0 rm -rf --\\n\\n    echo \\\"Done! Deleted $count directories.\\\"\\n    return 0\\n}\\n\\ncleanup_run_dirs \\\"$TMP_DIR\\\"\\n\\nwhile true\\ndo \\n    /bin/bash /docker-entrypoint-initdb.d/dbjobs_new\\n    # give change to trap docker sigterm\\n    for _ in {1..120}; do sleep 0.5 ; done\\ndone\"}",
+                    "var_updated": "2025-11-26 07:15:18",
+                    "var_name": "db_cnf_script_dbjobs_launcher_w_sigterm",
+                    "id": 6356
                 }
             ],
             "ruleset_public": false,
