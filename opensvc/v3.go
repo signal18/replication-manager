@@ -558,7 +558,7 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
-	return body, nil
+	return []byte(resp.Header.Get("Location")), nil
 }
 
 func (collector *Collector) GetGottyServerV3(node, srv, rid string) (string, error) {
