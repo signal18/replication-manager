@@ -156,7 +156,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	resp, err = client.PutObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -382,7 +382,7 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !slices.Contains([]int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}, resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
