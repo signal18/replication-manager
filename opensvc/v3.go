@@ -84,7 +84,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -125,7 +125,7 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -167,7 +167,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -201,7 +201,7 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -298,7 +298,7 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -382,7 +382,7 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if !slices.Contains([]int{http.StatusOK, http.StatusCreated, http.StatusAccepted, http.StatusNoContent}, resp.StatusCode) {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -538,7 +538,7 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if resp.StatusCode != 200 {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -572,7 +572,7 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if !slices.Contains([]int{200, 201}, resp.StatusCode) {
+	if !handleSuccessGroup(resp.StatusCode) {
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
@@ -656,4 +656,8 @@ func (collector *Collector) ReadNodeEventChannel(wg *sync.WaitGroup, client *cli
 			collector.MessageChan <- msg
 		}
 	}
+}
+
+func handleSuccessGroup(statusCode int) bool {
+	return statusCode >= 200 && statusCode < 300
 }
