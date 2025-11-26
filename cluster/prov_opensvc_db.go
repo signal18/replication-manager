@@ -367,8 +367,8 @@ func (server *ServerMonitor) OpenSVCGetJobsContainerSection() map[string]string 
 		svccontainer["run_args"] = server.ClusterGroup.Conf.ProvDBJobsDockerRunArgs
 		svccontainer["volume_mounts"] = `/etc/localtime:/etc/localtime:ro {name}/jobs:/var/lib/replication-manager-jobs:rw {name}/data:/var/lib/mysql:rw {name}/etc/mysql:/etc/mysql:rw {name}/init:/docker-entrypoint-initdb.d:rw {name}/run/mysqld:/run/mysqld:rw {name}-sec/:/credentials`
 		svccontainer["environment"] = `MYSQL_INITDB_SKIP_TZINFO=yes`
-		// svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher" old version without sigterm handling
-		svccontainer["entrypoint"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
+		svccontainer["command"] = "/docker-entrypoint-initdb.d/dbjobs_launcher_with_sigterm"
+		svccontainer["entrypoint"] = "/bin/bash"
 	}
 	return svccontainer
 }
