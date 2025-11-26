@@ -400,12 +400,9 @@ func (collector *Collector) CreateTemplateV3(cluster string, svc string, node st
 	kind := svcparts[1]
 	svcname := svcparts[2]
 
-	_, err := collector.CreateObjectV3(ns, kind, svcname, template)
-	if err != nil {
-		return err
-	}
+	collector.CreateObjectV3(ns, kind, svcname, template)
 
-	_, err = collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
+	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
 	return err
 }
 

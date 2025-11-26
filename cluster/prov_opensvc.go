@@ -187,7 +187,7 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
 	}
 
-	return err
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {
