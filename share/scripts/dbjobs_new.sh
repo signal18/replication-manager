@@ -28,7 +28,7 @@ MYSQL_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql"
 MYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck
 MYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump
 
-SOCAT_BIND=%%ENV:SERVER_IP%%
+SOCAT_BIND="%%ENV:SERVER_IP%%"
 # If socat is ipv6 without [], add them
 if [[ "$SOCAT_BIND" == *:* ]] && [[ "$SOCAT_BIND" != \[*\]* ]]; then
     SOCAT_BIND="[$SOCAT_BIND]"
