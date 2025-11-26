@@ -543,7 +543,7 @@ wait_for_log_file() {
 }
 
 read_log_file() {
-    local logfile="$1"
+    local log_file="$1"
     local checkpoint_file=$2
     local job="$3"
     local last_read=0
@@ -555,7 +555,7 @@ read_log_file() {
     fi
 
 
-    if [ -f "$logfile" ]; then
+    if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
             ((current_line++))
