@@ -37,7 +37,7 @@ func (collector *Collector) GetClientV3() (*clientv3.T, error) {
 	}
 
 	if len(collector.CertsDER) > 0 && collector.CertsDERSecret != "" {
-		cert, key, _, err := collector.GeneratePemFromP12(collector.CertsDER, collector.CertsDERSecret)
+		key, cert, _, err := collector.GeneratePemFromP12(collector.CertsDER, collector.CertsDERSecret)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate PEM files: %w", err)
 		}
