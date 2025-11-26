@@ -13,6 +13,7 @@ import (
 
 	clientv3 "github.com/opensvc/om3/core/client"
 	apiv3 "github.com/opensvc/om3/daemon/api"
+	"github.com/opensvc/om3/util/funcopt"
 	"github.com/signal18/replication-manager/utils/s18log"
 
 	"github.com/tidwall/gjson"
@@ -27,21 +28,27 @@ func (collector *Collector) SetV3() {
 }
 
 func (collector *Collector) GetClientV3() (*clientv3.T, error) {
-	client, err := clientv3.New(
-		clientv3.WithURL(collector.Host+":"+collector.Port),
+	opts := []funcopt.O{
+		clientv3.WithURL(collector.Host + ":" + collector.Port),
 		clientv3.WithInsecureSkipVerify(true),
 		clientv3.WithUsername(collector.RplMgrUser),
 		clientv3.WithPassword(collector.RplMgrPassword),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
 	if len(collector.CertsDER) > 0 && collector.CertsDERSecret != "" {
-		newcli, err := apiv3.NewClientWithResponses(client.URL(), apiv3.WithHTTPClient(collector.GetHttpClient()))
-		if err == nil {
-			client.ClientWithResponses = newcli
+		cert, key, _, err := collector.GeneratePemFromP12(collector.CertsDER, collector.CertsDERSecret)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate PEM files: %w", err)
 		}
+
+		opts = append(opts, clientv3.WithCertificate(cert), clientv3.WithKey(key))
+	}
+
+	client, err := clientv3.New(
+		opts...,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create HTTP client: %w", err)
 	}
 
 	return client, nil

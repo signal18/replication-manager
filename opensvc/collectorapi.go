@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -92,6 +93,7 @@ type HostList []*Host
 
 type Collector struct {
 	ClusterConf                 *config.Config
+	ClusterDir                  string
 	Logrus                      *log.Logger
 	Host                        string
 	Port                        string
@@ -203,6 +205,68 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 		PrivateKey:  key,
 		Leaf:        cert,
 	}, nil
+}
+
+func (collector *Collector) GeneratePemFromP12(p12Data []byte, password string) (string, string, string, error) {
+	// Get filename from path
+	prefix := filepath.Base(collector.ClusterConf.ProvOpensvcP12Certificate)
+
+	// Decode PKCS#12
+	privateKey, cert, caCerts, err := pkcs12.DecodeChain(p12Data, password)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write PRIVATE KEY
+	//
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	keyPath := fmt.Sprintf("%s/.%s-key.pem", collector.ClusterDir, prefix)
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	}), 0600); err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write CERTIFICATE
+	//
+	certPath := fmt.Sprintf("%s/.%s-cert.pem", collector.ClusterDir, prefix)
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Raw,
+	}), 0644); err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write CA CHAIN (if any)
+	//
+	chainPath := ""
+	if len(caCerts) > 0 {
+		chainPath = fmt.Sprintf("%s/.%s-chain.pem", collector.ClusterDir, prefix)
+		f, err := os.Create(chainPath)
+		if err != nil {
+			return "", "", "", err
+		}
+		defer f.Close()
+
+		for _, ca := range caCerts {
+			if err := pem.Encode(f, &pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: ca.Raw,
+			}); err != nil {
+				return "", "", "", err
+			}
+		}
+	}
+
+	return keyPath, certPath, chainPath, nil
 }
 
 func (collector *Collector) FromPemBytes(bytes []byte, password string) (tls.Certificate, error) {
