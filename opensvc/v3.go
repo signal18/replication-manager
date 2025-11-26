@@ -156,7 +156,7 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PutObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
