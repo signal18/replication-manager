@@ -1,5 +1,5 @@
 #!/bin/bash
-# This script is given as sample and will be overwrite on upgrade
+# This script is given as sample and might be overwritten on upgrade
 
 # set exit on error
 set -e

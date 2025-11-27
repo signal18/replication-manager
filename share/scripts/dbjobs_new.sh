@@ -1,4 +1,7 @@
 #!/bin/bash
+# This script is given as sample and might be overwritten on upgrade
+# The real script is auto generated based on compliance json 
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
 
@@ -25,8 +28,13 @@ MYSQL_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql"
 MYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck
 MYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump
 
+SOCAT_BIND="%%ENV:SERVER_IP%%"
+# If socat is ipv6 without [], add them
+if [[ "$SOCAT_BIND" == *:* ]] && [[ "$SOCAT_BIND" != \[*\]* ]]; then
+    SOCAT_BIND="[$SOCAT_BIND]"
+fi
+
 SST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%
-SOCAT_BIND=%%ENV:SERVER_IP%%
 MARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup
 XTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup
 INNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex
@@ -535,22 +543,25 @@ wait_for_log_file() {
 }
 
 read_log_file() {
-    local logfile="$1"
+    local log_file="$1"
     local checkpoint_file=$2
     local job="$3"
     local last_read=0
     local current_line=$((last_read + 1))
+    local num_lines=$(wc -l < "$log_file")
 
     if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
         current_line=$((last_read + 1))
     fi
 
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
 
-    if [ -f "$logfile" ]; then
+    if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
 
             if [[ ! -d "$run_lockdir" ]]; then
                 send_lines_to_api "Run file has been deleted. Processing remaining lines.\n" "$job" "$LVL_DEBUG"
@@ -562,7 +573,9 @@ read_log_file() {
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
+            ((current_line++))
 
         done < <(sed -n "${current_line},\$p" "$log_file")
 
@@ -630,18 +643,29 @@ process_log_file() {
         read_log_file "$log_file" "$checkpoint_file" "$job"
     done
 
+    if [[ -s "$checkpoint_file" ]]; then
+        last_read=$(cat "$checkpoint_file")
+        current_line=$((last_read + 1))
+    fi
+
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
+
     # If the run file was deleted, continue processing until the end of the file
     if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
+            
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
-        done < <(tail -n +"$((current_line - last_line))" "$log_file")
+            ((current_line++))
+        done < <(sed -n "${current_line},\$p" "$log_file")
     fi
 
     if [[ -n "$batch" ]]; then
@@ -834,7 +858,7 @@ jobsCheck() {
     fi
 
     echo "Sending new script." >>"$LOG_DIR/jobs-check.process.out"
-    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND 2>>"$LOG_DIR/jobs-check.process.out"
+    socat -u FILE:"${BASH_SOURCE[0]}",rdonly TCP:$REPLICATION_MANAGER_HOST:$RCV_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 2>>"$LOG_DIR/jobs-check.process.out"
 
     if [ $? -ne 0 ]; then
         echo "Failed to send the script via socat." >>"$LOG_DIR/jobs-check.process.out"
@@ -888,7 +912,7 @@ jobsUpgrade() {
 
     # Open receiver port to get the new script to a temporary file
     TEMP_FILE="${BASH_SOURCE[0]}.tmp"
-    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
+    socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 - > "$TEMP_FILE" 2>>"$LOG_DIR/jobs-upgrade.process.out" &
     SOCAT_PID=$!
 
     # Request the upgrade
@@ -909,7 +933,10 @@ jobsUpgrade() {
             chmod +x "$TEMP_FILE"
             cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
 
-            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"        
+            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"
+
+            remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+            trap - EXIT
 
             # Re-execute with the new version
             exec "${BASH_SOURCE[0]}" "$@"
@@ -1020,7 +1047,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
             ;;
@@ -1030,7 +1057,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | mbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | mbstream -x -C $BACKUPDIR
             # mbstream -p, --parallel
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/reseed.out"
             partialRestore
@@ -1041,7 +1068,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $XTRABACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;
@@ -1051,7 +1078,7 @@ for job in "${JOBS[@]}"; do
             socatCleaner
             echo "Waiting backup." >"$LOG_DIR/$job.out"
             pauseJob "$job"
-            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND STDOUT | xbstream -x -C $BACKUPDIR
+            socat -u TCP-LISTEN:$SST_RECEIVER_PORT,reuseaddr,bind=$SOCAT_BIND,ipv6only=0 STDOUT | xbstream -x -C $BACKUPDIR
             $MARIADB_BACKUP --prepare --export --target-dir=$BACKUPDIR 2>"$LOG_DIR/flash.out"
             partialRestore
             ;;

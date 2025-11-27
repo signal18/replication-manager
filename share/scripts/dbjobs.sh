@@ -1,4 +1,7 @@
 #!/bin/bash
+# This is a sample of an old script!!!
+# See dbjobs_new.sh for the latest sample script used to process dbjobs
+
 USER=root
 PASSWORD=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_PASSWORD%%
 ERROLOG=/var/lib/mysql/.system/logs/errors.log

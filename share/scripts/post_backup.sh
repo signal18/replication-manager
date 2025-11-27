@@ -1,10 +1,10 @@
 #!/bin/bash
+# This script is given as sample and might be overwritten on upgrade.
 #
-# Post-backup script
+# Post-backup script (parameters will be passed by Replication Manager)
 # Usage: post_backup.sh <clustername> <hostname> <port> <backup-path>
+# Example: post_backup.sh mycluster db1.example.com 3306 /var/lib/replication-manager/backups/mycluster/db1_3306/mysqldump.sql.gz
 #
-# Example:
-#   post_backup.sh mycluster db1.example.com 3306 /var/lib/replication-manager/backups/mycluster/db1_3306/mysqldump.sql.gz
 
 CLUSTER_NAME="$1"
 HOSTNAME="$2"

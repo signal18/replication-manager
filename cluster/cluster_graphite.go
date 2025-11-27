@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/share"
 )
 
@@ -20,11 +21,13 @@ type GraphiteFilterList struct {
 }
 
 type ClusterGraphite struct {
-	cl           *Cluster `json:"-"`
+	cl           *Cluster           `json:"-"`
+	gc           *graphite.Graphite `json:"-"`
 	UseWhitelist bool
 	UseBlacklist bool
 	Whitelist    []*regexp.Regexp
 	Blacklist    []*regexp.Regexp
+	lock         sync.Mutex
 }
 
 func (cluster *Cluster) NewClusterGraphite() {
@@ -88,6 +91,44 @@ func (cluster *Cluster) ReloadGraphiteFilterList() error {
 		return err
 	}
 	err = cluster.ClusterGraphite.PopulateBlacklistRegexp()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (cg *ClusterGraphite) SetGraphiteConnection(gc *graphite.Graphite) {
+	cg.gc = gc
+}
+
+func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
+	if cg.gc != nil {
+		return cg.gc, nil
+	}
+	graph, err := graphite.NewGraphite(cg.cl.Conf.GraphiteCarbonHost, cg.cl.Conf.GraphiteCarbonPort)
+	if err != nil {
+		return nil, err
+	}
+	cg.SetGraphiteConnection(graph)
+	return cg.gc, nil
+}
+
+func (cg *ClusterGraphite) SendMetrics(metrics []graphite.Metric) error {
+	cg.lock.Lock()
+	defer cg.lock.Unlock()
+
+	graph, err := cg.GetGraphiteConnection()
+	if err != nil {
+		return err
+	}
+
+	err = graph.Connect() // Ensure connection is established
+	if err != nil {
+		return err
+	}
+
+	err = graph.SendMetrics(metrics)
 	if err != nil {
 		return err
 	}

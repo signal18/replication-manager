@@ -64,6 +64,7 @@ func (pc *PeerClient) DoRequest(method, endpoint string, body io.Reader) (int, [
 	for key, value := range pc.headers {
 		req.Header.Set(key, value)
 	}
+	req.Close = true
 
 	resp, err := pc.client.Do(req)
 	if err != nil {

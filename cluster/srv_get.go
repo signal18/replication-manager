@@ -180,6 +180,11 @@ func (server *ServerMonitor) GetBindAddress() string {
 	if server.ClusterGroup.Conf.ProvOrchestrator == config.ConstOrchestratorSlapOS {
 		return server.Host
 	}
+
+	if server.ClusterGroup.Conf.ProvUseIpv6 {
+		return "[::]"
+	}
+
 	return "0.0.0.0"
 }
 
