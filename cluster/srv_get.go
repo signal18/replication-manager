@@ -181,8 +181,8 @@ func (server *ServerMonitor) GetBindAddress() string {
 		return server.Host
 	}
 
-	if server.ClusterGroup.Conf.ProvUseIpv6 {
-		return "[::]"
+	if server.ClusterGroup.Conf.DbServersBindAddr != "" {
+		return server.ClusterGroup.Conf.DbServersBindAddr
 	}
 
 	return "0.0.0.0"

@@ -447,6 +447,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.IgnoreSrvRO, "db-servers-ignored-readonly", "", "Database list of hosts not changing read only status")
 	flags.StringVar(&conf.BackupServers, "db-servers-backup-hosts", "", "Database list of hosts to backup when set can backup a slave")
 	flags.StringVar(&conf.DbServersChangeStateScript, "db-servers-state-change-script", "", "Database state change script")
+	flags.StringVar(&conf.DbServersBindAddr, "db-servers-bind-addr", "", "Database bind address to use for jobs like SST, backup")
+
 	flags.Int64Var(&conf.SwitchWaitKill, "switchover-wait-kill", 5000, "Switchover wait this many milliseconds before killing threads on demoted master")
 	flags.IntVar(&conf.SwitchWaitWrite, "switchover-wait-write-query", 10, "Switchover is canceled if a write query is running for this time")
 	flags.Int64Var(&conf.SwitchWaitTrx, "switchover-wait-trx", 10, "Switchover is cancel after this timeout in second if can't aquire FTWRL")
@@ -1074,8 +1076,6 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvDBCompliance, "prov-db-compliance", "", "Path of compliance file for DB configuration")
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
-
-		flags.BoolVar(&conf.ProvUseIpv6, "prov-use-ipv6", false, "Use IPv6 addresses for provisioned services")
 
 		if WithOpenSVC == "ON" {
 
