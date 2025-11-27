@@ -548,17 +548,20 @@ read_log_file() {
     local job="$3"
     local last_read=0
     local current_line=$((last_read + 1))
+    local num_lines=$(wc -l < "$log_file")
 
     if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
         current_line=$((last_read + 1))
     fi
 
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
 
     if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
 
             if [[ ! -d "$run_lockdir" ]]; then
                 send_lines_to_api "Run file has been deleted. Processing remaining lines.\n" "$job" "$LVL_DEBUG"
@@ -570,7 +573,9 @@ read_log_file() {
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
+            ((current_line++))
 
         done < <(sed -n "${current_line},\$p" "$log_file")
 
@@ -638,18 +643,29 @@ process_log_file() {
         read_log_file "$log_file" "$checkpoint_file" "$job"
     done
 
+    if [[ -s "$checkpoint_file" ]]; then
+        last_read=$(cat "$checkpoint_file")
+        current_line=$((last_read + 1))
+    fi
+
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
+
     # If the run file was deleted, continue processing until the end of the file
     if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
+            
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
-        done < <(tail -n +"$((current_line - last_line))" "$log_file")
+            ((current_line++))
+        done < <(sed -n "${current_line},\$p" "$log_file")
     fi
 
     if [[ -n "$batch" ]]; then
@@ -917,7 +933,10 @@ jobsUpgrade() {
             chmod +x "$TEMP_FILE"
             cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
 
-            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"        
+            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"
+
+            remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+            trap - EXIT
 
             # Re-execute with the new version
             exec "${BASH_SOURCE[0]}" "$@"
