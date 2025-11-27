@@ -2,6 +2,10 @@
 # This script is given as sample and might be overwritten on upgrade
 # The real script is auto generated based on compliance json 
 
+# %%ENV:GENLINE%%
+
+export SOCAT_OPENSSL_KTLS=0
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
 
