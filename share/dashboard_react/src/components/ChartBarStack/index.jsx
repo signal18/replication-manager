@@ -80,7 +80,7 @@ function ChartBarStack({
       const [_, start, end, stepSize] = meta.split(',');
 
       // Process values with proper handling of None values
-      const processedValues = values.split(',').map((v, i) => {
+      const processedValues = values?.split(',').map((v, i) => {
         const timestamp = (parseInt(start) + i * parseInt(stepSize)) * 1000;
         const value = v === 'None' ? 0 : parseFloat(v) || 0;
         return {
