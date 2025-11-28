@@ -55,14 +55,39 @@ function ChartLatchTracing({
     return value.toFixed(0);
   };
 
-  const fetchMetricData = async (metricPath) => {
+  const parseMetricValue = (metricPath, start, stepSize, values) => {
+    const returnedValues = {
+      path : metricPath,
+      data : []
+    }
+    if (!values) return returnedValues;
+
+    // Process values with proper handling of None values
+    const processedValues = values?.split(',').map((v, i) => {
+      const timestamp = (parseInt(start) + i * parseInt(stepSize)) * 1000;
+      const value = v === 'None' ? 0 : parseFloat(v) || 0;
+      return {
+        date: new Date(timestamp),
+        value: value
+      };
+    });
+
+    returnedValues.data = processedValues;
+
+    return returnedValues;
+  }
+
+  const fetchMetricData = async (metricPaths) => {
     try {
       const now = Math.floor(Date.now() / 1000);
       const step = context.step() / 1000;
       const size = context.size();
       const from = now - (size * step);
       const until = now;
-      const url = `/graphite/render?format=raw&target=${encodeURIComponent(`alias(${metricPath},'')`)}&from=${from}&until=${until}`;
+      const urlprefix = `/graphite/render?format=raw`
+      const urlsuffix = `&from=${from}&until=${until}`;
+      const urltargets = metricPaths.map((path, index) => `&target=${encodeURIComponent(`alias(${path},'${index}')`)}`).join('');
+      const url = `${urlprefix}${urltargets}${urlsuffix}`;
 
       const response = await fetch(url, {
         signal: abortControllerRef.current.signal
@@ -71,28 +96,24 @@ function ChartLatchTracing({
       if (!response.ok) throw new Error(`HTTP error ${response.status}`);
 
       const text = await response.text();
-      const [meta, values] = text.split('|');
-      const [_, start, end, stepSize] = meta.split(',');
 
-      // Process values with proper handling of None values
-      const processedValues = values?.split(',').map((v, i) => {
-        const timestamp = (parseInt(start) + i * parseInt(stepSize)) * 1000;
-        const value = v === 'None' ? 0 : parseFloat(v) || 0;
-        return {
-          date: new Date(timestamp),
-          value: value
-        };
-      });
+      return text.split(/\r?\n/).map(line => {
+        if (line.trim() === '') return;
+        const [meta, values] = line.split('|');
+        const [mIndex, start, end, stepSize] = meta.split(',');
+        // Find the corresponding metric path for this line
+        if (mIndex == "" || !metricPaths[mIndex]) return null;
+        const metricData = parseMetricValue(metricPaths[mIndex], start, stepSize, values);
+        if (metricData) {
+          return metricData;
+        }
+      }).filter(Boolean);
 
-      return {
-        path: metricPath,
-        data: processedValues
-      };
     } catch (error) {
       if (error.name !== 'AbortError') {
         console.error('Fetch error:', error);
       }
-      return { path: metricPath, data: [] };
+      return [];
     }
   };
 
@@ -106,17 +127,12 @@ function ChartLatchTracing({
     dataFetchInProgress.current = true;
 
     try {
-      const data = await Promise.all(
-        metricPaths.map(path => fetchMetricData(path))
-      );
+      const data = await fetchMetricData(metricPaths);
 
       const dataMap = data.reduce((acc, curr) => {
         acc[curr.path] = curr;
         return acc;
       }, {});
-
-      // Only update if data has actually changed
-      const newDataTimestamp = Date.now();
 
       // Don't update state if component is unmounting or not visible
       if (!chartRef.current || !isVisible) {
@@ -124,7 +140,7 @@ function ChartLatchTracing({
         return;
       }
 
-      dataTimestampRef.current = newDataTimestamp;
+      dataTimestampRef.current = Date.now();
 
       // Use a single atomic update for state changes
       setMetricsData(prevData => {

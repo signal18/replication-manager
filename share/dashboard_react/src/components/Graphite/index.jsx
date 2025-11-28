@@ -12,6 +12,8 @@ function Graphite({
   target,
   target2,
   className,
+  duration,
+  height = 256,
   maxExtent = 1000
 }) {
   const { theme } = useTheme();
@@ -54,23 +56,24 @@ function Graphite({
       .style('border-radius', '8px')
       .style('overflow', 'hidden');
 
-    // Render the chart
+      // Render the chart
     const horizons = div
       .selectAll('.horizon')
       .data(data2 ? [data, data2] : [data])
       .enter()
       .append('div')
       .attr('class', 'horizon')
-      .style('background-color', themeColors.panelBackground)
-      .call(context.horizon().extent([0, maxExtent]).height(256));
+      .style('background-color', themeColors.panelBackground);
 
     // Create title elements manually to ensure correct values
     horizons.each(function(d, i) {
-      d3.select(this)
+      context.axis().render(d3.select(this)
         .append('div')
         .attr('class', 'title')
-        .text(i === 0 ? title || 'Metric 1' : title2 || 'Metric 2');
+        .text(i === 0 ? title || 'Metric 1' : title2 || 'Metric 2'));
     });
+
+    context.horizon().extent([0, maxExtent]).height(height).render(horizons);
 
     // Create a tooltip container for displaying values at mouse position
     const tooltip = div.append('div')
@@ -99,19 +102,13 @@ function Graphite({
       .text((d, i) => (i === 0 ? title : title2) || `Metric ${i+1}: -`);
 
     // Add axis
-    div.append('div')
-      .attr('class', 'axis')
-      .style('background-color', themeColors.panelBackground)
-      .call(context.axis().orient('top'));
+    context.axis().orient('top').render(div.append('div').attr('class', 'axis').style('background-color', themeColors.panelBackground));
 
     // Add rule for mouse tracking
-    div.append('div')
-      .attr('class', 'rule')
-      .call(context.rule());
+    context.rule().render(div.append('div').attr('class', 'rule'));
 
     // Apply text color to all text elements
-    div.selectAll('text')
-      .style('fill', themeColors.text);
+    div.selectAll('text').style('fill', themeColors.text);
 
     // On focus (mouseover), update the tooltip display
     context.on('focus', function(i) {
@@ -152,7 +149,7 @@ function Graphite({
       if (!mountedRef.current) return;
       // Remove the focus handler
       context.stop();
-      context.on('focus', null);
+      // context.on('focus', null);
       // Clear the D3 selection
       div.selectAll('*').remove();
       // Clean up references

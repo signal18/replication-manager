@@ -81,8 +81,32 @@ function ChartMultiMetric({
     }
   };
 
+  const parseMetricValue = (metricPath, start, stepSize, values) => {
+    const returnedValues = {
+      path: metricPath,
+      displayName: getDisplayName(metricPath),
+      data: []
+    }
+
+    if (!values) return returnedValues;
+
+    // Process values with proper handling of None values
+    const processedValues = values?.split(',').map((v, i) => {
+      const timestamp = (parseInt(start) + i * parseInt(stepSize)) * 1000;
+      const value = v === 'None' ? 0 : parseFloat(v) || 0;
+      return {
+        date: new Date(timestamp),
+        value: value
+      };
+    });
+
+    returnedValues.data = processedValues;
+
+    return returnedValues;
+  }
+
   // Function to directly fetch data from the Graphite API
-  const fetchMetricData = async (metricPath) => {
+  const fetchMetricData = async (metricPaths) => {
     try {
       const now = Math.floor(Date.now() / 1000);
       const step = context.step() / 1000; // Convert to seconds
@@ -91,10 +115,10 @@ function ChartMultiMetric({
       const until = now;
 
       // Encode the metric path for the URL
-      const encodedTarget = encodeURIComponent(`alias(${metricPath},'')`);
-
-      // Create the API URL similar to your working examples
-      const url = `/graphite/render?format=raw&target=${encodedTarget}&from=${from}&until=${until}`;
+      const urlprefix = `/graphite/render?format=raw`
+      const urlsuffix = `&from=${from}&until=${until}`;
+      const urltargets = metricPaths.map((path, index) => `&target=${encodeURIComponent(`alias(${path},'${index}')`)}`).join('');
+      const url = `${urlprefix}${urltargets}${urlsuffix}`;
 
       const response = await fetch(url, {
         signal: abortControllerRef.current.signal
@@ -106,49 +130,26 @@ function ChartMultiMetric({
 
       const text = await response.text();
 
-      // Parse the response - format is expected to be something like:
-      // ,startTime,endTime,step|value1,value2,value3,...
-      const parts = text.split('|');
-      if (parts.length !== 2) {
-        console.error(`Unexpected response format for ${metricPath}`);
-        return null;
-      }
-
-      const timeInfo = parts[0].split(',');
-      if (timeInfo.length !== 4) {
-        console.error(`Unexpected time format for ${metricPath}`);
-        return null;
-      }
-
-      const startTime = parseInt(timeInfo[1]) * 1000; // Convert to ms
-      const endTime = parseInt(timeInfo[2]) * 1000;   // Convert to ms
-      const stepTime = parseInt(timeInfo[3]) * 1000;  // Convert to ms
-
-      const values = parts[1].split(',');
-
-      // Create data points
-      const data = values.map((value, i) => {
-        const val = value === 'None' ? 0 : parseFloat(value) || 0;
-        return {
-          date: new Date(startTime + (i * stepTime)),
-          value: val
-        };
-      }).filter(d => !isNaN(d.value));
-
-      return {
-        path: metricPath,
-        displayName: getDisplayName(metricPath),
-        data
-      };
+      return text.split(/\r?\n/).map(line => {
+        if (line.trim() === '') return;
+        const [meta, values] = line.split('|');
+        const [mIndex, start, end, stepSize] = meta.split(',');
+        // Find the corresponding metric path for this line
+        if (mIndex == "" || !metricPaths[mIndex]) return null;
+        const metricData = parseMetricValue(metricPaths[mIndex], start, stepSize, values);
+        if (metricData) {
+          return metricData;
+        }
+      }).filter(item => item !== null);
     } catch (error) {
       if (error.name !== 'AbortError') {
-        console.error(`Error fetching data for ${metricPath}:`, error);
+        console.error(`Error fetching data for ${metricPaths.join(', ')}:`, error);
       }
-      return {
+      return metricPaths.map(metricPath => ({
         path: metricPath,
         displayName: getDisplayName(metricPath),
         data: []
-      };
+      }));
     }
   };
 
@@ -162,9 +163,7 @@ function ChartMultiMetric({
     dataFetchInProgress.current = true;
 
     try {
-      const data = await Promise.all(
-        metricPaths.map(path => fetchMetricData(path))
-      );
+      const data = await fetchMetricData(metricPaths);
 
       const dataMap = data.reduce((acc, curr) => {
         if (curr) acc[curr.path] = curr;
@@ -618,16 +617,16 @@ function ChartMultiMetric({
         backgroundColor: themeColors.background
       }}
     >
-    <div
-  ref={chartRef}
-  className={`${styles.chartContainer} ${theme === 'dark' ? styles.darkChartContainer : ''}`}
-  style={{
-    height: `${height}px`,
-    position: 'relative',  // Ensure this is relative
-    overflow: 'hidden',    // Prevent any overflow from affecting layout
-    backgroundColor: themeColors.background,
-    borderRadius: '8px'
-  }}
+      <div
+        ref={chartRef}
+        className={`${styles.chartContainer} ${theme === 'dark' ? styles.darkChartContainer : ''}`}
+        style={{
+          height: `${height}px`,
+          position: 'relative',  // Ensure this is relative
+          overflow: 'hidden',    // Prevent any overflow from affecting layout
+          backgroundColor: themeColors.background,
+          borderRadius: '8px'
+        }}
       />
     </Box>
   );

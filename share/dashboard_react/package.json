@@ -24,6 +24,8 @@
     "@zag-js/tree-view": "^1.15.0",
     "axios": "^1.9.0",
     "cubism": "^1.6.0",
+    "cubism-es": "^1.1.2",
+    "d3": "^5.16.0",
     "framer-motion": "^11.18.2",
     "lodash": "^4.17.21",
     "moment": "^2.30.1",
