@@ -519,7 +519,7 @@ check_jobs_table() {
 ################################
 
 # Function to create a manual lock file
-create_lock_file() {
+create_log_lock_file() {
     local lock_file="$1"
     local job="$2"
     if [ -e "$lock_file" ]; then
@@ -531,7 +531,7 @@ create_lock_file() {
 }
 
 # Function to remove a manual lock file
-remove_lock_file() {
+remove_log_lock_file() {
     local lock_file="$1"
     if [ -e "$lock_file" ]; then
         rm -f "$lock_file"
@@ -540,9 +540,30 @@ remove_lock_file() {
 
 # Function to remove a run directory lock file
 remove_run_lockdir() {
-    local run_lockdir="$1"
+    local job="$1"
+    local sleeptime=$2
+    local run_lockdir="$LOG_DIR/$job.run"
+    local lock_file="$LOCK_DIR/${job}_lockfile"
+
+    local wait=0
+    local max_wait=10  # Maximum wait time in seconds
+
+    # Wait for the lock file before removing the run lockdir
+    if [ -e "$lock_file" ]; then
+        while [ -e "$lock_file" ] && [ $wait -lt $max_wait ]; do
+            sleep 1
+            ((wait++))
+        done
+    fi
+
+    # Remove the run lockdir if it exists
     if [ -d "$run_lockdir" ]; then
         rmdir "$run_lockdir"
+    fi
+
+    # Give some time for log processing to complete
+    if [ -n "$sleeptime" ]; then
+        sleep "$sleeptime"
     fi
 }
 
@@ -655,20 +676,20 @@ process_log_file() {
     local run_lockdir="$LOG_DIR/$job.run"
     local lock_file="$LOCK_DIR/${job}_lockfile"
 
-    if ! create_lock_file "$lock_file" "$job"; then
+    if ! create_log_lock_file "$lock_file" "$job"; then
         return
     fi
 
     # Ensure lock file is removed on script exit. Using trap to handle unexpected exit. This will not interfere with other traps since it's a separate subshell.
-    trap 'remove_lock_file "$lock_file"' EXIT
+    trap 'remove_log_lock_file "$lock_file"' EXIT
 
     if ! wait_for_run_lockdir "$run_lockdir" "$job"; then
-        remove_lock_file "$lock_file"
+        remove_log_lock_file "$lock_file"
         return
     fi
 
     if ! wait_for_log_file "$log_file" "$job"; then
-        remove_lock_file "$lock_file"
+        remove_log_lock_file "$lock_file"
         return
     fi
 
@@ -721,7 +742,7 @@ process_log_file() {
     send_lines_to_api "Removing checkpoint file.\n" "$job" "$LVL_DEBUG"
     rm -f "$checkpoint_file"
 
-    remove_lock_file "$lock_file"
+    remove_log_lock_file "$lock_file"
 }
 
 #################################
@@ -869,7 +890,7 @@ jobsCheck() {
     mkdir -p "$LOG_DIR/jobs-check.run"
 
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-    trap 'remove_run_lockdir "$LOG_DIR/jobs-check.run"' EXIT
+    trap 'remove_run_lockdir "jobs-check"' EXIT
 
     check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-check"
     checkresult=$?
@@ -880,7 +901,7 @@ jobsCheck() {
             echo "No need to run jobs-check." >"$LOG_DIR/jobs-check.process.out"
         fi
 
-        remove_run_lockdir "$LOG_DIR/jobs-check.run"
+        remove_run_lockdir "jobs-check" 1
         trap - EXIT
         return $checkresult
     fi
@@ -898,7 +919,7 @@ jobsCheck() {
 
     if [ "$checkresult" != "0" ] || [ "$RCV_PORT" == "error" ]; then
         echo "Failed to get a valid receiver port from the monitoring server." >>"$LOG_DIR/jobs-check.process.out"
-        sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+        remove_run_lockdir "jobs-check" 1
         trap - EXIT
         return 2 # error
     fi
@@ -912,7 +933,8 @@ jobsCheck() {
         echo "Script sent successfully via socat." >>"$LOG_DIR/jobs-check.process.out"
     fi
 
-    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+    remove_run_lockdir "jobs-check" 5
+
     trap - EXIT
     return 0
 }
@@ -932,7 +954,7 @@ jobsUpgrade() {
 
     mkdir -p "$LOG_DIR/jobs-upgrade.run"
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-    trap 'remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"' EXIT
+    trap 'remove_run_lockdir "jobs-upgrade"' EXIT
 
     check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-upgrade"
 
@@ -944,7 +966,7 @@ jobsUpgrade() {
             echo "No need to run jobs-upgrade." >"$LOG_DIR/jobs-upgrade.process.out"
         fi
 
-        remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+        remove_run_lockdir "jobs-upgrade" 1
         trap - EXIT
         return
     fi
@@ -981,18 +1003,18 @@ jobsUpgrade() {
 
             send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"
 
-            remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+            remove_run_lockdir "jobs-upgrade" 5
             trap - EXIT
 
             # Re-execute with the new version
-            exec "${BASH_SOURCE[0]}" "$@"
+            exec bash "${BASH_SOURCE[0]}" "$@"
         fi
     else
         send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
         rm -f "$TEMP_FILE"
     fi
 
-    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-upgrade.run" &
+    remove_run_lockdir "jobs-upgrade" 1
     trap - EXIT
 }
 
@@ -1080,7 +1102,7 @@ for job in "${JOBS[@]}"; do
         mkdir -p "$LOG_DIR/$job.run"
         process_log_file "$job" &
         # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-        trap 'remove_run_lockdir "$LOG_DIR/$job.run"' EXIT
+        trap 'remove_run_lockdir "$job"' EXIT
         echo "Processing $job"
         
         #purge de past
@@ -1167,7 +1189,7 @@ for job in "${JOBS[@]}"; do
             ;;
         esac
         doneJob "$job"
-        sleep 1 && remove_run_lockdir "$LOG_DIR/$job.run" &
+        remove_run_lockdir "$job" 
         trap - EXIT
     fi
 done
