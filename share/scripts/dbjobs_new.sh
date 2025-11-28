@@ -4,8 +4,6 @@
 
 # %%ENV:GENLINE%%
 
-# export SOCAT_OPENSSL_KTLS=0
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
 
@@ -148,8 +146,12 @@ send_encrypted_api_request() {
         api_port=80
     fi
     
-    # Encrypt the data
-    local encrypted_data=$(encrypt_data "$raw_data" "$password")
+    # Encrypt the data if provided
+    local encrypted_data
+    if [[ -n $raw_data ]]; then
+        encrypted_data=$(encrypt_data "$raw_data" "$password")
+    fi
+    
     
     # Choose protocol based on port (443 and 10005 use HTTPS, others use HTTP)
     if [ "$api_port" = "443" ] || [ "$api_port" = "10005" ]; then
@@ -228,6 +230,38 @@ send_to_api_with_retry() {
     return 0
 }
 
+# Function to check if a specific task is needed for a server
+check_log_level() {
+    local host_port="$1"
+    local cluster="$2"
+    local taskname="$5"
+    local log_level="$6"
+
+    local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response"  | grep HTTP | head -1 | sed -E 's/.*HTTP\/[0-9.]+ ([0-9]{3}).*/\1/')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+    
+    # echo "$http_code: $body" >> "$LOG_DIR/$taskname.process.out"
+
+    # Determine output
+    if [ "$http_code" = "200" ] && [ "$body" = "true" ]; then
+        return 0
+    elif [ "$http_code" = "500" ] && [ "$body" = "false" ]; then
+        return 1
+    else
+        return 2
+    fi
+}
+
 # Backward compatible function for MySQL replication manager logs
 send_lines_to_api() {
     local lines="$1"
@@ -235,6 +269,14 @@ send_lines_to_api() {
     local level="${3:-$LVL_DEBUG}"
     local address="${REPLICATION_MANAGER_URL}"
     local max_retries=3
+
+    check_log_level "$address" "$CLUSTER_NAME" "$job" "$level"
+    local log_level_status=$?
+
+    # Skip sending if log level is not enabled
+    if [ $log_level_status -eq 1 ]; then
+        return
+    fi
 
     local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
     local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
