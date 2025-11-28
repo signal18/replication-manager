@@ -95,15 +95,7 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 
 func (server *ServerMonitor) SendDatabaseStats() error {
 	metrics := server.GetDatabaseMetrics()
-	graph, err := graphite.NewGraphite(server.ClusterGroup.Conf.GraphiteCarbonHost, server.ClusterGroup.Conf.GraphiteCarbonPort)
-
-	if err != nil {
-		return err
-	}
-	graph.SendMetrics(metrics)
-
-	graph.Disconnect()
-
+	server.GetCluster().SendMetrics(metrics)
 	return nil
 }
 

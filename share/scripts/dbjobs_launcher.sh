@@ -1,4 +1,7 @@
 #!/bin/bash
+# This is an old script and replaced by dbjobs_launcher_with_sigterm
+# This script is given as sample and might be overwritten on upgrade
+
 TMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%
 
 cleanup_run_dirs() {

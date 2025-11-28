@@ -34,6 +34,8 @@ func (repman *ReplicationManager) PeerLogin(parsedPeerURL *url.URL, user userCre
 		return http.StatusInternalServerError, []byte("Failed to create request: " + err.Error())
 	}
 
+	req.Close = true
+
 	// Send the request to GoApp 2
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -58,6 +60,7 @@ func (repman *ReplicationManager) PeerRequestForwarder(parsedPeerURL *url.URL, r
 
 	// Copy Content-Type and other headers from the original request
 	req.Header = r.Header.Clone()
+	req.Close = true
 
 	// Send the request to GoApp 2
 	client := &http.Client{}

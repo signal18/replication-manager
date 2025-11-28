@@ -82,6 +82,7 @@ function Graphs({ selectedCluster }) {
           }}
         />
       </Flex>
+      { context && (
       <Flex className={styles.graphs}>
         <Graphite
           chartRef={qpsRef}
@@ -195,6 +196,7 @@ function Graphs({ selectedCluster }) {
        />
 
       </Flex>
+      )}
     </Flex>
   )
 }

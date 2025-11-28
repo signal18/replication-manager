@@ -5542,6 +5542,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/jobs-log-level/{task}/{level}": {
+            "get": {
+                "description": "Checks if a specific log level is enabled for a given task in the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterLogging"
+                ],
+                "summary": "Check Cluster Log Level",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "xtrabackup",
+                            "mariabackup",
+                            "errorlog",
+                            "slowquery",
+                            "sqlerrorlog",
+                            "auditlog",
+                            "zfssnapback",
+                            "optimize",
+                            "reseedxtrabackup",
+                            "reseedmariabackup",
+                            "reseedmysqldump",
+                            "flashbackxtrabackup",
+                            "flashbackmariadbackup",
+                            "flashbackmysqldump",
+                            "stop",
+                            "restart",
+                            "start",
+                            "printdefault-current",
+                            "printdefault-dummy",
+                            "jobs-check",
+                            "jobs-upgrade"
+                        ],
+                        "type": "string",
+                        "description": "Task Name",
+                        "name": "task",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "ERROR",
+                            "WARN",
+                            "INFO",
+                            "DEBUG"
+                        ],
+                        "type": "string",
+                        "description": "Log Level",
+                        "name": "level",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "true\" or \"false",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/need-rolling-reprov": {
             "get": {
                 "description": "Checks if a specified cluster needs a rolling reprovision.",
@@ -20847,6 +20931,9 @@ const docTemplate = `{
                 "dbServersBackupHosts": {
                     "type": "string"
                 },
+                "dbServersBindAddress": {
+                    "type": "string"
+                },
                 "dbServersConnectTimeout": {
                     "type": "integer"
                 },
@@ -21262,15 +21349,6 @@ const docTemplate = `{
                 "logExternalScriptLevel": {
                     "type": "integer"
                 },
-                "logLevelDatabaseAudit": {
-                    "type": "integer"
-                },
-                "logLevelDatabaseErrors": {
-                    "type": "integer"
-                },
-                "logLevelDatabaseSlowquery": {
-                    "type": "integer"
-                },
                 "logFile": {
                     "type": "string"
                 },
@@ -21298,10 +21376,22 @@ const docTemplate = `{
                 "logLevel": {
                     "type": "integer"
                 },
-                "logMailerLevel": {
+                "logLevelDatabaseAudit": {
+                    "type": "integer"
+                },
+                "logLevelDatabaseErrors": {
                     "type": "integer"
                 },
                 "logLevelDatabaseOptimize": {
+                    "type": "integer"
+                },
+                "logLevelDatabaseSlowquery": {
+                    "type": "integer"
+                },
+                "logLevelDatabaseSqlErrors": {
+                    "type": "integer"
+                },
+                "logMailerLevel": {
                     "type": "integer"
                 },
                 "logOrchestrator": {

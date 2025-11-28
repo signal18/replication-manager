@@ -1,4 +1,9 @@
 #!/bin/bash
+# This script is given as sample and might be overwritten on upgrade
+# The real script is auto generated based on compliance json 
+
+# %%ENV:GENLINE%%
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
 
@@ -25,8 +30,13 @@ MYSQL_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql"
 MYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck
 MYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump
 
+SOCAT_BIND="%%ENV:SERVER_IP%%"
+# If socat is ipv6 without [], add them
+if [[ "$SOCAT_BIND" == *:* ]] && [[ "$SOCAT_BIND" != \[*\]* ]]; then
+    SOCAT_BIND="[$SOCAT_BIND],ipv6only=0"
+fi
+
 SST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%
-SOCAT_BIND=%%ENV:SERVER_IP%%
 MARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup
 XTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup
 INNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex
@@ -136,8 +146,12 @@ send_encrypted_api_request() {
         api_port=80
     fi
     
-    # Encrypt the data
-    local encrypted_data=$(encrypt_data "$raw_data" "$password")
+    # Encrypt the data if provided
+    local encrypted_data
+    if [[ -n $raw_data ]]; then
+        encrypted_data=$(encrypt_data "$raw_data" "$password")
+    fi
+    
     
     # Choose protocol based on port (443 and 10005 use HTTPS, others use HTTP)
     if [ "$api_port" = "443" ] || [ "$api_port" = "10005" ]; then
@@ -216,6 +230,38 @@ send_to_api_with_retry() {
     return 0
 }
 
+# Function to check if a specific task is needed for a server
+check_log_level() {
+    local host_port="$1"
+    local cluster="$2"
+    local taskname="$5"
+    local log_level="$6"
+
+    local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
+
+    local response
+    response=$(send_encrypted_api_request "$host_port" "$endpoint")
+
+    # Extract HTTP status code
+    local http_code
+    http_code=$(echo "$response"  | grep HTTP | head -1 | sed -E 's/.*HTTP\/[0-9.]+ ([0-9]{3}).*/\1/')
+
+    # Extract body after blank line
+    local body
+    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+    
+    # echo "$http_code: $body" >> "$LOG_DIR/$taskname.process.out"
+
+    # Determine output
+    if [ "$http_code" = "200" ] && [ "$body" = "true" ]; then
+        return 0
+    elif [ "$http_code" = "500" ] && [ "$body" = "false" ]; then
+        return 1
+    else
+        return 2
+    fi
+}
+
 # Backward compatible function for MySQL replication manager logs
 send_lines_to_api() {
     local lines="$1"
@@ -223,6 +269,14 @@ send_lines_to_api() {
     local level="${3:-$LVL_DEBUG}"
     local address="${REPLICATION_MANAGER_URL}"
     local max_retries=3
+
+    check_log_level "$address" "$CLUSTER_NAME" "$job" "$level"
+    local log_level_status=$?
+
+    # Skip sending if log level is not enabled
+    if [ $log_level_status -eq 1 ]; then
+        return
+    fi
 
     local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
     local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
@@ -465,7 +519,7 @@ check_jobs_table() {
 ################################
 
 # Function to create a manual lock file
-create_lock_file() {
+create_log_lock_file() {
     local lock_file="$1"
     local job="$2"
     if [ -e "$lock_file" ]; then
@@ -477,7 +531,7 @@ create_lock_file() {
 }
 
 # Function to remove a manual lock file
-remove_lock_file() {
+remove_log_lock_file() {
     local lock_file="$1"
     if [ -e "$lock_file" ]; then
         rm -f "$lock_file"
@@ -486,9 +540,30 @@ remove_lock_file() {
 
 # Function to remove a run directory lock file
 remove_run_lockdir() {
-    local run_lockdir="$1"
+    local job="$1"
+    local sleeptime=$2
+    local run_lockdir="$LOG_DIR/$job.run"
+    local lock_file="$LOCK_DIR/${job}_lockfile"
+
+    local wait=0
+    local max_wait=10  # Maximum wait time in seconds
+
+    # Wait for the lock file before removing the run lockdir
+    if [ -e "$lock_file" ]; then
+        while [ -e "$lock_file" ] && [ $wait -lt $max_wait ]; do
+            sleep 1
+            ((wait++))
+        done
+    fi
+
+    # Remove the run lockdir if it exists
     if [ -d "$run_lockdir" ]; then
         rmdir "$run_lockdir"
+    fi
+
+    # Give some time for log processing to complete
+    if [ -n "$sleeptime" ]; then
+        sleep "$sleeptime"
     fi
 }
 
@@ -535,22 +610,25 @@ wait_for_log_file() {
 }
 
 read_log_file() {
-    local logfile="$1"
+    local log_file="$1"
     local checkpoint_file=$2
     local job="$3"
     local last_read=0
     local current_line=$((last_read + 1))
+    local num_lines=$(wc -l < "$log_file")
 
     if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
         current_line=$((last_read + 1))
     fi
 
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
 
-    if [ -f "$logfile" ]; then
+    if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
 
             if [[ ! -d "$run_lockdir" ]]; then
                 send_lines_to_api "Run file has been deleted. Processing remaining lines.\n" "$job" "$LVL_DEBUG"
@@ -562,7 +640,9 @@ read_log_file() {
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
+            ((current_line++))
 
         done < <(sed -n "${current_line},\$p" "$log_file")
 
@@ -596,20 +676,20 @@ process_log_file() {
     local run_lockdir="$LOG_DIR/$job.run"
     local lock_file="$LOCK_DIR/${job}_lockfile"
 
-    if ! create_lock_file "$lock_file" "$job"; then
+    if ! create_log_lock_file "$lock_file" "$job"; then
         return
     fi
 
     # Ensure lock file is removed on script exit. Using trap to handle unexpected exit. This will not interfere with other traps since it's a separate subshell.
-    trap 'remove_lock_file "$lock_file"' EXIT
+    trap 'remove_log_lock_file "$lock_file"' EXIT
 
     if ! wait_for_run_lockdir "$run_lockdir" "$job"; then
-        remove_lock_file "$lock_file"
+        remove_log_lock_file "$lock_file"
         return
     fi
 
     if ! wait_for_log_file "$log_file" "$job"; then
-        remove_lock_file "$lock_file"
+        remove_log_lock_file "$lock_file"
         return
     fi
 
@@ -630,18 +710,29 @@ process_log_file() {
         read_log_file "$log_file" "$checkpoint_file" "$job"
     done
 
+    if [[ -s "$checkpoint_file" ]]; then
+        last_read=$(cat "$checkpoint_file")
+        current_line=$((last_read + 1))
+    fi
+
+    if [ "$current_line" -gt "$num_lines" ]; then
+        return
+    fi
+
     # If the run file was deleted, continue processing until the end of the file
     if [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
-            ((current_line++))
+            
             batch+="$escaped\n"
             if ((current_line % BATCH_SIZE == 0)); then
                 send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
                 batch=""
             fi
+
             echo "$current_line" >"$checkpoint_file"
-        done < <(tail -n +"$((current_line - last_line))" "$log_file")
+            ((current_line++))
+        done < <(sed -n "${current_line},\$p" "$log_file")
     fi
 
     if [[ -n "$batch" ]]; then
@@ -651,7 +742,7 @@ process_log_file() {
     send_lines_to_api "Removing checkpoint file.\n" "$job" "$LVL_DEBUG"
     rm -f "$checkpoint_file"
 
-    remove_lock_file "$lock_file"
+    remove_log_lock_file "$lock_file"
 }
 
 #################################
@@ -799,7 +890,7 @@ jobsCheck() {
     mkdir -p "$LOG_DIR/jobs-check.run"
 
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-    trap 'remove_run_lockdir "$LOG_DIR/jobs-check.run"' EXIT
+    trap 'remove_run_lockdir "jobs-check"' EXIT
 
     check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-check"
     checkresult=$?
@@ -810,7 +901,7 @@ jobsCheck() {
             echo "No need to run jobs-check." >"$LOG_DIR/jobs-check.process.out"
         fi
 
-        remove_run_lockdir "$LOG_DIR/jobs-check.run"
+        remove_run_lockdir "jobs-check" 1
         trap - EXIT
         return $checkresult
     fi
@@ -828,7 +919,7 @@ jobsCheck() {
 
     if [ "$checkresult" != "0" ] || [ "$RCV_PORT" == "error" ]; then
         echo "Failed to get a valid receiver port from the monitoring server." >>"$LOG_DIR/jobs-check.process.out"
-        sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+        remove_run_lockdir "jobs-check" 1
         trap - EXIT
         return 2 # error
     fi
@@ -842,7 +933,8 @@ jobsCheck() {
         echo "Script sent successfully via socat." >>"$LOG_DIR/jobs-check.process.out"
     fi
 
-    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-check.run" &
+    remove_run_lockdir "jobs-check" 5
+
     trap - EXIT
     return 0
 }
@@ -862,7 +954,7 @@ jobsUpgrade() {
 
     mkdir -p "$LOG_DIR/jobs-upgrade.run"
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-    trap 'remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"' EXIT
+    trap 'remove_run_lockdir "jobs-upgrade"' EXIT
 
     check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-upgrade"
 
@@ -874,7 +966,7 @@ jobsUpgrade() {
             echo "No need to run jobs-upgrade." >"$LOG_DIR/jobs-upgrade.process.out"
         fi
 
-        remove_run_lockdir "$LOG_DIR/jobs-upgrade.run"
+        remove_run_lockdir "jobs-upgrade" 1
         trap - EXIT
         return
     fi
@@ -909,17 +1001,20 @@ jobsUpgrade() {
             chmod +x "$TEMP_FILE"
             cp "$TEMP_FILE" "${BASH_SOURCE[0]}"
 
-            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"        
+            send_lines_to_api "Script updated. Re-executing with the new version." "jobs-upgrade" "$LVL_INFO"
+
+            remove_run_lockdir "jobs-upgrade" 5
+            trap - EXIT
 
             # Re-execute with the new version
-            exec "${BASH_SOURCE[0]}" "$@"
+            exec bash "${BASH_SOURCE[0]}" "$@"
         fi
     else
         send_lines_to_api "Failed to receive the new script via socat." "jobs-upgrade" "$LVL_ERROR"
         rm -f "$TEMP_FILE"
     fi
 
-    sleep 1 && remove_run_lockdir "$LOG_DIR/jobs-upgrade.run" &
+    remove_run_lockdir "jobs-upgrade" 1
     trap - EXIT
 }
 
@@ -1007,7 +1102,7 @@ for job in "${JOBS[@]}"; do
         mkdir -p "$LOG_DIR/$job.run"
         process_log_file "$job" &
         # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
-        trap 'remove_run_lockdir "$LOG_DIR/$job.run"' EXIT
+        trap 'remove_run_lockdir "$job"' EXIT
         echo "Processing $job"
         
         #purge de past
@@ -1094,7 +1189,7 @@ for job in "${JOBS[@]}"; do
             ;;
         esac
         doneJob "$job"
-        sleep 1 && remove_run_lockdir "$LOG_DIR/$job.run" &
+        remove_run_lockdir "$job" 
         trap - EXIT
     fi
 done

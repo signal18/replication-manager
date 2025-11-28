@@ -35,12 +35,25 @@ import (
 	"github.com/signal18/replication-manager/utils/s18log"
 )
 
+type LogLevelEnum string
+
+const (
+	LogLevelErr   LogLevelEnum = "ERROR"
+	LogLevelWarn  LogLevelEnum = "WARN"
+	LogLevelInfo  LogLevelEnum = "INFO"
+	LogLevelDebug LogLevelEnum = "DEBUG"
+)
+
 func (repman *ReplicationManager) apiClusterUnprotectedHandler(router *mux.Router) {
 	router.Handle("/api/clusters/{clusterName}/status", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterStatus)),
 	))
 	router.Handle("/api/clusters/{clusterName}/health", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterHealth)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/jobs-log-level/{task}/{level}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterCheckJobLogLevel)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/master-physical-backup", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMasterPhysicalBackup)),
@@ -7652,6 +7665,54 @@ func (repman *ReplicationManager) handlerMuxClusterAllowJobsUpgrade(w http.Respo
 		mycluster.SetRollingJobsUpgradeState()
 		w.WriteHeader(200)
 		w.Write([]byte("Cluster flagged for jobs upgrade"))
+		return
+	} else {
+		http.Error(w, "No cluster", 500)
+	}
+}
+
+// handlerMuxClusterCheckLogLevel handles the HTTP request to check if a specific log level is enabled for a given task in a cluster.
+// @Summary Check Cluster Log Level
+// @Description Checks if a specific log level is enabled for a given task in the specified cluster.
+// @Tags ClusterLogging
+// @Produce json
+// @Param clusterName path string true "Cluster Name"
+// @Param task path config.TaskName true "Task Name"
+// @Param level path LogLevelEnum true "Log Level"
+// @Success 200 {string} string "true" or "false"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/jobs-log-level/{task}/{level} [get]
+func (repman *ReplicationManager) handlerMuxClusterCheckJobLogLevel(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		var mod int
+		level := vars["level"]
+		task := vars["task"]
+		switch task {
+		case "auditlog":
+			mod = config.ConstLogModDbAudit
+		case "errorlog", "sqlerrorlog":
+			mod = config.ConstLogModDbErrors
+		case "slowquery":
+			mod = config.ConstLogModDbSlowquery
+		case "optimize":
+			mod = config.ConstLogModDbOptimize
+		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
+			mod = config.ConstLogModBackupStream
+		default:
+			mod = config.ConstLogModTask
+		}
+
+		if mycluster.Conf.IsEligibleForPrinting(mod, level) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("true"))
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("false"))
+		}
 		return
 	} else {
 		http.Error(w, "No cluster", 500)

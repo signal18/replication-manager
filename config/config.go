@@ -187,6 +187,7 @@ type Config struct {
 	ExecTimeout                               int                    `mapstructure:"db-servers-exec-timeout" toml:"db-servers-exec-timeout" json:"dbServersExecTimeout"`
 	ReadTimeout                               int                    `mapstructure:"db-servers-read-timeout" toml:"db-servers-read-timeout" json:"dbServersReadTimeout"`
 	DBServersLocality                         string                 `mapstructure:"db-servers-locality" toml:"db-servers-locality" json:"dbServersLocality"`
+	DbServersBindAddress                      string                 `mapstructure:"db-servers-bind-address" toml:"db-servers-bind-address" json:"dbServersBindAddress"`
 	PRXServersReadOnMaster                    bool                   `mapstructure:"proxy-servers-read-on-master" toml:"proxy-servers-read-on-master" json:"proxyServersReadOnMaster"`
 	PRXServersReadOnMasterNoSlave             bool                   `mapstructure:"proxy-servers-read-on-master-no-slave" toml:"proxy-servers-read-on-master-no-slave" json:"proxyServersReadOnMasterNoSlave"`
 	PRXServersBackendCompression              bool                   `mapstructure:"proxy-servers-backend-compression" toml:"proxy-servers-backend-compression" json:"proxyServersBackendCompression"`

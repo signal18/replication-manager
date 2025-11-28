@@ -2015,6 +2015,8 @@ definitions:
         type: boolean
       dbServersBackupHosts:
         type: string
+      dbServersBindAddress:
+        type: string
       dbServersConnectTimeout:
         type: integer
       dbServersCredential:
@@ -2292,12 +2294,6 @@ definitions:
         type: integer
       logExternalScriptLevel:
         type: integer
-      logLevelDatabaseAudit:
-        type: integer
-      logLevelDatabaseErrors:
-        type: integer
-      logLevelDatabaseSlowquery:
-        type: integer
       logFile:
         type: string
       logFileLevel:
@@ -2316,9 +2312,17 @@ definitions:
         type: integer
       logLevel:
         type: integer
-      logMailerLevel:
+      logLevelDatabaseAudit:
+        type: integer
+      logLevelDatabaseErrors:
         type: integer
       logLevelDatabaseOptimize:
+        type: integer
+      logLevelDatabaseSlowquery:
+        type: integer
+      logLevelDatabaseSqlErrors:
+        type: integer
+      logMailerLevel:
         type: integer
       logOrchestrator:
         type: boolean
@@ -7504,6 +7508,71 @@ paths:
       summary: Retrieve job entries for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/jobs-log-level/{task}/{level}:
+    get:
+      description: Checks if a specific log level is enabled for a given task in the
+        specified cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Task Name
+        enum:
+        - xtrabackup
+        - mariabackup
+        - errorlog
+        - slowquery
+        - sqlerrorlog
+        - auditlog
+        - zfssnapback
+        - optimize
+        - reseedxtrabackup
+        - reseedmariabackup
+        - reseedmysqldump
+        - flashbackxtrabackup
+        - flashbackmariadbackup
+        - flashbackmysqldump
+        - stop
+        - restart
+        - start
+        - printdefault-current
+        - printdefault-dummy
+        - jobs-check
+        - jobs-upgrade
+        in: path
+        name: task
+        required: true
+        type: string
+      - description: Log Level
+        enum:
+        - ERROR
+        - WARN
+        - INFO
+        - DEBUG
+        in: path
+        name: level
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: true" or "false
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Check Cluster Log Level
+      tags:
+      - ClusterLogging
   /api/clusters/{clusterName}/need-rolling-reprov:
     get:
       description: Checks if a specified cluster needs a rolling reprovision.
