@@ -53,7 +53,7 @@ func (cluster *Cluster) CheckResticInstallation() {
 	}
 }
 
-func (cluster *Cluster) StartResticRepo() error {
+func (cluster *Cluster) StartResticManager() error {
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
@@ -63,7 +63,8 @@ func (cluster *Cluster) StartResticRepo() error {
 		loglevel = config.ToLogrusLevel(cluster.Conf.LogArchiveLevel)
 	}
 
-	cluster.ResticRepo = archiver.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	cluster.ResticManager = archiver.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
 	go cluster.ResticFetchRepo()
 	return nil
 }
@@ -73,8 +74,11 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 		return nil
 	}
 
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
-	err := cluster.ResticRepo.ResticInitRepo(force)
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	err := cluster.ResticManager.InitRepo(force)
 	if err != nil {
 		cluster.SetState("WARN0092", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0092"], err), ErrFrom: "BACKUP"})
 	}
@@ -90,7 +94,9 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 			return err
 		}
 
-		cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+		if cluster.ResticManager == nil {
+			cluster.StartResticManager()
+		}
 
 		opt := archiver.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
@@ -107,7 +113,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
 		}
 
-		_, err = cluster.ResticRepo.AddPurgeTask(opt, true)
+		err = cluster.ResticManager.AddPurgeTask(opt)
 		if err != nil {
 			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
 			return err
@@ -122,24 +128,21 @@ func (cluster *Cluster) ResticFetchRepo() error {
 		return nil
 	}
 
-	if cluster.ResticRepo == nil {
-		err := fmt.Errorf("restic repo is nil")
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		return err
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
 	}
 
 	// Check if no other fetch task queued
-	if cluster.ResticRepo.HasFetchQueue() {
+	if cluster.ResticManager.HasFetchQueue() {
 		return nil
 	}
 
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
-	_, err := cluster.ResticRepo.AddFetchTask(true)
+	_, err := cluster.ResticManager.AddFetchTask(true)
 	if err != nil {
-		if !cluster.ResticRepo.CanInitRepo {
+		if !cluster.ResticManager.CanInitRepo {
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		} else if cluster.ResticRepo.CanFetch && cluster.ResticRepo.HasLocks {
-			cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticRepo.GetRepoPath()), ErrFrom: "BACKUP"})
+		} else if cluster.ResticManager.CanFetch && cluster.ResticManager.HasLocks {
+			cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticManager.GetRepoPath()), ErrFrom: "BACKUP"})
 		} else {
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
 		}
@@ -159,7 +162,7 @@ func (cluster *Cluster) BackupResticConfig() error {
 		return nil
 	}
 
-	repopath := cluster.ResticRepo.GetRepoPath()
+	repopath := cluster.ResticManager.GetRepoPath()
 	if repopath == "" {
 		return fmt.Errorf("restic repo path is empty")
 	}
@@ -181,7 +184,7 @@ func (cluster *Cluster) RestoreResticConfig(force bool) error {
 		return nil
 	}
 
-	repopath := cluster.ResticRepo.GetRepoPath()
+	repopath := cluster.ResticManager.GetRepoPath()
 	if repopath == "" {
 		return fmt.Errorf("restic repo path is empty")
 	}
@@ -203,20 +206,19 @@ func (cluster *Cluster) RestoreResticConfig(force bool) error {
 	return nil
 }
 
-func (cluster *Cluster) ResticUnlockRepo() error {
+func (cluster *Cluster) ResticUnlockRepo(force bool) error {
 	// No need to add wait since it will be checked each monitor loop
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
 
-	if cluster.ResticRepo == nil {
-		err := fmt.Errorf("restic repo is nil")
+	if cluster.ResticManager == nil {
+		err := fmt.Errorf("restic repo is not initialized")
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 		return err
 	}
 
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
-	_, err := cluster.ResticRepo.AddUnlockTask(true)
+	err := cluster.ResticManager.UnlockRepo(force)
 	if err != nil {
 		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
 	}
@@ -230,31 +232,26 @@ func (cluster *Cluster) ResticGetQueue() ([]*archiver.ResticTask, error) {
 		return nil, nil
 	}
 
-	if cluster.ResticRepo == nil {
-		err := fmt.Errorf("restic repo is nil")
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		return nil, err
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
 	}
 
-	return cluster.ResticRepo.TaskQueue, nil
+	return cluster.ResticManager.TaskQueue, nil
 }
 
-func (cluster *Cluster) ResticResetQueue() error {
+func (cluster *Cluster) ResticClearQueue() error {
 	// No need to add wait since it will be checked each monitor loop
 	if !cluster.Conf.BackupRestic {
 		return nil
 	}
 
-	if cluster.ResticRepo == nil {
-		err := fmt.Errorf("restic repo is nil")
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		return err
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Resetting restic queue. This will not affect the current running task.")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Clearing pending restic tasks from queue. Total tasks: %d", len(cluster.ResticManager.TaskQueue))
 
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
-	cluster.ResticRepo.EmptyQueue()
+	cluster.ResticManager.ClearQueue()
 
 	return nil
 }
@@ -396,9 +393,9 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Changing restic password for cluster %s", cluster.Name)
 
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
 
-	keylist, err := cluster.ResticRepo.ResticKeyList()
+	keylist, err := cluster.ResticManager.GetRepoKeyList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to list restic keys: %s", err)
 		return err
@@ -417,18 +414,18 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 		}
 	}
 
-	if _, err := os.Stat(cluster.ResticRepo.GetCacheDirPath()); os.IsNotExist(err) {
-		err := os.MkdirAll(cluster.ResticRepo.GetCacheDirPath(), os.ModePerm)
+	if _, err := os.Stat(cluster.ResticManager.GetCacheDirPath()); os.IsNotExist(err) {
+		err := os.MkdirAll(cluster.ResticManager.GetCacheDirPath(), os.ModePerm)
 		if err != nil {
 			return fmt.Errorf("Error creating restic cache directory: %s", err)
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic cache directory created: %s", cluster.ResticRepo.GetCacheDirPath())
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Restic cache directory created: %s", cluster.ResticManager.GetCacheDirPath())
 	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "Adding new key to restic repository")
 
-	newpassfile := filepath.Join(cluster.ResticRepo.GetCacheDirPath(), "newpass.txt")
+	newpassfile := filepath.Join(cluster.ResticManager.GetCacheDirPath(), "newpass.txt")
 	err = os.WriteFile(newpassfile, []byte(newpass), 0600)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to write new password file: %s", err)
@@ -447,7 +444,7 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 		}
 	}()
 
-	err = cluster.ResticRepo.ResticAddPassword(newpassfile)
+	err = cluster.ResticManager.AddRepoKey(newpassfile)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to add new key to restic repository: %s", err)
 		return err
@@ -461,10 +458,10 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlInfo, "New restic password saved in configuration successfully. Removing old key from repository using new password.")
 
 	// Reload env with new password
-	cluster.ResticRepo.SetEnv(cluster.ResticGetEnv())
+	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
 
 	// Remove old key using new password
-	err = cluster.ResticRepo.ResticRemoveKey(oldkeyid)
+	err = cluster.ResticManager.RemoveRepoKey(oldkeyid)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModArchive, config.LvlErr, "Failed to remove old key from restic repository: %s", err)
 		return nil

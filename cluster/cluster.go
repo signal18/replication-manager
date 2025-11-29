@@ -245,7 +245,7 @@ type Cluster struct {
 	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
-	ResticRepo                *archiver.ResticRepo        `json:"-"`
+	ResticManager             *archiver.ResticManager     `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -585,7 +585,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.RefreshToolVersions()
-	cluster.StartResticRepo()
+	cluster.StartResticManager()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 }
@@ -975,8 +975,8 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
-	if cluster.ResticRepo != nil {
-		cluster.ResticRepo.ShutdownWorker()
+	if cluster.ResticManager != nil {
+		cluster.ResticManager.ShutdownWorker()
 	}
 	cluster.CloseRefreshTemplateMD5Worker()
 	cluster.ConfigManager.SaveConfig(cluster, true)

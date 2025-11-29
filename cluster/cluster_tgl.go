@@ -138,8 +138,8 @@ func (cluster *Cluster) SwitchProvDockerDaemonPrivate() {
 func (cluster *Cluster) SwitchBackupRestic() {
 	cluster.Conf.BackupRestic = !cluster.Conf.BackupRestic
 	cluster.CheckResticInstallation()
-	if cluster.ResticRepo == nil {
-		cluster.StartResticRepo()
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
 	}
 }
 

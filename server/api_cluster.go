@@ -137,6 +137,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesUnlock)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/archives/unlock/{force}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesUnlock)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/archives/init", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesInit)),
@@ -3153,10 +3158,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restic backup is already enabled, testing new password validity")
 
 			// Test if new password is valid. If yes, can be used directly
-			err = mycluster.ResticRepo.ResticTestPassword(newval)
+			err = mycluster.ResticManager.TestPassword(newval)
 			// If not valid, test if old password is valid (rotate password)
 			if err != nil {
-				err2 := mycluster.ResticRepo.ResticTestPassword(mycluster.Conf.GetDecryptedValue("backup-restic-password"))
+				err2 := mycluster.ResticManager.TestPassword(mycluster.Conf.GetDecryptedValue("backup-restic-password"))
 				if err2 == nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Old restic password is valid, rotating password to new one")
 
@@ -6737,7 +6742,7 @@ func (repman *ReplicationManager) handlerMuxArchivesRestoreConfig(w http.Respons
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
@@ -6782,7 +6787,7 @@ func (repman *ReplicationManager) handlerMuxArchivesFetch(w http.ResponseWriter,
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
@@ -6824,7 +6829,7 @@ func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter,
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
@@ -6849,6 +6854,7 @@ func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter,
 // @Success 200 {string} string "Archives purge queued"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/unlock/{force} [post]
 // @Router /api/clusters/{clusterName}/archives/unlock [post]
 func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -6866,12 +6872,17 @@ func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
 
-		err := mycluster.ResticUnlockRepo()
+		force := false
+		if strings.ToLower(vars["force"]) == "force" {
+			force = true
+		}
+
+		err := mycluster.ResticUnlockRepo(force)
 		if err != nil {
 			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
 			return
@@ -6915,9 +6926,8 @@ func (repman *ReplicationManager) handlerMuxArchivesInit(w http.ResponseWriter, 
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
-			http.Error(w, "No restic repo", 500)
-			return
+		if mycluster.ResticManager == nil {
+			mycluster.StartResticManager()
 		}
 
 		var force bool
@@ -6968,7 +6978,7 @@ func (repman *ReplicationManager) handlerMuxGetArchivesTaskQueue(w http.Response
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
@@ -7022,19 +7032,19 @@ func (repman *ReplicationManager) handlerMuxResetArchivesTaskQueue(w http.Respon
 			return
 		}
 
-		if mycluster.ResticRepo == nil {
+		if mycluster.ResticManager == nil {
 			http.Error(w, "No restic repo", 500)
 			return
 		}
 
-		err := mycluster.ResticResetQueue()
+		err := mycluster.ResticClearQueue()
 		if err != nil {
-			http.Error(w, "Error resetting task queue :"+err.Error(), 500)
+			http.Error(w, "Error clearing task queue :"+err.Error(), 500)
 			return
 		}
 
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Task queue reset"))
+		w.Write([]byte("Task queue cleared"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

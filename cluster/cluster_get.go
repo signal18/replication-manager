@@ -1136,19 +1136,19 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 }
 
 func (cluster *Cluster) GetBackups() []archiver.Backup {
-	if cluster.ResticRepo == nil {
+	if cluster.ResticManager == nil {
 		return make([]archiver.Backup, 0)
 	}
 
-	return cluster.ResticRepo.Backups
+	return cluster.ResticManager.Backups
 }
 
 func (cluster *Cluster) GetBackupStat() archiver.BackupStat {
-	if cluster.ResticRepo == nil {
+	if cluster.ResticManager == nil {
 		return archiver.BackupStat{}
 	}
 
-	return cluster.ResticRepo.BackupStat
+	return cluster.ResticManager.BackupStat
 }
 
 func (cluster *Cluster) GetQueryRules() []config.QueryRule {
