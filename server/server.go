@@ -420,7 +420,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogExternalScript, "log-external-script", true, "To log external scripts output")
 	flags.IntVar(&conf.LogExternalScriptLevel, "log-level-external-script", 3, "Log external scripts Level")
 
-	flags.IntVar(&conf.LogArchiveLevel, "log-level-archive", 2, "Log Level for backup archive (restic)")
+	flags.IntVar(&conf.LogResticLevel, "log-level-restic", 2, "Log Level for restic")
 	flags.IntVar(&conf.LogMailerLevel, "log-level-mailer", 3, "Log Level for mailer")
 
 	// Fetchers

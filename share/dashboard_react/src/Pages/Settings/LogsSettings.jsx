@@ -271,16 +271,16 @@ function LogsSettings({ selectedCluster, user, openConfirmModal }) {
           )
         },
         {
-          key: 'Log Backup Archive Level',
+          key: 'Log Restic',
           value: (
             <LogSlider
-              value={selectedCluster?.config?.logArchiveLevel}
-              confirmTitle={`Confirm change 'log-level-archive' to: `}
+              value={selectedCluster?.config?.logResticLevel}
+              confirmTitle={`Confirm change 'log-level-restic' to: `}
               onChange={(val) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
-                    setting: 'log-level-archive',
+                    setting: 'log-level-restic',
                     value: val
                   })
                 )

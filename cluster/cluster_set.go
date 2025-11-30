@@ -2191,8 +2191,8 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 	}
 }
 
-func (cluster *Cluster) SetLogArchiveLevel(value int) {
-	cluster.Conf.LogArchiveLevel = value
+func (cluster *Cluster) SetLogResticLevel(value int) {
+	cluster.Conf.LogResticLevel = value
 }
 
 func (cluster *Cluster) SetLogMailerLevel(value int) {

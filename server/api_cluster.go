@@ -2991,9 +2991,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-binlog-purge-level", "log-level-binlog-purge":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogBinlogPurgeLevel(val)
-	case "log-archive-level", "log-level-archive":
+	case "log-archive-level", "log-level-restic":
 		val, _ := strconv.Atoi(value)
-		mycluster.SetLogArchiveLevel(val)
+		mycluster.SetLogResticLevel(val)
 	case "log-mailer-level", "log-level-mailer":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogMailerLevel(val)

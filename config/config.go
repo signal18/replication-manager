@@ -155,7 +155,7 @@ type Config struct {
 	LogGraphiteLevel                          int                    `mapstructure:"log-level-graphite" toml:"log-level-graphite" json:"logGraphiteLevel"`
 	LogBinlogPurge                            bool                   `mapstructure:"log-binlog-purge" toml:"log-binlog-purge" json:"logBinlogPurge"`
 	LogBinlogPurgeLevel                       int                    `mapstructure:"log-level-binlog-purge" toml:"log-level-binlog-purge" json:"logBinlogPurgeLevel"`
-	LogArchiveLevel                           int                    `mapstructure:"log-level-archive" toml:"log-level-archive" json:"logArchiveLevel"`
+	LogResticLevel                            int                    `mapstructure:"log-level-restic" toml:"log-level-restic" json:"logResticLevel"`
 	LogMailerLevel                            int                    `mapstructure:"log-level-mailer" toml:"log-level-mailer" json:"logMailerLevel"`
 	LogSupport                                bool                   `scope:"server" mapstructure:"log-support" toml:"log-support" json:"logSupport"`
 	LogSupportLevel                           int                    `scope:"server" mapstructure:"log-level-support" toml:"log-level-support" json:"logSupportLevel"`
@@ -1332,7 +1332,7 @@ const (
 	ConstLogModGraphite       = 15
 	ConstLogModPurge          = 16
 	ConstLogModTask           = 17
-	ConstLogModArchive        = 18
+	ConstLogModRestic         = 18
 	ConstLogModMailer         = 19
 	ConstLogModSupport        = 20
 	ConstLogModExternalScript = 21
@@ -1368,7 +1368,7 @@ const (
 	ConstLogNameGraphite       string = "log-graphite"
 	ConstLogNamePurge          string = "log-binlog-purge"
 	ConstLogNameTask           string = "log-task"
-	ConstLogNameArchive        string = "log-archive"
+	ConstLogNameRestic         string = "log-restic"
 	ConstLogNameMailer         string = "log-mailer"
 	ConstLogNameExternalScript string = "log-external-script"
 	ConstLogNameLogSQL         string = "log-sql"
@@ -3271,8 +3271,8 @@ func (conf *Config) IsEligibleForPrinting(module int, level string) bool {
 			if conf.LogExternalScript {
 				return conf.LogExternalScriptLevel >= lvl
 			}
-		case module == ConstLogModArchive:
-			return conf.LogArchiveLevel >= lvl
+		case module == ConstLogModRestic:
+			return conf.LogResticLevel >= lvl
 		case module == ConstLogModMailer:
 			return conf.LogMailerLevel >= lvl
 		case module == ConstLogModSupport:
@@ -3464,8 +3464,8 @@ func GetTagsForLog(module int) string {
 		return "sql"
 	case ConstLogModApp:
 		return "app"
-	case ConstLogModArchive:
-		return "archive"
+	case ConstLogModRestic:
+		return "restic"
 	case ConstLogModMailer:
 		return "mailer"
 	case ConstLogModDbErrors:
@@ -3544,8 +3544,8 @@ func GetIndexFromModuleName(module string) int {
 		return ConstLogModApp
 	case ConstLogNameSupport:
 		return ConstLogModSupport
-	case ConstLogNameArchive:
-		return ConstLogModArchive
+	case ConstLogNameRestic:
+		return ConstLogModRestic
 	case ConstLogNameMailer:
 		return ConstLogModMailer
 	case ConstLogNameDbErrors:
@@ -4223,7 +4223,7 @@ func GetKeyAliasMap() map[string]string {
 		"log-proxy-level":           "log-level-proxy",
 		"log-graphite-level":        "log-level-graphite",
 		"log-binlog-purge-level":    "log-level-binlog-purge",
-		"log-archive-level":         "log-level-archive",
+		"log-restic-level":          "log-level-restic",
 		"log-mailer-level":          "log-level-mailer",
 		"log-support-level":         "log-level-support",
 		"log-external-script-level": "log-level-external-script",
