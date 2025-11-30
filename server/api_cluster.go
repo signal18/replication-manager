@@ -157,6 +157,11 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetResticTaskQueue)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/task-queue/cancel/{taskID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCancelResticTask)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyResticTaskQueue)),
@@ -5075,12 +5080,6 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 			return
 		}
 
-		cl, err = sjson.SetBytes(cl, "backupList", mycluster.BackupMetaMap.ToNewMap())
-		if err != nil {
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-
 		// Reduce the content of the cluster object
 		cl, _ = sjson.DeleteBytes(cl, "config.apps")
 		cl, _ = sjson.DeleteBytes(cl, "servers")
@@ -7153,6 +7152,54 @@ func (repman *ReplicationManager) handlerMuxModifyResticTaskQueue(w http.Respons
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Task queue modified"))
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxCancelResticTask handles the HTTP request to cancel a restic task for a given cluster.
+// @Summary Cancel Restic Task
+// @Description	Cancel the specified restic task for the specified cluster.
+// @Tags ClusterRestic
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param taskID path string true "Task ID"
+// @Success 200 {string} string "Task cancelled"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/task-queue/cancel/{taskID} [post]
+func (repman *ReplicationManager) handlerMuxCancelResticTask(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.ResticManager == nil {
+			http.Error(w, "No restic repo", 500)
+			return
+		}
+
+		taskID, err := strconv.Atoi(vars["taskID"])
+		if err != nil {
+			http.Error(w, "Invalid taskID", 500)
+			return
+		}
+
+		err = mycluster.ResticCancelTask(taskID)
+		if err != nil {
+			http.Error(w, "Error cancelling task :"+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task cancelled"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

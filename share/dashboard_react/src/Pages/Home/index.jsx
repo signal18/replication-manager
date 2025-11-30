@@ -6,7 +6,7 @@ import TabItems from '../../components/TabItems'
 import ClusterList from '../ClusterList'
 import { useDispatch, useSelector } from 'react-redux'
 import {
-  getBackupSnapshot,
+  getResticSnapshot,
   getClusterAlerts,
   getClusterCertificates,
   getClusterData,
@@ -24,7 +24,9 @@ import {
   clearCluster,
   getClusterApps,
   getOpenSVCStats,
-  getClusterLogs
+  getClusterLogs,
+  getResticStats,
+  getBackups
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -190,7 +192,9 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
-        dispatch(getBackupSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getResticSnapshot({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getResticStats({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getBackups({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
       }

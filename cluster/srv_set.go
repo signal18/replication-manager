@@ -659,7 +659,7 @@ func (server *ServerMonitor) SetDBUserCredentials(user, pass string, withGrantOp
 
 	// refresh user list
 	users, _, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
-	server.Users = config.FromNormalGrantsMap(server.Users, users)
+	server.Users = dbhelper.FromNormalGrantsMap(server.Users, users)
 
 	// set grants for all hosts of this user
 	for _, u := range server.Users.ToNewMap() {

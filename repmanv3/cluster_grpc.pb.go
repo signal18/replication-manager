@@ -6,6 +6,7 @@ import (
 	context "context"
 
 	backupmgr "github.com/signal18/replication-manager/utils/backupmgr"
+	dbhelper "github.com/signal18/replication-manager/utils/dbhelper"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -616,7 +617,7 @@ func _ClusterService_GetSchema_Handler(srv interface{}, stream grpc.ServerStream
 }
 
 type ClusterService_GetSchemaServer interface {
-	Send(*Table) error
+	Send(*dbhelper.Table) error
 	grpc.ServerStream
 }
 
@@ -624,7 +625,7 @@ type clusterServiceGetSchemaServer struct {
 	grpc.ServerStream
 }
 
-func (x *clusterServiceGetSchemaServer) Send(m *Table) error {
+func (x *clusterServiceGetSchemaServer) Send(m *dbhelper.Table) error {
 	return x.ServerStream.SendMsg(m)
 }
 

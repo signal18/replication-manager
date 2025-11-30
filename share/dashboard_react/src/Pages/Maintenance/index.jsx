@@ -11,10 +11,14 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
+import { purgeResticSnapshot } from '../../redux/clusterSlice'
+import RMIconButton from '../../components/RMIconButton'
+import { FaTrash } from 'react-icons/fa'
 
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
+  const dispatch = useDispatch()
   const columnHelper = createColumnHelper()
   const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSettingsOpen')) || false
@@ -35,9 +39,13 @@ function Maintenance({ selectedCluster, user }) {
     defaultIsOpen: JSON.parse(localStorage.getItem('isLogsInBackupOpen')) || false
   })
 
-  const {
-    cluster: { backups : { snapshots , stats} }
-  } = useSelector((state) => state)
+  const snapshots = useSelector((state) => state.cluster.restic.snapshots)
+  const stats = useSelector((state) => state.cluster.restic.stats)
+  const list = useSelector((state) => state.cluster.backups.list)
+  const backupStats = useSelector((state) => state.cluster.backups.stats)
+  const resticTasks = useSelector((state) => state.cluster.restic.tasks)
+
+  const purgeSnapshot = (snapshotId) => { dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId })) }
 
   useEffect(() => {
     localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
@@ -60,11 +68,13 @@ function Maintenance({ selectedCluster, user }) {
   }, [isBackupsOpen])
 
   useEffect(() => {
-    if (selectedCluster?.backupList) {
-      const arrData = convertObjectToArray(selectedCluster.backupList)
+    if (list) {
+      const arrData = convertObjectToArray(list)
       setData(arrData.reverse())
+    } else {
+      setData([])
     }
-  }, [selectedCluster?.backupList])
+  }, [selectedCluster?.name,list])
 
   useEffect(() => {
     if (snapshots?.length > 0) {
@@ -73,6 +83,21 @@ function Maintenance({ selectedCluster, user }) {
       setSnapshotData([])
     }
   }, [selectedCluster?.name,snapshots])
+
+  const backupDataStats = [
+    {
+      key: 'Total Size',
+      value: backupStats?.total_size
+    },
+    {
+      key: 'Total File Count',
+      value: backupStats?.total_file_count
+    },
+    {
+      key: 'Total Blob Count',
+      value: backupStats?.total_blob_count
+    }
+  ]
 
   const columns = useMemo(
     () => [
@@ -179,8 +204,7 @@ function Maintenance({ selectedCluster, user }) {
         header: 'Completed',
         id: 'completed'
       })
-    ],
-    []
+    ]
   )
 
   const snapshotDataStats = [
@@ -214,8 +238,17 @@ function Maintenance({ selectedCluster, user }) {
     }),
     columnHelper.accessor((row) => row.tags?.join(','), {
       header: 'Tags'
+    }),
+    // Added Purge action column
+    columnHelper.accessor((row) => (
+      <RMIconButton icon={FaTrash} onClick={() => purgeSnapshot(row.id)} />
+    ), {
+      cell: (info) => info.getValue(),
+      header: 'Actions',
+      id: 'actions',
     })
   ])
+
   return (
     <VStack className={styles.backupContainer}>
       <AccordionComponent
@@ -243,7 +276,12 @@ function Maintenance({ selectedCluster, user }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<DataTable key="backups" data={data} columns={columns} className={styles.table} />}
+        body={
+          <VStack className={styles.snapshotContainer}>
+            <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
+            <DataTable key="backups" data={data} columns={columns} className={styles.table} />
+          </VStack>
+        }
       />
       <AccordionComponent
         heading={'Backup Snapshots'}

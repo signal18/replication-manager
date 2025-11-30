@@ -28,6 +28,7 @@ type HttpMessage struct {
 	Level     string `json:"level"`
 	Timestamp string `json:"timestamp"`
 	Text      string `json:"text"`
+	Module    int    `json:"module"`
 }
 
 func NewHttpLog(sz int) HttpLog {
@@ -54,4 +55,17 @@ func (tl *HttpLog) Shift(e HttpMessage) {
 	ns := make([]HttpMessage, 1)
 	ns[0] = e
 	tl.Buffer = append(ns, tl.Buffer[0:tl.Len]...)
+}
+
+func FromLogrusLevel(level uint32) string {
+	switch level {
+	case 5:
+		return "DEBUG"
+	case 4:
+		return "INFO"
+	case 3:
+		return "WARN"
+	default:
+		return "ERROR"
+	}
 }

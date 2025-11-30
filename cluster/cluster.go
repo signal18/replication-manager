@@ -246,6 +246,7 @@ type Cluster struct {
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticManager             *backupmgr.ResticManager    `json:"-"`
+	MessageChan               chan s18log.HttpMessage     `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -371,6 +372,9 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.AgentMaxFreq = make(map[string]int64)
 	cluster.ServiceTemplates = make([]string, 0)
 	cluster.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
+	cluster.MessageChan = make(chan s18log.HttpMessage, 10)
+
+	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
 
@@ -1753,7 +1757,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
-	cmaster.DictTables = config.FromNormalTablesMap(cmaster.DictTables, tables)
+	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 

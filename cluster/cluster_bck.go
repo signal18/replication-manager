@@ -20,7 +20,6 @@ import (
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/version"
-	"github.com/sirupsen/logrus"
 )
 
 func (cluster *Cluster) ResticGetEnv() []string {
@@ -99,12 +98,7 @@ func (cluster *Cluster) StartResticManager() error {
 		return nil
 	}
 
-	var loglevel logrus.Level
-	if cluster.Conf.LogArchiveLevel > 0 {
-		loglevel = config.ToLogrusLevel(cluster.Conf.LogArchiveLevel)
-	}
-
-	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModArchive)
 	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
 	go cluster.ResticFetchRepo()
 	return nil
@@ -284,6 +278,23 @@ func (cluster *Cluster) ResticModifyQueue(moveType string, taskID, cmpID int) er
 	}
 
 	return cluster.ResticManager.MoveTask(moveType, taskID, cmpID)
+}
+
+func (cluster *Cluster) ResticCancelTask(taskId int) error {
+	// No need to add wait since it will be checked each monitor loop
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cancelling restic task ID %d", taskId)
+
+	cluster.ResticManager.CancelTask(taskId)
+
+	return nil
 }
 
 func (cluster *Cluster) ResticClearQueue() error {

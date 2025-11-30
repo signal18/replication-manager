@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
@@ -106,13 +107,12 @@ type ResticManager struct {
 	Env         []string
 	Backups     []BackupSnapshot
 	BackupStat  BackupStat
-	Logger      *logrus.Logger
-	LogFields   logrus.Fields
-	LogLevel    logrus.Level
 	TaskQueue   []*ResticTask
 	TaskErrors  map[TaskType]error
 	errorMutex  *sync.Mutex
 	ResultChan  chan ResticResult
+	LogModule   int
+	MessageChan chan s18log.HttpMessage
 	Shutdown    bool
 	Mutex       *sync.Mutex
 	cond        *sync.Cond    // Condition variable for waiting and notifying tasks
@@ -126,13 +126,12 @@ type ResticManager struct {
 }
 
 // NewResticRepo initializes the repository manager
-func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fields, loglevel logrus.Level) *ResticManager {
+func NewResticRepo(binaryPath string, msgChan chan s18log.HttpMessage, logmodule int) *ResticManager {
 	repo := &ResticManager{
 		BinaryPath:  binaryPath,
 		Backups:     make([]BackupSnapshot, 0),
-		Logger:      logger,
-		LogFields:   logfields,
-		LogLevel:    loglevel,
+		MessageChan: msgChan,
+		LogModule:   logmodule,
 		TaskQueue:   make([]*ResticTask, 0),
 		Mutex:       &sync.Mutex{},
 		TaskErrors:  make(map[TaskType]error),
@@ -272,18 +271,14 @@ func (repo *ResticManager) GetCanFetch() bool {
 	return repo.CanFetch
 }
 
-func (repo *ResticManager) SetLogFields(fields logrus.Fields) {
-	repo.LogFields = fields
-}
-
-// SetLogLevel updates the log level for archive module. This is different with logrus.SetLevel which sets the global log level.
-func (repo *ResticManager) SetLogLevel(level logrus.Level) {
-	repo.LogLevel = level
-}
-
 func (repo *ResticManager) Print(level logrus.Level, message string, args ...interface{}) {
-	if repo.LogLevel >= level {
-		repo.Logger.WithFields(repo.LogFields).Logf(level, message, args...)
+	if repo.MessageChan != nil {
+		repo.MessageChan <- s18log.HttpMessage{
+			Module:    repo.LogModule,
+			Level:     s18log.FromLogrusLevel(uint32(level)),
+			Text:      fmt.Sprintf(message, args...),
+			Timestamp: fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")),
+		}
 	}
 }
 
@@ -502,6 +497,28 @@ func (repo *ResticManager) HasFetchQueue() bool {
 	}
 
 	return false
+}
+
+func (repo *ResticManager) CancelTask(taskId int) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.Print(logrus.InfoLevel, "Cancelling restic task ID: %d", taskId)
+
+	var taskToCancel *ResticTask
+	for _, task := range repo.TaskQueue {
+		if task.ID == taskId {
+			taskToCancel = task
+			break
+		}
+	}
+
+	if taskToCancel != nil {
+		repo.TaskQueue = append(repo.TaskQueue[:taskToCancel.ID], repo.TaskQueue[taskToCancel.ID+1:]...)
+		repo.Print(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
+	} else {
+		repo.Print(logrus.WarnLevel, "Restic task ID not found: %d", taskId)
+	}
 }
 
 func (repo *ResticManager) ClearQueue() {

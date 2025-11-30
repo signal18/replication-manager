@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk, isAnyOf } from '@reduxjs/toolkit'
 import { clusterService } from '../services/clusterService'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
-import { isEqual } from 'lodash';
+import { get, isEqual } from 'lodash';
 
 export const getClusterData = createAsyncThunk('cluster/getClusterData', async ({ clusterName }, thunkAPI) => {
   try {
@@ -160,15 +160,23 @@ export const getOpenSVCStats = createAsyncThunk('cluster/getOpenSVCStats', async
   }
 });
 
-export const getBackupSnapshot = createAsyncThunk('cluster/getBackupSnapshot', async ({ clusterName }, thunkAPI) => {
+export const getBackups = createAsyncThunk('cluster/getBackups', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.getBackupSnapshot(clusterName, baseURL)
+    const { data, status } = await clusterService.getBackups(clusterName, baseURL)
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
   }
-})
+}, {
+    condition: (_, { getState }) => {
+      const { cluster } = getState();
+      if (cluster.isFetching.backups.list) {
+        return false;
+      }
+    }
+  }
+)
 
 export const getBackupStats = createAsyncThunk('cluster/getBackupStats', async ({ clusterName }, thunkAPI) => {
   try {
@@ -177,6 +185,84 @@ export const getBackupStats = createAsyncThunk('cluster/getBackupStats', async (
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.backups.stats) {
+      return false;
+    }
+  }
+})
+
+export const getResticSnapshot = createAsyncThunk('cluster/getResticSnapshot', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getResticSnapshot(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+},{
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.restic.snapshots) {
+      return false;
+    }
+  }
+})
+
+export const getResticStats = createAsyncThunk('cluster/getResticStats', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getResticStats(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.restic.stats) {
+      return false;
+    }
+  }
+})
+
+export const purgeResticSnapshot = createAsyncThunk('cluster/purgeResticSnapshot', async ({ clusterName, snapshotId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.purgeResticSnapshot(clusterName, snapshotId, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const purgeResticByPolicy = createAsyncThunk('cluster/purgeResticByPolicy', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.purgeResticByPolicy(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const getResticTasks = createAsyncThunk('cluster/getResticTasks', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.getResticTasks(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+}, {
+  condition: (_, { getState }) => {
+    const { cluster } = getState();
+    if (cluster.isFetching.restic.tasks) {
+      return false;
+    }
   }
 })
 
@@ -1799,7 +1885,16 @@ const initialState = {
       serviceOpensvc: false,
       metadataLocks: false,
       responsetime: false,
-    }
+    },
+    backups: {
+      list: false,
+      stats: false
+    },
+    restic: {
+      snapshots: false,
+      stats: false,
+      tasks: false
+    },
   },
   error: null,
   clusterApps: null,
@@ -1817,8 +1912,13 @@ const initialState = {
   clusterCertificates: null,
   clusterStates: null,
   backups: {
-    snapshots: null,
+    list: null,
     stats: null
+  },
+  restic: {
+    snapshots: null,
+    stats: null,
+    tasks: null
   },
   topProcess: null,
   opensvcStats: null,
@@ -1892,10 +1992,13 @@ export const clusterSlice = createSlice({
         getDatabaseVariables.fulfilled,
         getTopProcess.fulfilled,
         getOpenSVCStats.fulfilled,
-        getBackupSnapshot.fulfilled,
-        getBackupStats.fulfilled,
         getShardSchema.fulfilled,
         getQueryRules.fulfilled,
+        getBackups.fulfilled,
+        getBackupStats.fulfilled,
+        getResticSnapshot.fulfilled,
+        getResticStats.fulfilled,
+        getResticTasks.fulfilled,
         getJobs.fulfilled
       ),
       (state, action) => {
@@ -1933,10 +2036,21 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getOpenSVCStats')) {
           state.opensvcStats = action.payload.data
           state.isFetching.opensvcStats = false
-        } else if (action.type.includes('getBackupSnapshot')) {
-          state.backups.snapshots = action.payload.data
+        } else if (action.type.includes('getBackups')) {
+          state.backups.list = action.payload.data
+          state.isFetching.backups.list = false
         } else if (action.type.includes('getBackupStats')) {
           state.backups.stats = action.payload.data
+          state.isFetching.backups.stats = false
+        } else if (action.type.includes('getResticSnapshot')) {
+          state.restic.snapshots = action.payload.data
+          state.isFetching.restic.snapshots = false
+        } else if (action.type.includes('getResticStats')) {
+          state.restic.stats = action.payload.data
+          state.isFetching.restic.stats = false
+        } else if (action.type.includes('getResticTasks')) {
+          state.restic.tasks = action.payload.data
+          state.isFetching.restic.tasks = false
         } else if (action.type.includes('getShardSchema')) {
           state.shardSchema = action.payload.data
         } else if (action.type.includes('getQueryRules')) {
@@ -1959,7 +2073,7 @@ export const clusterSlice = createSlice({
             state.isFetching.database.sqlerrors = false
           } else if (serviceName === 'auditlog') {
             state.database.auditlogs = action.payload.data
-            state.isFetching.database.auditlogs = false 
+            state.isFetching.database.auditlogs = false
           } else if (serviceName === 'digest-statements-pfs') {
             state.database.digestQueries = action.payload.data
             state.isFetching.database.digestQueries = false
@@ -2004,6 +2118,11 @@ export const clusterSlice = createSlice({
         getTopProcess.pending,
         getOpenSVCStats.pending,
         getDatabaseService.pending,
+        getResticStats.pending,
+        getResticSnapshot.pending,
+        getResticTasks.pending,
+        getBackups.pending,
+        getBackupStats.pending,
       ),
       (state, action) => {
         if (action.type.includes('getClusterData')) {
@@ -2024,6 +2143,16 @@ export const clusterSlice = createSlice({
           state.isFetching.top = true
         } else if (action.type.includes('getOpenSVCStats')) {
           state.isFetching.opensvcStats = true
+        } else if (action.type.includes('getBackups')) {
+          state.isFetching.backups.list = true
+        } else if (action.type.includes('getBackupStats')) {
+          state.isFetching.backups.stats = true
+        } else if (action.type.includes('getResticSnapshot')) {
+          state.isFetching.restic.snapshots = true
+        } else if (action.type.includes('getResticStats')) {
+          state.isFetching.restic.stats = true
+        } else if (action.type.includes('getResticTasks')) {
+          state.isFetching.restic.tasks = true
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
@@ -2068,6 +2197,13 @@ export const clusterSlice = createSlice({
         getClusterProxies.rejected,
         getClusterCertificates.rejected,
         getDatabaseService.rejected,
+        getBackups.rejected,
+        getBackupStats.rejected,
+        getResticSnapshot.rejected,
+        getResticStats.rejected,
+        getResticTasks.rejected,
+        getTopProcess.rejected,
+        getOpenSVCStats.rejected
       ), (state, action) => {
         if (action.type.includes('getClusterData')) {
           state.isFetching.cluster = false
@@ -2083,6 +2219,16 @@ export const clusterSlice = createSlice({
           state.isFetching.proxies = false
         } else if (action.type.includes('getClusterApps')) {
           state.isFetching.apps = false
+        } else if (action.type.includes('getBackups')) {
+          state.isFetching.backups.list = false
+        } else if (action.type.includes('getBackupStats')) {
+          state.isFetching.backups.stats = false
+        } else if (action.type.includes('getResticSnapshot')) {
+          state.isFetching.restic.snapshots = false
+        } else if (action.type.includes('getResticStats')) {
+          state.isFetching.restic.stats = false
+        } else if (action.type.includes('getResticTasks')) {
+          state.isFetching.restic.tasks = false
         } else if (action.type.includes('getTopProcess')) {
           state.isFetching.top = false
         } else if (action.type.includes('getOpenSVCStats')) {

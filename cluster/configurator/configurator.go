@@ -21,6 +21,7 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/crypto"
+	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/sirupsen/logrus"
 )
@@ -122,7 +123,7 @@ func (configurator *Configurator) LoadProxyModules() error {
 	return nil
 }
 
-func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, Plugins *config.PluginsMap) error {
+func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, Plugins *dbhelper.PluginsMap) error {
 	pmap := Plugins.ToNewMap()
 	vmap := Variables.ToNewMap()
 	innodbmem, err := strconv.ParseUint(Variables.Get("INNODB_BUFFER_POOL_SIZE"), 10, 64)

@@ -506,3 +506,9 @@ func (cluster *Cluster) LogPanicToFile(task string) {
 
 	}
 }
+
+func (cluster *Cluster) ConsumeMessageChan() {
+	for msg := range cluster.MessageChan {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, msg.Module, msg.Level, msg.Text)
+	}
+}
