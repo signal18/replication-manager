@@ -5,7 +5,7 @@ package repmanv3
 import (
 	context "context"
 
-	archiver "github.com/signal18/replication-manager/utils/archiver"
+	backupmgr "github.com/signal18/replication-manager/utils/backupmgr"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -553,7 +553,7 @@ func _ClusterService_GetBackups_Handler(srv interface{}, stream grpc.ServerStrea
 }
 
 type ClusterService_GetBackupsServer interface {
-	Send(*archiver.Backup) error
+	Send(*backupmgr.BackupMetadata) error
 	grpc.ServerStream
 }
 
@@ -561,7 +561,7 @@ type clusterServiceGetBackupsServer struct {
 	grpc.ServerStream
 }
 
-func (x *clusterServiceGetBackupsServer) Send(m *archiver.Backup) error {
+func (x *clusterServiceGetBackupsServer) Send(m *backupmgr.BackupMetadata) error {
 	return x.ServerStream.SendMsg(m)
 }
 

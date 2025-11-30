@@ -39,7 +39,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/alert/slackman"
-	"github.com/signal18/replication-manager/utils/archiver"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
@@ -206,7 +206,7 @@ type Cluster struct {
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
 	BackupStat                v3.BackupStat               `json:"backupStat" groups:"web"`
-	BackupMetaMap             *config.BackupMetaMap       `json:"backupList" groups:"web"`
+	BackupMetaMap             *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
 	SLAHistory                []state.Sla                 `json:"slaHistory" groups:"web"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers" groups:"web"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
@@ -245,7 +245,7 @@ type Cluster struct {
 	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
-	ResticManager             *archiver.ResticManager     `json:"-"`
+	ResticManager             *backupmgr.ResticManager    `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -410,7 +410,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
-	cluster.BackupMetaMap = config.NewBackupMetaMap()
+	cluster.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name

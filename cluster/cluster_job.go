@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/state"
 )
@@ -147,7 +148,7 @@ func (cluster *Cluster) JobMyLoaderParseMeta(dir string) (config.MyDumperMetaDat
 	}
 }
 
-func (cluster *Cluster) JobParseMyDumperMeta(meta *config.BackupMetadata) error {
+func (cluster *Cluster) JobParseMyDumperMeta(meta *backupmgr.BackupMetadata) error {
 	var m config.MyDumperMetaData
 	var err error
 

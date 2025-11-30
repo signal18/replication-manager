@@ -1,4 +1,4 @@
-package archiver
+package backupmgr
 
 import (
 	"bufio"
@@ -104,7 +104,7 @@ type TaskStatus struct {
 type ResticManager struct {
 	BinaryPath  string
 	Env         []string
-	Backups     []Backup
+	Backups     []BackupSnapshot
 	BackupStat  BackupStat
 	Logger      *logrus.Logger
 	LogFields   logrus.Fields
@@ -129,7 +129,7 @@ type ResticManager struct {
 func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fields, loglevel logrus.Level) *ResticManager {
 	repo := &ResticManager{
 		BinaryPath:  binaryPath,
-		Backups:     make([]Backup, 0),
+		Backups:     make([]BackupSnapshot, 0),
 		Logger:      logger,
 		LogFields:   logfields,
 		LogLevel:    loglevel,
@@ -708,7 +708,7 @@ func (repo *ResticManager) fetchRepoSnapshots() error {
 		return fmt.Errorf("failed to fetch repo: %v, stderr: %s", err, stderr)
 	}
 
-	var backups []Backup
+	var backups []BackupSnapshot
 	err = json.Unmarshal(stdout, &backups)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal backups: %w", err)

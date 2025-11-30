@@ -22,6 +22,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/signal18/replication-manager/cluster"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -1274,7 +1275,7 @@ func (repman *ReplicationManager) handlerMuxServerPITR(w http.ResponseWriter, r 
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			var formPit config.PointInTimeMeta
+			var formPit backupmgr.PointInTimeMeta
 			// This will always true for making standalone
 			formPit.IsInPITR = true
 			err := json.NewDecoder(r.Body).Decode(&formPit)

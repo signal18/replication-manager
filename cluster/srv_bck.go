@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 )
 
 func (server *ServerMonitor) FetchLastBackupMetadata() {
@@ -73,7 +74,7 @@ func (server *ServerMonitor) AppendLastMetadata(method string, latest *int64) {
 	}
 }
 
-func (server *ServerMonitor) ReadLastMetadata(method string) (*config.BackupMetadata, error) {
+func (server *ServerMonitor) ReadLastMetadata(method string) (*backupmgr.BackupMetadata, error) {
 	var filename string = method
 	var ext string = ".meta.json"
 
@@ -89,7 +90,7 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*config.BackupMeta
 	}
 	defer file.Close()
 
-	meta := new(config.BackupMetadata)
+	meta := new(backupmgr.BackupMetadata)
 	err = json.NewDecoder(file).Decode(meta)
 	if err != nil {
 		return nil, err
@@ -98,20 +99,20 @@ func (server *ServerMonitor) ReadLastMetadata(method string) (*config.BackupMeta
 	return meta, nil
 }
 
-func (server *ServerMonitor) GetLatestMeta(method string) (int64, *config.BackupMetadata) {
+func (server *ServerMonitor) GetLatestMeta(method string) (int64, *backupmgr.BackupMetadata) {
 	cluster := server.ClusterGroup
 	var latest int64 = 0
-	var meta *config.BackupMetadata
+	var meta *backupmgr.BackupMetadata
 	cluster.BackupMetaMap.Range(func(k, v any) bool {
-		m := v.(*config.BackupMetadata)
+		m := v.(*backupmgr.BackupMetadata)
 		valid := false
 		switch method {
 		case "logical":
-			if m.BackupMethod == config.BackupMethodLogical {
+			if m.BackupMethod == backupmgr.BackupMethodLogical {
 				valid = true
 			}
 		case "physical":
-			if m.BackupMethod == config.BackupMethodPhysical {
+			if m.BackupMethod == backupmgr.BackupMethodPhysical {
 				valid = true
 			}
 		default:
@@ -135,12 +136,12 @@ func (server *ServerMonitor) GetLatestMeta(method string) (int64, *config.Backup
 	return latest, meta
 }
 
-func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) error {
+func (server *ServerMonitor) ReseedPointInTime(meta backupmgr.PointInTimeMeta) error {
 	var err error
 	cluster := server.ClusterGroup
 
-	server.SetPointInTimeMeta(meta)                           //Set for PITR
-	defer server.SetPointInTimeMeta(config.PointInTimeMeta{}) //Reset after done
+	server.SetPointInTimeMeta(meta)                              //Set for PITR
+	defer server.SetPointInTimeMeta(backupmgr.PointInTimeMeta{}) //Reset after done
 
 	backup := cluster.BackupMetaMap.Get(meta.Backup)
 	if backup == nil {
@@ -205,8 +206,8 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 		return fmt.Errorf("Source not found")
 	}
 
-	start := config.ReadBinaryLogsBoundary{Filename: backup.BinLogFileName, Position: int64(backup.BinLogFilePos)}
-	end := config.ReadBinaryLogsBoundary{UseTimestamp: true, Timestamp: time.Unix(meta.RestoreTime, 0)}
+	start := backupmgr.ReadBinaryLogsBoundary{Filename: backup.BinLogFileName, Position: int64(backup.BinLogFilePos)}
+	end := backupmgr.ReadBinaryLogsBoundary{UseTimestamp: true, Timestamp: time.Unix(meta.RestoreTime, 0)}
 	err = source.ReadAndExecBinaryLogsWithinRange(start, end, server)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error while applying binlogs on %s. err: %s", server.URL, err.Error())
@@ -218,10 +219,10 @@ func (server *ServerMonitor) ReseedPointInTime(meta config.PointInTimeMeta) erro
 	return nil
 }
 
-func (server *ServerMonitor) InjectViaBinlogs(meta config.PointInTimeMeta) error {
+func (server *ServerMonitor) InjectViaBinlogs(meta backupmgr.PointInTimeMeta) error {
 	return nil
 }
 
-func (server *ServerMonitor) InjectViaReplication(meta config.PointInTimeMeta) error {
+func (server *ServerMonitor) InjectViaReplication(meta backupmgr.PointInTimeMeta) error {
 	return nil
 }

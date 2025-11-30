@@ -27,7 +27,7 @@ import (
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/opensvc"
 	"github.com/signal18/replication-manager/peer"
-	"github.com/signal18/replication-manager/utils/archiver"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -1135,12 +1135,12 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetBackups() map[int64]*config.BackupMetadata {
+func (cluster *Cluster) GetBackups() map[int64]*backupmgr.BackupMetadata {
 	return cluster.BackupMetaMap.ToNewMap()
 }
 
-func (cluster *Cluster) GetBackupStat() *archiver.BackupStat {
-	backupStat := &archiver.BackupStat{}
+func (cluster *Cluster) GetBackupStat() *backupmgr.BackupStat {
+	backupStat := &backupmgr.BackupStat{}
 
 	backups := cluster.GetBackups()
 	for _, backup := range backups {
@@ -1151,17 +1151,17 @@ func (cluster *Cluster) GetBackupStat() *archiver.BackupStat {
 	return backupStat
 }
 
-func (cluster *Cluster) GetArchives() []archiver.Backup {
+func (cluster *Cluster) GetSnapshots() []backupmgr.BackupSnapshot {
 	if cluster.ResticManager == nil {
-		return make([]archiver.Backup, 0)
+		return make([]backupmgr.BackupSnapshot, 0)
 	}
 
 	return cluster.ResticManager.Backups
 }
 
-func (cluster *Cluster) GetArchiveStats() archiver.BackupStat {
+func (cluster *Cluster) GetSnapshotStats() backupmgr.BackupStat {
 	if cluster.ResticManager == nil {
-		return archiver.BackupStat{}
+		return backupmgr.BackupStat{}
 	}
 
 	return cluster.ResticManager.BackupStat

@@ -1937,7 +1937,7 @@ func (repman *ReplicationManager) handlerMuxClusterArchives(w http.ResponseWrite
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetArchives())
+		err := e.Encode(mycluster.GetSnapshots())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return
@@ -1970,7 +1970,7 @@ func (repman *ReplicationManager) handlerMuxClusterArchiveStats(w http.ResponseW
 		}
 		e := json.NewEncoder(w)
 		e.SetIndent("", "\t")
-		err := e.Encode(mycluster.GetArchiveStats())
+		err := e.Encode(mycluster.GetSnapshotStats())
 		if err != nil {
 			http.Error(w, "Encoding error", 500)
 			return

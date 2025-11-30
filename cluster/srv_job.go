@@ -34,6 +34,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -389,11 +390,11 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
-	server.LastBackupMeta.Physical = &config.BackupMetadata{
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
 		Id:             now.Unix(),
 		StartTime:      now,
-		BackupMethod:   config.BackupMethodPhysical,
-		BackupStrategy: config.BackupStrategyFull,
+		BackupMethod:   backupmgr.BackupMethodPhysical,
+		BackupStrategy: backupmgr.BackupStrategyFull,
 		BackupTool:     cluster.Conf.BackupPhysicalType,
 		Source:         server.URL,
 		Dest:           dest,
@@ -2347,12 +2348,12 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
-	server.LastBackupMeta.Logical = &config.BackupMetadata{
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
 		Id:             start.Unix(),
 		StartTime:      start,
-		BackupMethod:   config.BackupMethodLogical,
+		BackupMethod:   backupmgr.BackupMethodLogical,
 		BackupTool:     cluster.Conf.BackupLogicalType,
-		BackupStrategy: config.BackupStrategyFull,
+		BackupStrategy: backupmgr.BackupStrategyFull,
 		Source:         server.URL,
 		Previous:       prevId,
 	}
@@ -2506,7 +2507,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 	}
 
-	server.WriteBackupMetadata(config.BackupMethodLogical)
+	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	} else {
@@ -3316,15 +3317,15 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	return nil
 }
 
-func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
+func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
 	cluster := server.ClusterGroup
-	var lastmeta *config.BackupMetadata
+	var lastmeta *backupmgr.BackupMetadata
 
 	switch backtype {
-	case config.BackupMethodLogical:
+	case backupmgr.BackupMethodLogical:
 		lastmeta = server.LastBackupMeta.Logical
 		defer cluster.CheckLogicalBackupToolVersion(server) // Update backup tool version after backup
-	case config.BackupMethodPhysical:
+	case backupmgr.BackupMethodPhysical:
 		lastmeta = server.LastBackupMeta.Physical
 		defer cluster.CheckPhysicalBackupToolVersion(server) // Update backup tool version after backup
 	default:
@@ -3387,9 +3388,9 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 			// Revert to previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Id)
 			switch backtype {
-			case config.BackupMethodLogical:
+			case backupmgr.BackupMethodLogical:
 				_, server.LastBackupMeta.Logical = server.GetLatestMeta("logical")
-			case config.BackupMethodPhysical:
+			case backupmgr.BackupMethodPhysical:
 				_, server.LastBackupMeta.Physical = server.GetLatestMeta("physical")
 			}
 		}
@@ -3455,7 +3456,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
-		server.WriteBackupMetadata(config.BackupMethodPhysical)
+		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":

@@ -16,6 +16,7 @@ import (
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/alert"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/state"
 )
 
@@ -227,9 +228,9 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 	return nil
 }
 
-func (cluster *Cluster) BackupPostScript(server *ServerMonitor, backtype config.BackupMethod, filepath string) error {
+func (cluster *Cluster) BackupPostScript(server *ServerMonitor, backtype backupmgr.BackupMethod, filepath string) error {
 	switch backtype {
-	case config.BackupMethodLogical:
+	case backupmgr.BackupMethodLogical:
 		if cluster.Conf.BackupLogicalPostScript != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling backup logical post script at %s", cluster.Conf.BackupLogicalPostScript)
 			var out []byte
@@ -241,7 +242,7 @@ func (cluster *Cluster) BackupPostScript(server *ServerMonitor, backtype config.
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Backup logical post script done: %s", string(out))
 		}
-	case config.BackupMethodPhysical:
+	case backupmgr.BackupMethodPhysical:
 		if cluster.Conf.BackupPhysicalPostScript != "" {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Calling backup physical post script at %s", cluster.Conf.BackupPhysicalPostScript)
 			var out []byte

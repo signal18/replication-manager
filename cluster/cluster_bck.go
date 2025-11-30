@@ -15,7 +15,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/utils/archiver"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -64,18 +64,18 @@ func (cluster *Cluster) CheckResticErrors() {
 
 	// If repo cannot be initialized, all other errors are not relevant. So we just fetch the init repo errors
 	if !cluster.ResticManager.CanInitRepo && cluster.ResticManager.HasAnyError() {
-		err := cluster.ResticManager.FetchAndClearError(archiver.InitTask)
+		err := cluster.ResticManager.FetchAndClearError(backupmgr.InitTask)
 		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 		return
 	}
 
 	for task, err := range cluster.ResticManager.FetchAndClearErrors() {
 		switch task {
-		case archiver.FetchTask:
+		case backupmgr.FetchTask:
 			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
-		case archiver.PurgeTask:
+		case backupmgr.PurgeTask:
 			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-		case archiver.UnlockTask:
+		case backupmgr.UnlockTask:
 			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
 		default:
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
@@ -104,7 +104,7 @@ func (cluster *Cluster) StartResticManager() error {
 		loglevel = config.ToLogrusLevel(cluster.Conf.LogArchiveLevel)
 	}
 
-	cluster.ResticManager = archiver.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
+	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.Logrus, logrus.Fields{"cluster": cluster.Name, "type": "log", "module": "restic"}, loglevel)
 	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
 	go cluster.ResticFetchRepo()
 	return nil
@@ -140,7 +140,7 @@ func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
 		return fmt.Errorf("Unable to purge single snapshot: snapshot ID is empty")
 	}
 
-	cluster.ResticManager.AddPurgeTask(archiver.ResticPurgeOption{
+	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 		SnapshotID: snapshotID,
 	})
 	return nil
@@ -158,7 +158,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 			cluster.StartResticManager()
 		}
 
-		cluster.ResticManager.AddPurgeTask(archiver.ResticPurgeOption{
+		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
 			KeepDaily:         cluster.Conf.BackupKeepDaily,
@@ -261,7 +261,7 @@ func (cluster *Cluster) ResticUnlockRepo() {
 
 }
 
-func (cluster *Cluster) ResticGetQueue() ([]*archiver.ResticTask, error) {
+func (cluster *Cluster) ResticGetQueue() ([]*backupmgr.ResticTask, error) {
 	// No need to add wait since it will be checked each monitor loop
 	if !cluster.Conf.BackupRestic {
 		return nil, nil

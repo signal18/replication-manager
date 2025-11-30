@@ -31,6 +31,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
 	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -213,7 +214,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
 	NeedRefreshJobs             bool
-	PointInTimeMeta             config.PointInTimeMeta
+	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
@@ -224,8 +225,8 @@ type ServerMonitor struct {
 }
 
 type ServerBackupMeta struct {
-	Logical  *config.BackupMetadata `json:"logical"`
-	Physical *config.BackupMetadata `json:"physical"`
+	Logical  *backupmgr.BackupMetadata `json:"logical"`
+	Physical *backupmgr.BackupMetadata `json:"physical"`
 }
 
 type SlaveVariables struct {
@@ -286,8 +287,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
-	server.LastBackupMeta.Physical = new(config.BackupMetadata)
-	server.LastBackupMeta.Logical = new(config.BackupMetadata)
+	server.LastBackupMeta.Physical = new(backupmgr.BackupMetadata)
+	server.LastBackupMeta.Logical = new(backupmgr.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
