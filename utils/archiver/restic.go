@@ -77,7 +77,7 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	Snapshots         []string
+	SnapshotID        string
 	KeepLast          int
 	KeepHourly        int
 	KeepDaily         int
@@ -892,12 +892,10 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 
 	// Prepare the arguments for the "forget" command
 
-	if len(opt.Snapshots) > 0 {
-		for _, snapshotID := range opt.Snapshots {
-			err := repo.purgeSingleSnapshot(snapshotID)
-			if err != nil {
-				return err
-			}
+	if opt.SnapshotID != "" {
+		err := repo.purgeSingleSnapshot(opt.SnapshotID)
+		if err != nil {
+			return err
 		}
 	} else {
 		err := repo.purgeWithPolicy(opt)

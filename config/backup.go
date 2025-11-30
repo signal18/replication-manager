@@ -32,6 +32,7 @@ type BackupMetadata struct {
 	Source            string         `json:"source"`
 	Dest              string         `json:"dest"`
 	Size              int64          `json:"size"`
+	FileCount         int64          `json:"fileCount"`
 	Compressed        bool           `json:"compressed"`
 	Encrypted         bool           `json:"encrypted"`
 	EncryptionAlgo    string         `json:"encryptionAlgo"`
@@ -53,15 +54,18 @@ type PointInTimeMeta struct {
 	RestoreTime int64
 }
 
-func (bm *BackupMetadata) GetSize() error {
+func (bm *BackupMetadata) GetSizeAndFileCount() error {
 	var size int64 = 0
+	var fileCount int64 = 0
 	err := filepath.Walk(bm.Dest, func(_ string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			size += info.Size()
+			fileCount++
 		}
 		return err
 	})
 	bm.Size = size
+	bm.FileCount = fileCount
 	return err
 }
 

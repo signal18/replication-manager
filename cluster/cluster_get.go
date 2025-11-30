@@ -1135,7 +1135,23 @@ func (cluster *Cluster) GetTableDLLNoFK(schema string, table string, srv *Server
 	return ddl, err
 }
 
-func (cluster *Cluster) GetBackups() []archiver.Backup {
+func (cluster *Cluster) GetBackups() map[int64]*config.BackupMetadata {
+	return cluster.BackupMetaMap.ToNewMap()
+}
+
+func (cluster *Cluster) GetBackupStat() *archiver.BackupStat {
+	backupStat := &archiver.BackupStat{}
+
+	backups := cluster.GetBackups()
+	for _, backup := range backups {
+		backupStat.TotalFileCount += backup.FileCount
+		backupStat.TotalSize += backup.Size
+	}
+
+	return backupStat
+}
+
+func (cluster *Cluster) GetArchives() []archiver.Backup {
 	if cluster.ResticManager == nil {
 		return make([]archiver.Backup, 0)
 	}
@@ -1143,7 +1159,7 @@ func (cluster *Cluster) GetBackups() []archiver.Backup {
 	return cluster.ResticManager.Backups
 }
 
-func (cluster *Cluster) GetBackupStat() archiver.BackupStat {
+func (cluster *Cluster) GetArchiveStats() archiver.BackupStat {
 	if cluster.ResticManager == nil {
 		return archiver.BackupStat{}
 	}

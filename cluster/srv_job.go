@@ -2427,7 +2427,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(filename)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
 				}
@@ -2456,7 +2456,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2486,7 +2486,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -3333,7 +3333,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	}
 
 	if _, err := os.Stat(lastmeta.Dest); err == nil {
-		lastmeta.GetSize()
+		lastmeta.GetSizeAndFileCount()
 		lastmeta.EndTime = time.Now()
 	}
 

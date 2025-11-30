@@ -127,6 +127,25 @@ func (cluster *Cluster) ResticInitRepo(force bool) error {
 	return err
 }
 
+func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("Restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	if snapshotID == "" {
+		return fmt.Errorf("Unable to purge single snapshot: snapshot ID is empty")
+	}
+
+	cluster.ResticManager.AddPurgeTask(archiver.ResticPurgeOption{
+		SnapshotID: snapshotID,
+	})
+	return nil
+}
+
 func (cluster *Cluster) ResticPurgeRepo() error {
 	if cluster.Conf.BackupRestic {
 		err := cluster.Conf.CheckKeepWithin() // Check if backup-keep-within is valid

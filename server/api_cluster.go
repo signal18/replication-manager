@@ -127,7 +127,7 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesFetch)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/archives/purge", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/archives/purge/{snapshotID}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxArchivesPurge)),
 	))
@@ -1910,6 +1910,72 @@ func (repman *ReplicationManager) handlerMuxClusterTags(w http.ResponseWriter, r
 		}
 	} else {
 
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterBackups handles the retrieval of backups for a given cluster.
+// @Summary Retrieve backups for a specific cluster
+// @Description This endpoint retrieves the backups for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} map[string]interface{} "List of backups"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives [get]
+func (repman *ReplicationManager) handlerMuxClusterArchives(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetArchives())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxClusterBackupStats handles the retrieval of backup stats for a given cluster.
+// @Summary Retrieve backup stats for a specific cluster
+// @Description This endpoint retrieves the backup stats for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {array} archiver.BackupStat "List of backups"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/stats [get]
+func (repman *ReplicationManager) handlerMuxClusterArchiveStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		e := json.NewEncoder(w)
+		e.SetIndent("", "\t")
+		err := e.Encode(mycluster.GetArchiveStats())
+		if err != nil {
+			http.Error(w, "Encoding error", 500)
+			return
+		}
+	} else {
 		http.Error(w, "No cluster", 500)
 		return
 	}
@@ -6819,10 +6885,11 @@ func (repman *ReplicationManager) handlerMuxArchivesFetch(w http.ResponseWriter,
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
+// @Param snapshotID path string true "Snapshot ID"
 // @Success 200 {string} string "Archives purge queued"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/archives/purge [post]
+// @Router /api/clusters/{clusterName}/archives/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
@@ -6840,11 +6907,27 @@ func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter,
 		}
 
 		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
+			mycluster.StartResticManager()
 		}
 
-		go mycluster.ResticPurgeRepo()
+		if vars["snapshotID"] != "" {
+			if vars["snapshotID"] == "policy" {
+				err := mycluster.ResticPurgeRepo()
+				if err != nil {
+					http.Error(w, "Error purging archives: "+err.Error(), 500)
+					return
+				}
+			} else {
+				err := mycluster.AddPurgeTask(vars["snapshotID"])
+				if err != nil {
+					http.Error(w, "Error adding purge task: "+err.Error(), 500)
+					return
+				}
+			}
+		} else {
+			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", 500)
+			return
+		}
 	} else {
 		http.Error(w, "No cluster", 500)
 		return
