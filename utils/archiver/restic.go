@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,23 +22,35 @@ import (
 type TaskType int
 
 const (
-	FetchTask TaskType = iota
-	PurgeTask
+	InitTask TaskType = iota
+	FetchTask
 	BackupTask
+	PurgeTask
 	UnlockTask
+	ChangePassTask
+)
+
+type MoveType string
+
+const (
+	MoveFirst MoveType = "first"
+	MoveAfter MoveType = "after"
+	MoveLast  MoveType = "last"
 )
 
 func GetTaskName(TaskType TaskType) string {
 	switch TaskType {
 	case 0:
-		return "fetch"
+		return "init"
 	case 1:
-		return "backup"
+		return "fetch"
 	case 2:
-		return "purge"
+		return "backup"
 	case 3:
-		return "unlock"
+		return "purge"
 	case 4:
+		return "unlock"
+	case 5:
 		return "changepass"
 	default:
 		return "Unknown"
@@ -53,7 +66,6 @@ type ResticTask struct {
 	Type        TaskType          `json:"task_type"`
 	Opt         ResticPurgeOption `json:"opt"`
 	ErrorState  state.State       `json:"error_state"`
-	Result      chan ResticResult `json:"-"` // Only used if caller needs the result
 }
 
 // ResticResult holds the output or error of a task
@@ -65,6 +77,7 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
+	Snapshots         []string
 	KeepLast          int
 	KeepHourly        int
 	KeepDaily         int
@@ -97,6 +110,8 @@ type ResticManager struct {
 	LogFields   logrus.Fields
 	LogLevel    logrus.Level
 	TaskQueue   []*ResticTask
+	TaskErrors  map[TaskType]error
+	errorMutex  *sync.Mutex
 	ResultChan  chan ResticResult
 	Shutdown    bool
 	Mutex       *sync.Mutex
@@ -104,6 +119,7 @@ type ResticManager struct {
 	stopCh      chan struct{} // Stop channel to signal the goroutine to stop
 	CanFetch    bool
 	CanInitRepo bool
+	isPaused    bool
 	HasLocks    bool
 	taskID      int
 	CurrentID   int
@@ -118,8 +134,10 @@ func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fi
 		LogFields:   logfields,
 		LogLevel:    loglevel,
 		TaskQueue:   make([]*ResticTask, 0),
-		ResultChan:  make(chan ResticResult, 10),
 		Mutex:       &sync.Mutex{},
+		TaskErrors:  make(map[TaskType]error),
+		errorMutex:  &sync.Mutex{},
+		ResultChan:  make(chan ResticResult, 10),
 		stopCh:      make(chan struct{}),
 		CanFetch:    true,
 		CanInitRepo: true,
@@ -128,6 +146,74 @@ func NewResticRepo(binaryPath string, logger *logrus.Logger, logfields logrus.Fi
 	repo.cond = sync.NewCond(repo.Mutex)
 	go repo.worker() // Start the worker
 	return repo
+}
+
+func (repo *ResticManager) IsPaused() bool {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	return repo.isPaused
+}
+
+func (repo *ResticManager) ResumeWorker() {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.isPaused = false
+	repo.cond.Broadcast() // Wake up the worker goroutine
+}
+
+func (repo *ResticManager) PauseWorker() {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.isPaused = true
+}
+
+func (repo *ResticManager) HasAnyError() bool {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	return len(repo.TaskErrors) > 0
+}
+
+func (repo *ResticManager) SetError(task TaskType, err error) {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+	repo.TaskErrors[task] = err
+}
+
+func (repo *ResticManager) FetchAndClearErrors() map[TaskType]error {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+
+	if len(repo.TaskErrors) == 0 {
+		return nil
+	}
+
+	errs := make(map[TaskType]error)
+	for k, v := range repo.TaskErrors {
+		errs[k] = v
+	}
+
+	for k := range repo.TaskErrors {
+		delete(repo.TaskErrors, k)
+	}
+
+	return errs
+}
+
+func (repo *ResticManager) FetchAndClearError(task TaskType) error {
+	repo.errorMutex.Lock()
+	defer repo.errorMutex.Unlock()
+
+	if len(repo.TaskErrors) == 0 {
+		return nil
+	}
+
+	errs, exists := repo.TaskErrors[task]
+	if !exists {
+		return nil
+	}
+
+	delete(repo.TaskErrors, task)
+	return errs
 }
 
 func (repo *ResticManager) SetEnv(env []string) {
@@ -206,99 +292,90 @@ func (repo *ResticManager) worker() {
 	for {
 		repo.Mutex.Lock()
 
-		// Wait until there is at least one task in the queue
-		for len(repo.TaskQueue) == 0 {
-			select {
-			case <-repo.stopCh: // Stop signal for the goroutine
-				repo.Print(logrus.InfoLevel, "Worker stopping...")
-				repo.Mutex.Unlock()
-				return
-			default:
-			}
+		for (len(repo.TaskQueue) == 0 || repo.isPaused) && !repo.Shutdown {
 			repo.cond.Wait()
 		}
 
-		// Check for the stop signal before processing
-		select {
-		case <-repo.stopCh: // Stop signal for the goroutine
-			repo.Shutdown = true
-			repo.Print(logrus.InfoLevel, "Worker stopping...")
+		// Shutdown requested (woken by cond or already set)
+		if repo.Shutdown {
 			repo.Mutex.Unlock()
 			return
-		default:
-
-			// Get the task from TaskQueue
-			task := repo.TaskQueue[0]
-			repo.TaskQueue = repo.TaskQueue[1:]
-			repo.Mutex.Unlock()
-
-			if task == nil {
-				continue
-			}
-
-			// Process the task
-			loglevel := logrus.InfoLevel
-			if task.Type == FetchTask {
-				loglevel = logrus.DebugLevel
-			}
-
-			repo.Print(loglevel, "Worker processing task ID: %d", task.ID)
-
-			var result ResticResult
-			switch task.Type {
-			case FetchTask:
-				err := repo.FetchRepo()
-				result = ResticResult{TaskID: task.ID, Error: err}
-			case PurgeTask:
-				err := repo.PurgeRepo(task.Opt)
-				result = ResticResult{TaskID: task.ID, Error: err}
-			case BackupTask:
-				err := repo.Backup(task.DirPath, task.Tags)
-				result = ResticResult{TaskID: task.ID, Error: err}
-			default:
-				result = ResticResult{TaskID: task.ID, Error: fmt.Errorf("unknown task type")}
-			}
-
-			// Send result to per-task channel (if waiting)
-			if task.Result != nil {
-				task.Result <- result
-			} else {
-				repo.ResultChan <- result
-			}
-
-			repo.Print(loglevel, "Worker finished task ID: %d", task.ID)
 		}
+
+		// Check for the stop signal before processing
+
+		// Get the task from TaskQueue
+		task := repo.TaskQueue[0]
+		repo.TaskQueue = repo.TaskQueue[1:]
+		repo.Mutex.Unlock()
+
+		if task == nil {
+			continue
+		}
+
+		// Process the task
+		loglevel := logrus.InfoLevel
+		if task.Type == FetchTask {
+			loglevel = logrus.DebugLevel
+		}
+
+		repo.Print(loglevel, "Worker processing task ID: %d", task.ID)
+
+		var result ResticResult
+		switch task.Type {
+		case FetchTask:
+			err := repo.FetchRepo()
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case PurgeTask:
+			err := repo.PurgeRepo(task.Opt)
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case BackupTask:
+			err := repo.Backup(task.DirPath, task.Tags)
+			result = ResticResult{TaskID: task.ID, Error: err}
+		case UnlockTask:
+			err := repo.UnlockRepo()
+			result = ResticResult{TaskID: task.ID, Error: err}
+		default:
+			repo.Print(logrus.WarnLevel, "Unknown task type: %d", task.Type)
+			continue
+		}
+
+		if result.Error != nil {
+			repo.SetError(task.Type, result.Error)
+		}
+
+		repo.Print(loglevel, "Worker finished task ID: %d", task.ID)
 	}
 }
 
 func (repo *ResticManager) appendTask(task *ResticTask) {
-	repo.Mutex.Lock()
-	repo.TaskQueue = append(repo.TaskQueue, task)
-	repo.Mutex.Unlock()
-}
-
-func (repo *ResticManager) AddFetchTask(waitForResult bool) (*ResticResult, error) {
-	task := ResticTask{
-		Type: FetchTask,
-	}
-
-	var resultChan chan ResticResult
-	if waitForResult {
-		resultChan = make(chan ResticResult, 1)
-		task.Result = resultChan
+	if task == nil {
+		return
 	}
 
 	// Add task to slice
-	repo.appendTask(&task)
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
 
-	if waitForResult {
-		result := <-resultChan
-		return &result, result.Error
+	repo.TaskQueue = append(repo.TaskQueue, task)
+
+	// Log the addition of the tasks with ID
+	if task.ID != 0 {
+		repo.Print(logrus.InfoLevel, "Added %s task to the queue, ID: %d", GetTaskName(task.Type), task.ID)
 	}
-	return nil, nil
+
+	// Notify the worker that a new task is available if not paused
+	repo.cond.Signal()
 }
 
-func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) error {
+func (repo *ResticManager) AddFetchTask() {
+	// Add task to slice
+	repo.appendTask(&ResticTask{
+		Type: FetchTask,
+	})
+}
+
+func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) {
 	task := ResticTask{
 		ID:   repo.GenerateTaskID(),
 		Type: PurgeTask,
@@ -307,13 +384,9 @@ func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) error {
 
 	// Add task to slice
 	repo.appendTask(&task)
-
-	repo.Print(logrus.InfoLevel, "Restic purge task queued (Task ID: %d)", task.ID)
-
-	return nil
 }
 
-func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) (*ResticResult, error) {
+func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
 	task := ResticTask{
 		ID:      repo.GenerateTaskID(),
 		Type:    BackupTask,
@@ -323,17 +396,108 @@ func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) (*Restic
 
 	// Add task to slice
 	repo.appendTask(&task)
-	repo.Print(logrus.InfoLevel, "Restic backup task queued (Task ID: %d)", task.ID)
+}
 
-	return nil, nil
+func (repo *ResticManager) AddUnlockTask() {
+	task := ResticTask{
+		ID:   repo.GenerateTaskID(),
+		Type: UnlockTask,
+	}
+	repo.appendTask(&task)
+}
+
+func (repo *ResticManager) MoveTask(mvType string, taskID, afterTaskID int) error {
+	moveType := MoveType(mvType)
+	switch moveType {
+	case MoveFirst, MoveAfter, MoveLast:
+		return repo.moveTask(moveType, taskID, afterTaskID)
+	default:
+		return errors.New("invalid move type")
+	}
+}
+
+func (repo *ResticManager) moveTask(moveType MoveType, taskID, afterTaskID int) error {
+	repo.Mutex.Lock()
+
+	waspaused := repo.isPaused
+	if !waspaused {
+		repo.isPaused = true
+	}
+
+	defer func() {
+		if !waspaused {
+			repo.isPaused = false
+			repo.cond.Broadcast()
+		}
+		repo.Mutex.Unlock()
+	}()
+
+	var taskToMove *ResticTask
+	var taskIndex int
+	for i, task := range repo.TaskQueue {
+		if task.ID == taskID {
+			taskToMove = task
+			taskIndex = i
+			break
+		}
+	}
+
+	if taskToMove == nil {
+		return errors.New("task not found")
+	}
+
+	switch moveType {
+	case MoveFirst:
+		if taskIndex == 0 {
+			return nil // Already first
+		}
+		repo.TaskQueue = append(repo.TaskQueue[:taskIndex], repo.TaskQueue[taskIndex+1:]...)
+		repo.TaskQueue = append([]*ResticTask{taskToMove}, repo.TaskQueue...)
+	case MoveAfter:
+		if afterTaskID == 0 {
+			return errors.New("afterTaskID is required for MoveAfter")
+		}
+
+		var afterIndex int = -1
+		for i, task := range repo.TaskQueue {
+			if task.ID == afterTaskID {
+				afterIndex = i
+				break
+			}
+		}
+
+		if afterIndex == -1 {
+			return errors.New("afterTaskID not found")
+		}
+
+		if taskIndex == afterIndex+1 {
+			return nil // Already after the specified task
+		}
+
+		if taskIndex < afterIndex {
+			afterIndex-- // Adjust index since we will remove the task first
+		}
+
+		repo.TaskQueue = append(repo.TaskQueue[:taskIndex], repo.TaskQueue[taskIndex+1:]...)
+		repo.TaskQueue = append(repo.TaskQueue[:afterIndex+1], append([]*ResticTask{taskToMove}, repo.TaskQueue[afterIndex+1:]...)...)
+	case MoveLast:
+		if taskIndex == len(repo.TaskQueue)-1 {
+			return nil // Already last
+		}
+		repo.TaskQueue = append(repo.TaskQueue[:taskIndex], repo.TaskQueue[taskIndex+1:]...)
+		repo.TaskQueue = append(repo.TaskQueue, taskToMove)
+	}
+
+	return nil
 }
 
 func (repo *ResticManager) HasFetchQueue() bool {
-	if len(repo.TaskQueue) > 0 {
-		for _, task := range repo.TaskQueue {
-			if task.Type == FetchTask {
-				return true
-			}
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	for _, task := range repo.TaskQueue {
+		if task.Type == FetchTask {
+			return true
 		}
 	}
 
@@ -341,37 +505,70 @@ func (repo *ResticManager) HasFetchQueue() bool {
 }
 
 func (repo *ResticManager) ClearQueue() {
-	// Clear the task queue
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
 	repo.Print(logrus.InfoLevel, "Emptying task queue...")
 
-	repo.Mutex.Lock()
+	tasklist := []string{}
 	for _, task := range repo.TaskQueue {
-		if task.Result != nil {
-			task.Result <- ResticResult{TaskID: task.ID, Error: fmt.Errorf("task cancelled due to queue emptying")}
-		}
+		tasklist = append(tasklist, fmt.Sprintf("ID: %d, Type: %s", task.ID, GetTaskName(task.Type)))
 	}
 
-	repo.TaskQueue = make([]*ResticTask, 0)
-	repo.Mutex.Unlock()
+	if len(tasklist) > 0 {
+		repo.Print(logrus.InfoLevel, "Clearing tasks: %s", strings.Join(tasklist, "; "))
+	}
+
+	repo.TaskQueue = repo.TaskQueue[:0]
 
 	repo.Print(logrus.InfoLevel, "Task queue emptied.")
 }
 
 func (repo *ResticManager) ShutdownWorker() {
-	close(repo.stopCh)
-	repo.cond.Signal() // Wake up the cluster goroutine
+	repo.Mutex.Lock()
+	repo.Shutdown = true
+	repo.Mutex.Unlock()
+
+	repo.cond.Broadcast()
 }
 
-// WaitForResults waits for the task results
-func (repo *ResticManager) WaitForResults() {
-	// Wait for task completion and handle results
-	for result := range repo.ResultChan {
-		if result.Error != nil {
-			repo.Print(logrus.ErrorLevel, "TaskID: %d Task: %s Error: %v", result.TaskID, GetTaskName(result.TaskType), result.Error)
-		} else {
-			repo.Print(logrus.InfoLevel, "TaskID: %d Task: %s Result: Completed", result.TaskID, GetTaskName(result.TaskType))
+func (repo *ResticManager) CheckRepoFiles() error {
+	repopath := repo.GetRepoPath()
+
+	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
+		// Check the repo data
+		errstr := "repo config is missing"
+		_, err := os.Stat(filepath.Join(repopath, "data"))
+		if err == nil {
+			errstr += " but data exists"
+			repo.CanInitRepo = false
+			err = errors.New(errstr)
+			repo.SetError(InitTask, err)
+			return err
+		} else if err != nil && !os.IsNotExist(err) { // Not a not-exist error (i.e., other error)
+			errstr += " and failed to check repo data: " + err.Error()
+			repo.CanInitRepo = false
+			err = errors.New(errstr)
+			repo.SetError(InitTask, err)
+			return err
+		} else { // Repo data does not exist (can init)
+			// Initialize the repo
+			err = repo.InitRepo(false)
+			if err != nil {
+				return err
+			}
 		}
+	} else if err != nil {
+		repo.CanInitRepo = false
+		err = fmt.Errorf("failed to check repo config: %w", err)
+		repo.SetError(InitTask, err)
+		return err
 	}
+
+	repo.CanInitRepo = true
+	delete(repo.TaskErrors, InitTask) // Clear any previous init errors
+
+	return nil
 }
 
 // RunCommand executes a command within the context of a Restic repository, capturing stdout and stderr.
@@ -463,16 +660,18 @@ func (repo *ResticManager) InitRepo(force bool) error {
 	if err != nil {
 		// Update the repo flag to prevent further fetch attempts
 		repo.CanInitRepo = false
+		err = errors.New(string(stderr))
 
-		// Handle error (including stderr)
-		return fmt.Errorf("failed to init repo: %v, stderr: %s", err, stderr)
+		repo.SetError(InitTask, err)
+
+		return err
 	}
 
 	return nil
 }
 
-// ResticFetchRepoStat performs the statistic fetch
-func (repo *ResticManager) FetchRepoStat() error {
+// fetchRepoStat performs the statistic fetch
+func (repo *ResticManager) fetchRepoStat() error {
 	// Prepare the arguments for the "forget" command
 	args := []string{"stats", "--mode", "raw-data", "--json"}
 
@@ -496,50 +695,8 @@ func (repo *ResticManager) FetchRepoStat() error {
 	return nil
 }
 
-// ResticFetchRepo performs the fetch
-func (repo *ResticManager) FetchRepo() error {
-	// Check if the repo is able to fetch and initialized
-	if !repo.GetCanFetch() {
-		return nil
-	}
-
-	// Check if the repo is initialized
-	repopath := repo.GetRepoPath()
-	if _, err := os.Stat(filepath.Join(repopath, "config")); os.IsNotExist(err) {
-		// Check the repo data
-		_, err := os.Stat(filepath.Join(repopath, "data"))
-		if os.IsNotExist(err) {
-			err = repo.InitRepo(false)
-			if err != nil {
-				repo.CanInitRepo = false
-				return fmt.Errorf("failed to init repo: %w", err)
-			}
-		} else if err != nil {
-			repo.CanInitRepo = false
-			return fmt.Errorf("failed to check repo path: %w", err)
-		} else {
-			repo.CanInitRepo = false
-			// Repo data exists, but config does not
-			return fmt.Errorf("repo config is missing but data exists")
-		}
-	} else if err != nil {
-		repo.CanInitRepo = false
-		return fmt.Errorf("failed to check repo path: %w", err)
-	}
-
-	repo.CanInitRepo = true
-
-	// Check latest lock in repository
-	err := repo.CheckResticLocks()
-	if err != nil {
-		return fmt.Errorf("failed to check locks: %w", err)
-	}
-
-	// Prevent fetching if there are locks
-	if repo.HasLocks {
-		return nil
-	}
-
+// fetchRepoSnapshots performs the snapshot fetch
+func (repo *ResticManager) fetchRepoSnapshots() error {
 	// Proceed with fetch
 	args := []string{"snapshots", "--json"}
 	stdout, stderr, err := repo.RunCommand(args, logrus.DebugLevel, true)
@@ -560,7 +717,37 @@ func (repo *ResticManager) FetchRepo() error {
 	// Update the Backups field with the fetched backups
 	repo.Backups = backups
 
-	err = repo.FetchRepoStat()
+	return nil // Success
+}
+
+// FetchRepo performs the fetch for snapshots and stats
+func (repo *ResticManager) FetchRepo() error {
+	// Check if the repo is able to fetch and initialized
+	if !repo.GetCanFetch() {
+		return nil
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Check if the repo is initialized
+	if err := repo.CheckRepoFiles(); err != nil {
+		return err
+	}
+
+	// Check latest lock in repository
+	err := repo.CheckResticLocks()
+	if err != nil {
+		return err
+	}
+
+	// Fetch snapshots
+	err = repo.fetchRepoSnapshots()
+	if err != nil {
+		return fmt.Errorf("failed to fetch repo snapshots: %w", err)
+	}
+
+	err = repo.fetchRepoStat()
 	if err != nil {
 		return fmt.Errorf("failed to fetch repo stat: %w", err)
 	}
@@ -644,16 +831,20 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 	return keep, useKeep
 }
 
-// ResticPurgeRepo performs the actual purging of the repository
-func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.PurgeRepo(opt)
+func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
+	args := []string{"forget", "--prune", snapshotID}
+
+	// Execute the Restic "forget" command using RunCommand
+	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
+	if err != nil {
+		// Handle error (including stderr)
+		return fmt.Errorf("failed to purge repo: %v, stderr: %s", err, stderr)
 	}
 
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
-	// Prepare the arguments for the "forget" command
+	return nil
+}
+
+func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 	args := []string{"forget", "--prune"}
 
 	// Get the arguments for the "keep" options
@@ -672,6 +863,47 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 	if err != nil {
 		// Handle error (including stderr)
 		return fmt.Errorf("failed to purge repo: %v, stderr: %s", err, stderr)
+	}
+
+	return nil
+}
+
+// ResticPurgeRepo performs the actual purging of the repository
+func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
+	// Check if the repo is able to fetch and initialized
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.PurgeRepo(opt)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Check if the repo is initialized
+	if err := repo.CheckRepoFiles(); err != nil {
+		return err
+	}
+
+	// Check latest lock in repository
+	err := repo.CheckResticLocks()
+	if err != nil {
+		return err
+	}
+
+	// Prepare the arguments for the "forget" command
+
+	if len(opt.Snapshots) > 0 {
+		for _, snapshotID := range opt.Snapshots {
+			err := repo.purgeSingleSnapshot(snapshotID)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		err := repo.purgeWithPolicy(opt)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -709,14 +941,6 @@ func (repo *ResticManager) Backup(dirpath string, tags []string) error {
 }
 
 func (repo *ResticManager) CheckResticLocks() error {
-	if !repo.GetCanFetch() {
-		time.Sleep(time.Second)
-		return repo.CheckResticLocks()
-	}
-
-	repo.SetCanFetch(false)
-	defer repo.SetCanFetch(true)
-
 	// Prepare the arguments for the "backup" command
 	args := []string{"list", "locks", "--no-lock", "-q"}
 
@@ -732,43 +956,33 @@ func (repo *ResticManager) CheckResticLocks() error {
 
 	haslock := len(stdout) > 0
 
+	if haslock {
+		err = fmt.Errorf("repository has locks:\n%s", string(stdout))
+	}
+
 	if repo.HasLocks != haslock {
-		if haslock {
-			repo.Print(logrus.InfoLevel, "Repository has locks")
-		} else {
-			repo.Print(logrus.InfoLevel, "Repository locks has unlocked")
-		}
 		repo.HasLocks = haslock
+		if haslock {
+			return err
+		} else {
+			repo.Print(logrus.InfoLevel, "Repository locks have been cleared")
+		}
 	}
 
 	return nil
 }
 
 // ResticUnlockRepo unlocks the repository
-func (repo *ResticManager) UnlockRepo(force bool) error {
-	if force {
-		if !repo.GetCanFetch() {
-			time.Sleep(time.Second)
-			return repo.UnlockRepo(force)
-		}
+func (repo *ResticManager) UnlockRepo() error {
 
-		repo.SetCanFetch(false)
-		defer repo.SetCanFetch(true)
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.UnlockRepo()
 	}
 
-	if !repo.HasLocks {
-		return nil
-	}
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
 
-	if force {
-		repo.Print(logrus.InfoLevel, "Forcing unlock of repository locks")
-	}
-
-	return repo.unlockRepo()
-
-}
-
-func (repo *ResticManager) unlockRepo() error {
 	// Prepare the arguments for the "backup" command
 	args := []string{"unlock"}
 

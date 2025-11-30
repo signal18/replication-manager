@@ -157,6 +157,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetArchivesTaskQueue)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue/modify/{moveType}/{taskID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyArchivesTaskQueue)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/archives/task-queue/modify/{moveType}/{taskID}/{afterID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyArchivesTaskQueue)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/archives/task-queue/reset", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResetArchivesTaskQueue)),
@@ -6854,7 +6864,6 @@ func (repman *ReplicationManager) handlerMuxArchivesPurge(w http.ResponseWriter,
 // @Success 200 {string} string "Archives purge queued"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/archives/unlock/{force} [post]
 // @Router /api/clusters/{clusterName}/archives/unlock [post]
 func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -6877,16 +6886,7 @@ func (repman *ReplicationManager) handlerMuxArchivesUnlock(w http.ResponseWriter
 			return
 		}
 
-		force := false
-		if strings.ToLower(vars["force"]) == "force" {
-			force = true
-		}
-
-		err := mycluster.ResticUnlockRepo(force)
-		if err != nil {
-			http.Error(w, "Error unlocking archives :"+err.Error(), 500)
-			return
-		}
+		mycluster.ResticUnlockRepo()
 
 	} else {
 		http.Error(w, "No cluster", 500)
@@ -6999,6 +6999,79 @@ func (repman *ReplicationManager) handlerMuxGetArchivesTaskQueue(w http.Response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(taskqueueJSON)
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+}
+
+// handlerMuxModifyArchivesTaskQueue handles the HTTP request to modify the restic task queue for a given cluster.
+// @Summary Modify Archives Task Queue
+// @Description	Modify the restic task queue for the specified cluster.
+// @Tags ClusterBackups
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param moveType path archiver.MoveType true "Move Type"
+// @Param taskID path string true "Task ID"
+// @Param afterID path string false "After ID"
+// @Success 200 {string} string "Task queue modified"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/archives/task-queue/modify/{moveType}/{taskID} [post]
+// @Router /api/clusters/{clusterName}/archives/task-queue/modify/{moveType}/{taskID}/{afterID} [post]
+func (repman *ReplicationManager) handlerMuxModifyArchivesTaskQueue(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if !mycluster.Conf.BackupRestic {
+			http.Error(w, "Restic backup not enabled", 500)
+			return
+		}
+
+		if mycluster.ResticManager == nil {
+			mycluster.StartResticManager()
+		}
+
+		moveType := vars["moveType"]
+		var taskID, afterID int
+
+		// Parse ID to int
+		taskID, err := strconv.Atoi(vars["taskID"])
+		if err != nil {
+			http.Error(w, "Invalid taskID", 500)
+			return
+		}
+
+		if moveType == "after" {
+			afterID, err = strconv.Atoi(vars["afterID"])
+			if err != nil {
+				http.Error(w, "Invalid afterID", 500)
+				return
+			}
+		}
+
+		switch moveType {
+		case "after", "first", "last":
+			err := mycluster.ResticModifyQueue(moveType, taskID, afterID)
+			if err != nil {
+				http.Error(w, "Error modifying task queue :"+err.Error(), 500)
+				return
+			}
+		default:
+			http.Error(w, "Invalid moveType. Must be one of: after, first, last", 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue modified"))
 	} else {
 		http.Error(w, "No cluster", 500)
 		return

@@ -2598,71 +2598,13 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 	return valid
 }
 
-func (server *ServerMonitor) BackupRestic(tags ...string) error {
+func (server *ServerMonitor) BackupRestic(tags ...string) {
 	cluster := server.ClusterGroup
-	var stdout, stderr []byte
-	var errStdout, errStderr error
-
-	if cluster.Conf.BackupRestic {
-		// Wait for fetch or purge, so it will not conflict
-		if !cluster.canResticFetchRepo {
-			time.Sleep(time.Second)
-			return server.BackupRestic(tags...)
-		}
-		cluster.SetInResticBackupState(true)
-		defer cluster.SetInResticBackupState(false)
-
-		args := make([]string, 0)
-
-		args = append(args, "backup")
-		for _, tag := range tags {
-			if tag != "" {
-				args = append(args, "--tag")
-				args = append(args, tag)
-			}
-		}
-		args = append(args, server.GetMyBackupDirectory())
-
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, args...)
-
-		stdoutIn, _ := resticcmd.StdoutPipe()
-		stderrIn, _ := resticcmd.StderrPipe()
-
-		//out, err := resticcmd.CombinedOutput()
-
-		resticcmd.Env = cluster.ResticGetEnv()
-
-		if err := resticcmd.Start(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
-			return err
-		}
-
-		// cmd.Wait() should be called only after we finish reading
-		// from stdoutIn and stderrIn.
-		// wg ensures that we finish
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			stdout, errStdout = server.copyAndCapture(os.Stdout, stdoutIn)
-			wg.Done()
-		}()
-
-		stderr, errStderr = server.copyAndCapture(os.Stderr, stderrIn)
-
-		wg.Wait()
-
-		err := resticcmd.Wait()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s\n", err)
-		}
-		if errStdout != nil || errStderr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to capture stdout or stderr\n")
-		}
-		outStr, errStr := string(stdout), string(stderr)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "result:%s\n%s\n%s", resticcmd.Path, outStr, errStr)
-
+	if !cluster.Conf.BackupRestic {
+		return
 	}
-	return nil
+
+	cluster.ResticManager.AddBackupTask(server.GetMyBackupDirectory(), tags)
 }
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {

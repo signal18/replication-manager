@@ -53,6 +53,47 @@ func (cluster *Cluster) CheckResticInstallation() {
 	}
 }
 
+func (cluster *Cluster) CheckResticErrors() {
+	if !cluster.Conf.BackupRestic {
+		return
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	// If repo cannot be initialized, all other errors are not relevant. So we just fetch the init repo errors
+	if !cluster.ResticManager.CanInitRepo && cluster.ResticManager.HasAnyError() {
+		err := cluster.ResticManager.FetchAndClearError(archiver.InitTask)
+		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		return
+	}
+
+	for task, err := range cluster.ResticManager.FetchAndClearErrors() {
+		switch task {
+		case archiver.FetchTask:
+			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
+		case archiver.PurgeTask:
+			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
+		case archiver.UnlockTask:
+			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
+		default:
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unknown restic task error: %s", err)
+		}
+	}
+
+}
+
+func (cluster *Cluster) CheckResticConfigBackup() {
+	if !cluster.Conf.BackupRestic {
+		return
+	}
+
+	if err := cluster.BackupResticConfig(); err != nil {
+		cluster.SetState("WARN0145", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0145"], err), ErrFrom: "BACKUP"})
+	}
+}
+
 func (cluster *Cluster) StartResticManager() error {
 	if !cluster.Conf.BackupRestic {
 		return nil
@@ -98,7 +139,7 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 			cluster.StartResticManager()
 		}
 
-		opt := archiver.ResticPurgeOption{
+		cluster.ResticManager.AddPurgeTask(archiver.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
 			KeepDaily:         cluster.Conf.BackupKeepDaily,
@@ -111,21 +152,16 @@ func (cluster *Cluster) ResticPurgeRepo() error {
 			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
 			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
-		}
+		})
 
-		err = cluster.ResticManager.AddPurgeTask(opt)
-		if err != nil {
-			cluster.SetState("WARN0094", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0094"], err), ErrFrom: "BACKUP"})
-			return err
-		}
 	}
 	return nil
 }
 
-func (cluster *Cluster) ResticFetchRepo() error {
+func (cluster *Cluster) ResticFetchRepo() {
 	// No need to add wait since it will be checked each monitor loop
 	if !cluster.Conf.BackupRestic {
-		return nil
+		return
 	}
 
 	if cluster.ResticManager == nil {
@@ -133,32 +169,18 @@ func (cluster *Cluster) ResticFetchRepo() error {
 	}
 
 	// Check if no other fetch task queued
-	if cluster.ResticManager.HasFetchQueue() {
-		return nil
+	if !cluster.ResticManager.HasFetchQueue() {
+		cluster.ResticManager.AddFetchTask()
 	}
-
-	_, err := cluster.ResticManager.AddFetchTask(true)
-	if err != nil {
-		if !cluster.ResticManager.CanInitRepo {
-			cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		} else if cluster.ResticManager.CanFetch && cluster.ResticManager.HasLocks {
-			cluster.SetState("WARN0134", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0134"], cluster.ResticManager.GetRepoPath()), ErrFrom: "BACKUP"})
-		} else {
-			cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
-		}
-	} else {
-		if _, err2 := os.Stat(filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic.config.bak")); os.IsNotExist(err2) {
-			if err2 := cluster.BackupResticConfig(); err2 != nil {
-				cluster.SetState("WARN0145", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0145"], err2), ErrFrom: "BACKUP"})
-			}
-		}
-	}
-
-	return err
 }
 
 func (cluster *Cluster) BackupResticConfig() error {
 	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	if _, err := os.Stat(filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "restic.config.bak")); err == nil {
+		// Backup already exists
 		return nil
 	}
 
@@ -206,24 +228,18 @@ func (cluster *Cluster) RestoreResticConfig(force bool) error {
 	return nil
 }
 
-func (cluster *Cluster) ResticUnlockRepo(force bool) error {
+func (cluster *Cluster) ResticUnlockRepo() {
 	// No need to add wait since it will be checked each monitor loop
 	if !cluster.Conf.BackupRestic {
-		return nil
+		return
 	}
 
 	if cluster.ResticManager == nil {
-		err := fmt.Errorf("restic repo is not initialized")
-		cluster.SetState("WARN0095", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0095"], err), ErrFrom: "BACKUP"})
-		return err
+		cluster.StartResticManager()
 	}
 
-	err := cluster.ResticManager.UnlockRepo(force)
-	if err != nil {
-		cluster.SetState("WARN0093", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0093"], err), ErrFrom: "BACKUP"})
-	}
+	cluster.ResticManager.AddUnlockTask()
 
-	return err
 }
 
 func (cluster *Cluster) ResticGetQueue() ([]*archiver.ResticTask, error) {
@@ -237,6 +253,18 @@ func (cluster *Cluster) ResticGetQueue() ([]*archiver.ResticTask, error) {
 	}
 
 	return cluster.ResticManager.TaskQueue, nil
+}
+
+func (cluster *Cluster) ResticModifyQueue(moveType string, taskID, cmpID int) error {
+	if !cluster.Conf.BackupRestic {
+		return nil
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.MoveTask(moveType, taskID, cmpID)
 }
 
 func (cluster *Cluster) ResticClearQueue() error {
