@@ -13,11 +13,15 @@ import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
 import { purgeResticSnapshot } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
-import { FaTrash } from 'react-icons/fa'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { HiTrash } from 'react-icons/hi'
 
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
+  const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
+  const { isOpen: isConfirmModalOpen, title, payload } = confirmState
+
   const dispatch = useDispatch()
   const columnHelper = createColumnHelper()
   const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure({
@@ -45,7 +49,27 @@ function Maintenance({ selectedCluster, user }) {
   const backupStats = useSelector((state) => state.cluster.backups.stats)
   const resticTasks = useSelector((state) => state.cluster.restic.tasks)
 
+  const openConfirmModal = (title, payload) => {
+    setConfirmState({ isOpen: true, title, payload })
+  }
+
+  const closeConfirmModal = () => {
+    setConfirmState({ isOpen: false, title: '', payload: null })
+  }
+
   const purgeSnapshot = (snapshotId) => { dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId })) }
+
+  const handleConfirm = () => {
+    if (payload && payload.action) {
+      switch (payload.action) {
+        case 'purgeSnapshot':
+          purgeSnapshot(payload.data.snapshotId)
+          break
+        default:
+          break
+      }
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
@@ -241,7 +265,7 @@ function Maintenance({ selectedCluster, user }) {
     }),
     // Added Purge action column
     columnHelper.accessor((row) => (
-      <RMIconButton icon={FaTrash} onClick={() => purgeSnapshot(row.id)} />
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'purgeSnapshot', data: { snapshotId: row.id } })} />
     ), {
       cell: (info) => info.getValue(),
       header: 'Actions',
@@ -315,6 +339,7 @@ function Maintenance({ selectedCluster, user }) {
         heading={'Job Logs'}
         body={<TaskLogs />}
       />
+      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>
   )
 }
