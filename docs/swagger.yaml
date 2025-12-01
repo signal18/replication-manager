@@ -74,40 +74,36 @@ definitions:
     type: object
   backupmgr.ResticPurgeOption:
     properties:
-      keepDaily:
+      keep_daily:
         type: integer
-      keepHourly:
+      keep_hourly:
         type: integer
-      keepLast:
+      keep_last:
         type: integer
-      keepMonthly:
+      keep_monthly:
         type: integer
-      keepWeekly:
+      keep_weekly:
         type: integer
-      keepWithin:
+      keep_within:
         type: string
-      keepWithinDaily:
+      keep_within_daily:
         type: string
-      keepWithinHourly:
+      keep_within_hourly:
         type: string
-      keepWithinMonthly:
+      keep_within_monthly:
         type: string
-      keepWithinWeekly:
+      keep_within_weekly:
         type: string
-      keepWithinYearly:
+      keep_within_yearly:
         type: string
-      keepYearly:
+      keep_yearly:
         type: integer
-      snapshotID:
+      snapshot_id:
         type: string
     type: object
   backupmgr.ResticTask:
     properties:
       dir_path:
-        type: string
-      error_state:
-        $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
-      new_pass_file:
         type: string
       opt:
         $ref: '#/definitions/backupmgr.ResticPurgeOption'
@@ -1861,6 +1857,10 @@ definitions:
         type: string
       backupResticRepository:
         type: string
+      backupResticRunQueueOnStartup:
+        type: boolean
+      backupResticSaveQueueOnShutdown:
+        type: boolean
       backupResticTimeout:
         type: integer
       backupRestoreMysqlUser:
@@ -2286,8 +2286,6 @@ definitions:
         type: string
       logAppLevel:
         type: integer
-      logArchiveLevel:
-        type: integer
       logBackupStream:
         type: boolean
       logBackupStreamLevel:
@@ -2339,6 +2337,8 @@ definitions:
       logProxy:
         type: boolean
       logProxyLevel:
+        type: integer
+      logResticLevel:
         type: integer
       logRotateMaxAge:
         type: integer
@@ -3211,19 +3211,6 @@ definitions:
       withTarball:
         type: string
     type: object
-  github_com_signal18_replication-manager_utils_state.State:
-    properties:
-      errDesc:
-        type: string
-      errFrom:
-        type: string
-      errKey:
-        type: string
-      errType:
-        type: string
-      serverUrl:
-        type: string
-    type: object
   github_com_signal18_replication-manager_utils_version.Version:
     properties:
       dist:
@@ -3686,6 +3673,8 @@ definitions:
         type: string
       level:
         type: string
+      module:
+        type: integer
       text:
         type: string
       timestamp:
@@ -7999,7 +7988,45 @@ paths:
       summary: Get Restic Task Queue
       tags:
       - ClusterRestic
-  /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}:
+  /api/clusters/{clusterName}/restic/task-queue/cancel/{taskID}:
+    post:
+      description: Cancel the specified restic task for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task cancelled
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Cancel Restic Task
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}:
     post:
       description: Modify the restic task queue for the specified cluster.
       parameters:
@@ -8046,7 +8073,7 @@ paths:
       summary: Modify Restic Task Queue
       tags:
       - ClusterRestic
-  /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}/{afterID}:
+  /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}/{afterID}:
     post:
       description: Modify the restic task queue for the specified cluster.
       parameters:
@@ -8130,6 +8157,9 @@ paths:
       summary: Reset Restic Task Queue
       tags:
       - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/resume:
+    post:
+      responses: {}
   /api/clusters/{clusterName}/restic/unlock:
     post:
       description: Unlocks the restic repository for the specified cluster.

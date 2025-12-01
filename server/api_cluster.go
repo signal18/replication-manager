@@ -172,14 +172,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCancelResticTask)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyResticTaskQueue)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticTaskQueueMove)),
 	))
 
-	router.Handle("/api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}/{afterID}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}/{afterID}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxModifyResticTaskQueue)),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticTaskQueueMove)),
 	))
 
 	router.Handle("/api/clusters/{clusterName}/restic/task-queue/reset", negroni.New(
@@ -7039,9 +7039,9 @@ func (repman *ReplicationManager) handlerMuxResticTaskQueuePause(w http.Response
 // @Success 200 {string} string "Task queue modified"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "No cluster"
-// @Router /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID} [post]
-// @Router /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}/{afterID} [post]
-func (repman *ReplicationManager) handlerMuxModifyResticTaskQueue(w http.ResponseWriter, r *http.Request) {
+// @Router /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID} [post]
+// @Router /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}/{afterID} [post]
+func (repman *ReplicationManager) handlerMuxResticTaskQueueMove(w http.ResponseWriter, r *http.Request) {
 	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 		moveType := vars["moveType"]
 		var taskID, afterID int

@@ -6242,7 +6242,63 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}": {
+        "/api/clusters/{clusterName}/restic/task-queue/cancel/{taskID}": {
+            "post": {
+                "description": "Cancel the specified restic task for the specified cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterRestic"
+                ],
+                "summary": "Cancel Restic Task",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Task ID",
+                        "name": "taskID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Task cancelled",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}": {
             "post": {
                 "description": "Modify the restic task queue for the specified cluster.",
                 "produces": [
@@ -6310,7 +6366,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}/{afterID}": {
+        "/api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}/{afterID}": {
             "post": {
                 "description": "Modify the restic task queue for the specified cluster.",
                 "produces": [
@@ -6431,6 +6487,11 @@ const docTemplate = `{
                         }
                     }
                 }
+            }
+        },
+        "/api/clusters/{clusterName}/restic/task-queue/resume": {
+            "post": {
+                "responses": {}
             }
         },
         "/api/clusters/{clusterName}/restic/unlock": {
@@ -18181,43 +18242,43 @@ const docTemplate = `{
         "backupmgr.ResticPurgeOption": {
             "type": "object",
             "properties": {
-                "keepDaily": {
+                "keep_daily": {
                     "type": "integer"
                 },
-                "keepHourly": {
+                "keep_hourly": {
                     "type": "integer"
                 },
-                "keepLast": {
+                "keep_last": {
                     "type": "integer"
                 },
-                "keepMonthly": {
+                "keep_monthly": {
                     "type": "integer"
                 },
-                "keepWeekly": {
+                "keep_weekly": {
                     "type": "integer"
                 },
-                "keepWithin": {
+                "keep_within": {
                     "type": "string"
                 },
-                "keepWithinDaily": {
+                "keep_within_daily": {
                     "type": "string"
                 },
-                "keepWithinHourly": {
+                "keep_within_hourly": {
                     "type": "string"
                 },
-                "keepWithinMonthly": {
+                "keep_within_monthly": {
                     "type": "string"
                 },
-                "keepWithinWeekly": {
+                "keep_within_weekly": {
                     "type": "string"
                 },
-                "keepWithinYearly": {
+                "keep_within_yearly": {
                     "type": "string"
                 },
-                "keepYearly": {
+                "keep_yearly": {
                     "type": "integer"
                 },
-                "snapshotID": {
+                "snapshot_id": {
                     "type": "string"
                 }
             }
@@ -18226,12 +18287,6 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "dir_path": {
-                    "type": "string"
-                },
-                "error_state": {
-                    "$ref": "#/definitions/github_com_signal18_replication-manager_utils_state.State"
-                },
-                "new_pass_file": {
                     "type": "string"
                 },
                 "opt": {
@@ -20849,6 +20904,12 @@ const docTemplate = `{
                 "backupResticRepository": {
                     "type": "string"
                 },
+                "backupResticRunQueueOnStartup": {
+                    "type": "boolean"
+                },
+                "backupResticSaveQueueOnShutdown": {
+                    "type": "boolean"
+                },
                 "backupResticTimeout": {
                     "type": "integer"
                 },
@@ -21486,9 +21547,6 @@ const docTemplate = `{
                 "logAppLevel": {
                     "type": "integer"
                 },
-                "logArchiveLevel": {
-                    "type": "integer"
-                },
                 "logBackupStream": {
                     "type": "boolean"
                 },
@@ -21565,6 +21623,9 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "logProxyLevel": {
+                    "type": "integer"
+                },
+                "logResticLevel": {
                     "type": "integer"
                 },
                 "logRotateMaxAge": {
@@ -22873,26 +22934,6 @@ const docTemplate = `{
                 }
             }
         },
-        "github_com_signal18_replication-manager_utils_state.State": {
-            "type": "object",
-            "properties": {
-                "errDesc": {
-                    "type": "string"
-                },
-                "errFrom": {
-                    "type": "string"
-                },
-                "errKey": {
-                    "type": "string"
-                },
-                "errType": {
-                    "type": "string"
-                },
-                "serverUrl": {
-                    "type": "string"
-                }
-            }
-        },
         "github_com_signal18_replication-manager_utils_version.Version": {
             "type": "object",
             "properties": {
@@ -23586,6 +23627,9 @@ const docTemplate = `{
                 },
                 "level": {
                     "type": "string"
+                },
+                "module": {
+                    "type": "integer"
                 },
                 "text": {
                     "type": "string"
