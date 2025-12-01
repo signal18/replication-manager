@@ -478,7 +478,11 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 func (cluster *Cluster) CheckBackupToolVersions() {
 	bcksrv := cluster.GetBackupServer()
 	if bcksrv == nil {
-		bcksrv = cluster.master
+		bcksrv = cluster.GetMaster()
+		if bcksrv == nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "No backup server or master server found for cluster %s", cluster.Name)
+			return
+		}
 	}
 
 	cluster.CheckLogicalBackupToolVersion(bcksrv)
@@ -508,6 +512,10 @@ func (cluster *Cluster) CheckLogicalBackupToolVersion(server *ServerMonitor) err
 }
 
 func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) error {
+	if server == nil {
+		return fmt.Errorf("Server is nil")
+	}
+
 	_, physical := server.GetLatestMeta("physical")
 	if physical != nil {
 		v, _ := cluster.GetToolsVersion(physical.BackupTool)
