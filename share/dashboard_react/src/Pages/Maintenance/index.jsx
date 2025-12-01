@@ -1,5 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table'
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBackupStrategy } from '../../utility/common'
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
@@ -15,6 +15,7 @@ import { purgeResticSnapshot } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiTrash } from 'react-icons/hi'
+import { showWarningToast } from '../../redux/toastSlice'
 
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
@@ -66,9 +67,12 @@ function Maintenance({ selectedCluster, user }) {
           purgeSnapshot(payload.data.snapshotId)
           break
         default:
+          dispatch(showWarningToast({ title: 'Unknown action', description: `The action ${payload.action} is not recognized.` }))
           break
       }
     }
+
+    closeConfirmModal()
   }
 
   useEffect(() => {
