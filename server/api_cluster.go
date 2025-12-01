@@ -157,6 +157,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetResticTaskQueue)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/task-queue/resume", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticTaskQueueResume)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/restic/task-queue/pause", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticTaskQueuePause)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/task-queue/cancel/{taskID}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxCancelResticTask)),
@@ -6783,6 +6793,43 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshotStat(w http.ResponseW
 	}
 }
 
+// withResticCluster is a helper function to handle requests that require a restic-enabled cluster.
+// It checks for cluster existence, ACL validity, and restic backup enablement before invoking the provided handler.
+// If any checks fail, it responds with the appropriate HTTP error.
+// Parameters:
+// - w: http.ResponseWriter to write the response.
+// - r: *http.Request representing the incoming request.
+// - mustEnabled: bool indicating if restic backup must be enabled.
+// - handler: function to handle the request if all checks pass. It receives the cluster and URL variables as parameters.
+func (repman *ReplicationManager) withResticCluster(
+	w http.ResponseWriter,
+	r *http.Request,
+	mustEnabled bool,
+	handler func(cluster *cluster.Cluster, vars map[string]string),
+) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+
+	cluster := repman.getClusterByName(vars["clusterName"])
+	if cluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, cluster); !valid {
+		http.Error(w, "No valid ACL", 403)
+		return
+	}
+
+	if mustEnabled && !cluster.Conf.BackupRestic {
+		http.Error(w, "Restic backup not enabled", 500)
+		return
+	}
+
+	handler(cluster, vars)
+}
+
 // handlerMuxResticRestoreConfig handles the HTTP request to restore the restic config for a given cluster.
 // @Summary Restore Restic Config
 // @Description Restores the restic config for the specified cluster.
@@ -6796,28 +6843,10 @@ func (repman *ReplicationManager) handlerMuxClusterSnapshotStat(w http.ResponseW
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/restore-config/{force} [post]
 func (repman *ReplicationManager) handlerMuxResticRestoreConfig(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	var force bool
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	if strings.ToLower(vars["force"]) == "force" {
-		force = true
-	}
-
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		var force bool
+		if vars["force"] == "force" {
+			force = true
 		}
 
 		err := mycluster.RestoreResticConfig(force)
@@ -6825,13 +6854,10 @@ func (repman *ReplicationManager) handlerMuxResticRestoreConfig(w http.ResponseW
 			http.Error(w, "Error restoring restic config: "+err.Error(), 500)
 			return
 		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Archives restore config done"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic config restore done"))
+	})
 }
 
 // handlerMuxResticFetch handles the HTTP request to fetch the restic snapshots for a given cluster.
@@ -6846,33 +6872,13 @@ func (repman *ReplicationManager) handlerMuxResticRestoreConfig(w http.ResponseW
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/fetch [post]
 func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
-		}
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		mycluster.ResticFetchRepo()
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Restic snapshots fetch queued"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic snapshots fetch queued"))
+	})
 }
 
 // handlerMuxResticPurge handles the HTTP request to purge the restic repo for a given cluster.
@@ -6888,50 +6894,29 @@ func (repman *ReplicationManager) handlerMuxResticFetch(w http.ResponseWriter, r
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/purge/{snapshotID} [post]
 func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
 
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			mycluster.StartResticManager()
-		}
-
-		if vars["snapshotID"] != "" {
-			if vars["snapshotID"] == "policy" {
-				err := mycluster.ResticPurgeRepo()
-				if err != nil {
-					http.Error(w, "Error purging archives: "+err.Error(), 500)
-					return
-				}
-			} else {
-				err := mycluster.AddPurgeTask(vars["snapshotID"])
-				if err != nil {
-					http.Error(w, "Error adding purge task: "+err.Error(), 500)
-					return
-				}
-			}
-		} else {
+		if vars["snapshotID"] == "" {
 			http.Error(w, "No snapshot ID provided, please provide one or use 'policy' to purge according to policy", 500)
 			return
 		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
+		if vars["snapshotID"] == "policy" {
+			err := mycluster.ResticPurgeRepo()
+			if err != nil {
+				http.Error(w, "Error purging restic repo: "+err.Error(), 500)
+				return
+			}
+		} else {
+			err := mycluster.AddPurgeTask(vars["snapshotID"])
+			if err != nil {
+				http.Error(w, "Error adding purge task: "+err.Error(), 500)
+				return
+			}
+		}
 
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Archives purge queued"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic repository purged"))
+	})
 }
 
 // handlerMuxResticUnlock handles the HTTP request to unlock restic repo for a given cluster.
@@ -6946,35 +6931,13 @@ func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/unlock [post]
 func (repman *ReplicationManager) handlerMuxResticUnlock(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
-		}
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		mycluster.ResticUnlockRepo()
 
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Archives unlock queued"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic repository unlocked"))
+	})
 }
 
 // handlerMuxResticInitRepo handles the HTTP request to init restic repo for a given cluster.
@@ -6991,28 +6954,9 @@ func (repman *ReplicationManager) handlerMuxResticUnlock(w http.ResponseWriter, 
 // @Router /api/clusters/{clusterName}/restic/init [post]
 // @Router /api/clusters/{clusterName}/restic/init/{force} [post]
 func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			mycluster.StartResticManager()
-		}
-
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
 		var force bool
-		v, ok := vars["force"]
-		if ok && v == "force" {
+		if vars["force"] == "force" {
 			force = true
 		}
 
@@ -7022,13 +6966,9 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 			return
 		}
 
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Archives unlock queued"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic repository initialized"))
+	})
 }
 
 // handlerMuxGetResticTaskQueue handles the HTTP request to get the restic task queue for a given cluster.
@@ -7043,25 +6983,7 @@ func (repman *ReplicationManager) handlerMuxResticInitRepo(w http.ResponseWriter
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/task-queue [get]
 func (repman *ReplicationManager) handlerMuxGetResticTaskQueue(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
-		}
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		taskqueue, err := mycluster.ResticGetQueue()
 		if err != nil {
@@ -7079,10 +7001,29 @@ func (repman *ReplicationManager) handlerMuxGetResticTaskQueue(w http.ResponseWr
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write(taskqueueJSON)
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
+	})
+}
+
+// @Router /api/clusters/{clusterName}/restic/task-queue/resume [post]
+func (repman *ReplicationManager) handlerMuxResticTaskQueueResume(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+
+		mycluster.ResticRunQueue()
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue resumed"))
+	})
+}
+
+// @Router /api/clusters/{clusterName}/restic/task-queue/resume [post]
+func (repman *ReplicationManager) handlerMuxResticTaskQueuePause(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
+
+		mycluster.ResticPauseQueue()
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Task queue paused"))
+	})
 }
 
 // handlerMuxModifyResticTaskQueue handles the HTTP request to modify the restic task queue for a given cluster.
@@ -7101,25 +7042,7 @@ func (repman *ReplicationManager) handlerMuxGetResticTaskQueue(w http.ResponseWr
 // @Router /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID} [post]
 // @Router /api/clusters/{clusterName}/restic/task-queue/modify/{moveType}/{taskID}/{afterID} [post]
 func (repman *ReplicationManager) handlerMuxModifyResticTaskQueue(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			mycluster.StartResticManager()
-		}
-
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 		moveType := vars["moveType"]
 		var taskID, afterID int
 
@@ -7152,10 +7075,7 @@ func (repman *ReplicationManager) handlerMuxModifyResticTaskQueue(w http.Respons
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Task queue modified"))
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
+	})
 }
 
 // handlerMuxCancelResticTask handles the HTTP request to cancel a restic task for a given cluster.
@@ -7171,20 +7091,7 @@ func (repman *ReplicationManager) handlerMuxModifyResticTaskQueue(w http.Respons
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/task-queue/cancel/{taskID} [post]
 func (repman *ReplicationManager) handlerMuxCancelResticTask(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
-		}
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		taskID, err := strconv.Atoi(vars["taskID"])
 		if err != nil {
@@ -7200,10 +7107,7 @@ func (repman *ReplicationManager) handlerMuxCancelResticTask(w http.ResponseWrit
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Task cancelled"))
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
+	})
 }
 
 // handlerMuxResetResticTaskQueue handles the HTTP request to reset the restic task queue for a given cluster.
@@ -7218,25 +7122,7 @@ func (repman *ReplicationManager) handlerMuxCancelResticTask(w http.ResponseWrit
 // @Failure 500 {string} string "No cluster"
 // @Router /api/clusters/{clusterName}/restic/task-queue/reset [get]
 func (repman *ReplicationManager) handlerMuxResetResticTaskQueue(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if !mycluster.Conf.BackupRestic {
-			http.Error(w, "Restic backup not enabled", 500)
-			return
-		}
-
-		if mycluster.ResticManager == nil {
-			http.Error(w, "No restic repo", 500)
-			return
-		}
+	repman.withResticCluster(w, r, false, func(mycluster *cluster.Cluster, vars map[string]string) {
 
 		err := mycluster.ResticClearQueue()
 		if err != nil {
@@ -7246,10 +7132,7 @@ func (repman *ReplicationManager) handlerMuxResetResticTaskQueue(w http.Response
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Task queue cleared"))
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
+	})
 }
 
 type MeetAlertMessage struct {

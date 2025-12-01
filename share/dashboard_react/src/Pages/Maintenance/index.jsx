@@ -20,6 +20,7 @@ import { showWarningToast } from '../../redux/toastSlice'
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
+  const [queueData, setQueueData] = useState([])
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
 
@@ -44,11 +45,12 @@ function Maintenance({ selectedCluster, user }) {
     defaultIsOpen: JSON.parse(localStorage.getItem('isLogsInBackupOpen')) || false
   })
 
-  const snapshots = useSelector((state) => state.cluster.restic.snapshots)
-  const stats = useSelector((state) => state.cluster.restic.stats)
   const list = useSelector((state) => state.cluster.backups.list)
   const backupStats = useSelector((state) => state.cluster.backups.stats)
-  const resticTasks = useSelector((state) => state.cluster.restic.tasks)
+
+  const snapshots = useSelector((state) => state.cluster.restic.snapshots)
+  const stats = useSelector((state) => state.cluster.restic.stats)
+  const resticQueue = useSelector((state) => state.cluster.restic.queue)
 
   const openConfirmModal = (title, payload) => {
     setConfirmState({ isOpen: true, title, payload })
@@ -111,6 +113,15 @@ function Maintenance({ selectedCluster, user }) {
       setSnapshotData([])
     }
   }, [selectedCluster?.name,snapshots])
+
+    useEffect(() => {
+    if (resticQueue?.length > 0) {
+      const arrData = convertObjectToArray(resticQueue)
+      setQueueData(arrData.reverse())
+    } else {
+      setQueueData([])
+    }
+  }, [selectedCluster?.name,resticQueue])
 
   const backupDataStats = [
     {
@@ -277,6 +288,34 @@ function Maintenance({ selectedCluster, user }) {
     })
   ])
 
+
+  const queueColumns = useMemo(() => [
+    columnHelper.accessor((row) => row.short_id, {
+      header: 'ID',
+      id: 'id'
+    }),
+    columnHelper.accessor((row) => row.time, {
+      header: 'Time'
+    }),
+    columnHelper.accessor((row) => row.paths?.join(','), {
+      header: 'Path'
+    }),
+    columnHelper.accessor((row) => row.hostname, {
+      header: 'Hostname'
+    }),
+    columnHelper.accessor((row) => row.tags?.join(','), {
+      header: 'Tags'
+    }),
+    // Added Purge action column
+    columnHelper.accessor((row) => (
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'purgeSnapshot', data: { snapshotId: row.id } })} />
+    ), {
+      cell: (info) => info.getValue(),
+      header: 'Actions',
+      id: 'actions',
+    })
+  ])
+
   return (
     <VStack className={styles.backupContainer}>
       <AccordionComponent
@@ -322,6 +361,7 @@ function Maintenance({ selectedCluster, user }) {
           <VStack className={styles.snapshotContainer}>
             <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
             <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
+            <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
           </VStack>
         }
       />

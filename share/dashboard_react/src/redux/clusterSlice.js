@@ -249,10 +249,10 @@ export const purgeResticByPolicy = createAsyncThunk('cluster/purgeResticByPolicy
   }
 })
 
-export const getResticTasks = createAsyncThunk('cluster/getResticTasks', async ({ clusterName }, thunkAPI) => {
+export const getResticQueue = createAsyncThunk('cluster/getResticQueue', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.getResticTasks(clusterName, baseURL)
+    const { data, status } = await clusterService.getResticQueue(clusterName, baseURL)
     return { data, status }
   } catch (error) {
     handleError(error, thunkAPI)
@@ -260,7 +260,7 @@ export const getResticTasks = createAsyncThunk('cluster/getResticTasks', async (
 }, {
   condition: (_, { getState }) => {
     const { cluster } = getState();
-    if (cluster.isFetching.restic.tasks) {
+    if (cluster.isFetching.restic.queue) {
       return false;
     }
   }
@@ -1893,7 +1893,7 @@ const initialState = {
     restic: {
       snapshots: false,
       stats: false,
-      tasks: false
+      queue: false
     },
   },
   error: null,
@@ -1918,7 +1918,7 @@ const initialState = {
   restic: {
     snapshots: null,
     stats: null,
-    tasks: null
+    queue: null
   },
   topProcess: null,
   opensvcStats: null,
@@ -1998,7 +1998,7 @@ export const clusterSlice = createSlice({
         getBackupStats.fulfilled,
         getResticSnapshot.fulfilled,
         getResticStats.fulfilled,
-        getResticTasks.fulfilled,
+        getResticQueue.fulfilled,
         getJobs.fulfilled
       ),
       (state, action) => {
@@ -2048,9 +2048,9 @@ export const clusterSlice = createSlice({
         } else if (action.type.includes('getResticStats')) {
           state.restic.stats = action.payload.data
           state.isFetching.restic.stats = false
-        } else if (action.type.includes('getResticTasks')) {
-          state.restic.tasks = action.payload.data
-          state.isFetching.restic.tasks = false
+        } else if (action.type.includes('getResticQueue')) {
+          state.restic.queue = action.payload.data
+          state.isFetching.restic.queue = false
         } else if (action.type.includes('getShardSchema')) {
           state.shardSchema = action.payload.data
         } else if (action.type.includes('getQueryRules')) {
@@ -2120,7 +2120,7 @@ export const clusterSlice = createSlice({
         getDatabaseService.pending,
         getResticStats.pending,
         getResticSnapshot.pending,
-        getResticTasks.pending,
+        getResticQueue.pending,
         getBackups.pending,
         getBackupStats.pending,
       ),
@@ -2151,8 +2151,8 @@ export const clusterSlice = createSlice({
           state.isFetching.restic.snapshots = true
         } else if (action.type.includes('getResticStats')) {
           state.isFetching.restic.stats = true
-        } else if (action.type.includes('getResticTasks')) {
-          state.isFetching.restic.tasks = true
+        } else if (action.type.includes('getResticQueue')) {
+          state.isFetching.restic.queue = true
         } else if (action.type.includes('getDatabaseService')) {
           const { serviceName } = action.meta.arg
           if (serviceName === 'processlist') {
@@ -2201,7 +2201,7 @@ export const clusterSlice = createSlice({
         getBackupStats.rejected,
         getResticSnapshot.rejected,
         getResticStats.rejected,
-        getResticTasks.rejected,
+        getResticQueue.rejected,
         getTopProcess.rejected,
         getOpenSVCStats.rejected
       ), (state, action) => {
@@ -2227,7 +2227,7 @@ export const clusterSlice = createSlice({
           state.isFetching.restic.snapshots = false
         } else if (action.type.includes('getResticStats')) {
           state.isFetching.restic.stats = false
-        } else if (action.type.includes('getResticTasks')) {
+        } else if (action.type.includes('getResticQueue')) {
           state.isFetching.restic.tasks = false
         } else if (action.type.includes('getTopProcess')) {
           state.isFetching.top = false

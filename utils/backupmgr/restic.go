@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/signal18/replication-manager/utils/s18log"
-	"github.com/signal18/replication-manager/utils/state"
 	"github.com/sirupsen/logrus"
 )
 
@@ -61,12 +60,11 @@ func GetTaskName(TaskType TaskType) string {
 // Task represents a queue task
 type ResticTask struct {
 	ID          int               `json:"task_id"`
-	DirPath     string            `json:"dir_path"`
-	NewPassFile string            `json:"new_pass_file"`
-	Tags        []string          `json:"tags"`
 	Type        TaskType          `json:"task_type"`
+	DirPath     string            `json:"dir_path"`
+	Tags        []string          `json:"tags"`
 	Opt         ResticPurgeOption `json:"opt"`
-	ErrorState  state.State       `json:"error_state"`
+	NewPassFile string            `json:"-"`
 }
 
 // ResticResult holds the output or error of a task
@@ -78,19 +76,19 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	SnapshotID        string
-	KeepLast          int
-	KeepHourly        int
-	KeepDaily         int
-	KeepWeekly        int
-	KeepMonthly       int
-	KeepYearly        int
-	KeepWithin        string
-	KeepWithinHourly  string
-	KeepWithinDaily   string
-	KeepWithinWeekly  string
-	KeepWithinMonthly string
-	KeepWithinYearly  string
+	SnapshotID        string `json:"snapshot_id,omitempty"`
+	KeepLast          int    `json:"keep_last,omitempty"`
+	KeepHourly        int    `json:"keep_hourly,omitempty"`
+	KeepDaily         int    `json:"keep_daily,omitempty"`
+	KeepWeekly        int    `json:"keep_weekly,omitempty"`
+	KeepMonthly       int    `json:"keep_monthly,omitempty"`
+	KeepYearly        int    `json:"keep_yearly,omitempty"`
+	KeepWithin        string `json:"keep_within,omitempty"`
+	KeepWithinHourly  string `json:"keep_within_hourly,omitempty"`
+	KeepWithinDaily   string `json:"keep_within_daily,omitempty"`
+	KeepWithinWeekly  string `json:"keep_within_weekly,omitempty"`
+	KeepWithinMonthly string `json:"keep_within_monthly,omitempty"`
+	KeepWithinYearly  string `json:"keep_within_yearly,omitempty"`
 }
 
 // TaskStatus represents the task state information stored in the JSON flag file

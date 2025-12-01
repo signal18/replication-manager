@@ -26,7 +26,8 @@ import {
   getOpenSVCStats,
   getClusterLogs,
   getResticStats,
-  getBackups
+  getBackups,
+  getResticQueue
 } from '../../redux/clusterSlice'
 import { getClusters, getMonitoredData, getClusterPeers, getClusterForSale } from '../../redux/globalClustersSlice'
 import { AppSettings } from '../../AppSettings'
@@ -196,6 +197,7 @@ function Home() {
         dispatch(getResticStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackups({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
+        dispatch(getResticQueue({ clusterName: selectedClusterNameRef.current }))
         dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {

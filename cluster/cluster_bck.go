@@ -314,6 +314,36 @@ func (cluster *Cluster) ResticClearQueue() error {
 	return nil
 }
 
+// ResticRunQueue starts processing the restic task queue
+func (cluster *Cluster) ResticRunQueue() {
+
+	if !cluster.Conf.BackupRestic {
+		return
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting restic task queue processing. Total tasks: %d", len(cluster.ResticManager.TaskQueue))
+	cluster.ResticManager.ResumeWorker()
+}
+
+// ResticPauseQueue pauses the next restic task queue processing
+func (cluster *Cluster) ResticPauseQueue() {
+	// No need to add wait since it will be checked each monitor loop
+	if !cluster.Conf.BackupRestic {
+		return
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pausing restic task queue processing")
+	cluster.ResticManager.PauseWorker()
+}
+
 func (cluster *Cluster) CheckBackupFreeSpace(backtype string, backup bool) error {
 	var isWarning bool
 	bcksrv := cluster.GetBackupServer()
