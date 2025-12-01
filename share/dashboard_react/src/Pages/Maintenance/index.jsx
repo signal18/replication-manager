@@ -1,5 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table'
-import { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { convertObjectToArray, formatBytes, formatDate, getBackupMethod, getBackupStrategy } from '../../utility/common'
 import AccordionComponent from '../../components/AccordionComponent'
 import { DataTable } from '../../components/DataTable'
@@ -11,11 +11,116 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { purgeResticSnapshot } from '../../redux/clusterSlice'
+import { purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { HiTrash } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
+
+const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
+  const [direction, setDirection] = useState('first');
+
+  const handleDirectionChange = (e) => {
+    setDirection(e.target.value);
+    if (e.target.value !== 'after') {
+      onChange(e.target.value, null);
+    }
+  };
+
+  const handleAfterChange = (e) => {
+    onChange('after', e.target.value);
+  };
+  return (
+    <VStack>
+      <HStack>
+        <Box>Move {direction}:</Box>
+        <Select onChange={handleDirectionChange} value={direction}>
+          <option value="first">First</option>
+          <option value="before">After</option>
+          <option value="last">Last</option>
+        </Select>
+      </HStack>
+      {direction === 'after' && (
+        <HStack>
+          <Box>Move After:</Box>
+          <Select onChange={handleAfterChange}>
+            {list.filter(item => item.task_id !== currentId).map(item => (
+              <option key={item.task_id} value={item.task_id}>Task ID #{item.task_id}</option>
+            ))}
+          </Select>
+        </HStack>
+      )}
+    </VStack>
+  )
+})
+
+const formConfig = {
+  queueMove: {
+    component: QueueMoveForm,
+    getProps: (ctx) => ({
+      list: ctx.queueData,
+      currentId: ctx.payload.data.taskId,
+      onChange: ctx.handleMove
+    })
+  }
+};
+
+const DynamicForm = (ctx) => {
+  const { action } = ctx.payload;
+
+  const entry = formConfig[action];
+  if (!entry) return null;
+
+  const Component = entry.component;
+  const props = entry.getProps(ctx);
+
+  return <Component {...props} />;
+};
+
+const resticTaskType = (rtt) => {
+  switch (rtt) {
+    case 0:
+      return "init"
+    case 1:
+      return "fetch"
+    case 2:
+      return "backup"
+    case 3:
+      return "purge"
+    case 4:
+      return "unlock"
+    case 5:
+      return "changepass"
+    default:
+      return "Unknown"
+  }
+}
+
+const resticTaskDetail = (row) => {
+  switch (row.task_type) {
+    case 2:
+      return (<VStack>
+        <HStack>
+          <Box>Path:</Box>
+          <Box>{row.dir_path}</Box>
+        </HStack>
+        <HStack>
+          <Box>Tags:</Box>
+          <Box>{row.tags?.join(', ')}</Box>
+        </HStack>
+      </VStack>)
+    case 3:
+      return (<VStack>
+        <HStack>
+          <Box>Options:</Box>
+          <Box>{JSON.stringify(row.opt)}</Box>
+        </HStack>
+      </VStack>)
+    default:
+      return (<div>-</div>)
+  }
+}
+
 
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
@@ -60,13 +165,23 @@ function Maintenance({ selectedCluster, user }) {
     setConfirmState({ isOpen: false, title: '', payload: null })
   }
 
-  const purgeSnapshot = (snapshotId) => { dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId })) }
-
   const handleConfirm = () => {
     if (payload && payload.action) {
       switch (payload.action) {
-        case 'purgeSnapshot':
-          purgeSnapshot(payload.data.snapshotId)
+        case 'snapshotPurge':
+          dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
+          break
+        case 'queueCancel':
+          dispatch(resticQueueCancel({ clusterName: selectedCluster.name, taskId: payload.data.taskId }))
+          break
+        case 'queueMove':
+          dispatch(resticQueueMove({ clusterName: selectedCluster.name, taskId: payload.data.taskId, direction: payload.data.direction, afterId: payload.data.afterId }))
+          break
+        case 'queuePause':
+          dispatch(resticQueuePause({ clusterName: selectedCluster.name }));
+          break
+        case 'queueResume':
+          dispatch(resticQueueResume({ clusterName: selectedCluster.name }));
           break
         default:
           dispatch(showWarningToast({ title: 'Unknown action', description: `The action ${payload.action} is not recognized.` }))
@@ -75,6 +190,20 @@ function Maintenance({ selectedCluster, user }) {
     }
 
     closeConfirmModal()
+  }
+
+  const handleMove = (direction, afterId) => {
+    setConfirmState((prevState) => ({
+      ...prevState,
+      payload: {
+        ...prevState.payload,
+        data: {
+          ...prevState.payload.data,
+          direction,
+          afterId
+        }
+      }
+    }))
   }
 
   useEffect(() => {
@@ -104,7 +233,7 @@ function Maintenance({ selectedCluster, user }) {
     } else {
       setData([])
     }
-  }, [selectedCluster?.name,list])
+  }, [selectedCluster?.name, list])
 
   useEffect(() => {
     if (snapshots?.length > 0) {
@@ -112,16 +241,16 @@ function Maintenance({ selectedCluster, user }) {
     } else {
       setSnapshotData([])
     }
-  }, [selectedCluster?.name,snapshots])
+  }, [selectedCluster?.name, snapshots])
 
-    useEffect(() => {
+  useEffect(() => {
     if (resticQueue?.length > 0) {
       const arrData = convertObjectToArray(resticQueue)
       setQueueData(arrData.reverse())
     } else {
       setQueueData([])
     }
-  }, [selectedCluster?.name,resticQueue])
+  }, [selectedCluster?.name, resticQueue])
 
   const backupDataStats = [
     {
@@ -280,7 +409,7 @@ function Maintenance({ selectedCluster, user }) {
     }),
     // Added Purge action column
     columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'purgeSnapshot', data: { snapshotId: row.id } })} />
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
     ), {
       cell: (info) => info.getValue(),
       header: 'Actions',
@@ -288,27 +417,20 @@ function Maintenance({ selectedCluster, user }) {
     })
   ])
 
-
   const queueColumns = useMemo(() => [
-    columnHelper.accessor((row) => row.short_id, {
+    columnHelper.accessor((row) => row.task_id, {
       header: 'ID',
-      id: 'id'
+      id: 'task_id'
     }),
-    columnHelper.accessor((row) => row.time, {
-      header: 'Time'
+    columnHelper.accessor((row) => resticTaskType(row.task_type), {
+      header: 'Task Type'
     }),
-    columnHelper.accessor((row) => row.paths?.join(','), {
-      header: 'Path'
-    }),
-    columnHelper.accessor((row) => row.hostname, {
-      header: 'Hostname'
-    }),
-    columnHelper.accessor((row) => row.tags?.join(','), {
-      header: 'Tags'
+    columnHelper.accessor((row) => resticTaskDetail(row), {
+      header: 'Details'
     }),
     // Added Purge action column
     columnHelper.accessor((row) => (
-      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'purgeSnapshot', data: { snapshotId: row.id } })} />
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: row.task_id } })} />
     ), {
       cell: (info) => info.getValue(),
       header: 'Actions',
@@ -383,7 +505,12 @@ function Maintenance({ selectedCluster, user }) {
         heading={'Job Logs'}
         body={<TaskLogs />}
       />
-      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
+        payload={payload}
+        queueData={queueData}
+        selectedCluster={selectedCluster}
+        handleMove={handleMove}
+      />} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>
   )
 }

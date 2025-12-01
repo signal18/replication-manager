@@ -23,9 +23,11 @@ export const clusterService = {
   purgeResticSnapshot,
   purgeResticByPolicy,
   getResticQueue,
-  resticModifyQueue,
-  resticCancelTask,
-  resticResetQueue,
+  resticQueueResume,
+  resticQueuePause,
+  resticQueueMove,
+  resticQueueCancel,
+  resticQueueReset,
 
   // Cluster management APIs
   checksumAllTables,
@@ -696,15 +698,27 @@ function getResticQueue(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue`)
 }
 
-function resticModifyQueue(clusterName, moveType, taskID,  baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/modify/${moveType}/${taskID}`)
+function resticQueueResume(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/resume`)
 }
 
-function resticCancelTask(clusterName, taskID,  baseURL) {
+function resticQueuePause(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/pause`)
+}
+
+function resticQueueMove(clusterName, moveType, taskID, afterID, baseURL) {
+  if (moveType == "after") {
+    return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}/${afterID}`)
+  } else {
+    return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}`)
+  }
+}
+
+function resticQueueCancel(clusterName, taskID,  baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/cancel/${taskID}`)
 }
 
-function resticResetQueue(clusterName, baseURL) {
+function resticQueueReset(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/reset`)
 }
 

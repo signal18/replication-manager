@@ -266,6 +266,46 @@ export const getResticQueue = createAsyncThunk('cluster/getResticQueue', async (
   }
 })
 
+export const resticQueueCancel = createAsyncThunk('cluster/resticQueueCancel', async ({ clusterName, taskId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticQueueCancel(clusterName, taskId, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const resticQueueMove = createAsyncThunk('cluster/resticQueueMove', async ({ clusterName, taskId, direction, afterId }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticQueueMove(clusterName, taskId, direction, afterId, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const resticQueuePause = createAsyncThunk('cluster/resticQueuePause', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticQueuePause(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
+export const resticQueueResume = createAsyncThunk('cluster/resticQueueResume', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticQueueResume(clusterName, baseURL)
+    return { data, status }
+  } catch (error) {
+    handleError(error, thunkAPI)
+  }
+})
+
 export const getJobs = createAsyncThunk('cluster/getJobs', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
