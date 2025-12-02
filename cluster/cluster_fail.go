@@ -576,7 +576,7 @@ func (cluster *Cluster) FailoverExtraMultiSource(oldMaster *ServerMonitor, NewMa
 			changemasteropt.Password = myparentrplpassword
 			changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
 			changemasteropt.Heartbeat = strconv.Itoa(int(rep.SlaveHeartbeatPeriod))
-			changemasteropt.RetryCount = strconv.Itoa(cluster.Conf.ReplicationMasterRetryCount)
+			changemasteropt.RetryCount = strconv.Itoa(cluster.Conf.MasterRetryCount)
 			changemasteropt.Logfile = rep.MasterLogFile.String
 			changemasteropt.Logpos = rep.ExecMasterLogPos.String
 			changemasteropt.SSL = cluster.Conf.ReplicationSSL
@@ -1442,7 +1442,7 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 		Password:    cluster.GetRplPass(),
 		Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-		RetryCount:  strconv.Itoa(cluster.Conf.ReplicationMasterRetryCount),
+		RetryCount:  strconv.Itoa(cluster.Conf.MasterRetryCount),
 		SSL:         cluster.Conf.ReplicationSSL,
 		Channel:     cluster.Conf.MasterConn,
 		PostgressDB: parent.PostgressDB,

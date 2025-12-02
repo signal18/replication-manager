@@ -465,11 +465,11 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.SwitchLowerRelease, "switchover-lower-release", false, "Allow switchover to lower release")
 
 	flags.StringVar(&conf.MasterConn, "replication-source-name", "", "Replication channel name to use for multisource")
-	flags.IntVar(&conf.ReplicationMasterRetryCount, "replication-master-retry-count", 100000, "Number of retry to connect to master before failing. Default 100000 by MariaDB 10.6 standard")
 	flags.StringVar(&conf.ReplicationMultisourceHeadClusters, "replication-multisource-head-clusters", "", "Multi source link to parent cluster, autodiscoverd but can be materialized for bootstraping replication")
 	flags.StringVar(&conf.HostsDelayed, "replication-delayed-hosts", "", "Database hosts list that need delayed replication separated by commas")
 	flags.IntVar(&conf.HostsDelayedTime, "replication-delayed-time", 3600, "Delayed replication time")
 	flags.IntVar(&conf.MasterConnectRetry, "replication-master-connect-retry", 10, "Replication is define using this connection retry timeout")
+	flags.IntVar(&conf.MasterRetryCount, "replication-master-retry-count", 100000, "Number of retry to connect to master before failing. Default 100000 by MariaDB 10.6 standard")
 	flags.StringVar(&conf.RplUser, "replication-credential", "root:mariadb", "Replication user in the [user]:[password] format")
 	flags.BoolVar(&conf.ReplicationSSL, "replication-use-ssl", false, "Replication use SSL encryption to replicate from master")
 	flags.BoolVar(&conf.ActivePassive, "replication-active-passive", false, "Active Passive topology")
