@@ -670,6 +670,7 @@ func (repo *ResticManager) InitRepo(force bool) error {
 		os.MkdirAll(repopath, 0755)
 	}
 
+	defer repo.AddFetchTask()
 	// Prepare the arguments for the "forget" command
 	args := []string{"init"}
 
