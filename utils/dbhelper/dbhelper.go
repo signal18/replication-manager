@@ -897,9 +897,7 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 
 		// Retry count supported from MariaDB 12 and MySQL 8.4
 		if myver.IsMariaDBGreater12() || myver.IsMySQLOrPerconaGreater84() {
-			if opt.RetryCount != "" {
-				cm += ", " + masterOrSource + "_RETRY_COUNT=" + opt.RetryCount
-			}
+			cm += ", " + masterOrSource + "_RETRY_COUNT=" + opt.RetryCount
 		}
 		if myver.IsMySQLOrPercona() && opt.Channel != "" {
 			cm += " FOR CHANNEL '" + opt.Channel + "'"
