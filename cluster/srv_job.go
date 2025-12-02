@@ -2606,6 +2606,7 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 	}
 
 	cluster.ResticManager.AddBackupTask(server.GetMyBackupDirectory(), tags)
+	cluster.ResticManager.AddFetchTask()
 }
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
