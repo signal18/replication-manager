@@ -1153,7 +1153,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// Initialize graphite monitoring
 	if cluster.Conf.GraphiteMetrics {
-		go server.SendDatabaseStats()
+		go server.FetchDatabaseStats()
 	}
 	return nil
 }

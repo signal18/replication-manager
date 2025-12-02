@@ -27,6 +27,7 @@ type ClusterGraphite struct {
 	UseBlacklist bool
 	Whitelist    []*regexp.Regexp
 	Blacklist    []*regexp.Regexp
+	metrics      []graphite.Metric
 	lock         sync.Mutex
 }
 
@@ -114,7 +115,14 @@ func (cg *ClusterGraphite) GetGraphiteConnection() (*graphite.Graphite, error) {
 	return cg.gc, nil
 }
 
-func (cg *ClusterGraphite) SendMetrics(metrics []graphite.Metric) error {
+func (cg *ClusterGraphite) AddMetrics(metrics []graphite.Metric) {
+	cg.lock.Lock()
+	defer cg.lock.Unlock()
+
+	cg.metrics = append(cg.metrics, metrics...)
+}
+
+func (cg *ClusterGraphite) SendGraphiteMetrics() error {
 	cg.lock.Lock()
 	defer cg.lock.Unlock()
 
@@ -128,10 +136,12 @@ func (cg *ClusterGraphite) SendMetrics(metrics []graphite.Metric) error {
 		return err
 	}
 
-	err = graph.SendMetrics(metrics)
+	err = graph.SendMetrics(cg.metrics)
 	if err != nil {
 		return err
 	}
+
+	cg.metrics = make([]graphite.Metric, 0) // Clear metrics after sending
 
 	return nil
 }
