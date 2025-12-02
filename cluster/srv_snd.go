@@ -93,9 +93,9 @@ func (server *ServerMonitor) GetDatabaseMetrics() []graphite.Metric {
 	return metrics
 }
 
-func (server *ServerMonitor) SendDatabaseStats() error {
+func (server *ServerMonitor) FetchDatabaseStats() error {
 	metrics := server.GetDatabaseMetrics()
-	server.GetCluster().SendMetrics(metrics)
+	server.GetCluster().AddMetrics(metrics)
 	return nil
 }
 

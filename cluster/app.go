@@ -16,7 +16,6 @@ import (
 	"sync"
 
 	"github.com/signal18/replication-manager/config"
-	"github.com/signal18/replication-manager/graphite"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/spf13/pflag"
 )
@@ -80,20 +79,8 @@ func (cluster *Cluster) newAppList() error {
 	return nil
 }
 
-func (cluster *Cluster) SendAppStats(app *App) error {
-	return app.SendStats()
-}
-
-func (app *App) SendStats() error {
-	cluster := app.ClusterGroup
-	graph, err := graphite.NewGraphite(cluster.Conf.GraphiteCarbonHost, cluster.Conf.GraphiteCarbonPort)
-	if err != nil {
-		return err
-	}
-
-	graph.Disconnect()
-
-	return nil
+func (app *App) FetchStats() {
+	// TO DO: implement app specific stats fetching
 }
 
 func NewApp(placement int, cluster *Cluster, appHost string) *App {
