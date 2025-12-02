@@ -377,6 +377,7 @@ func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) {
 
 	// Add task to slice
 	repo.appendTask(&task)
+	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
@@ -389,6 +390,7 @@ func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
 
 	// Add task to slice
 	repo.appendTask(&task)
+	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) AddUnlockTask() {
@@ -397,6 +399,7 @@ func (repo *ResticManager) AddUnlockTask() {
 		Type: UnlockTask,
 	}
 	repo.appendTask(&task)
+	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) MoveTask(mvType string, taskID, afterTaskID int) error {
