@@ -127,7 +127,7 @@ type DatabaseProxy interface {
 	GetEnv() map[string]string
 	GetSshEnv() string
 	GetConfigProxyModule(variable string) string
-	SendStats() error
+	FetchStats()
 
 	OpenSVCGetProxyDefaultSection() map[string]string
 
@@ -420,7 +420,7 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 				pr.SetPrevState(pr.GetState())
 			}
 			if cluster.Conf.GraphiteMetrics {
-				pr.SendStats()
+				pr.FetchStats()
 			}
 			//	pr.DelLock()
 		}
@@ -445,11 +445,7 @@ func (cluster *Cluster) initProxies() {
 	}
 }
 
-func (cluster *Cluster) SendProxyStats(proxy DatabaseProxy) error {
-	return proxy.SendStats()
-}
-
-func (proxy *Proxy) SendStats() error {
+func (proxy *Proxy) FetchStats() {
 	metrics := make([]graphite.Metric, 0)
 
 	for _, wbackend := range proxy.BackendsWrite {
@@ -476,5 +472,5 @@ func (proxy *Proxy) SendStats() error {
 		metrics = append(metrics, graphite.NewMetric(fmt.Sprintf("proxy.%s%s.%s.latency", proxy.Type, proxy.Id, server), wbackend.PrxLatency, time.Now().Unix()))
 	}
 
-	return proxy.GetCluster().SendMetrics(metrics)
+	proxy.GetCluster().AddMetrics(metrics)
 }

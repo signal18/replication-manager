@@ -785,6 +785,10 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckSlavesReplicationsPurge()
 						}
 						cluster.PrintDelayStat()
+
+						if cluster.Conf.GraphiteMetrics && cluster.StateMachine.GetHeartbeats()%5 == 0 {
+							cluster.SendGraphiteMetrics()
+						}
 					} else {
 						cluster.StateMachine.PreserveState("ERR00100")
 					}
