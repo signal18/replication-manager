@@ -243,6 +243,7 @@ type SlaveStatus struct {
 	SQLDelay                 sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
 	SQLRemainingDelay        sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
 	AutoPosition             int            `db:"Auto_Position" json:"autoPosition"`
+	MasterRetryCount         sql.NullInt64  `db:"Master_Retry_Count" json:"masterRetryCount"`
 }
 
 func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
@@ -282,6 +283,7 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 	s.SQLDelay = rs.SQLDelay
 	s.SQLRemainingDelay = rs.SQLRemainingDelay
 	s.AutoPosition = rs.AutoPosition
+	s.MasterRetryCount = rs.SourceRetryCount
 }
 
 type ReplicaStatus struct {

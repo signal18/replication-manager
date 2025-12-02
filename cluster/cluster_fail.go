@@ -217,10 +217,10 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 				cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlInfo, "Flush Log on new Master %d", ctbinlog)
 			}
 			time.Sleep(2 * time.Second)
-			ms, logs, err := dbhelper.GetMasterStatus(cluster.master.Conn, cluster.master.DBVersion)
-			cluster.master.FailoverMasterLogFile = ms.File
+			sms, logs, err := dbhelper.GetMasterStatus(cluster.master.Conn, cluster.master.DBVersion)
+			cluster.master.FailoverMasterLogFile = sms.File
 			cluster.master.FailoverMasterLogPos = "4"
-			crash.FailoverMasterLogFile = ms.File
+			crash.FailoverMasterLogFile = sms.File
 			crash.FailoverMasterLogPos = "4"
 			cluster.LogSQL(logs, err, cluster.master.URL, "MasterFailover", config.LvlInfo, "Backing up master pos %s %s", crash.FailoverMasterLogFile, crash.FailoverMasterLogPos)
 
@@ -312,6 +312,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 		changemasteropt.Logpos = cluster.master.BinaryLogPos
 		changemasteropt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
 		changemasteropt.Heartbeat = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime)
+		changemasteropt.RetryCount = strconv.Itoa(cluster.Conf.MasterRetryCount)
 		changemasteropt.SSL = cluster.Conf.ReplicationSSL
 		changemasteropt.Channel = cluster.Conf.MasterConn
 		changemasteropt.IsDelayed = cluster.oldMaster.IsDelayed
@@ -1449,8 +1450,12 @@ func (cluster *Cluster) CloseRing(oldMaster *ServerMonitor) error {
 	}
 
 	// Not MariaDB and not using MySQL GTID, 2.0 stop doing any thing until pseudo GTID
-	if parent.DBVersion.IsMySQLOrPerconaGreater57() && hasMyGTID == true {
-		changeMasterOpt.Mode = ""
+	if parent.DBVersion.IsMySQLOrPerconaGreater57() {
+		if hasMyGTID {
+			changeMasterOpt.Mode = "MASTER_AUTO_POSITION"
+		} else {
+			changeMasterOpt.Mode = ""
+		}
 		logs, changeMasterErr = dbhelper.ChangeMaster(child.Conn, changeMasterOpt, child.DBVersion)
 	} else {
 		//MariaDB all cases use GTID
