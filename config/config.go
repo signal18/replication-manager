@@ -201,6 +201,7 @@ type Config struct {
 	ReplicationErrorScript                    string                 `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
 	MasterConn                                string                 `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`
 	ReplicationSSL                            bool                   `mapstructure:"replication-use-ssl" toml:"replication-use-ssl" json:"replicationUseSsl"`
+	ReplicationMasterRetryCount               int                    `mapstructure:"replication-master-retry-count" toml:"replication-master-retry-count" json:"replicationMasterRetryCount"`
 	ActivePassive                             bool                   `mapstructure:"replication-active-passive" toml:"replication-active-passive" json:"replicationActivePassive"`
 	DynamicTopology                           bool                   `mapstructure:"replication-dynamic-topology" toml:"replication-dynamic-topology" json:"replicationDynamicTopology"`
 	MultiMasterRing                           bool                   `mapstructure:"replication-multi-master-ring" toml:"replication-multi-master-ring" json:"replicationMultiMasterRing"`

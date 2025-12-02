@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -467,17 +466,8 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", target.URL, err)
 		}
 
-		changeOpt := dbhelper.ChangeMasterOpt{
-			Host:      pmaster.Host,
-			Port:      pmaster.Port,
-			User:      parent.GetRplUser(),
-			Password:  parent.GetRplPass(),
-			Retry:     strconv.Itoa(parent.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(parent.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "SLAVE_POS",
-			SSL:       parent.Conf.ReplicationSSL,
-			Channel:   parent.Conf.MasterConn,
-		}
+		changeOpt := parent.GetChangeMasterBaseOptForSlave(target, pmaster, false)
+		changeOpt.Mode = "SLAVE_POS"
 
 		if target.DBVersion.IsMySQLOrPercona() {
 			if target.HasMySQLGTID() {
@@ -530,28 +520,23 @@ func (cluster *Cluster) ReseedFromParentCluster(parent *Cluster, target *ServerM
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 		}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Reseed logical backup %s from parent cluster failed on %s", backtype, target.URL)
-
-	} else {
-		if e2 := target.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
-		}
-
-		if target.IsMaster() {
-			_, err2 := target.StartSlaveChannel(parent.Conf.MasterConn)
-			if err2 != nil {
-				cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", target.URL, err)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave on %s", target.URL)
-			}
-		}
-
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
-
-	}
-
-	if err != nil {
 		return "", err
 	}
+
+	if e2 := target.JobsUpdateState(task, "Reseed completed", 3, 1); e2 != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
+	}
+
+	if target.IsMaster() {
+		_, err2 := target.StartSlaveChannel(parent.Conf.MasterConn)
+		if err2 != nil {
+			cluster.LogSQL(logs, err, target.URL, "Rejoin", config.LvlErr, "Failed start slave on server: %s %s", target.URL, err)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Start slave on %s", target.URL)
+		}
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Reseed logical backup %s from parent cluster completed on %s", backtype, target.URL)
 
 	return masterCurrentGTID, nil
 }

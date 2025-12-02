@@ -276,6 +276,7 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 		Password:    master.ClusterGroup.GetRplPass(),
 		Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
 		Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
+		RetryCount:  strconv.Itoa(cluster.Conf.ReplicationMasterRetryCount),
 		SSL:         cluster.Conf.ReplicationSSL,
 		Channel:     cluster.Conf.MasterConn,
 		IsDelayed:   server.IsDelayed,

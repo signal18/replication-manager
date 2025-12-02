@@ -512,17 +512,7 @@ func (server *ServerMonitor) JobReseedPhysicalBackup(backtype string) error {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      cluster.master.Host,
-			Port:      cluster.master.Port,
-			User:      cluster.GetRplUser(),
-			Password:  cluster.GetRplPass(),
-			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "SLAVE_POS",
-			SSL:       cluster.Conf.ReplicationSSL,
-			Channel:   cluster.Conf.MasterConn,
-		}, server.DBVersion)
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
 		if err != nil {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Reseed can't changing master for physical backup %s request for server: %s %s", backtype, server.URL, err)
 			return err
@@ -597,16 +587,7 @@ func (server *ServerMonitor) JobFlashbackPhysicalBackup() error {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
-	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      cluster.master.Host,
-		Port:      cluster.master.Port,
-		User:      cluster.GetRplUser(),
-		Password:  cluster.GetRplPass(),
-		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "SLAVE_POS",
-		SSL:       cluster.Conf.ReplicationSSL,
-	}, server.DBVersion)
+	logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Flashback can't changing master for physical backup %s request for server: %s %s", cluster.Conf.BackupPhysicalType, server.URL, err)
 		if server.HasReseedingState(task) {

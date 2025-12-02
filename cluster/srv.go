@@ -1832,20 +1832,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 	hasMyGTID := server.HasMySQLGTID()
 	if cluster.Conf.MultiMasterGrouprep {
 		//MySQL group replication
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:        "",
-			Port:        "",
-			User:        cluster.GetRplUser(),
-			Password:    cluster.GetRplPass(),
-			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:        "GROUP_REPL",
-			Channel:     "group_replication_recovery",
-			IsDelayed:   server.IsDelayed,
-			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-			SSL:         cluster.Conf.ReplicationSSL,
-			PostgressDB: server.PostgressDB,
-		}, server.DBVersion)
+		logs, err = dbhelper.ChangeMaster(server.Conn, cluster.GetChangeMasterBaseOptForReplGroup(server), server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped  for", server.URL)
 	} else if cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
@@ -1854,59 +1841,24 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		if err != nil {
 			return err
 		}
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:        master.Host,
-			Port:        master.Port,
-			User:        cluster.GetRplUser(),
-			Password:    cluster.GetRplPass(),
-			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:        master_use_gitd,
-			Channel:     cluster.Conf.MasterConn,
-			IsDelayed:   server.IsDelayed,
-			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-			SSL:         cluster.Conf.ReplicationSSL,
-			PostgressDB: server.PostgressDB,
-		}, server.DBVersion)
+		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
+		changemasteropt.Mode = master_use_gitd
+		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
 	} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
 		// MySQL GTID
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:        master.Host,
-			Port:        master.Port,
-			User:        cluster.GetRplUser(),
-			Password:    cluster.GetRplPass(),
-			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:        "MASTER_AUTO_POSITION",
-			IsDelayed:   server.IsDelayed,
-			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-			SSL:         cluster.Conf.ReplicationSSL,
-			Channel:     cluster.Conf.MasterConn,
-			PostgressDB: server.PostgressDB,
-		}, server.DBVersion)
+		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
+		changemasteropt.Mode = "MASTER_AUTO_POSITION"
+		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with MySQL GTID replication style and %s as master", server.URL, master.URL)
 
 	} else {
-		// Old Style file pos as default
-		logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:        master.Host,
-			Port:        master.Port,
-			User:        cluster.GetRplUser(),
-			Password:    cluster.GetRplPass(),
-			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:        "POSITIONAL",
-			Logfile:     master.BinaryLogFile,
-			Logpos:      master.BinaryLogPos,
-			Channel:     cluster.Conf.MasterConn,
-			IsDelayed:   server.IsDelayed,
-			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-			SSL:         cluster.Conf.ReplicationSSL,
-			PostgressDB: server.PostgressDB,
-		}, server.DBVersion)
+		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
+		changemasteropt.Mode = "POSITIONAL"
+		changemasteropt.Logfile = master.BinaryLogFile
+		changemasteropt.Logpos = master.BinaryLogPos
+		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with old replication style and %s as master", server.URL, master.URL)
-
 	}
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "BootstrapReplication", config.LvlErr, "Replication can't be bootstrap for server %s with %s as master: %s ", server.URL, master.URL, err)

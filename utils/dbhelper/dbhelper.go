@@ -761,6 +761,8 @@ type ChangeMasterOpt struct {
 	Logpos    string
 	Mode      string
 
+	RetryCount string // Start from MariaDB 12 and MySQL 8.4
+
 	Channel         string
 	PostgressDB     string
 	IsDelayed       bool
