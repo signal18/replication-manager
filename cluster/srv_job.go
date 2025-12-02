@@ -35,7 +35,6 @@ import (
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/crypto"
-	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	river "github.com/signal18/replication-manager/utils/river"
 	"github.com/signal18/replication-manager/utils/s18log"
@@ -715,27 +714,15 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 			cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 		}
 
-		changeOpt := dbhelper.ChangeMasterOpt{
-			Host:      cluster.master.Host,
-			Port:      cluster.master.Port,
-			User:      cluster.GetRplUser(),
-			Password:  cluster.GetRplPass(),
-			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "SLAVE_POS",
-			SSL:       cluster.Conf.ReplicationSSL,
-			Channel:   cluster.Conf.MasterConn,
-		}
-
 		if server.DBVersion.IsMySQLOrPercona() {
 			if server.HasMySQLGTID() {
-				changeOpt.Mode = "MASTER_AUTO_POSITION"
+				cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
 			} else {
-				changeOpt.Mode = "POSITIONAL"
+				cluster.pointSlaveToMasterPositional(server)
 			}
+		} else {
+			cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
 		}
-
-		dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion) // Ignore error
 	}
 
 	server.JobsUpdateState(task, "processing", 1, 0)
@@ -892,18 +879,15 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed stop slave on server: %s %s", server.URL, err)
 	}
 
-	// Reconfigure replication to point to master
-	logs, err = dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      cluster.master.Host,
-		Port:      cluster.master.Port,
-		User:      cluster.GetRplUser(),
-		Password:  cluster.GetRplPass(),
-		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "SLAVE_POS",
-		SSL:       cluster.Conf.ReplicationSSL,
-		Channel:   cluster.Conf.MasterConn,
-	}, server.DBVersion)
+	if server.DBVersion.IsMySQLOrPerconaGreater57() {
+		if server.HasMySQLGTID() {
+			logs, err = cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
+		} else {
+			logs, err = cluster.pointSlaveToMasterPositional(server)
+		}
+	} else {
+		logs, err = cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
+	}
 	if err != nil {
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "flashback can't changing master for logical backup %s request for server: %s %s", cluster.Conf.BackupLogicalType, server.URL, err)
 		return err

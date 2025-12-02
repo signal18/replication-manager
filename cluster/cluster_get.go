@@ -1810,3 +1810,16 @@ func (cluster *Cluster) GetChangeMasterBaseOptForReplGroup(sl *ServerMonitor) db
 
 	return opt
 }
+
+func (cluster *Cluster) GetChangeMasterBaseOptForMxs(sl *ServerMonitor, master *ServerMonitor) dbhelper.ChangeMasterOpt {
+	return dbhelper.ChangeMasterOpt{
+		Host:      master.Host,
+		Port:      master.Port,
+		User:      cluster.GetRplUser(),
+		Password:  cluster.GetRplPass(),
+		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "MXS",
+		SSL:       cluster.Conf.ReplicationSSL,
+	}
+}

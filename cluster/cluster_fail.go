@@ -454,16 +454,7 @@ func (cluster *Cluster) pointSlaveToMasterPositional(sl *ServerMonitor) (string,
 }
 
 func (cluster *Cluster) pointSlaveToMasterMxsNoGtid(sl *ServerMonitor) (string, error) {
-	return dbhelper.ChangeMaster(sl.Conn, dbhelper.ChangeMasterOpt{
-		Host:      cluster.master.Host,
-		Port:      cluster.master.Port,
-		User:      cluster.GetRplUser(),
-		Password:  cluster.GetRplPass(),
-		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "MXS",
-		SSL:       cluster.Conf.ReplicationSSL,
-	}, sl.DBVersion)
+	return dbhelper.ChangeMaster(sl.Conn, cluster.GetChangeMasterBaseOptForMxs(sl, cluster.master), sl.DBVersion)
 }
 
 func (cluster *Cluster) SwitchSlavesToMaster(fail bool) {

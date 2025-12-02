@@ -261,18 +261,10 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 			return err
 		}
 	} else if cluster.Conf.MxsBinlogOn {
-		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.Host,
-			Port:      realmaster.Port,
-			User:      cluster.GetRplUser(),
-			Password:  cluster.GetRplPass(),
-			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "MXS",
-			Logfile:   crash.FailoverMasterLogFile,
-			Logpos:    crash.FailoverMasterLogPos,
-			SSL:       cluster.Conf.ReplicationSSL,
-		}, server.DBVersion)
+		opt := cluster.GetChangeMasterBaseOptForMxs(server, realmaster)
+		opt.Logfile = crash.FailoverMasterLogFile
+		opt.Logpos = crash.FailoverMasterLogPos
+		logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync to maxscale %s", err)
 		if err != nil {
 			return err
@@ -280,22 +272,11 @@ func (server *ServerMonitor) rejoinMasterSync(crash *Crash) error {
 	} else {
 		// not maxscale the new master coordonate are in crash
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Change master to positional in Rejoin old Master")
-		logs, err := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:        realmaster.Host,
-			Port:        realmaster.Port,
-			User:        cluster.GetRplUser(),
-			Password:    cluster.GetRplPass(),
-			Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:        "POSITIONAL",
-			Logfile:     crash.NewMasterLogFile,
-			Logpos:      crash.NewMasterLogPos,
-			SSL:         cluster.Conf.ReplicationSSL,
-			Channel:     cluster.Conf.MasterConn,
-			IsDelayed:   server.IsDelayed,
-			Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-			PostgressDB: server.PostgressDB,
-		}, server.DBVersion)
+		opt := cluster.GetChangeMasterBaseOptForSlave(server, realmaster, server.IsDelayed)
+		opt.Mode = "POSITIONAL"
+		opt.Logfile = crash.NewMasterLogFile
+		opt.Logpos = crash.NewMasterLogPos
+		logs, err := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 		cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Change master positional failed in Rejoin old Master in sync %s", err)
 		if err != nil {
 			return err
@@ -356,7 +337,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	if server.MxsHaveGtid || server.IsMaxscale == false {
 		logs, err2 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
 	} else {
-		logs, err2 = server.SetReplicationFromMaxsaleServer(realmaster)
+		logs, err2 = server.SetReplicationFromMaxscaleServer(realmaster)
 	}
 	cluster.LogSQL(logs, err2, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err2)
 	if err2 != nil {
@@ -413,19 +394,11 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
 
 	} else {
-		logs, err3 := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-			Host:      realmaster.Host,
-			Port:      realmaster.Port,
-			User:      cluster.GetRplUser(),
-			Password:  cluster.GetRplPass(),
-			Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-			Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-			Mode:      "MXS",
-			Logfile:   realmaster.FailoverMasterLogFile,
-			Logpos:    realmaster.FailoverMasterLogPos,
-			SSL:       cluster.Conf.ReplicationSSL,
-			Channel:   cluster.Conf.MasterConn,
-		}, server.DBVersion)
+		opt := cluster.GetChangeMasterBaseOptForMxs(server, realmaster)
+		opt.Logfile = realmaster.FailoverMasterLogFile
+		opt.Logpos = realmaster.FailoverMasterLogPos
+
+		logs, err3 := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
@@ -610,21 +583,11 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 							logs, err := server.StopSlave()
 							cluster.LogSQL(logs, err, server.URL, "Rejoin", config.LvlErr, "Failed to stop slave on server %s: %s", server.URL, err)
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Doing Positional switch of slave %s", server.URL)
-							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-								Host:        cluster.master.Host,
-								Port:        cluster.master.Port,
-								User:        cluster.GetRplUser(),
-								Password:    cluster.GetRplPass(),
-								Logfile:     myparentss.MasterLogFile.String,
-								Logpos:      myparentss.ReadMasterLogPos.String,
-								Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
-								Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
-								Channel:     cluster.Conf.MasterConn,
-								IsDelayed:   server.IsDelayed,
-								Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-								SSL:         cluster.Conf.ReplicationSSL,
-								PostgressDB: server.PostgressDB,
-							}, server.DBVersion)
+							opt := cluster.GetChangeMasterBaseOptForSlave(server, cluster.master, server.IsDelayed)
+							opt.Mode = "POSITIONAL"
+							opt.Logfile = myparentss.MasterLogFile.String
+							opt.Logpos = myparentss.ReadMasterLogPos.String
+							logs, changeMasterErr := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 
 							cluster.LogSQL(logs, changeMasterErr, server.URL, "Rejoin", config.LvlErr, "Rejoin Failed doing Positional switch of slave %s: %s", server.URL, changeMasterErr)
 
