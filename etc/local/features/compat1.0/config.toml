@@ -9,13 +9,13 @@ title = "ClusterTestMasterSlave"
 
 hosts = "127.0.0.1:3310,127.0.0.1:3311"
 user = "root:test"
-rpluser = "root:test"
+replication-credential = "root:test"
 title = "MyTitle - env"
-connect-timeout = 8
-prefmaster = "127.0.0.1:3310"
+db-servers-connect-timeout = 8
+db-servers-prefered-master = "127.0.0.1:3310"
 
 daemon = 1
-logfile = "/var/lib/replication-manager/replication-manager.log"
+log-file = "/var/lib/replication-manager/replication-manager.log"
 
 
 haproxy = true
