@@ -9,7 +9,11 @@ export default defineConfig({
     https: true,
     proxy: {
       '/api': {
-        target: 'https://repman.marie-dev.svc.cloud18:10005/',
+        target: 'https://172.18.0.10:10005/',
+        secure: false
+      },
+      '/graphite': {
+        target: 'https://172.18.0.10:10005/',
         secure: false
       }
     }

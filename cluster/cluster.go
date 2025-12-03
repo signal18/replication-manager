@@ -39,7 +39,7 @@ import (
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/alert/slackman"
-	"github.com/signal18/replication-manager/utils/archiver"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
@@ -206,7 +206,7 @@ type Cluster struct {
 	QueryRules                map[uint32]config.QueryRule `json:"-"`
 	Backups                   []v3.Backup                 `json:"-"`
 	BackupStat                v3.BackupStat               `json:"backupStat" groups:"web"`
-	BackupMetaMap             *config.BackupMetaMap       `json:"backupList" groups:"web"`
+	BackupMetaMap             *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
 	SLAHistory                []state.Sla                 `json:"slaHistory" groups:"web"`
 	APIUsers                  map[string]APIUser          `json:"apiUsers" groups:"web"`
 	Schedule                  map[string]cron.Entry       `json:"-"`
@@ -245,7 +245,8 @@ type Cluster struct {
 	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
-	ResticRepo                *archiver.ResticRepo        `json:"-"`
+	ResticManager             *backupmgr.ResticManager    `json:"-"`
+	MessageChan               chan s18log.HttpMessage     `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -371,6 +372,9 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.AgentMaxFreq = make(map[string]int64)
 	cluster.ServiceTemplates = make([]string, 0)
 	cluster.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
+	cluster.MessageChan = make(chan s18log.HttpMessage, 10)
+
+	go cluster.ConsumeMessageChan()
 
 	*cluster.Conf = confs.ConfInit
 
@@ -410,7 +414,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.runOnceAfterTopology = true
 	cluster.testStopCluster = true
 	cluster.testStartCluster = true
-	cluster.BackupMetaMap = config.NewBackupMetaMap()
+	cluster.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	cluster.VersionsMap = config.NewVersionsMap()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
@@ -585,7 +589,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.initScheduler()
 	cluster.CheckDefaultUser(true)
 	cluster.RefreshToolVersions()
-	cluster.StartResticRepo()
+	cluster.StartResticManager()
 
 	cluster.Conf.TopologyTarget = cluster.GetTopologyFromConf()
 }
@@ -979,8 +983,8 @@ func (cluster *Cluster) StateProcessing() {
 func (cluster *Cluster) Stop() {
 	cluster.Lock()
 	defer cluster.Unlock()
-	if cluster.ResticRepo != nil {
-		cluster.ResticRepo.ShutdownWorker()
+	if cluster.ResticManager != nil {
+		cluster.ResticManager.ShutdownWorker()
 	}
 	cluster.CloseRefreshTemplateMD5Worker()
 	cluster.ConfigManager.SaveConfig(cluster, true)
@@ -1757,7 +1761,7 @@ func (cluster *Cluster) MonitorSchema() {
 
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
-	cmaster.DictTables = config.FromNormalTablesMap(cmaster.DictTables, tables)
+	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 	cluster.StateMachine.RemoveMonitorSchemaState()
 }
 

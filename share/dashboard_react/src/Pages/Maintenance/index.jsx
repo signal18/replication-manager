@@ -11,10 +11,125 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
+import { purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
+import RMIconButton from '../../components/RMIconButton'
+import ConfirmModal from '../../components/Modals/ConfirmModal'
+import { HiTrash } from 'react-icons/hi'
+import { showWarningToast } from '../../redux/toastSlice'
+
+const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
+  const [direction, setDirection] = useState('first');
+
+  const handleDirectionChange = (e) => {
+    setDirection(e.target.value);
+    if (e.target.value !== 'after') {
+      onChange(e.target.value, null);
+    }
+  };
+
+  const handleAfterChange = (e) => {
+    onChange('after', e.target.value);
+  };
+  return (
+    <VStack>
+      <HStack>
+        <Box>Move {direction}:</Box>
+        <Select onChange={handleDirectionChange} value={direction}>
+          <option value="first">First</option>
+          <option value="before">After</option>
+          <option value="last">Last</option>
+        </Select>
+      </HStack>
+      {direction === 'after' && (
+        <HStack>
+          <Box>Move After:</Box>
+          <Select onChange={handleAfterChange}>
+            {list.filter(item => item.task_id !== currentId).map(item => (
+              <option key={item.task_id} value={item.task_id}>Task ID #{item.task_id}</option>
+            ))}
+          </Select>
+        </HStack>
+      )}
+    </VStack>
+  )
+})
+
+const formConfig = {
+  queueMove: {
+    component: QueueMoveForm,
+    getProps: (ctx) => ({
+      list: ctx.queueData,
+      currentId: ctx.payload.data.taskId,
+      onChange: ctx.handleMove
+    })
+  }
+};
+
+const DynamicForm = (ctx) => {
+  const { action } = ctx.payload;
+
+  const entry = formConfig[action];
+  if (!entry) return null;
+
+  const Component = entry.component;
+  const props = entry.getProps(ctx);
+
+  return <Component {...props} />;
+};
+
+const resticTaskType = (rtt) => {
+  switch (rtt) {
+    case 0:
+      return "init"
+    case 1:
+      return "fetch"
+    case 2:
+      return "backup"
+    case 3:
+      return "purge"
+    case 4:
+      return "unlock"
+    case 5:
+      return "changepass"
+    default:
+      return "Unknown"
+  }
+}
+
+const resticTaskDetail = (row) => {
+  switch (row.task_type) {
+    case 2:
+      return (<VStack>
+        <HStack>
+          <Box>Path:</Box>
+          <Box>{row.dir_path}</Box>
+        </HStack>
+        <HStack>
+          <Box>Tags:</Box>
+          <Box>{row.tags?.join(', ')}</Box>
+        </HStack>
+      </VStack>)
+    case 3:
+      return (<VStack>
+        <HStack>
+          <Box>Options:</Box>
+          <Box>{JSON.stringify(row.opt)}</Box>
+        </HStack>
+      </VStack>)
+    default:
+      return (<div>-</div>)
+  }
+}
+
 
 function Maintenance({ selectedCluster, user }) {
   const [data, setData] = useState([])
   const [snapshotData, setSnapshotData] = useState([])
+  const [queueData, setQueueData] = useState([])
+  const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
+  const { isOpen: isConfirmModalOpen, title, payload } = confirmState
+
+  const dispatch = useDispatch()
   const columnHelper = createColumnHelper()
   const { isOpen: isBackupSettingsOpen, onToggle: onBackupSettingsToggle } = useDisclosure({
     defaultIsOpen: JSON.parse(localStorage.getItem('isBackupSettingsOpen')) || false
@@ -35,9 +150,61 @@ function Maintenance({ selectedCluster, user }) {
     defaultIsOpen: JSON.parse(localStorage.getItem('isLogsInBackupOpen')) || false
   })
 
-  const {
-    cluster: { backups : { snapshots , stats} }
-  } = useSelector((state) => state)
+  const list = useSelector((state) => state.cluster.backups.list)
+  const backupStats = useSelector((state) => state.cluster.backups.stats)
+
+  const snapshots = useSelector((state) => state.cluster.restic.snapshots)
+  const stats = useSelector((state) => state.cluster.restic.stats)
+  const resticQueue = useSelector((state) => state.cluster.restic.queue)
+
+  const openConfirmModal = (title, payload) => {
+    setConfirmState({ isOpen: true, title, payload })
+  }
+
+  const closeConfirmModal = () => {
+    setConfirmState({ isOpen: false, title: '', payload: null })
+  }
+
+  const handleConfirm = () => {
+    if (payload && payload.action) {
+      switch (payload.action) {
+        case 'snapshotPurge':
+          dispatch(purgeResticSnapshot({ clusterName: selectedCluster.name, snapshotId: payload.data.snapshotId }))
+          break
+        case 'queueCancel':
+          dispatch(resticQueueCancel({ clusterName: selectedCluster.name, taskId: payload.data.taskId }))
+          break
+        case 'queueMove':
+          dispatch(resticQueueMove({ clusterName: selectedCluster.name, taskId: payload.data.taskId, direction: payload.data.direction, afterId: payload.data.afterId }))
+          break
+        case 'queuePause':
+          dispatch(resticQueuePause({ clusterName: selectedCluster.name }));
+          break
+        case 'queueResume':
+          dispatch(resticQueueResume({ clusterName: selectedCluster.name }));
+          break
+        default:
+          dispatch(showWarningToast({ title: 'Unknown action', description: `The action ${payload.action} is not recognized.` }))
+          break
+      }
+    }
+
+    closeConfirmModal()
+  }
+
+  const handleMove = (direction, afterId) => {
+    setConfirmState((prevState) => ({
+      ...prevState,
+      payload: {
+        ...prevState.payload,
+        data: {
+          ...prevState.payload.data,
+          direction,
+          afterId
+        }
+      }
+    }))
+  }
 
   useEffect(() => {
     localStorage.setItem('isBackupSettingsOpen', JSON.stringify(isBackupSettingsOpen))
@@ -60,11 +227,13 @@ function Maintenance({ selectedCluster, user }) {
   }, [isBackupsOpen])
 
   useEffect(() => {
-    if (selectedCluster?.backupList) {
-      const arrData = convertObjectToArray(selectedCluster.backupList)
+    if (list) {
+      const arrData = convertObjectToArray(list)
       setData(arrData.reverse())
+    } else {
+      setData([])
     }
-  }, [selectedCluster?.backupList])
+  }, [selectedCluster?.name, list])
 
   useEffect(() => {
     if (snapshots?.length > 0) {
@@ -72,7 +241,31 @@ function Maintenance({ selectedCluster, user }) {
     } else {
       setSnapshotData([])
     }
-  }, [selectedCluster?.name,snapshots])
+  }, [selectedCluster?.name, snapshots])
+
+  useEffect(() => {
+    if (resticQueue?.length > 0) {
+      const arrData = convertObjectToArray(resticQueue)
+      setQueueData(arrData.reverse())
+    } else {
+      setQueueData([])
+    }
+  }, [selectedCluster?.name, resticQueue])
+
+  const backupDataStats = [
+    {
+      key: 'Total Size',
+      value: backupStats?.total_size
+    },
+    {
+      key: 'Total File Count',
+      value: backupStats?.total_file_count
+    },
+    {
+      key: 'Total Blob Count',
+      value: backupStats?.total_blob_count
+    }
+  ]
 
   const columns = useMemo(
     () => [
@@ -179,8 +372,7 @@ function Maintenance({ selectedCluster, user }) {
         header: 'Completed',
         id: 'completed'
       })
-    ],
-    []
+    ]
   )
 
   const snapshotDataStats = [
@@ -214,8 +406,38 @@ function Maintenance({ selectedCluster, user }) {
     }),
     columnHelper.accessor((row) => row.tags?.join(','), {
       header: 'Tags'
+    }),
+    // Added Purge action column
+    columnHelper.accessor((row) => (
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Purge Snapshot', { action: 'snapshotPurge', data: { snapshotId: row.id } })} />
+    ), {
+      cell: (info) => info.getValue(),
+      header: 'Actions',
+      id: 'actions',
     })
   ])
+
+  const queueColumns = useMemo(() => [
+    columnHelper.accessor((row) => row.task_id, {
+      header: 'ID',
+      id: 'task_id'
+    }),
+    columnHelper.accessor((row) => resticTaskType(row.task_type), {
+      header: 'Task Type'
+    }),
+    columnHelper.accessor((row) => resticTaskDetail(row), {
+      header: 'Details'
+    }),
+    // Added Purge action column
+    columnHelper.accessor((row) => (
+      <RMIconButton icon={HiTrash} onClick={() => openConfirmModal('Cancel Queued Task', { action: 'queueCancel', data: { taskId: row.task_id } })} />
+    ), {
+      cell: (info) => info.getValue(),
+      header: 'Actions',
+      id: 'actions',
+    })
+  ])
+
   return (
     <VStack className={styles.backupContainer}>
       <AccordionComponent
@@ -243,7 +465,12 @@ function Maintenance({ selectedCluster, user }) {
         className={styles.accordion}
         headerClassName={styles.accordionHeader}
         panelClassName={styles.accordionPanel}
-        body={<DataTable key="backups" data={data} columns={columns} className={styles.table} />}
+        body={
+          <VStack className={styles.snapshotContainer}>
+            <TableType3 dataArray={backupDataStats} className={styles.statsTable} />
+            <DataTable key="backups" data={data} columns={columns} className={styles.table} />
+          </VStack>
+        }
       />
       <AccordionComponent
         heading={'Backup Snapshots'}
@@ -256,6 +483,7 @@ function Maintenance({ selectedCluster, user }) {
           <VStack className={styles.snapshotContainer}>
             <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
             <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
+            <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
           </VStack>
         }
       />
@@ -277,6 +505,12 @@ function Maintenance({ selectedCluster, user }) {
         heading={'Job Logs'}
         body={<TaskLogs />}
       />
+      {isConfirmModalOpen && <ConfirmModal title={title} isOpen={isConfirmModalOpen} body={<DynamicForm
+        payload={payload}
+        queueData={queueData}
+        selectedCluster={selectedCluster}
+        handleMove={handleMove}
+      />} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
     </VStack>
   )
 }

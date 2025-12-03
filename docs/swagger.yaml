@@ -1,5 +1,56 @@
 definitions:
-  archiver.BackupStat:
+  backupmgr.BackupMetaMap:
+    type: object
+  backupmgr.BackupMetadata:
+    properties:
+      backupMethod:
+        type: integer
+      backupStrategy:
+        type: integer
+      backupTool:
+        type: string
+      backupToolVersion:
+        type: string
+      binLogFileName:
+        type: string
+      binLogFilePos:
+        type: integer
+      binLogUuid:
+        type: string
+      checksum:
+        type: string
+      completed:
+        type: boolean
+      compressed:
+        type: boolean
+      dest:
+        type: string
+      encrypted:
+        type: boolean
+      encryptionAlgo:
+        type: string
+      encryptionKey:
+        type: string
+      endTime:
+        type: string
+      fileCount:
+        type: integer
+      id:
+        type: integer
+      previous:
+        type: integer
+      retentionDays:
+        type: integer
+      size:
+        type: integer
+      source:
+        type: string
+      splitUser:
+        type: boolean
+      startTime:
+        type: string
+    type: object
+  backupmgr.BackupStat:
     properties:
       total_blob_count:
         type: integer
@@ -8,43 +59,54 @@ definitions:
       total_size:
         type: integer
     type: object
-  archiver.ResticPurgeOption:
+  backupmgr.PointInTimeMeta:
     properties:
-      keepDaily:
+      backup:
+        format: int64
         type: integer
-      keepHourly:
+      isInPITR:
+        type: boolean
+      restoreTime:
+        format: int64
         type: integer
-      keepLast:
-        type: integer
-      keepMonthly:
-        type: integer
-      keepWeekly:
-        type: integer
-      keepWithin:
-        type: string
-      keepWithinDaily:
-        type: string
-      keepWithinHourly:
-        type: string
-      keepWithinMonthly:
-        type: string
-      keepWithinWeekly:
-        type: string
-      keepWithinYearly:
-        type: string
-      keepYearly:
-        type: integer
+      useBinlog:
+        type: boolean
     type: object
-  archiver.ResticTask:
+  backupmgr.ResticPurgeOption:
+    properties:
+      keep_daily:
+        type: integer
+      keep_hourly:
+        type: integer
+      keep_last:
+        type: integer
+      keep_monthly:
+        type: integer
+      keep_weekly:
+        type: integer
+      keep_within:
+        type: string
+      keep_within_daily:
+        type: string
+      keep_within_hourly:
+        type: string
+      keep_within_monthly:
+        type: string
+      keep_within_weekly:
+        type: string
+      keep_within_yearly:
+        type: string
+      keep_yearly:
+        type: integer
+      snapshot_id:
+        type: string
+    type: object
+  backupmgr.ResticTask:
     properties:
       dir_path:
         type: string
-      error_state:
-        $ref: '#/definitions/github_com_signal18_replication-manager_utils_state.State'
-      new_pass_file:
-        type: string
       opt:
-        $ref: '#/definitions/archiver.ResticPurgeOption'
+        $ref: '#/definitions/backupmgr.ResticPurgeOption'
       tags:
         items:
           type: string
@@ -52,20 +114,24 @@ definitions:
       task_id:
         type: integer
       task_type:
-        $ref: '#/definitions/archiver.TaskType'
+        $ref: '#/definitions/backupmgr.TaskType'
     type: object
-  archiver.TaskType:
+  backupmgr.TaskType:
     enum:
     - 0
     - 1
     - 2
     - 3
+    - 4
+    - 5
     type: integer
     x-enum-varnames:
+    - InitTask
     - FetchTask
-    - PurgeTask
     - BackupTask
+    - PurgeTask
     - UnlockTask
+    - ChangePassTask
   cluster.APIUser:
     properties:
       grants:
@@ -216,7 +282,7 @@ definitions:
           $ref: '#/definitions/cluster.App'
         type: array
       backupList:
-        $ref: '#/definitions/config.BackupMetaMap'
+        $ref: '#/definitions/backupmgr.BackupMetaMap'
       backupStat:
         $ref: '#/definitions/repmanv3.BackupStat'
       blacklist:
@@ -591,9 +657,9 @@ definitions:
   cluster.ServerBackupMeta:
     properties:
       logical:
-        $ref: '#/definitions/config.BackupMetadata'
+        $ref: '#/definitions/backupmgr.BackupMetadata'
       physical:
-        $ref: '#/definitions/config.BackupMetadata'
+        $ref: '#/definitions/backupmgr.BackupMetadata'
     type: object
   cluster.ServerDelayStat:
     properties:
@@ -859,7 +925,7 @@ definitions:
       pfsInstruments:
         $ref: '#/definitions/config.StringsMap'
       pointInTimeMeta:
-        $ref: '#/definitions/config.PointInTimeMeta'
+        $ref: '#/definitions/backupmgr.PointInTimeMeta'
       port:
         type: string
       postgressDB:
@@ -1058,55 +1124,6 @@ definitions:
       provAppTemplate:
         type: string
     type: object
-  config.BackupMetaMap:
-    type: object
-  config.BackupMetadata:
-    properties:
-      backupMethod:
-        type: integer
-      backupStrategy:
-        type: integer
-      backupTool:
-        type: string
-      backupToolVersion:
-        type: string
-      binLogFileName:
-        type: string
-      binLogFilePos:
-        type: integer
-      binLogUuid:
-        type: string
-      checksum:
-        type: string
-      completed:
-        type: boolean
-      compressed:
-        type: boolean
-      dest:
-        type: string
-      encrypted:
-        type: boolean
-      encryptionAlgo:
-        type: string
-      encryptionKey:
-        type: string
-      endTime:
-        type: string
-      id:
-        type: integer
-      previous:
-        type: integer
-      retentionDays:
-        type: integer
-      size:
-        type: integer
-      source:
-        type: string
-      splitUser:
-        type: boolean
-      startTime:
-        type: string
-    type: object
   config.ConfigVariableType:
     properties:
       available:
@@ -1224,19 +1241,6 @@ definitions:
         $ref: '#/definitions/config.SourceType'
       volumename:
         type: string
-    type: object
-  config.PointInTimeMeta:
-    properties:
-      backup:
-        format: int64
-        type: integer
-      isInPITR:
-        type: boolean
-      restoreTime:
-        format: int64
-        type: integer
-      useBinlog:
-        type: boolean
     type: object
   config.Role:
     properties:
@@ -1853,6 +1857,10 @@ definitions:
         type: string
       backupResticRepository:
         type: string
+      backupResticRunQueueOnStartup:
+        type: boolean
+      backupResticSaveQueueOnShutdown:
+        type: boolean
       backupResticTimeout:
         type: integer
       backupRestoreMysqlUser:
@@ -2278,8 +2286,6 @@ definitions:
         type: string
       logAppLevel:
         type: integer
-      logArchiveLevel:
-        type: integer
       logBackupStream:
         type: boolean
       logBackupStreamLevel:
@@ -2331,6 +2337,8 @@ definitions:
       logProxy:
         type: boolean
       logProxyLevel:
+        type: integer
+      logResticLevel:
         type: integer
       logRotateMaxAge:
         type: integer
@@ -3203,19 +3211,6 @@ definitions:
       withTarball:
         type: string
     type: object
-  github_com_signal18_replication-manager_utils_state.State:
-    properties:
-      errDesc:
-        type: string
-      errFrom:
-        type: string
-      errKey:
-        type: string
-      errType:
-        type: string
-      serverUrl:
-        type: string
-    type: object
   github_com_signal18_replication-manager_utils_version.Version:
     properties:
       dist:
@@ -3678,6 +3673,8 @@ definitions:
         type: string
       level:
         type: string
+      module:
+        type: integer
       text:
         type: string
       timestamp:
@@ -6624,355 +6621,6 @@ paths:
       summary: Get App Substitution Variables
       tags:
       - Apps
-  /api/clusters/{clusterName}/archives:
-    get:
-      description: This endpoint retrieves the backups for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of backups
-          schema:
-            items:
-              additionalProperties: true
-              type: object
-            type: array
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Retrieve backups for a specific cluster
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/fetch:
-    post:
-      description: Fetches the restic backup for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives fetch queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Fetch Archives
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/init:
-    post:
-      description: Inits the restic backup for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives purge queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Init Restic Backup
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/init/{force}:
-    post:
-      description: Inits the restic backup for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Force init
-        enum:
-        - force
-        in: path
-        name: force
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives purge queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Init Restic Backup
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/purge:
-    post:
-      description: Purges the restic backup for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives purge queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Purge Restic Backup
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/restore-config/{force}:
-    post:
-      description: Restores the restic config for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - default: noforce
-        description: Force Restore
-        in: path
-        name: force
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives restore config done
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Restore Restic Config
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/stats:
-    get:
-      description: This endpoint retrieves the backup stats for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: List of backups
-          schema:
-            items:
-              $ref: '#/definitions/archiver.BackupStat'
-            type: array
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Retrieve backup stats for a specific cluster
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/task-queue:
-    get:
-      description: Gets the restic task queue for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Task queue fetched
-          schema:
-            items:
-              $ref: '#/definitions/archiver.ResticTask'
-            type: array
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Get Archives Task Queue
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/task-queue/reset:
-    get:
-      description: Empty the restic task queue for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Task queue reset
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Reset Archives Task Queue
-      tags:
-      - ClusterBackups
-  /api/clusters/{clusterName}/archives/unlock:
-    post:
-      description: Unlocks the restic backup for the specified cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Archives purge queued
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: No cluster
-          schema:
-            type: string
-      summary: Unlock Restic Backup
-      tags:
-      - ClusterBackups
   /api/clusters/{clusterName}/backups:
     get:
       description: This endpoint retrieves the backups for the specified cluster.
@@ -6995,7 +6643,8 @@ paths:
           description: List of backups
           schema:
             items:
-              additionalProperties: true
+              additionalProperties:
+                $ref: '#/definitions/backupmgr.BackupMetadata'
               type: object
             type: array
         "403":
@@ -7031,7 +6680,7 @@ paths:
           description: List of backups
           schema:
             items:
-              $ref: '#/definitions/archiver.BackupStat'
+              $ref: '#/definitions/backupmgr.BackupStat'
             type: array
         "403":
           description: No valid ACL
@@ -8051,6 +7700,499 @@ paths:
       summary: Retrieve query rules for a specific cluster
       tags:
       - Cluster
+  /api/clusters/{clusterName}/restic/fetch:
+    post:
+      description: Fetches the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic snapshots fetch queued
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Fetch Restic Snapshots
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/init:
+    post:
+      description: Inits the restic repository for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic repository initialized
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Repository
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/init/{force}:
+    post:
+      description: Inits the restic repository for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Force init
+        enum:
+        - force
+        in: path
+        name: force
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic repository initialized
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Init Restic Repository
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/purge/{snapshotID}:
+    post:
+      description: Purges the restic backup for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Snapshot ID
+        in: path
+        name: snapshotID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic repository purged
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Purge Restic Backup
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/restore-config/{force}:
+    post:
+      description: Restores the restic config for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - default: noforce
+        description: Force Restore
+        in: path
+        name: force
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic config restore done
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Restore Restic Config
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/snapshots:
+    get:
+      description: This endpoint retrieves the backups for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backups for a specific cluster
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/stats:
+    get:
+      description: This endpoint retrieves the backup stats for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of backups
+          schema:
+            items:
+              $ref: '#/definitions/backupmgr.BackupStat'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Retrieve backup stats for a specific cluster
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue:
+    get:
+      description: Gets the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue fetched
+          schema:
+            items:
+              $ref: '#/definitions/backupmgr.ResticTask'
+            type: array
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Get Restic Task Queue
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/cancel/{taskID}:
+    post:
+      description: Cancel the specified restic task for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task cancelled
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Cancel Restic Task
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}:
+    post:
+      description: Modify the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Move Type
+        enum:
+        - first
+        - after
+        - last
+        in: path
+        name: moveType
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue modified
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Modify Restic Task Queue
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/move/{moveType}/{taskID}/{afterID}:
+    post:
+      description: Modify the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Move Type
+        enum:
+        - first
+        - after
+        - last
+        in: path
+        name: moveType
+        required: true
+        type: string
+      - description: Task ID
+        in: path
+        name: taskID
+        required: true
+        type: string
+      - description: After ID
+        in: path
+        name: afterID
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue modified
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Modify Restic Task Queue
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/reset:
+    get:
+      description: Empty the restic task queue for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Task queue reset
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Reset Restic Task Queue
+      tags:
+      - ClusterRestic
+  /api/clusters/{clusterName}/restic/task-queue/resume:
+    post:
+      responses: {}
+  /api/clusters/{clusterName}/restic/unlock:
+    post:
+      description: Unlocks the restic repository for the specified cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Restic repository unlocked
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Unlock Restic Repository
+      tags:
+      - ClusterRestic
   /api/clusters/{clusterName}/sales/accept-subscription:
     post:
       consumes:

@@ -642,21 +642,16 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
 			return true
 		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowBackups] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
-			return true
-		}
 
-		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/archives") {
+		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/restic/snapshots") {
 			return true
 		}
-		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/archives/stats") {
+		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/restic/stats") {
 			return true
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/archives") {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/restic") {
 			return true
 		}
 	}

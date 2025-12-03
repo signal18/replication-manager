@@ -30,7 +30,7 @@ import (
 	"github.com/hpcloud/tail"
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
-	v3 "github.com/signal18/replication-manager/repmanv3"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/gtid"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -168,14 +168,14 @@ type ServerMonitor struct {
 	SlowLog                     s18log.SlowLog             `json:"-"`
 	Status                      *config.StringsMap         `json:"-"`
 	PrevStatus                  *config.StringsMap         `json:"-"`
-	PFSQueries                  *config.PFSQueriesMap      `json:"-"` //PFS queries
+	PFSQueries                  *dbhelper.PFSQueriesMap    `json:"-"` //PFS queries
 	PFSInstruments              *config.StringsMap         `json:"pfsInstruments"`
-	SlowPFSQueries              *config.PFSQueriesMap      `json:"-"` //PFS queries from slow
-	DictTables                  *config.TablesMap          `json:"-"`
-	Tables                      []v3.Table                 `json:"-"`
+	SlowPFSQueries              *dbhelper.PFSQueriesMap    `json:"-"` //PFS queries from slow
+	DictTables                  *dbhelper.TablesMap        `json:"-"`
+	Tables                      []dbhelper.Table           `json:"-"`
 	Disks                       []dbhelper.Disk            `json:"-"`
-	Plugins                     *config.PluginsMap         `json:"-"`
-	Users                       *config.GrantsMap          `json:"-"`
+	Plugins                     *dbhelper.PluginsMap       `json:"-"`
+	Users                       *dbhelper.GrantsMap        `json:"-"`
 	MetaDataLocks               []dbhelper.MetaDataLock    `json:"-"`
 	ErrorLogTailer              *tail.Tail                 `json:"-"`
 	SlowLogTailer               *tail.Tail                 `json:"-"`
@@ -213,7 +213,7 @@ type ServerMonitor struct {
 	IsRefreshingBinlogMeta      bool
 	IsLoadingJobList            bool
 	NeedRefreshJobs             bool
-	PointInTimeMeta             config.PointInTimeMeta
+	PointInTimeMeta             backupmgr.PointInTimeMeta
 	BinaryLogDir                string
 	BinaryLogName               string
 	DBDataDir                   string
@@ -224,8 +224,8 @@ type ServerMonitor struct {
 }
 
 type ServerBackupMeta struct {
-	Logical  *config.BackupMetadata `json:"logical"`
-	Physical *config.BackupMetadata `json:"physical"`
+	Logical  *backupmgr.BackupMetadata `json:"logical"`
+	Physical *backupmgr.BackupMetadata `json:"physical"`
 }
 
 type SlaveVariables struct {
@@ -273,7 +273,7 @@ const (
 func (cluster *Cluster) newServerMonitor(url string, user string, pass string, compute bool, domain string, source string) (*ServerMonitor, error) {
 	var err error
 	server := new(ServerMonitor)
-	server.Tables = make([]v3.Table, 0)
+	server.Tables = make([]dbhelper.Table, 0)
 	server.HostCnf = url // store host from config file
 	server.QPS = 0
 	server.IsCompute = compute
@@ -286,8 +286,8 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.IsGroupReplicationSlave = false
 	server.IsGroupReplicationMaster = false
 	server.JobResults = config.NewTasksMap()
-	server.LastBackupMeta.Physical = new(config.BackupMetadata)
-	server.LastBackupMeta.Logical = new(config.BackupMetadata)
+	server.LastBackupMeta.Physical = new(backupmgr.BackupMetadata)
+	server.LastBackupMeta.Logical = new(backupmgr.BackupMetadata)
 	server.BinaryLogMetaToWrite = make([]string, 0)
 	server.BinaryLogMetaToRemove = make([]string, 0)
 	server.NeedRefreshJobs = true
@@ -331,12 +331,12 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	server.EngineInnoDB = config.NewStringsMap()
 	server.Status = config.NewStringsMap()
 	server.PrevStatus = config.NewStringsMap()
-	server.PFSQueries = config.NewPFSQueriesMap()
 	server.PFSInstruments = config.NewStringsMap()
-	server.SlowPFSQueries = config.NewPFSQueriesMap()
-	server.DictTables = config.NewTablesMap()
-	server.Plugins = config.NewPluginsMap()
-	server.Users = config.NewGrantsMap()
+	server.PFSQueries = dbhelper.NewPFSQueriesMap()
+	server.SlowPFSQueries = dbhelper.NewPFSQueriesMap()
+	server.DictTables = dbhelper.NewTablesMap()
+	server.Plugins = dbhelper.NewPluginsMap()
+	server.Users = dbhelper.NewGrantsMap()
 	server.BinaryLogFiles = dbhelper.NewBinaryLogMetaMap()
 	server.WorkLoad = config.NewWorkLoadsMap()
 
@@ -942,7 +942,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		// get Users
 		users, logs, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
-		server.Users = config.FromNormalGrantsMap(server.Users, users)
+		server.Users = dbhelper.FromNormalGrantsMap(server.Users, users)
 		cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get database users %s %s", server.URL, err)
 
 		if cluster.Conf.MonitorScheduler {
@@ -1123,7 +1123,7 @@ func (server *ServerMonitor) Refresh() error {
 		if cluster.StateMachine.GetHeartbeats()%60 == 0 {
 			if cluster.Conf.MonitorPlugins {
 				plugins, _, _ := dbhelper.GetPlugins(server.Conn, server.DBVersion)
-				server.Plugins = config.FromNormalPluginsMap(server.Plugins, plugins)
+				server.Plugins = dbhelper.FromNormalPluginsMap(server.Plugins, plugins)
 				server.HaveMetaDataLocksLog = server.HasInstallPlugin("METADATA_LOCK_INFO")
 				server.HaveQueryResponseTimeLog = server.HasInstallPlugin("QUERY_RESPONSE_TIME")
 				server.HaveDiskMonitor = server.HasInstallPlugin("DISK")

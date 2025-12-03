@@ -22,6 +22,7 @@ import (
 	"github.com/go-sql-driver/mysql"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -510,7 +511,7 @@ func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 	server.NeedRefreshJobs = value
 }
 
-func (server *ServerMonitor) SetPointInTimeMeta(value config.PointInTimeMeta) {
+func (server *ServerMonitor) SetPointInTimeMeta(value backupmgr.PointInTimeMeta) {
 	server.PointInTimeMeta = value
 }
 
@@ -658,7 +659,7 @@ func (server *ServerMonitor) SetDBUserCredentials(user, pass string, withGrantOp
 
 	// refresh user list
 	users, _, err := dbhelper.GetUsers(server.Conn, server.DBVersion)
-	server.Users = config.FromNormalGrantsMap(server.Users, users)
+	server.Users = dbhelper.FromNormalGrantsMap(server.Users, users)
 
 	// set grants for all hosts of this user
 	for _, u := range server.Users.ToNewMap() {

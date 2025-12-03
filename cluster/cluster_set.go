@@ -2191,15 +2191,8 @@ func (cluster *Cluster) SetLogBinlogPurgeLevel(value int) {
 	}
 }
 
-func (cluster *Cluster) SetLogArchiveLevel(value int) {
-	var lvl logrus.Level
-	cluster.Conf.LogArchiveLevel = value
-	if cluster.ResticRepo != nil {
-		if value > 0 {
-			lvl = config.ToLogrusLevel(value)
-		}
-		cluster.ResticRepo.SetLogLevel(lvl)
-	}
+func (cluster *Cluster) SetLogResticLevel(value int) {
+	cluster.Conf.LogResticLevel = value
 }
 
 func (cluster *Cluster) SetLogMailerLevel(value int) {

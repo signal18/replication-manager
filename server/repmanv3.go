@@ -523,13 +523,13 @@ func (s *ReplicationManager) SetActionForClusterSettings(ctx context.Context, in
 		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
-		mycluster.AddDBTag(in.TagValue,false)
+		mycluster.AddDBTag(in.TagValue, false)
 
 	case v3.ClusterSetting_DROP_DB_TAG:
 		if err = user.Granted(config.GrantDBConfigFlag); err != nil {
 			return nil, err
 		}
-		mycluster.DropDBTag(in.TagValue,false)
+		mycluster.DropDBTag(in.TagValue, false)
 	}
 
 	return res, nil
@@ -858,7 +858,7 @@ func (s *ReplicationManager) GetBackups(in *v3.Cluster, stream v3.ClusterService
 	}
 
 	for _, backup := range mycluster.GetBackups() {
-		if err := stream.Send(&backup); err != nil {
+		if err := stream.Send(backup); err != nil {
 			return err
 		}
 	}

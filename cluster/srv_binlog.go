@@ -28,6 +28,7 @@ import (
 	"github.com/go-mysql-org/go-mysql/mysql"
 	"github.com/go-mysql-org/go-mysql/replication"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/state"
@@ -816,10 +817,10 @@ type LogEvent struct {
 	Query       string
 }
 
-func (server *ServerMonitor) ReadAndExecBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
+func (server *ServerMonitor) ReadAndExecBinaryLogsWithinRange(start backupmgr.ReadBinaryLogsBoundary, end backupmgr.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
 	binlogs := server.BinaryLogFiles.GetKeys()
-	readStart := config.ReadBinaryLogsBoundary(start)
+	readStart := backupmgr.ReadBinaryLogsBoundary(start)
 	hasReadOnce := false
 
 	if end.Filename == "" {
@@ -873,7 +874,7 @@ func (server *ServerMonitor) ReadAndExecBinaryLogsWithinRange(start config.ReadB
 	return nil
 }
 
-func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *config.ReadBinaryLogsBoundary) error {
+func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *backupmgr.ReadBinaryLogsBoundary) error {
 	cluster := server.ClusterGroup
 	port, _ := strconv.Atoi(server.Port)
 
@@ -926,7 +927,7 @@ func (server *ServerMonitor) GetBinlogPositionFromTimestamp(start uint32, end *c
 	}
 }
 
-func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start config.ReadBinaryLogsBoundary, end config.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
+func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start backupmgr.ReadBinaryLogsBoundary, end backupmgr.ReadBinaryLogsBoundary, dest *ServerMonitor) error {
 	cluster := server.ClusterGroup
 
 	if _, err := os.Stat(cluster.GetMysqlBinlogPath()); os.IsNotExist(err) {

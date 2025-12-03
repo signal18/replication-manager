@@ -220,7 +220,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 			}
 			line = cluster.htlog.Add(msg)
 			switch module {
-			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModDbErrors, config.ConstLogModDbSqlErrors, config.ConstLogModDbSlowquery, config.ConstLogModDbOptimize, config.ConstLogModDbAudit:
+			case config.ConstLogModTask, config.ConstLogModSST, config.ConstLogModBackupStream, config.ConstLogModDbErrors, config.ConstLogModDbSqlErrors, config.ConstLogModDbSlowquery, config.ConstLogModDbOptimize, config.ConstLogModDbAudit, config.ConstLogModRestic:
 				cluster.LogTask.Add(msg)
 			default:
 				cluster.Log.Add(msg)
@@ -504,5 +504,11 @@ func (cluster *Cluster) LogPanicToFile(task string) {
 			cluster.Logrus.Print("Unable to write stacktrace to panic.log")
 		}
 
+	}
+}
+
+func (cluster *Cluster) ConsumeMessageChan() {
+	for msg := range cluster.MessageChan {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, msg.Module, msg.Level, msg.Text)
 	}
 }

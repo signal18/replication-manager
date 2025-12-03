@@ -34,6 +34,7 @@ import (
 	gzip "github.com/klauspost/pgzip"
 	dumplingext "github.com/pingcap/dumpling/v4/export"
 	"github.com/signal18/replication-manager/config"
+	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/crypto"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/misc"
@@ -389,11 +390,11 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
-	server.LastBackupMeta.Physical = &config.BackupMetadata{
+	server.LastBackupMeta.Physical = &backupmgr.BackupMetadata{
 		Id:             now.Unix(),
 		StartTime:      now,
-		BackupMethod:   config.BackupMethodPhysical,
-		BackupStrategy: config.BackupStrategyFull,
+		BackupMethod:   backupmgr.BackupMethodPhysical,
+		BackupStrategy: backupmgr.BackupStrategyFull,
 		BackupTool:     cluster.Conf.BackupPhysicalType,
 		Source:         server.URL,
 		Dest:           dest,
@@ -2347,12 +2348,12 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		cluster.BackupMetaMap.Delete(prevId)
 	}
 
-	server.LastBackupMeta.Logical = &config.BackupMetadata{
+	server.LastBackupMeta.Logical = &backupmgr.BackupMetadata{
 		Id:             start.Unix(),
 		StartTime:      start,
-		BackupMethod:   config.BackupMethodLogical,
+		BackupMethod:   backupmgr.BackupMethodLogical,
 		BackupTool:     cluster.Conf.BackupLogicalType,
-		BackupStrategy: config.BackupStrategyFull,
+		BackupStrategy: backupmgr.BackupStrategyFull,
 		Source:         server.URL,
 		Previous:       prevId,
 	}
@@ -2427,7 +2428,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(filename)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeMysqldump)
 				}
@@ -2456,7 +2457,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2486,7 +2487,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 				_, e3 := os.Stat(outputdir)
 				if e3 == nil {
 					server.LastBackupMeta.Logical.EndTime = time.Now()
-					server.LastBackupMeta.Logical.GetSize()
+					server.LastBackupMeta.Logical.GetSizeAndFileCount()
 					server.LastBackupMeta.Logical.Completed = true
 					server.SetBackupLogicalCookie(config.ConstBackupLogicalTypeDumpling)
 				}
@@ -2506,7 +2507,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 		}
 	}
 
-	server.WriteBackupMetadata(config.BackupMethodLogical)
+	server.WriteBackupMetadata(backupmgr.BackupMethodLogical)
 	if err == nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "[SUCCESS] Finish logical backup %s for: %s", cluster.Conf.BackupLogicalType, server.URL)
 	} else {
@@ -2598,71 +2599,13 @@ func (server *ServerMonitor) myDumperCopyLogs(r io.Reader, module int, level str
 	return valid
 }
 
-func (server *ServerMonitor) BackupRestic(tags ...string) error {
+func (server *ServerMonitor) BackupRestic(tags ...string) {
 	cluster := server.ClusterGroup
-	var stdout, stderr []byte
-	var errStdout, errStderr error
-
-	if cluster.Conf.BackupRestic {
-		// Wait for fetch or purge, so it will not conflict
-		if !cluster.canResticFetchRepo {
-			time.Sleep(time.Second)
-			return server.BackupRestic(tags...)
-		}
-		cluster.SetInResticBackupState(true)
-		defer cluster.SetInResticBackupState(false)
-
-		args := make([]string, 0)
-
-		args = append(args, "backup")
-		for _, tag := range tags {
-			if tag != "" {
-				args = append(args, "--tag")
-				args = append(args, tag)
-			}
-		}
-		args = append(args, server.GetMyBackupDirectory())
-
-		resticcmd := exec.Command(cluster.Conf.BackupResticBinaryPath, args...)
-
-		stdoutIn, _ := resticcmd.StdoutPipe()
-		stderrIn, _ := resticcmd.StderrPipe()
-
-		//out, err := resticcmd.CombinedOutput()
-
-		resticcmd.Env = cluster.ResticGetEnv()
-
-		if err := resticcmd.Start(); err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed restic command : %s %s", resticcmd.Path, err)
-			return err
-		}
-
-		// cmd.Wait() should be called only after we finish reading
-		// from stdoutIn and stderrIn.
-		// wg ensures that we finish
-		var wg sync.WaitGroup
-		wg.Add(1)
-		go func() {
-			stdout, errStdout = server.copyAndCapture(os.Stdout, stdoutIn)
-			wg.Done()
-		}()
-
-		stderr, errStderr = server.copyAndCapture(os.Stderr, stderrIn)
-
-		wg.Wait()
-
-		err := resticcmd.Wait()
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "%s\n", err)
-		}
-		if errStdout != nil || errStderr != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed to capture stdout or stderr\n")
-		}
-		outStr, errStr := string(stdout), string(stderr)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "result:%s\n%s\n%s", resticcmd.Path, outStr, errStr)
-
+	if !cluster.Conf.BackupRestic {
+		return
 	}
-	return nil
+
+	cluster.ResticManager.AddBackupTask(server.GetMyBackupDirectory(), tags)
 }
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
@@ -3374,15 +3317,15 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	return nil
 }
 
-func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
+func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
 	cluster := server.ClusterGroup
-	var lastmeta *config.BackupMetadata
+	var lastmeta *backupmgr.BackupMetadata
 
 	switch backtype {
-	case config.BackupMethodLogical:
+	case backupmgr.BackupMethodLogical:
 		lastmeta = server.LastBackupMeta.Logical
 		defer cluster.CheckLogicalBackupToolVersion(server) // Update backup tool version after backup
-	case config.BackupMethodPhysical:
+	case backupmgr.BackupMethodPhysical:
 		lastmeta = server.LastBackupMeta.Physical
 		defer cluster.CheckPhysicalBackupToolVersion(server) // Update backup tool version after backup
 	default:
@@ -3391,7 +3334,7 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 	}
 
 	if _, err := os.Stat(lastmeta.Dest); err == nil {
-		lastmeta.GetSize()
+		lastmeta.GetSizeAndFileCount()
 		lastmeta.EndTime = time.Now()
 	}
 
@@ -3445,9 +3388,9 @@ func (server *ServerMonitor) WriteBackupMetadata(backtype config.BackupMethod) {
 			// Revert to previous meta with same type
 			cluster.BackupMetaMap.Delete(lastmeta.Id)
 			switch backtype {
-			case config.BackupMethodLogical:
+			case backupmgr.BackupMethodLogical:
 				_, server.LastBackupMeta.Logical = server.GetLatestMeta("logical")
-			case config.BackupMethodPhysical:
+			case backupmgr.BackupMethodPhysical:
 				_, server.LastBackupMeta.Physical = server.GetLatestMeta("physical")
 			}
 		}
@@ -3513,7 +3456,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		server.DelWaitSqlErrorlogCookie()
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
-		server.WriteBackupMetadata(config.BackupMethodPhysical)
+		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
 		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":

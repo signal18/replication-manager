@@ -29,9 +29,9 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/percona/go-mysql/query"
-	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
+	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const debug = false
@@ -102,7 +102,86 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type TableSizeSorter []*v3.Table
+type Table struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	TableSchema   string `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
+	TableName     string `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
+	Engine        string `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
+	TableRows     int64  `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows,omitempty"`
+	DataLength    int64  `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length,omitempty"`
+	IndexLength   int64  `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length,omitempty"`
+	TableCrc      uint64 `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc,omitempty"`
+	TableClusters string `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
+	TableSync     string `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync,omitempty"`
+}
+
+func (x *Table) GetTableSchema() string {
+	if x != nil {
+		return x.TableSchema
+	}
+	return ""
+}
+
+func (x *Table) GetTableName() string {
+	if x != nil {
+		return x.TableName
+	}
+	return ""
+}
+
+func (x *Table) GetEngine() string {
+	if x != nil {
+		return x.Engine
+	}
+	return ""
+}
+
+func (x *Table) GetTableRows() int64 {
+	if x != nil {
+		return x.TableRows
+	}
+	return 0
+}
+
+func (x *Table) GetDataLength() int64 {
+	if x != nil {
+		return x.DataLength
+	}
+	return 0
+}
+
+func (x *Table) GetIndexLength() int64 {
+	if x != nil {
+		return x.IndexLength
+	}
+	return 0
+}
+
+func (x *Table) GetTableCrc() uint64 {
+	if x != nil {
+		return x.TableCrc
+	}
+	return 0
+}
+
+func (x *Table) GetTableClusters() string {
+	if x != nil {
+		return x.TableClusters
+	}
+	return ""
+}
+
+func (x *Table) GetTableSync() string {
+	if x != nil {
+		return x.TableSync
+	}
+	return ""
+}
+
+type TableSizeSorter []*Table
 
 func (a TableSizeSorter) Len() int      { return len(a) }
 func (a TableSizeSorter) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
@@ -118,7 +197,7 @@ type Disk struct {
 	Available int32
 }
 
-/* replaced by v3.Table
+/* replaced by Table
 type Table struct {
 	Table_schema   string `json:"tableSchema"`
 	Table_name     string `json:"tableName"`
@@ -2097,9 +2176,9 @@ func GetNoBlockOnMedataLock(db *sqlx.DB, myver *version.Version) string {
 	}
 	return noBlockOnMedataLock
 }
-func GetTables(db *sqlx.DB, myver *version.Version) (map[string]*v3.Table, []v3.Table, string, error) {
-	vars := make(map[string]*v3.Table)
-	var tblList []v3.Table
+func GetTables(db *sqlx.DB, myver *version.Version) (map[string]*Table, []Table, string, error) {
+	vars := make(map[string]*Table)
+	var tblList []Table
 
 	logs := ""
 	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema', 'sys') AND SCHEMA_NAME NOT LIKE '#%'"
@@ -2134,7 +2213,7 @@ func GetTables(db *sqlx.DB, myver *version.Version) (map[string]*v3.Table, []v3.
 		defer rows.Close()
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
 		for rows.Next() {
-			var v v3.Table
+			var v Table
 
 			err = rows.Scan(&v.TableSchema, &v.TableName, &v.Engine, &v.TableRows, &v.DataLength, &v.IndexLength, &v.TableCrc)
 			if err != nil {

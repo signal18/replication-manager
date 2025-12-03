@@ -22,7 +22,6 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/config"
-	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/utils/dbhelper"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
@@ -281,8 +280,8 @@ func (server *ServerMonitor) GetNumberOfEventsAfterPos(file string, pos string) 
 	return dbhelper.GetNumberOfEventsAfterPos(server.Conn, file, pos)
 }
 
-func (server *ServerMonitor) GetTableFromDict(URI string) (*v3.Table, error) {
-	var emptyTable *v3.Table = new(v3.Table)
+func (server *ServerMonitor) GetTableFromDict(URI string) (*dbhelper.Table, error) {
+	var emptyTable *dbhelper.Table = new(dbhelper.Table)
 	val, ok := server.DictTables.CheckAndGet(URI)
 	if !ok {
 		if len(server.DictTables.ToNewMap()) == 0 {
@@ -461,7 +460,7 @@ func (server *ServerMonitor) GetPFSQueries() {
 	logs := ""
 	// GET PFS query digest
 	pfsq, logs, err := dbhelper.GetQueries(server.Conn)
-	server.PFSQueries = config.FromNormalPFSMap(server.PFSQueries, pfsq)
+	server.PFSQueries = dbhelper.FromNormalPFSMap(server.PFSQueries, pfsq)
 	server.ClusterGroup.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get queries %s %s", server.URL, err)
 }
 
@@ -699,19 +698,19 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 	return nil
 }
 
-func (server *ServerMonitor) GetTables() []v3.Table {
+func (server *ServerMonitor) GetTables() []dbhelper.Table {
 	if server.Tables == nil {
-		server.Tables = make([]v3.Table, 0)
+		server.Tables = make([]dbhelper.Table, 0)
 	}
 	return server.Tables
 }
 
-func (server *ServerMonitor) GetVTables() map[string]*v3.Table {
+func (server *ServerMonitor) GetVTables() map[string]*dbhelper.Table {
 	return server.DictTables.ToNewMap()
 }
 
-func (server *ServerMonitor) GetDictTables() []*v3.Table {
-	var tables []*v3.Table
+func (server *ServerMonitor) GetDictTables() []*dbhelper.Table {
+	var tables []*dbhelper.Table
 	if server.IsFailed() {
 		return tables
 	}

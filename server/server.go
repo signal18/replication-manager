@@ -420,7 +420,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.LogExternalScript, "log-external-script", true, "To log external scripts output")
 	flags.IntVar(&conf.LogExternalScriptLevel, "log-level-external-script", 3, "Log external scripts Level")
 
-	flags.IntVar(&conf.LogArchiveLevel, "log-level-archive", 2, "Log Level for backup archive (restic)")
+	flags.IntVar(&conf.LogResticLevel, "log-level-restic", 3, "Log Level for restic")
 	flags.IntVar(&conf.LogMailerLevel, "log-level-mailer", 3, "Log Level for mailer")
 
 	// Fetchers
@@ -798,6 +798,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticRepository, "backup-restic-repository", "s3:https://s3.signal18.io/backups", "Restic backend repository")
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
+	flags.BoolVar(&conf.BackupResticSaveQueueOnShutdown, "backup-restic-save-queue-on-shutdown", true, "Backup manager will save pending backup queue on server shutdown")
+	flags.BoolVar(&conf.BackupResticRunQueueOnStartup, "backup-restic-run-queue-on-startup", true, "Backup manager will process pending backup queue on server startup. If false, pending backup will stay in queue until manually started via API or UI")
 	flags.BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	flags.BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	flags.StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")

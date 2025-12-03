@@ -11,11 +11,23 @@ export const clusterService = {
   getClusterCertificates,
   getTopProcess,
   getOpenSVCStats,
-  getBackupSnapshot,
+  getBackups,
   getBackupStats,
   getJobs,
   getShardSchema,
   getQueryRules,
+  
+  // Restic management APIs
+  getResticSnapshot,
+  getResticStats,
+  purgeResticSnapshot,
+  purgeResticByPolicy,
+  getResticQueue,
+  resticQueueResume,
+  resticQueuePause,
+  resticQueueMove,
+  resticQueueCancel,
+  resticQueueReset,
 
   // Cluster management APIs
   checksumAllTables,
@@ -181,12 +193,21 @@ function getOpenSVCStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/opensvc-stats`)
 }
 
-function getBackupSnapshot(clusterName, baseURL) {
+function getBackups(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups`)
 }
 
 function getBackupStats(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/backups/stats`)
+}
+
+
+function getResticSnapshot(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/snapshots`)
+}
+
+function getResticStats(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/stats`)
 }
 
 function getJobs(clusterName, baseURL) {
@@ -662,3 +683,43 @@ function storageFieldIndexDrop(clusterName, appId, field, index, baseURL) {
 function connectDockerRegistry(clusterName, dockerRegistry = {}, baseURL) {
   return getApi(baseURL).post(`clusters/${clusterName}/actions/docker/actions/registry-connect`, { ...dockerRegistry })
 }
+
+
+// Restic functions
+function purgeResticSnapshot(clusterName, snapshotId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/${snapshotId}`)
+}
+
+function purgeResticByPolicy(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy`)
+}
+
+function getResticQueue(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue`)
+}
+
+function resticQueueResume(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/resume`)
+}
+
+function resticQueuePause(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/pause`)
+}
+
+function resticQueueMove(clusterName, moveType, taskID, afterID, baseURL) {
+  if (moveType == "after") {
+    return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}/${afterID}`)
+  } else {
+    return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/move/${moveType}/${taskID}`)
+  }
+}
+
+function resticQueueCancel(clusterName, taskID,  baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/cancel/${taskID}`)
+}
+
+function resticQueueReset(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/task-queue/reset`)
+}
+
+// Utility functions
