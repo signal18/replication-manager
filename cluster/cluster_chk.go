@@ -1046,6 +1046,10 @@ func (cluster *Cluster) CheckDBCredentials() {
 }
 
 func (cluster *Cluster) CheckJobsVersion() {
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return
+	}
+
 	for _, server := range cluster.Servers {
 		server.CheckJobsVersion()
 	}
