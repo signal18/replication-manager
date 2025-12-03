@@ -36,7 +36,7 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
           showConfirmModal={true}
           confirmTitle={`Confirm change 'replication-master-retry-count' to: `}
           isDisabled={user?.grants['cluster-settings'] == false}
-          onConfirm={(value) => dispatch(setSetting({ setting: 'replication-master-retry-count', value: value }))}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-master-retry-count', value }))}
         />
       )
     },
