@@ -30,6 +30,7 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
         <NumberInput
           min={0}
           max={Number.MAX_SAFE_INTEGER}
+          inputWidth='100px'
           value={selectedCluster?.config?.replicationMasterRetryCount}
           showEditButton={true}
           showConfirmModal={true}
