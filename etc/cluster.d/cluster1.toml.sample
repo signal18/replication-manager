@@ -59,7 +59,7 @@ replication-credential = "root:mariadb"
 # monitoring-write-heartbeat-credential = "user:password"
 
 # monitoring-check-grants = false
-# monitoring-erreur-log-length = 20
+# monitoring-error-log-length = 20
 # monitoring-ignore-errors = ""
 
 ###########################
@@ -383,9 +383,9 @@ replication-credential = "root:mariadb"
 ## SHARDING PROXY ##
 ####################
 
-# mdbshardproxy = true
-# mdbshardproxy-hosts = "127.0.0.1:3306"
-# mdbshardproxy-user = "root:mariadb"
+# shardproxy = true
+# shardproxy-servers = "127.0.0.1:3306"
+# shardproxy-user = "root:mariadb"
 
 ##############
 ## MAXSCALE ##
