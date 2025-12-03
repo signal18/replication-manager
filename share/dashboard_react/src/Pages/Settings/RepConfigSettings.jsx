@@ -29,7 +29,7 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
       value: (
         <NumberInput
           min={0}
-          value={config?.replicationMasterRetryCount}
+          value={selectedCluster?.config?.replicationMasterRetryCount}
           showEditButton={true}
           showConfirmModal={true}
           confirmTitle={`Confirm change 'replication-master-retry-count' to: `}
