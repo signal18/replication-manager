@@ -192,7 +192,7 @@ func (server *ServerMonitor) jobsCreateTable() error {
 
 	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE like '%VARCHAR%'")
 	if exist == 1 {
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "SET sql_log_bin=0;ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL; SET sql_log_bin=1;")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL;")
 		if err != nil {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}
