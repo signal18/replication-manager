@@ -259,19 +259,19 @@ function DBServerGrid({
                         value: getDelay(rowData)
                       },
                       {
-                        key: 'Master last event time',
+                        key: 'Master last event',
                         value: (
                           <CopyToClipboard text={replication?.masterLastEventTime?.String || ''} />
                         )
                       },
                       {
-                        key: 'Slave last event time',
+                        key: 'Slave last event',
                         value: (
                           <CopyToClipboard text={replication?.slaveLastEventTime?.String || ''} />
                         )
                       },
                       {
-                        key: 'Master Slave time diff',
+                        key: 'Master-Slave diff',
                         value: replication?.masterSlaveTimeDiff?.Valid ? replication?.masterSlaveTimeDiff?.Int64 : ''
                       },
                       {
