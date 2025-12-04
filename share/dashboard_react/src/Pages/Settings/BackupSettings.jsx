@@ -631,6 +631,25 @@ The script will be executed with the following parameters:
           )
         },
         {
+          key: 'Backup restic local repository',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticLocalRepository}
+              confirmTitle={`Confirm backup-restic-local-repository to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-local-repository',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
           key: 'Backup restic password',
           value: (
             <TextForm
