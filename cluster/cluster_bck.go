@@ -42,6 +42,12 @@ func (cluster *Cluster) ResticGetEnv() []string {
 	return newEnv
 }
 
+func (cluster *Cluster) ReloadResticEnv() {
+	if cluster.ResticManager != nil {
+		cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+	}
+}
+
 func (cluster *Cluster) CheckResticInstallation() {
 	if cluster.Conf.BackupRestic && cluster.VersionsMap.Get("restic") == nil {
 		if err := cluster.RefreshResticVersion(); err != nil {
@@ -99,7 +105,7 @@ func (cluster *Cluster) StartResticManager() error {
 	}
 
 	cluster.ResticManager = backupmgr.NewResticRepo(cluster.Conf.BackupResticBinaryPath, cluster.MessageChan, config.ConstLogModRestic)
-	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+	cluster.ReloadResticEnv()
 	go cluster.ResticFetchRepo()
 	return nil
 }
@@ -481,7 +487,7 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "Changing restic password for cluster %s", cluster.Name)
 
-	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+	cluster.ReloadResticEnv()
 
 	keylist, err := cluster.ResticManager.GetRepoKeyList()
 	if err != nil {
@@ -546,7 +552,7 @@ func (cluster *Cluster) ChangeResticRepoPassword(newpass string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModRestic, config.LvlInfo, "New restic password saved in configuration successfully. Removing old key from repository using new password.")
 
 	// Reload env with new password
-	cluster.ResticManager.SetEnv(cluster.ResticGetEnv())
+	cluster.ReloadResticEnv()
 
 	// Remove old key using new password
 	err = cluster.ResticManager.RemoveRepoKey(oldkeyid)

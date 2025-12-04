@@ -1542,7 +1542,13 @@ func (cluster *Cluster) GetVaultToken() {
 }
 
 func (cluster *Cluster) GetResticLocalDir() string {
-	return cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+	if cluster.Conf.BackupResticLocalRepository != "" {
+		return cluster.Conf.BackupResticLocalRepository // To support sftp repository e.g. sftp:user@host:/path/to/repo
+	}
+
+	// Persist the restic local repo path to prevent wrong paths if WorkingDir change during runtime
+	cluster.Conf.BackupResticLocalRepository = cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/archive/" + cluster.Name
+	return cluster.Conf.BackupResticLocalRepository
 }
 
 func (cluster *Cluster) GetExecEnv() []string {
