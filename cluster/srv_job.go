@@ -72,20 +72,20 @@ func (server *ServerMonitor) JobRun() {
 
 }
 
-func (server *ServerMonitor) JobsCheckSchedulerTable() (bool, error) {
+func (server *ServerMonitor) JobsCheckSchedulerTable() error {
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
-		return false, fmt.Errorf("Server %s is down or in failover", server.URL)
+		return fmt.Errorf("Server %s is down or in failover", server.URL)
 	}
 
 	//If no default connection no alert
 	if server.Conn == nil {
-		return false, fmt.Errorf("No connection pool available for server %s", server.URL)
+		return fmt.Errorf("No connection pool available for server %s", server.URL)
 	}
 
 	Conn, err := server.GetConnNoBinlog(server.Conn)
 	if err != nil {
-		return false, fmt.Errorf("Failed to create connection: %v", err)
+		return fmt.Errorf("Failed to create connection: %v", err)
 	}
 	defer Conn.Close()
 
@@ -109,20 +109,23 @@ WHERE table_schema = 'replication_manager_schema'
 	var exist int
 	err = server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, query)
 	if err != nil {
-		return false, fmt.Errorf("Failed to check jobs table: %v", err)
+		return fmt.Errorf("Failed to check jobs table: %v", err)
 	}
 
 	if exist != 9 {
-		return false, nil
+		err = server.jobsCreateTable()
+		if err != nil {
+			return fmt.Errorf("Failed to recreate jobs table: %v", err)
+		}
 	}
 
-	return true, nil
+	return nil
 }
 
 func (server *ServerMonitor) JobsCreateTable() error {
 	cluster := server.ClusterGroup
 	if err := server.jobsCreateTable(); err != nil {
-		cluster.SetState("WARN0154", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0154"], server.URL, err), ErrFrom: "JOB"})
+		cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "JOB"})
 	}
 
 	return nil

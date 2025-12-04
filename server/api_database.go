@@ -4714,18 +4714,10 @@ func (repman *ReplicationManager) handlerMuxServerJobsCreateTable(w http.Respons
 			}
 
 			// Check if jobs table exists
-			exists, err := node.JobsCheckSchedulerTable()
+			err := node.JobsCheckSchedulerTable()
 			if err != nil {
 				http.Error(w, "Error checking jobs tasks table: "+err.Error(), 500)
 				return
-			}
-
-			if !exists {
-				err := node.JobsCreateTable()
-				if err != nil {
-					http.Error(w, "Error creating jobs tasks table: "+err.Error(), 500)
-					return
-				}
 			}
 
 			w.WriteHeader(200)
