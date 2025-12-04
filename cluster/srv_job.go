@@ -3546,11 +3546,14 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 
 	// Check if the script exists
 	finfo, err := os.Stat(currentScriptPath)
-	if os.IsNotExist(err) {
-		server.SetWaitJobsCheckCookie()
+	if err != nil {
+		if os.IsNotExist(err) {
+			server.SetWaitJobsCheckCookie()
+		}
+		checkerr = err
+	} else {
+		sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
 	}
-
-	sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		server.GetDatabaseConfig()
