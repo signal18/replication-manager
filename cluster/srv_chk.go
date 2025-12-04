@@ -129,6 +129,68 @@ func (server *ServerMonitor) CheckDisks() {
 	}
 }
 
+func (server *ServerMonitor) checkStoppedReplication(ss *dbhelper.SlaveStatus) string {
+	//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
+	if ss.SlaveSQLRunning.String == "Yes" && ss.SlaveIORunning.String == "No" {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlaveErr)
+		} else if server.IsRelay {
+			server.SetState(stateRelayErr)
+		}
+		return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
+	} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlaveErr)
+		} else if server.IsRelay {
+			server.SetState(stateRelayErr)
+		}
+		return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
+	} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlaveErr)
+		} else if server.IsRelay {
+			server.SetState(stateRelayErr)
+		}
+		return "NOT OK, ALL Stopped"
+	} else if ss.SlaveSQLRunning.String == "Connecting" {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlave)
+		} else if server.IsRelay {
+			server.SetState(stateRelay)
+		}
+		return "NOT OK, IO Connecting"
+	}
+
+	if server.IsRelay == false && server.IsMaxscale == false {
+		server.SetState(stateSlave)
+	} else if server.IsRelay {
+		server.SetState(stateRelay)
+	}
+	return "Running OK"
+}
+
+func (server *ServerMonitor) checkLateReplication(ss *dbhelper.SlaveStatus) string {
+	if ss.SecondsBehindMaster.Int64 > server.ClusterGroup.Conf.FailMaxDelay && server.ClusterGroup.Conf.RplChecks == true {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlaveLate)
+		} else if server.IsRelay {
+			server.SetState(stateRelayLate)
+		}
+
+	} else {
+		if server.IsRelay == false && server.IsMaxscale == false {
+			server.SetState(stateSlave)
+		} else if server.IsRelay {
+			server.SetState(stateRelay)
+		}
+	}
+
+	if server.ClusterGroup.Conf.DelayStatCapture {
+		server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, server.ClusterGroup.Conf.DelayStatRotate) // Capture Delay Stat
+	}
+	return "Behind master"
+}
+
 // CheckReplication Check replication health and return status string
 func (server *ServerMonitor) CheckReplication() string {
 	cluster := server.ClusterGroup
@@ -172,67 +234,13 @@ func (server *ServerMonitor) CheckReplication() string {
 		return "Not a slave"
 	}
 	if ss.SecondsBehindMaster.Valid == false {
-
-		//	log.Printf("replicationCheck %s %s", server.SQLThread, server.IOThread)
-		if ss.SlaveSQLRunning.String == "Yes" && ss.SlaveIORunning.String == "No" {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlaveErr)
-			} else if server.IsRelay {
-				server.SetState(stateRelayErr)
-			}
-			return fmt.Sprintf("NOT OK, IO Stopped (%s)", ss.LastIOErrno.String)
-		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "Yes" {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlaveErr)
-			} else if server.IsRelay {
-				server.SetState(stateRelayErr)
-			}
-			return fmt.Sprintf("NOT OK, SQL Stopped (%s)", ss.LastSQLErrno.String)
-		} else if ss.SlaveSQLRunning.String == "No" && ss.SlaveIORunning.String == "No" {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlaveErr)
-			} else if server.IsRelay {
-				server.SetState(stateRelayErr)
-			}
-			return "NOT OK, ALL Stopped"
-		} else if ss.SlaveSQLRunning.String == "Connecting" {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlave)
-			} else if server.IsRelay {
-				server.SetState(stateRelay)
-			}
-			return "NOT OK, IO Connecting"
-		}
-
-		if server.IsRelay == false && server.IsMaxscale == false {
-			server.SetState(stateSlave)
-		} else if server.IsRelay {
-			server.SetState(stateRelay)
-		}
-		return "Running OK"
+		return server.checkStoppedReplication(ss)
 	}
 
 	if ss.SecondsBehindMaster.Int64 > 0 {
-		if ss.SecondsBehindMaster.Int64 > cluster.Conf.FailMaxDelay && cluster.Conf.RplChecks == true {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlaveLate)
-			} else if server.IsRelay {
-				server.SetState(stateRelayLate)
-			}
-
-		} else {
-			if server.IsRelay == false && server.IsMaxscale == false {
-				server.SetState(stateSlave)
-			} else if server.IsRelay {
-				server.SetState(stateRelay)
-			}
-		}
-
-		if cluster.Conf.DelayStatCapture {
-			server.DelayStat.UpdateDelayStat(ss.SecondsBehindMaster.Int64, cluster.Conf.DelayStatRotate) // Capture Delay Stat
-		}
-		return "Behind master"
+		return server.checkLateReplication(ss)
 	}
+
 	if server.IsRelay == false && server.IsMaxscale == false {
 		server.SetState(stateSlave)
 	} else if server.IsRelay {
