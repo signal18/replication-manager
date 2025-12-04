@@ -6,6 +6,7 @@ import TableType2 from '../../components/TableType2'
 import { setSetting, switchSetting } from '../../redux/settingsSlice'
 import RMSwitch from '../../components/RMSwitch'
 import TextForm from '../../components/TextForm'
+import NumberInput from '../../components/NumberInput'
 
 function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfirmModal }) {
   const dispatch = useDispatch()
@@ -20,6 +21,22 @@ function RepConfigSettings({ selectedCluster, user, openConfirmModal, closeConfi
           onSave={(value) => {
             dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-source-name', value }))
           }}
+        />
+      )
+    },
+    {
+      key: 'Master retry count',
+      value: (
+        <NumberInput
+          min={0}
+          max={Number.MAX_SAFE_INTEGER}
+          inputWidth='100px'
+          value={selectedCluster?.config?.replicationMasterRetryCount}
+          showEditButton={true}
+          showConfirmModal={true}
+          confirmTitle={`Confirm change 'replication-master-retry-count' to: `}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'replication-master-retry-count', value }))}
         />
       )
     },

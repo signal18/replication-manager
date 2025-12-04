@@ -15,7 +15,6 @@ import (
 	"fmt"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -270,75 +269,30 @@ func (server *ServerMonitor) SetReplicationGTIDSlavePosFromServer(master *Server
 	cluster := server.ClusterGroup
 	server.StopSlave()
 
-	changeOpt := dbhelper.ChangeMasterOpt{
-		Host:        master.Host,
-		Port:        master.Port,
-		User:        master.ClusterGroup.GetRplUser(),
-		Password:    master.ClusterGroup.GetRplPass(),
-		Retry:       strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat:   strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-		SSL:         cluster.Conf.ReplicationSSL,
-		Channel:     cluster.Conf.MasterConn,
-		IsDelayed:   server.IsDelayed,
-		Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-		PostgressDB: server.PostgressDB,
+	if server.IsMariaDB() {
+		return cluster.pointSlaveToMasterWithMode(server, "SLAVE_POS")
 	}
 
-	if server.IsMariaDB() {
-		changeOpt.Mode = "SLAVE_POS"
-		return dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
-	}
-	changeOpt.Mode = "MASTER_AUTO_POSITION"
-	return dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
+	return cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
 }
 
 func (server *ServerMonitor) SetReplicationGTIDCurrentPosFromServer(master *ServerMonitor) (string, error) {
 	cluster := server.ClusterGroup
-	var err error
-	logs := ""
-	changeOpt := dbhelper.ChangeMasterOpt{
-		SSL:         cluster.Conf.ReplicationSSL,
-		Channel:     cluster.Conf.MasterConn,
-		IsDelayed:   server.IsDelayed,
-		Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
-		PostgressDB: server.PostgressDB,
-	}
+
 	if server.DBVersion.IsMySQLOrPerconaGreater57() {
 		// We can do MySQL 5.7 style failover
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Doing MySQL GTID switch of the old master")
-		changeOpt.Host = cluster.master.Host
-		changeOpt.Port = cluster.master.Port
-		changeOpt.User = cluster.GetRplUser()
-		changeOpt.Password = cluster.GetRplPass()
-		changeOpt.Retry = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry)
-		changeOpt.Heartbeat = strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime)
-		changeOpt.Mode = "MASTER_AUTO_POSITION"
-		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
-	} else {
-		changeOpt.Host = master.Host
-		changeOpt.Port = master.Port
-		changeOpt.User = master.ClusterGroup.GetRplUser()
-		changeOpt.Password = master.ClusterGroup.GetRplPass()
-		changeOpt.Retry = strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry)
-		changeOpt.Heartbeat = strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime)
-		changeOpt.Mode = "CURRENT_POS"
-		logs, err = dbhelper.ChangeMaster(server.Conn, changeOpt, server.DBVersion)
+		return cluster.pointSlaveToMasterWithMode(server, "MASTER_AUTO_POSITION")
 	}
-	return logs, err
+
+	return cluster.pointSlaveToMasterWithMode(server, "CURRENT_POS")
 }
 
-func (server *ServerMonitor) SetReplicationFromMaxsaleServer(master *ServerMonitor) (string, error) {
-	return dbhelper.ChangeMaster(server.Conn, dbhelper.ChangeMasterOpt{
-		Host:      master.Host,
-		Port:      master.Port,
-		User:      master.ClusterGroup.GetRplUser(),
-		Password:  master.ClusterGroup.GetRplPass(),
-		Retry:     strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatRetry),
-		Heartbeat: strconv.Itoa(master.ClusterGroup.Conf.ForceSlaveHeartbeatTime),
-		Mode:      "MXS",
-		Logfile:   master.FailoverMasterLogFile,
-		Logpos:    master.FailoverMasterLogPos,
-	}, server.DBVersion)
+func (server *ServerMonitor) SetReplicationFromMaxscaleServer(master *ServerMonitor) (string, error) {
+	opt := server.ClusterGroup.GetChangeMasterBaseOptForMxs(server, master)
+	opt.Logfile = master.FailoverMasterLogFile
+	opt.Logpos = master.FailoverMasterLogPos
+	return dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 }
 
 func (server *ServerMonitor) SetReplicationChannel(source string) (string, error) {

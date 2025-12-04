@@ -1786,3 +1786,56 @@ func (cluster *Cluster) GetDeprecatedKeyMap() map[string]bool {
 	}
 	return keys
 }
+
+func (cluster *Cluster) GetChangeMasterBaseOptForSlave(sl *ServerMonitor, master *ServerMonitor, delayed bool) dbhelper.ChangeMasterOpt {
+	opt := dbhelper.ChangeMasterOpt{
+		Host:        master.Host,
+		Port:        master.Port,
+		User:        cluster.GetRplUser(),
+		Password:    cluster.GetRplPass(),
+		Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+		RetryCount:  strconv.Itoa(cluster.Conf.MasterRetryCount),
+		SSL:         cluster.Conf.ReplicationSSL,
+		Channel:     cluster.Conf.MasterConn,
+		IsDelayed:   delayed,
+		PostgressDB: master.PostgressDB,
+	}
+
+	if delayed {
+		opt.Delay = strconv.Itoa(cluster.Conf.HostsDelayedTime)
+	}
+
+	return opt
+}
+
+func (cluster *Cluster) GetChangeMasterBaseOptForReplGroup(sl *ServerMonitor) dbhelper.ChangeMasterOpt {
+	opt := dbhelper.ChangeMasterOpt{
+		User:        cluster.GetRplUser(),
+		Password:    cluster.GetRplPass(),
+		Retry:       strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat:   strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+		RetryCount:  strconv.Itoa(cluster.Conf.MasterRetryCount),
+		Mode:        "GROUP_REPL",
+		Channel:     "group_replication_recovery",
+		IsDelayed:   sl.IsDelayed,
+		Delay:       strconv.Itoa(cluster.Conf.HostsDelayedTime),
+		SSL:         cluster.Conf.ReplicationSSL,
+		PostgressDB: sl.PostgressDB,
+	}
+
+	return opt
+}
+
+func (cluster *Cluster) GetChangeMasterBaseOptForMxs(sl *ServerMonitor, master *ServerMonitor) dbhelper.ChangeMasterOpt {
+	return dbhelper.ChangeMasterOpt{
+		Host:      master.Host,
+		Port:      master.Port,
+		User:      cluster.GetRplUser(),
+		Password:  cluster.GetRplPass(),
+		Retry:     strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatRetry),
+		Heartbeat: strconv.Itoa(cluster.Conf.ForceSlaveHeartbeatTime),
+		Mode:      "MXS",
+		SSL:       cluster.Conf.ReplicationSSL,
+	}
+}

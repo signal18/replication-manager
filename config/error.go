@@ -114,7 +114,7 @@ var ClusterError = map[string]string{
 	"ERR00094":  "Proxysql %s can not set %s as OFFLINE_SOFT: %s",
 	"ERR00095":  "ProxySQL %s could not load servers to runtime: %s",
 	"ERR00096":  "Proxysql %s can not save changes to disk: %s",
-	"ERR00097":  "Auto failover locked with false positive conditions: %s",
+	"ERR00097":  "Auto failover locked with false positive conditions: %v",
 	"ERR00098":  "Failed to enable GTID Mode on master node. Err: %s",
 	"ERR00099":  "Failed to enable GTID Mode on slave %s. Err: %s",
 	"ERR00100":  "Cluster is in switchover. Switchover started at %s",

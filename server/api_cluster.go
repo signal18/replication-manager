@@ -3323,6 +3323,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ReplicationMultisourceHeadClusters = value
 	case "replication-source-name":
 		mycluster.Conf.MasterConn = value
+	case "replication-master-retry-count":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.MasterRetryCount = val
 	case "db-servers-tls-ssl-mode":
 		mycluster.Conf.HostsTlsSslMode = value
 

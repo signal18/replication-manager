@@ -297,6 +297,9 @@ type SlaveStatus struct {
 	SlaveSQLRunning          sql.NullString `db:"Slave_SQL_Running" json:"slaveSqlRunning"`
 	ExecMasterLogPos         sql.NullString `db:"Exec_Master_Log_Pos" json:"execMasterLogPos"`
 	SecondsBehindMaster      sql.NullInt64  `db:"Seconds_Behind_Master" json:"secondsBehindMaster"`
+	MasterLastEventTime      sql.NullString `db:"Master_last_event_time" json:"masterLastEventTime"`
+	SlaveLastEventTime       sql.NullString `db:"Slave_last_event_time" json:"slaveLastEventTime"`
+	MasterSlaveTimeDiff      sql.NullInt64  `db:"Master_Slave_Time_Diff" json:"masterSlaveTimeDiff"`
 	LastIOErrno              sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
 	LastIOError              sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
 	LastSQLErrno             sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
@@ -322,6 +325,7 @@ type SlaveStatus struct {
 	SQLDelay                 sql.NullInt64  `db:"SQL_Delay" json:"sqlDelay"`
 	SQLRemainingDelay        sql.NullInt64  `db:"SQL_Remaining_Delay" json:"sqlRemainingDelay"`
 	AutoPosition             int            `db:"Auto_Position" json:"autoPosition"`
+	MasterRetryCount         sql.NullInt64  `db:"Master_Retry_Count" json:"masterRetryCount"`
 }
 
 func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
@@ -361,6 +365,7 @@ func (s *SlaveStatus) ImportFromReplicaStatus(rs *ReplicaStatus) {
 	s.SQLDelay = rs.SQLDelay
 	s.SQLRemainingDelay = rs.SQLRemainingDelay
 	s.AutoPosition = rs.AutoPosition
+	s.MasterRetryCount = rs.SourceRetryCount
 }
 
 type ReplicaStatus struct {
@@ -840,6 +845,8 @@ type ChangeMasterOpt struct {
 	Logpos    string
 	Mode      string
 
+	RetryCount string // Start from MariaDB 12 and MySQL 8.4
+
 	Channel         string
 	PostgressDB     string
 	IsDelayed       bool
@@ -968,6 +975,13 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 		if opt.SSL {
 			cm += ", " + masterOrSource + "_SSL=1"
 			//cm +=, MASTER_SSL_CA='" + opt.SSLCa + "', MASTER_SSL_CERT='" + opt.SSLCert + "', MASTER_SSL_KEY=" + opt.SSLKey + "'"
+		}
+
+		// Retry count supported from MariaDB 12 and MySQL 8.4
+		if myver.IsMariaDBGreater12() || myver.IsMySQLOrPerconaGreater84() {
+			if opt.RetryCount != "" {
+				cm += ", " + masterOrSource + "_RETRY_COUNT=" + opt.RetryCount
+			}
 		}
 		if myver.IsMySQLOrPercona() && opt.Channel != "" {
 			cm += " FOR CHANNEL '" + opt.Channel + "'"

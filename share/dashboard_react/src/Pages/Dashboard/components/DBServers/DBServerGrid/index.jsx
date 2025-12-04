@@ -259,20 +259,21 @@ function DBServerGrid({
                         value: getDelay(rowData)
                       },
                       {
-                        key: getSlaveGtidHeader(hasMariadbGtid, hasMysqlGtid),
+                        key: 'Master last event',
                         value: (
-                          <CopyToClipboard
-                            text={getSlaveGtid(rowData, hasMariadbGtid, hasMysqlGtid)}
-                            // copyIconPosition='end'
-                            textType='GTID'
-                          />
+                          <CopyToClipboard text={replication?.masterLastEventTime?.String || ''} />
                         )
                       },
                       {
-                        key: 'Delay',
-                        value: getDelay(rowData)
+                        key: 'Slave last event',
+                        value: (
+                          <CopyToClipboard text={replication?.slaveLastEventTime?.String || ''} />
+                        )
                       },
-
+                      {
+                        key: 'Master-Slave diff',
+                        value: replication?.masterSlaveTimeDiff?.Valid ? replication?.masterSlaveTimeDiff?.Int64 : ''
+                      },
                       {
                         key: 'SQL error',
                         value: replication?.lastSqlError?.String

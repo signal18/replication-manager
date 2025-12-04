@@ -9,6 +9,7 @@ function NumberInput({
   min = 2,
   max = 120,
   step = 1,
+  inputWidth ='75px',
   defaultValue,
   value,
   isDisabled,
@@ -61,7 +62,7 @@ function NumberInput({
       <HStack className={`${styles.container} ${containerClassName}`}>
         <HStack spacing='3' className={isReadOnly ? styles.readonly : ''}>
           <RMIconButton {...dec} icon={HiOutlineMinusCircle} aria-label='Decrement' />
-          <Input {...input} width='75px' size='sm' ref={inputRef} readOnly={isReadOnly} />
+          <Input {...input} width={inputWidth} size='sm' ref={inputRef} readOnly={isReadOnly} />
           <RMIconButton {...inc} icon={HiOutlinePlusCircle} aria-label='Increment' />
         </HStack>
         {showEditButton && !isDisabled ? (

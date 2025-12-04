@@ -197,6 +197,7 @@ type Config struct {
 	ClusterHead                               string                 `mapstructure:"cluster-head" toml:"cluster-head" json:"clusterHead"`
 	ReplicationMultisourceHeadClusters        string                 `mapstructure:"replication-multisource-head-clusters" toml:"replication-multisource-head-clusters" json:"replicationMultisourceHeadClusters"`
 	MasterConnectRetry                        int                    `mapstructure:"replication-master-connect-retry" toml:"replication-master-connect-retry" json:"replicationMasterConnectRetry"`
+	MasterRetryCount                          int                    `mapstructure:"replication-master-retry-count" toml:"replication-master-retry-count" json:"replicationMasterRetryCount"`
 	RplUser                                   string                 `mapstructure:"replication-credential" toml:"replication-credential" json:"replicationCredential"`
 	ReplicationErrorScript                    string                 `mapstructure:"replication-error-script" toml:"replication-error-script" json:"replicationErrorScript"`
 	MasterConn                                string                 `mapstructure:"replication-source-name" toml:"replication-source-name" json:"replicationSourceName"`

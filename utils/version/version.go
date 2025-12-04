@@ -314,6 +314,10 @@ func (mv *Version) IsMariaDB() bool {
 	return mv.Flavor == "MariaDB"
 }
 
+func (mv *Version) IsMariaDBGreater12() bool {
+	return mv.Flavor == "MariaDB" && mv.Major >= 12
+}
+
 func (mv *Version) IsMySQL57() bool {
 	return mv.Flavor == "MySQL" && mv.Major == 5 && mv.Minor > 6
 }
