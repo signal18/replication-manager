@@ -275,7 +275,7 @@ func (collector *Collector) StopServiceV2(cluster string, srv string, node strin
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", body)
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", body)
 
 	return nil
 }
@@ -315,7 +315,7 @@ func (collector *Collector) PurgeServiceV2(cluster string, srv string, node stri
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 	return nil
 }
 
@@ -409,7 +409,7 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 
 	return nil
 }
@@ -459,7 +459,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 	return nil
 }
 
@@ -501,7 +501,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 
 	return nil
 }
@@ -552,7 +552,7 @@ func (collector *Collector) CreateTemplateV2(cluster string, srv string, node st
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 
 	return nil
 }
@@ -591,7 +591,7 @@ func (collector *Collector) CreateTemplateV2Monitor(srv string, node string) err
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 	return nil
 }
 
@@ -618,7 +618,7 @@ func (collector *Collector) WaitServiceAvailable(srv string, node string) error 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 	return nil
 
 }
@@ -646,7 +646,7 @@ func (collector *Collector) WaitServicePropagate(srv string, node string) error 
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
-	collector.Print(log.InfoLevel, "OpenSVC API Response: %s", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 	return nil
 
 }
