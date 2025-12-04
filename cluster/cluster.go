@@ -245,6 +245,7 @@ type Cluster struct {
 	InBinlogBackup            bool                        `json:"inBinlogBackup" groups:"web"`
 	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
+	failLoadP12Cert           bool                        `json:"-"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticManager             *backupmgr.ResticManager    `json:"-"`
 	MessageChan               chan sharedlog.Message      `json:"-"`
@@ -820,6 +821,7 @@ func (cluster *Cluster) Run() {
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.StateProcessing()
+				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
 			}
 		}

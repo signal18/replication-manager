@@ -32,8 +32,10 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
 		err := svc.LoadCert(svc.CertPath)
 		if err != nil {
+			cluster.failLoadP12Cert = true
 			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], svc.CertPath, err), ErrFrom: "OpenSVC"})
 		} else {
+			cluster.failLoadP12Cert = false
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 		}
 	}

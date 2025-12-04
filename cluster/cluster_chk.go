@@ -1077,3 +1077,13 @@ func (cluster *Cluster) CheckClusterDeprecatedKeys() {
 		cluster.SetState("WARN0160", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0160"], cluster.Name, strings.Join(dkeys, ",")), ErrFrom: "CLUSTER"})
 	}
 }
+
+func (cluster *Cluster) CheckHasFailCertLoadP12() {
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return
+	}
+
+	if cluster.failLoadP12Cert {
+		cluster.GetStateMachine().PreserveState("WARN0099")
+	}
+}
