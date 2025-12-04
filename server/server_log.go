@@ -28,8 +28,7 @@ const (
 
 func (repman *ReplicationManager) StartMessageChanListener() {
 	go func() {
-		for {
-			msg := <-repman.MessageChan
+		for msg := range repman.MessageChan {
 			repman.LogModuleWithFieldsPrintf(repman.Conf.Verbose, msg.Module, msg.Level, msg.Fields, msg.Text)
 		}
 	}()
