@@ -642,7 +642,7 @@ The script will be executed with the following parameters:
                   setSetting({
                     clusterName: selectedCluster?.name,
                     setting: 'backup-restic-local-repository',
-                    value: value
+                    value: btoa(value)
                   })
                 )
               }
