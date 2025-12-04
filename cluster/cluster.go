@@ -653,7 +653,7 @@ var pstates30 = []string{
 	"WARN0093", "WARN0095", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
-	"WARN0147", "WARN0148", "WARN0153", "WARN0154", // Jobs related
+	"WARN0147", "WARN0148", "WARN0153", // Job related
 	"WARN0158",             // Job secrets mismatch
 	"WARN0159", "WARN0160", // Deprecated config keys
 	"CREDIT01", // Credit related
