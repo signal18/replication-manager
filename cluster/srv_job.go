@@ -3575,6 +3575,10 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 		}
 	}
 
+	if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(time.Hour).Before(time.Now()) {
+		server.SetWaitJobsCheckCookie()
+	}
+
 	return checkerr
 }
 
