@@ -20,7 +20,7 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/signal18/replication-manager/config"
-	log "github.com/sirupsen/logrus"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -35,7 +35,8 @@ func init() {
 	mysql.SetLogger(errLog)
 	if RepMan == nil {
 		RepMan = new(ReplicationManager)
-		log.Infof("Monitor command initialyzed")
+		RepMan.MessageChan = make(chan sharedlog.Message, 1000)
+		RepMan.StartMessageChanListener()
 
 		RepMan.InitUser()
 	}

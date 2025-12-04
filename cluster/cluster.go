@@ -38,13 +38,14 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
+	"github.com/signal18/replication-manager/utils/alert/pushover"
 	"github.com/signal18/replication-manager/utils/alert/slackman"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	clog "github.com/sirupsen/logrus"
@@ -246,7 +247,7 @@ type Cluster struct {
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticManager             *backupmgr.ResticManager    `json:"-"`
-	MessageChan               chan s18log.HttpMessage     `json:"-"`
+	MessageChan               chan sharedlog.Message      `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -372,7 +373,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.AgentMaxFreq = make(map[string]int64)
 	cluster.ServiceTemplates = make([]string, 0)
 	cluster.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
-	cluster.MessageChan = make(chan s18log.HttpMessage, 10)
+	cluster.MessageChan = make(chan sharedlog.Message, 10)
 
 	go cluster.ConsumeMessageChan()
 

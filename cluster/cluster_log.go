@@ -187,6 +187,10 @@ This function is for printing log based on module log level
 set forcingLog = true if you want to force print
 */
 func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int {
+	return cluster.LogModuleWithFieldsPrintf(forcingLog, module, level, nil, format, args...)
+}
+
+func (cluster *Cluster) LogModuleWithFieldsPrintf(forcingLog bool, module int, level string, fields map[string]interface{}, format string, args ...interface{}) int {
 	line := 0
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	padright := func(str, pad string, lenght int) string {
@@ -199,6 +203,14 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 	}
 
 	tag := config.GetTagsForLog(module)
+	printfields := make(log.Fields)
+	printfields["cluster"] = cluster.Name
+	printfields["type"] = "log"
+	printfields["module"] = tag
+	for k, v := range fields {
+		printfields[k] = v
+	}
+
 	cliformat := format
 	format = "[" + cluster.Name + "] [" + tag + "] " + padright(level, " ", 5) + " - " + format
 
@@ -232,6 +244,9 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 		slackFields["cluster"] = cluster.Name
 		slackFields["module"] = tag
 		slackFields["type"] = "alert"
+		for k, v := range fields {
+			slackFields[k] = v
+		}
 		if cluster.Conf.Cloud18 {
 			slackFields["cloud18"] = cluster.Conf.Cloud18Domain + "/" + cluster.Conf.Cloud18SubDomain + "-" + cluster.Conf.Cloud18SubDomainZone
 			slackFields["client"] = cluster.Conf.Cloud18GitUser
@@ -241,7 +256,7 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 			// wrap logrus levels
 			switch level {
 			case "ERROR":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Errorf(cliformat, args...)
+				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
 					cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
 				}
@@ -249,11 +264,11 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "INFO":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Infof(cliformat, args...)
+				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "DEBUG":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Debugf(cliformat, args...)
+				cluster.Logrus.WithFields(printfields).Debugf(cliformat, args...)
 			case "WARN":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Warnf(cliformat, args...)
+				cluster.Logrus.WithFields(printfields).Warnf(cliformat, args...)
 				if cluster.Conf.SlackURL != "" {
 					cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
 				}
@@ -261,45 +276,58 @@ func (cluster *Cluster) LogModulePrintf(forcingLog bool, module int, level strin
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "TEST":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "test", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
+				printfields["type"] = "test"
+				printfields["channel"] = "StdOut"
+				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "BENCH":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "benchmark", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
+				printfields["type"] = "benchmark"
+				printfields["channel"] = "StdOut"
+				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "ALERT":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Errorf(cliformat, args...)
+				printfields["type"] = "alert"
+				printfields["channel"] = "StdOut"
+				cluster.Logrus.WithFields(printfields).Errorf(cliformat, args...)
 				if cluster.Conf.Cloud18Alert {
 					cluster.LogSlack.WithFields(slackFields).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover", "module": tag}).Errorf(cliformat, args...)
+					printfields["channel"] = "Pushover"
+					cluster.LogPushover.WithFields(printfields).Errorf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "START":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Warnf(cliformat, args...)
+				printfields["type"] = "alert"
+				printfields["channel"] = "StdOut"
+				cluster.Logrus.WithFields(printfields).Warnf(cliformat, args...)
 				if cluster.LogSlack.HasActiveHook() {
 					slackFields["type"] = "start"
 					cluster.LogSlack.WithFields(slackFields).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "start", "channel": "Pushover", "module": tag}).Warnf(cliformat, args...)
+					printfields["type"] = "start"
+					printfields["channel"] = "Pushover"
+					cluster.LogPushover.WithFields(printfields).Warnf(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			case "ALERTOK":
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
+				printfields["type"] = "alert"
+				printfields["channel"] = "StdOut"
+				cluster.Logrus.WithFields(printfields).Infof(cliformat, args...)
 				if cluster.Conf.Cloud18Alert {
 					cluster.LogSlack.WithFields(slackFields).Infof(cliformat, args...)
 				}
 				if cluster.Conf.PushoverAppToken != "" && cluster.Conf.PushoverUserToken != "" {
-					cluster.LogPushover.WithFields(log.Fields{"cluster": cluster.Name, "type": "alert", "channel": "Pushover", "module": tag}).Infof(cliformat, args...)
+					cluster.LogPushover.WithFields(printfields).Infof(cliformat, args...)
 				}
 				if cluster.Conf.TeamsUrl != "" {
 					go cluster.sendMsTeams(level, format, args...)
 				}
 			default:
-				cluster.Logrus.WithFields(log.Fields{"cluster": cluster.Name, "type": "log", "module": tag}).Printf(cliformat, args...)
+				cluster.Logrus.WithFields(printfields).Printf(cliformat, args...)
 			}
 		}
 	}
@@ -509,6 +537,6 @@ func (cluster *Cluster) LogPanicToFile(task string) {
 
 func (cluster *Cluster) ConsumeMessageChan() {
 	for msg := range cluster.MessageChan {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, msg.Module, msg.Level, msg.Text)
+		cluster.LogModuleWithFieldsPrintf(cluster.Conf.Verbose, msg.Module, msg.Level, msg.Fields, msg.Text)
 	}
 }
