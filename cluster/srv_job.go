@@ -74,12 +74,12 @@ func (server *ServerMonitor) JobRun() {
 func (server *ServerMonitor) JobsCheckSchedulerTable() error {
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
-		return fmt.Errorf("Server %s is down or in failover", server.URL)
+		return nil
 	}
 
 	//If no default connection no alert
 	if server.Conn == nil {
-		return fmt.Errorf("No connection pool available for server %s", server.URL)
+		return nil
 	}
 
 	Conn, err := server.GetConnNoBinlog(server.Conn)
@@ -192,7 +192,7 @@ func (server *ServerMonitor) jobsCreateTable() error {
 
 	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE like '%VARCHAR%'")
 	if exist == 1 {
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "SET sql_log_bin=0;ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL; SET sql_log_bin=1;")
 		if err != nil {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}

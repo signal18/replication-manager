@@ -1059,7 +1059,7 @@ func (cluster *Cluster) JobsCheckSchedulerTable() {
 	for _, server := range cluster.Servers {
 		err := server.JobsCheckSchedulerTable()
 		if err != nil {
-			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL), ErrFrom: "CLUSTER"})
+			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "CLUSTER"})
 		}
 	}
 }
