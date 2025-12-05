@@ -3262,11 +3262,11 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
 			if matches := startRegex.FindStringSubmatch(line); matches != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
 			}
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
 			if matches := endRegex.FindStringSubmatch(line); matches != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] %s", server.URL, line)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] %s", server.URL, line)
 			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
