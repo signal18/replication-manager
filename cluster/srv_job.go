@@ -1719,7 +1719,7 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 			logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			logs = append(logs, logrow)
 		} else {
-			if task.task != "errorlog" && task.task != "slowquery" {
+			if !slices.Contains([]string{"errorlog", "slowquery", "sqlerrorlog", "auditlog"}, task.task) {
 				logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
 				logs = append(logs, logrow)
 			}
