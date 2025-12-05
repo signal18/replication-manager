@@ -3257,6 +3257,7 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	binRegex := regexp.MustCompile(`filename '([^']+)', position '([^']+)', GTID of the last change '([^']+)'`)
 	startRegex := regexp.MustCompile(`Job [^']+ initiated`)
 	endRegex := regexp.MustCompile(`Job [^']+ ended with state`)
+	err2002Regex := regexp.MustCompile(`Error 2002 \(HY000\)`)
 
 	lines := strings.Split(strings.ReplaceAll(entry.Log, "\\n", "\n"), "\n")
 	for _, line := range lines {
@@ -3265,7 +3266,9 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
 			}
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
-			if matches := endRegex.FindStringSubmatch(line); matches != nil {
+			if matches := err2002Regex.FindStringSubmatch(line); matches != nil {
+				cluster.SetState("ERR00102", state.State{ErrType: "WARN", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["ERR00102"], server.URL), ErrFrom: "JOB", ServerUrl: server.URL})
+			} else if matches := endRegex.FindStringSubmatch(line); matches != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] %s", server.URL, line)
 			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
