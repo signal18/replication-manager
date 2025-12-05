@@ -2127,6 +2127,10 @@ func (cluster *Cluster) SetLogLevelDatabaseErrors(value int) {
 	cluster.Conf.LogLevelDatabaseErrors = value
 }
 
+func (cluster *Cluster) SetLogLevelDatabaseSqlErrors(value int) {
+	cluster.Conf.LogLevelDatabaseSqlErrors = value
+}
+
 func (cluster *Cluster) SetLogLevelDatabaseSlowquery(value int) {
 	cluster.Conf.LogLevelDatabaseSlowquery = value
 }
