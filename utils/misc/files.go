@@ -430,6 +430,28 @@ func (m *DiskStatManager) GetStatByClosestMount(path string) *DiskUsageStat {
 	return nil
 }
 
+func (m *DiskStatManager) GetOverThresholdPaths(warn, crit float64) map[string][]DiskUsagePercentage {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	overThreshold := make(map[string][]DiskUsagePercentage)
+
+	for _, stat := range m.Stats {
+		if stat.UsedPercent > crit {
+			overThreshold["critical"] = append(overThreshold["critical"], DiskUsagePercentage{Path: stat.Path, UsedPercent: stat.UsedPercent})
+		} else if stat.UsedPercent > warn {
+			overThreshold["warning"] = append(overThreshold["warning"], DiskUsagePercentage{Path: stat.Path, UsedPercent: stat.UsedPercent})
+		}
+	}
+
+	return overThreshold
+}
+
+type DiskUsagePercentage struct {
+	Path        string  `json:"path"`
+	UsedPercent float64 `json:"used_percent"`
+}
+
 type DiskUsageStatMap map[string]*DiskUsageStat
 
 type DiskUsageStat struct {

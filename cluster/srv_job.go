@@ -381,7 +381,7 @@ func (server *ServerMonitor) JobBackupPhysical() error {
 
 	// Check for previous backup size
 	if cluster.Conf.BackupCheckFreeSpace {
-		err = cluster.CheckBackupFreeSpace("physical", true)
+		err = cluster.CheckEstimatedBackupSize("physical")
 		if err != nil {
 			return err
 		}
@@ -2305,7 +2305,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 
 	// Check for previous backup size
 	if cluster.Conf.BackupCheckFreeSpace {
-		err = cluster.CheckBackupFreeSpace("logical", true)
+		err = cluster.CheckEstimatedBackupSize("logical")
 		if err != nil {
 			return err
 		}
@@ -2573,6 +2573,44 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 		return
 	}
 
+	var needpurge bool
+
+	defer cluster.UpdateDiskStat(cluster.GetResticLocalDir())
+
+	//  Try to purge old backup by policy to free space
+	err := cluster.ResticPurgeRepo(true)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error restic purge check: %s", err)
+	}
+
+	if cluster.Conf.BackupCheckFreeSpace {
+		diskstat, err := cluster.GetDiskStat(cluster.GetResticLocalDir())
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error getting disk stat for restic backup dir: %s", cluster.GetResticLocalDir())
+			cluster.ResticManager.PauseWorkerOnDisk()
+		} else {
+			// Use specific treshold if defined
+			treshold := cluster.Conf.BackupDiskTresholdCrit
+			if cluster.Conf.BackupResticPurgeOldestOnDiskTreshold > 0 {
+				treshold = cluster.Conf.BackupResticPurgeOldestOnDiskTreshold
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Using specific restic purge treshold %d%%", treshold)
+			} else {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Using global backup disk treshold %d%%", treshold)
+			}
+
+			needpurge = diskstat.UsedPercent >= float64(treshold)
+
+			if needpurge {
+				if cluster.Conf.BackupResticPurgeOldestOnDiskSpace {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Restic backup disk usage %.2f%% over treshold %d%%. Purging oldest backup before new backup.", diskstat.UsedPercent, treshold)
+					cluster.ResticManager.PurgeOldestBackup()
+				} else {
+					cluster.ResticManager.PauseWorkerOnDisk()
+				}
+			}
+		}
+	}
+
 	cluster.ResticManager.AddBackupTask(server.GetMyBackupDirectory(), tags)
 }
 
@@ -2697,7 +2735,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	}
 
 	if cluster.Conf.BackupCheckFreeSpace {
-		err = cluster.CheckBackupFreeSpace("binlog", true)
+		err = cluster.CheckEstimatedBackupSize("binlog")
 		if err != nil {
 			return err
 		}
@@ -3288,6 +3326,8 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 func (server *ServerMonitor) WriteBackupMetadata(backtype backupmgr.BackupMethod) {
 	cluster := server.ClusterGroup
 	var lastmeta *backupmgr.BackupMetadata
+
+	defer cluster.UpdateDiskStat(server.GetMyBackupDirectory())
 
 	switch backtype {
 	case backupmgr.BackupMethodLogical:

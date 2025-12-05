@@ -654,7 +654,7 @@ var pstates30 = []string{
 	"ERR00090", "WARN0102", // Config related
 	"WARN0093", "WARN0095", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
-	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
+	"WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
 	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
 	"WARN0159", "WARN0160", // Deprecated config keys
@@ -767,7 +767,7 @@ func (cluster *Cluster) Run() {
 							go cluster.CheckCredentialRotation()
 							cluster.CheckCanSaveDynamicConfig()
 							cluster.CheckIsOverwrite()
-							cluster.CheckAllBackupFreeSpace()
+							cluster.CheckAllBackupEstimatedSize()
 							cluster.CheckAvailableCredit()
 							cluster.CheckOpenSVCTresholds()
 							cluster.JobsCheckSchedulerTable()
@@ -784,8 +784,8 @@ func (cluster *Cluster) Run() {
 						}
 						if cluster.StateMachine.GetHeartbeats()%3600 == 0 {
 							// Set in parallel since it will wait for fetch to finish
-							go cluster.ResticPurgeRepo()
 							go cluster.RefreshAllAppTemplateMD5()
+							cluster.ResticPurgeRepo(false)
 							cluster.RefreshToolVersions()
 							cluster.CheckBackupToolVersions()
 						} else {
@@ -799,6 +799,9 @@ func (cluster *Cluster) Run() {
 
 						if cluster.Conf.GraphiteMetrics && cluster.StateMachine.GetHeartbeats()%5 == 0 {
 							cluster.SendGraphiteMetrics()
+							cluster.CheckDisksUsage()
+						} else {
+							cluster.StateMachine.PreserveState("WARN0139", "WARN0140")
 						}
 					} else {
 						cluster.StateMachine.PreserveState("ERR00100")

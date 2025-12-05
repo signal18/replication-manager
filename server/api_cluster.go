@@ -6927,7 +6927,7 @@ func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r
 			return
 		}
 		if vars["snapshotID"] == "policy" {
-			err := mycluster.ResticPurgeRepo()
+			err := mycluster.ResticPurgeRepo(true)
 			if err != nil {
 				http.Error(w, "Error purging restic repo: "+err.Error(), 500)
 				return
