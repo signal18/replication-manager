@@ -20500,14 +20500,23 @@ const docTemplate = `{
                 "masterHost": {
                     "$ref": "#/definitions/sql.NullString"
                 },
+                "masterLastEventTime": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
                 "masterLogFile": {
                     "$ref": "#/definitions/sql.NullString"
                 },
                 "masterPort": {
                     "$ref": "#/definitions/sql.NullString"
                 },
+                "masterRetryCount": {
+                    "$ref": "#/definitions/sql.NullInt64"
+                },
                 "masterServerId": {
                     "type": "integer"
+                },
+                "masterSlaveTimeDiff": {
+                    "$ref": "#/definitions/sql.NullInt64"
                 },
                 "masterUser": {
                     "$ref": "#/definitions/sql.NullString"
@@ -20558,6 +20567,9 @@ const docTemplate = `{
                     "type": "number"
                 },
                 "slaveIoRunning": {
+                    "$ref": "#/definitions/sql.NullString"
+                },
+                "slaveLastEventTime": {
                     "$ref": "#/definitions/sql.NullString"
                 },
                 "slaveSQLRunningState": {
@@ -20899,6 +20911,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "backupResticBinaryPath": {
+                    "type": "string"
+                },
+                "backupResticLocalRepository": {
                     "type": "string"
                 },
                 "backupResticRepository": {
@@ -22582,6 +22597,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "replicationMasterConnectRetry": {
+                    "type": "integer"
+                },
+                "replicationMasterRetryCount": {
                     "type": "integer"
                 },
                 "replicationMasterSlaveNeverRelay": {

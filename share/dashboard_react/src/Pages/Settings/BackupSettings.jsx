@@ -74,6 +74,14 @@ The script will be executed with the following parameters:
 7. Cluster Name
 `
 
+const BackupPostScriptRequirement = `Post-backup script will execute a script.  
+The script will be executed with the following parameters:  
+1. Cluster name
+2. DB Server Host
+3. DB Server Port
+4. Backup Path
+`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -182,6 +190,33 @@ The script will be executed with the following parameters:
             }}
           />
         </Flex>
+      )
+    },
+    {
+      key: (
+        <Stack>
+          <Text>Logical Backup Post-Script</Text>
+        </Stack>
+      ),
+      value: (
+        <HStack width={'100%'}>
+          <TextForm
+            value={selectedCluster?.config?.backupLogicalPostScript}
+            confirmTitle={`Confirm backup-logical-post-script to `}
+            maxLength={1024}
+            className={styles.textbox}
+            onSave={(value) =>
+              dispatch(
+                setSetting({
+                  clusterName: selectedCluster?.name,
+                  setting: 'backup-logical-post-script',
+                  value: btoa(value)
+                })
+              )
+            }
+          />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Logical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+        </HStack>
       )
     },
     {
@@ -326,6 +361,33 @@ The script will be executed with the following parameters:
             }
           />
         </Flex>
+      )
+    },
+    {
+      key: (
+        <Stack>
+          <Text>Physical Backup Post-Script</Text>
+        </Stack>
+      ),
+      value: (
+        <HStack width={'100%'}>
+          <TextForm
+            value={selectedCluster?.config?.backupPhysicalPostScript}
+            confirmTitle={`Confirm backup-physical-post-script to `}
+            maxLength={1024}
+            className={styles.textbox}
+            onSave={(value) =>
+              dispatch(
+                setSetting({
+                  clusterName: selectedCluster?.name,
+                  setting: 'backup-physical-post-script',
+                  value: btoa(value)
+                })
+              )
+            }
+          />
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Backup Physical Post-Script', type: '', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{BackupPostScriptRequirement}</Markdown></Box> }); openCommonModal() }} />
+        </HStack>
       )
     },
     {
