@@ -3251,6 +3251,18 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 			return errors.New("Unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
+	case "backup-logical-post-script":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupLogicalPostScript = string(val)
+	case "backup-physical-post-script":
+		val, err := base64.StdEncoding.DecodeString(value)
+		if err != nil {
+			return errors.New("Unable to decode")
+		}
+		mycluster.Conf.BackupPhysicalPostScript = string(val)
 	case "cloud18-monthly-infra-cost":
 		val, _ := strconv.ParseFloat(value, 64)
 		mycluster.Conf.Cloud18MonthlyInfraCost = val

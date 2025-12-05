@@ -1588,12 +1588,18 @@ definitions:
         $ref: '#/definitions/sql.NullString'
       masterHost:
         $ref: '#/definitions/sql.NullString'
+      masterLastEventTime:
+        $ref: '#/definitions/sql.NullString'
       masterLogFile:
         $ref: '#/definitions/sql.NullString'
       masterPort:
         $ref: '#/definitions/sql.NullString'
+      masterRetryCount:
+        $ref: '#/definitions/sql.NullInt64'
       masterServerId:
         type: integer
+      masterSlaveTimeDiff:
+        $ref: '#/definitions/sql.NullInt64'
       masterUser:
         $ref: '#/definitions/sql.NullString'
       postgresExternalId:
@@ -1627,6 +1633,8 @@ definitions:
       slaveHeartbeatPeriod:
         type: number
       slaveIoRunning:
+        $ref: '#/definitions/sql.NullString'
+      slaveLastEventTime:
         $ref: '#/definitions/sql.NullString'
       slaveSQLRunningState:
         $ref: '#/definitions/sql.NullString'
@@ -1854,6 +1862,8 @@ definitions:
       backupResticAwsAccessKeyId:
         type: string
       backupResticBinaryPath:
+        type: string
+      backupResticLocalRepository:
         type: string
       backupResticRepository:
         type: string
@@ -2977,6 +2987,8 @@ definitions:
       replicationErrorScript:
         type: string
       replicationMasterConnectRetry:
+        type: integer
+      replicationMasterRetryCount:
         type: integer
       replicationMasterSlaveNeverRelay:
         type: boolean
