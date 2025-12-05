@@ -3026,6 +3026,9 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "log-fetch-errorlog-level", "log-level-database-errors":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogLevelDatabaseErrors(val)
+	case "log-fetch-sqlerrorlog-level", "log-level-database-sql-errors":
+		val, _ := strconv.Atoi(value)
+		mycluster.SetLogLevelDatabaseSqlErrors(val)
 	case "log-fetch-slowquery-level", "log-level-database-slowquery":
 		val, _ := strconv.Atoi(value)
 		mycluster.SetLogLevelDatabaseSlowquery(val)

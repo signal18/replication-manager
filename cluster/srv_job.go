@@ -74,12 +74,12 @@ func (server *ServerMonitor) JobRun() {
 func (server *ServerMonitor) JobsCheckSchedulerTable() error {
 	cluster := server.ClusterGroup
 	if server.IsDown() || cluster.IsInFailover() {
-		return fmt.Errorf("Server %s is down or in failover", server.URL)
+		return nil
 	}
 
 	//If no default connection no alert
 	if server.Conn == nil {
-		return fmt.Errorf("No connection pool available for server %s", server.URL)
+		return nil
 	}
 
 	Conn, err := server.GetConnNoBinlog(server.Conn)
@@ -190,9 +190,9 @@ func (server *ServerMonitor) jobsCreateTable() error {
 		}
 	}
 
-	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE like '%VARCHAR%'")
+	server.ConnGetQueryWithTimeout(Conn, JobTimeout, &exist, "SELECT COUNT(*) col_exists FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = 'replication_manager_schema' AND TABLE_NAME = 'jobs' AND COLUMN_NAME = 'result' AND COLUMN_TYPE not like '%MEDIUMTEXT%'")
 	if exist == 1 {
-		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL")
+		_, err := server.ConnExecQueryWithTimeout(Conn, JobTimeout, "ALTER TABLE replication_manager_schema.jobs MODIFY COLUMN result MEDIUMTEXT DEFAULT NULL;")
 		if err != nil {
 			return fmt.Errorf("Failed to modify column result to MEDIUMTEXT on jobs table: %v", err)
 		}
@@ -1719,7 +1719,7 @@ func (server *ServerMonitor) JobsCheckFinished(conn *sqlx.Conn) error {
 			logrow = []string{config.LvlErr, "[ERROR] Scheduler error fetching finished replication_manager_schema.jobs %s", err.Error()}
 			logs = append(logs, logrow)
 		} else {
-			if task.task != "errorlog" && task.task != "slowquery" {
+			if !slices.Contains([]string{"errorlog", "slowquery", "sqlerrorlog", "auditlog"}, task.task) {
 				logrow = []string{config.LvlInfo, "[SUCCESS] Finished %s successfully", task.task}
 				logs = append(logs, logrow)
 			}
@@ -3262,11 +3262,11 @@ func (server *ServerMonitor) ParseLogEntries(entry config.LogEntry, mod int, tas
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
 			if matches := startRegex.FindStringSubmatch(line); matches != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] Job initiated: %s", server.URL, task)
 			}
 			// Process the individual log line (e.g., write to file, send to a logging system, etc.)
 			if matches := endRegex.FindStringSubmatch(line); matches != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "[%s] %s", server.URL, line)
+				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlInfo, "[%s] %s", server.URL, line)
 			} else if strings.Contains(line, "ERROR") || strings.Contains(line, "Error") {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, mod, config.LvlErr, "[%s] %s", server.URL, line)
 			} else {
@@ -3546,11 +3546,14 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 
 	// Check if the script exists
 	finfo, err := os.Stat(currentScriptPath)
-	if os.IsNotExist(err) {
-		server.SetWaitJobsCheckCookie()
+	if err != nil {
+		if os.IsNotExist(err) {
+			server.SetWaitJobsCheckCookie()
+		}
+		checkerr = err
+	} else {
+		sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
 	}
-
-	sum, checkerr = crypto.GenerateChecksum(currentScriptPath)
 
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		server.GetDatabaseConfig()
@@ -3570,6 +3573,10 @@ func (server *ServerMonitor) CheckJobsVersion() error {
 		if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(10*time.Minute).Before(time.Now()) {
 			server.SetWaitJobsCheckCookie()
 		}
+	}
+
+	if finfo != nil && !finfo.ModTime().IsZero() && finfo.ModTime().Add(time.Hour).Before(time.Now()) {
+		server.SetWaitJobsCheckCookie()
 	}
 
 	return checkerr

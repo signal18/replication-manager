@@ -38,13 +38,14 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
+	"github.com/signal18/replication-manager/utils/alert/pushover"
 	"github.com/signal18/replication-manager/utils/alert/slackman"
 	"github.com/signal18/replication-manager/utils/backupmgr"
 	"github.com/signal18/replication-manager/utils/cron"
 	"github.com/signal18/replication-manager/utils/dbhelper"
-	"github.com/signal18/replication-manager/utils/logrus/hooks/pushover"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/s18log"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/signal18/replication-manager/utils/state"
 	"github.com/signal18/replication-manager/utils/tty"
 	clog "github.com/sirupsen/logrus"
@@ -244,9 +245,10 @@ type Cluster struct {
 	InBinlogBackup            bool                        `json:"inBinlogBackup" groups:"web"`
 	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
 	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
+	failLoadP12Cert           bool                        `json:"-"`
 	Mailer                    *mailer.Mailer              `json:"-"`
 	ResticManager             *backupmgr.ResticManager    `json:"-"`
-	MessageChan               chan s18log.HttpMessage     `json:"-"`
+	MessageChan               chan sharedlog.Message      `json:"-"`
 	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
 	Partner                   *config.Partner             `json:"partner" groups:"web"`
 	ConfigManager             *manager.ConfigManager      `json:"-"`
@@ -372,7 +374,7 @@ func (cluster *Cluster) Init(confs *config.ConfVersion, cfgGroup string, tlog *s
 	cluster.AgentMaxFreq = make(map[string]int64)
 	cluster.ServiceTemplates = make([]string, 0)
 	cluster.OpenSVCStats.Store([]opensvc.DaemonNodeStats{})
-	cluster.MessageChan = make(chan s18log.HttpMessage, 10)
+	cluster.MessageChan = make(chan sharedlog.Message, 10)
 
 	go cluster.ConsumeMessageChan()
 
@@ -653,7 +655,7 @@ var pstates30 = []string{
 	"WARN0093", "WARN0095", "WARN0134", "WARN0145", // Restic related
 	"WARN0101", "WARN0111", "WARN0112", // Backup related
 	"WARN0139", "WARN0140", "WARN0141", "WARN0142", "WARN0143", "WARN0150", "WARN0151", // Tresholds
-	"WARN0147", "WARN0148", "WARN0153", // Job related
+	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
 	"WARN0159", "WARN0160", // Deprecated config keys
 	"CREDIT01", // Credit related
@@ -749,6 +751,12 @@ func (cluster *Cluster) Run() {
 						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 							cluster.InjectProxiesTraffic()
 						}
+						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
+							cluster.CheckJobsVersion()
+						} else {
+							cluster.StateMachine.PreserveState("WARN0147")
+						}
+
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
 							// Check if restic repo is available
 							cluster.ResticFetchRepo()
@@ -762,7 +770,6 @@ func (cluster *Cluster) Run() {
 							cluster.CheckAllBackupFreeSpace()
 							cluster.CheckAvailableCredit()
 							cluster.CheckOpenSVCTresholds()
-							cluster.CheckJobsVersion()
 							cluster.JobsCheckSchedulerTable()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
@@ -819,6 +826,7 @@ func (cluster *Cluster) Run() {
 				cluster.IsConfigPathChange = cluster.HasConfigPathChanged()
 				cluster.SetStatus()
 				cluster.StateProcessing()
+				cluster.CheckHasFailCertLoadP12()
 				go cluster.GetSlowLogTable() // prevent blocking cycle
 			}
 		}

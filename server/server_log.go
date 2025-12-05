@@ -26,11 +26,23 @@ const (
 	StateErr  = "ERROR"
 )
 
+func (repman *ReplicationManager) StartMessageChanListener() {
+	go func() {
+		for msg := range repman.MessageChan {
+			repman.LogModuleWithFieldsPrintf(repman.Conf.Verbose, msg.Module, msg.Level, msg.Fields, msg.Text)
+		}
+	}()
+}
+
 /*
 This function is for printing log based on module log level
 set forcingLog = true if you want to force print
 */
 func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, level string, format string, args ...interface{}) int {
+	return repman.LogModuleWithFieldsPrintf(forcingLog, module, level, log.Fields{}, format, args...)
+}
+
+func (repman *ReplicationManager) LogModuleWithFieldsPrintf(forcingLog bool, module int, level string, fields log.Fields, format string, args ...interface{}) int {
 	line := 0
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 	padright := func(str, pad string, lenght int) string {
@@ -43,6 +55,11 @@ func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, l
 	}
 
 	tag := config.GetTagsForLog(module)
+	printfields := log.Fields{"cluster": "none", "type": "log", "module": tag}
+	for k, v := range fields {
+		printfields[k] = v
+	}
+
 	cliformat := format
 	format = "[monitor] [" + tag + "] " + padright(level, " ", 5) + " - " + format
 
@@ -69,33 +86,45 @@ func (repman *ReplicationManager) LogModulePrintf(forcingLog bool, module int, l
 			// wrap logrus levels
 			switch level {
 			case "ERROR":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "log", "module": tag}).Errorf(cliformat, args...)
+				repman.Logrus.WithFields(printfields).Errorf(cliformat, args...)
 			case "INFO":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "log", "module": tag}).Infof(cliformat, args...)
+				repman.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "DEBUG":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "log", "module": tag}).Debugf(cliformat, args...)
+				repman.Logrus.WithFields(printfields).Debugf(cliformat, args...)
 			case "WARN":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "log", "module": tag}).Warnf(cliformat, args...)
+				repman.Logrus.WithFields(printfields).Warnf(cliformat, args...)
 			case "TEST":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "test", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
+				printfields["type"] = "test"
+				printfields["channel"] = "StdOut"
+				repman.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "BENCH":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "benchmark", "channel": "StdOut", "module": tag}).Infof(cliformat, args...)
+				printfields["type"] = "benchmark"
+				printfields["channel"] = "StdOut"
+				repman.Logrus.WithFields(printfields).Infof(cliformat, args...)
 			case "ALERT":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "alert", "channel": "StdOut", "module": tag}).Errorf(cliformat, args...)
+				printfields["type"] = "alert"
+				printfields["channel"] = "StdOut"
+				repman.Logrus.WithFields(printfields).Errorf(cliformat, args...)
 			case "START":
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "alert", "channel": "StdOut", "module": tag}).Warnf(cliformat, args...)
+				printfields["type"] = "alert"
+				printfields["channel"] = "StdOut"
+				repman.Logrus.WithFields(printfields).Warnf(cliformat, args...)
 			case "STATE":
 				status := cliformat[0:6]
 				code := cliformat[7:15]
 				err := cliformat[18:]
 				if status == "OPENED" {
-					repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "state", "status": status, "code": code, "channel": "StdOut"}).Warnf(err, args...)
+					printfields["type"] = "state"
+					printfields["status"] = status
+					printfields["code"] = code
+					printfields["channel"] = "StdOut"
+					repman.Logrus.WithFields(printfields).Warnf(err, args...)
 				} else {
-					repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "state", "status": status, "code": code, "channel": "StdOut"}).Warnf(err, args...)
+					repman.Logrus.WithFields(printfields).Warnf(err, args...)
 				}
 
 			default:
-				repman.Logrus.WithFields(log.Fields{"cluster": "none", "type": "log", "module": tag}).Printf(cliformat, args...)
+				repman.Logrus.WithFields(printfields).Printf(cliformat, args...)
 			}
 		}
 	}

@@ -1059,7 +1059,7 @@ func (cluster *Cluster) JobsCheckSchedulerTable() {
 	for _, server := range cluster.Servers {
 		err := server.JobsCheckSchedulerTable()
 		if err != nil {
-			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL), ErrFrom: "CLUSTER"})
+			cluster.SetState("WARN0153", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0153"], server.URL, err), ErrFrom: "CLUSTER"})
 		}
 	}
 }
@@ -1075,5 +1075,15 @@ func (cluster *Cluster) CheckClusterDeprecatedKeys() {
 	dkeys := cluster.GetDeprecatedKeys()
 	if len(dkeys) > 0 {
 		cluster.SetState("WARN0160", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0160"], cluster.Name, strings.Join(dkeys, ",")), ErrFrom: "CLUSTER"})
+	}
+}
+
+func (cluster *Cluster) CheckHasFailCertLoadP12() {
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return
+	}
+
+	if cluster.failLoadP12Cert {
+		cluster.GetStateMachine().PreserveState("WARN0099")
 	}
 }

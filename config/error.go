@@ -174,6 +174,7 @@ var ClusterError = map[string]string{
 	"WARN0096":  "Restart database server via job request %s",
 	"WARN0097":  "Stop database server via job request %s",
 	"WARN0098":  "ProxySQL could not load global variables from runtime (%s)",
+	"WARN0099":  "Unable to load P12 certificate file %s. Err: %s",
 	"WARN0100":  "No space left on device pn %s",
 	"WARN0101":  "Cluster does not have backup",
 	"WARN0102":  "The config file must be merge because an immutable parameter has been changed. Use the config-merge command to save your changes.",

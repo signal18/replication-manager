@@ -23,15 +23,19 @@ var dockerMinusRm bool
 
 func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	var svc opensvc.Collector
-	svc.ClusterConf = cluster.Conf
-	svc.Logrus = cluster.Logrus
-	svc.UseAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
+	svc.MessageChan = cluster.MessageChan
+	svc.LogModule = config.ConstLogModOrchestrator
+	svc.CertPath = cluster.Conf.ProvOpensvcP12Certificate
+	svc.ClusterDir = cluster.WorkingDir
+	svc.UseCollectorAPI = cluster.Conf.ProvOpensvcUseCollectorAPI
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
 		svc.CertsDERSecret = cluster.Conf.GetDecryptedValue("opensvc-p12-secret")
-		err := svc.LoadCert(cluster.Conf.ProvOpensvcP12Certificate)
+		err := svc.LoadCert(svc.CertPath)
 		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Cannot load OpenSVC cluster certificate %s ", err)
+			cluster.failLoadP12Cert = true
+			cluster.SetState("WARN0099", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0099"], svc.CertPath, err), ErrFrom: "OpenSVC"})
 		} else {
+			cluster.failLoadP12Cert = false
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Load OpenSVC cluster certificate %s ", cluster.Conf.ProvOpensvcP12Certificate)
 		}
 	}
@@ -73,7 +77,6 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
 	svc.Verbose = cluster.GetLogLevel()
-	svc.ContextTimeoutSecond = 10
 
 	return svc
 }

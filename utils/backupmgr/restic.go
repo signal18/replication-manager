@@ -14,7 +14,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/signal18/replication-manager/utils/s18log"
+	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
 	"github.com/sirupsen/logrus"
 )
 
@@ -110,7 +110,7 @@ type ResticManager struct {
 	errorMutex  *sync.Mutex
 	ResultChan  chan ResticResult
 	LogModule   int
-	MessageChan chan s18log.HttpMessage
+	MessageChan chan sharedlog.Message
 	Shutdown    bool
 	Mutex       *sync.Mutex
 	cond        *sync.Cond    // Condition variable for waiting and notifying tasks
@@ -124,7 +124,7 @@ type ResticManager struct {
 }
 
 // NewResticRepo initializes the repository manager
-func NewResticRepo(binaryPath string, msgChan chan s18log.HttpMessage, logmodule int) *ResticManager {
+func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule int) *ResticManager {
 	repo := &ResticManager{
 		BinaryPath:  binaryPath,
 		Backups:     make([]BackupSnapshot, 0),
@@ -271,9 +271,9 @@ func (repo *ResticManager) GetCanFetch() bool {
 
 func (repo *ResticManager) Print(level logrus.Level, message string, args ...interface{}) {
 	if repo.MessageChan != nil {
-		repo.MessageChan <- s18log.HttpMessage{
+		repo.MessageChan <- sharedlog.Message{
 			Module:    repo.LogModule,
-			Level:     s18log.FromLogrusLevel(uint32(level)),
+			Level:     sharedlog.FromLogrusLevel(uint32(level)),
 			Text:      fmt.Sprintf(message, args...),
 			Timestamp: fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")),
 		}
