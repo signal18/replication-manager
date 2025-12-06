@@ -1,4 +1,4 @@
-FROM golang:1.23rc1-bullseye
+FROM golang:1.24rc1-bullseye
 
 # Use specific mariadb version in case
 ENV MARIADB_VERSION=10.11.7
