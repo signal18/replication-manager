@@ -565,6 +565,8 @@ func (cluster *Cluster) InitFromConf() {
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set server list %s", err)
 	}
+	cluster.ClearOldCookies()
+
 	err = cluster.newProxyList()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not set proxy list %s", err)
@@ -1593,6 +1595,19 @@ func (cluster *Cluster) BackupLogs() {
 			s.JobBackupAuditLog()
 		}
 
+	}
+}
+
+func (cluster *Cluster) ClearOldCookies() {
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+
+		s.DelWaitAuditlogCookie()
+		s.DelWaitErrorlogCookie()
+		s.DelWaitSqlErrorlogCookie()
+		s.DelWaitSlowqueryCookie()
 	}
 }
 func (cluster *Cluster) RotateLogs() {
