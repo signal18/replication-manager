@@ -299,7 +299,7 @@ type SlaveStatus struct {
 	SecondsBehindMaster      sql.NullInt64  `db:"Seconds_Behind_Master" json:"secondsBehindMaster"`
 	MasterLastEventTime      sql.NullString `db:"Master_last_event_time" json:"masterLastEventTime"`
 	SlaveLastEventTime       sql.NullString `db:"Slave_last_event_time" json:"slaveLastEventTime"`
-	MasterSlaveTimeDiff      sql.NullInt64  `db:"Master_Slave_Time_Diff" json:"masterSlaveTimeDiff"`
+	MasterSlaveTimeDiff      sql.NullInt64  `db:"Master_Slave_time_diff" json:"masterSlaveTimeDiff"`
 	LastIOErrno              sql.NullString `db:"Last_IO_Errno" json:"lastIoErrno"`
 	LastIOError              sql.NullString `db:"Last_IO_Error" json:"lastIoError"`
 	LastSQLErrno             sql.NullString `db:"Last_SQL_Errno" json:"lastSqlErrno"`
