@@ -32,7 +32,7 @@ ENV PROXYSQL_VERSION=2.7.3
 ENV MARIADB_VERSION=11.4
 ENV MYDUMPER_VERSION=0.17.1-1
 
-RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION"
+RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
 
 # Move to top for better cache
 RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3
