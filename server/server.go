@@ -286,7 +286,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flag.Parse()
 
 	if usr == "" && repman != nil {
-		usr = repman.OsUser.Name
+		usr = repman.OsUser.Username
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
 	if WithTarball == "ON" {
