@@ -446,7 +446,10 @@ function Maintenance({ selectedCluster, user }) {
       header: 'Task Type'
     }),
     columnHelper.accessor((row) => resticTaskDetail(row), {
-      header: 'Details'
+      header: 'Details',
+      cell: (info) => info.getValue(),
+      id: 'details',
+      minWidth: 200
     }),
     // Added Purge action column
     columnHelper.accessor((row) => (
