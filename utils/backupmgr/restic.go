@@ -336,6 +336,10 @@ func (repo *ResticManager) worker() {
 		}
 
 		// Check for the stop signal before processing
+		if len(repo.TaskQueue) == 0 {
+			repo.Mutex.Unlock()
+			continue
+		}
 
 		// Get the task from TaskQueue
 		task := repo.TaskQueue[0]
