@@ -329,6 +329,7 @@ func (cluster *Cluster) ResticRunQueue() {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Starting restic task queue processing. Total tasks: %d", len(cluster.ResticManager.TaskQueue))
 	cluster.ResticManager.ResumeWorker()
+	cluster.IsResticQueuePaused = false
 }
 
 // ResticPauseQueue pauses the next restic task queue processing
@@ -344,6 +345,7 @@ func (cluster *Cluster) ResticPauseQueue() {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Pausing restic task queue processing")
 	cluster.ResticManager.PauseWorker()
+	cluster.IsResticQueuePaused = true
 }
 
 func (cluster *Cluster) UpdateDiskStat(dirpath string) error {
