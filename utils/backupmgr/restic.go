@@ -117,6 +117,8 @@ type ResticManager struct {
 	stopCh         chan struct{} // Stop channel to signal the goroutine to stop
 	CanFetch       bool
 	CanInitRepo    bool
+	NeedPurgeNow   bool
+	PurgeNowOption ResticPurgeOption
 	isPaused       bool
 	isPausedByDisk bool
 	HasLocks       bool
@@ -316,7 +318,7 @@ func (repo *ResticManager) worker() {
 	for {
 		repo.Mutex.Lock()
 
-		for (len(repo.TaskQueue) == 0 || repo.isPaused) && !repo.Shutdown {
+		for (len(repo.TaskQueue) == 0 || repo.isPaused) && !repo.Shutdown && !repo.NeedPurgeNow {
 			repo.cond.Wait()
 		}
 
@@ -324,6 +326,13 @@ func (repo *ResticManager) worker() {
 		if repo.Shutdown {
 			repo.Mutex.Unlock()
 			return
+		}
+
+		if repo.NeedPurgeNow {
+			// Process purge now
+			repo.NeedPurgeNow = false
+			purgeOption := repo.PurgeNowOption
+			repo.PurgeRepo(purgeOption)
 		}
 
 		// Check for the stop signal before processing
@@ -402,7 +411,23 @@ func (repo *ResticManager) AddFetchTask() {
 	})
 }
 
-func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) {
+func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) error {
+	if immediate {
+		if repo.NeedPurgeNow {
+			return errors.New("a purge-now task is already scheduled")
+		}
+
+		repo.Mutex.Lock()
+		repo.NeedPurgeNow = true
+		repo.PurgeNowOption = opt
+		repo.Mutex.Unlock()
+	} else {
+		repo.appendPurgeTask(opt)
+	}
+	return nil
+}
+
+func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 	task := ResticTask{
 		ID:   repo.GenerateTaskID(),
 		Type: PurgeTask,
@@ -1170,30 +1195,6 @@ func (repo *ResticManager) TestPassword(newpass string) error {
 	return nil
 }
 
-func (repo *ResticManager) PurgeRepoNow(opt ResticPurgeOption) {
-	go repo.pauseQueueAndPurge(opt)
-}
-
-// PurgeRepoNow performs an immediate purge of the repository after completing any ongoing tasks
-func (repo *ResticManager) pauseQueueAndPurge(opt ResticPurgeOption) error {
-
-	// Pause the queue
-	if !repo.IsPaused() {
-		repo.Print(logrus.InfoLevel, "Pausing next task queue for immediate purge...")
-		repo.PauseWorker()
-		defer repo.ResumeWorker()
-	}
-	defer repo.FetchRepo()
-
-	// Perform the purge
-	err := repo.PurgeRepo(opt)
-	if err != nil {
-		return fmt.Errorf("failed to purge repo: %v", err)
-	}
-
-	return nil
-}
-
 func (repo *ResticManager) PurgeOldestBackup() error {
 	oldestSnap, _, err := repo.GetOldestSnapshot()
 	if err != nil {
@@ -1204,9 +1205,9 @@ func (repo *ResticManager) PurgeOldestBackup() error {
 		return errors.New("no snapshots found to purge")
 	}
 
-	repo.Print(logrus.InfoLevel, "Purging oldest snapshot ID: %s, Time: %s", oldestSnap.Id, oldestSnap.Time)
-
-	return repo.pauseQueueAndPurge(ResticPurgeOption{
+	repo.AddPurgeTask(ResticPurgeOption{
 		SnapshotID: oldestSnap.Id,
-	})
+	}, true)
+
+	return nil
 }

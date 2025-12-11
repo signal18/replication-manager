@@ -137,9 +137,9 @@ func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
 		return fmt.Errorf("Unable to purge single snapshot: snapshot ID is empty")
 	}
 
-	cluster.ResticManager.PurgeRepoNow(backupmgr.ResticPurgeOption{
+	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 		SnapshotID: snapshotID,
-	})
+	}, true)
 	return nil
 }
 
@@ -155,37 +155,20 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			cluster.StartResticManager()
 		}
 
-		if now {
-			cluster.ResticManager.PurgeRepoNow(backupmgr.ResticPurgeOption{
-				KeepLast:          cluster.Conf.BackupKeepLast,
-				KeepHourly:        cluster.Conf.BackupKeepHourly,
-				KeepDaily:         cluster.Conf.BackupKeepDaily,
-				KeepWeekly:        cluster.Conf.BackupKeepWeekly,
-				KeepMonthly:       cluster.Conf.BackupKeepMonthly,
-				KeepYearly:        cluster.Conf.BackupKeepYearly,
-				KeepWithin:        cluster.Conf.BackupKeepWithin,
-				KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
-				KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
-				KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
-				KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
-				KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
-			})
-		} else {
-			cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
-				KeepLast:          cluster.Conf.BackupKeepLast,
-				KeepHourly:        cluster.Conf.BackupKeepHourly,
-				KeepDaily:         cluster.Conf.BackupKeepDaily,
-				KeepWeekly:        cluster.Conf.BackupKeepWeekly,
-				KeepMonthly:       cluster.Conf.BackupKeepMonthly,
-				KeepYearly:        cluster.Conf.BackupKeepYearly,
-				KeepWithin:        cluster.Conf.BackupKeepWithin,
-				KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
-				KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
-				KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
-				KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
-				KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
-			})
-		}
+		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
+			KeepLast:          cluster.Conf.BackupKeepLast,
+			KeepHourly:        cluster.Conf.BackupKeepHourly,
+			KeepDaily:         cluster.Conf.BackupKeepDaily,
+			KeepWeekly:        cluster.Conf.BackupKeepWeekly,
+			KeepMonthly:       cluster.Conf.BackupKeepMonthly,
+			KeepYearly:        cluster.Conf.BackupKeepYearly,
+			KeepWithin:        cluster.Conf.BackupKeepWithin,
+			KeepWithinHourly:  cluster.Conf.BackupKeepWithinHourly,
+			KeepWithinDaily:   cluster.Conf.BackupKeepWithinDaily,
+			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
+			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
+			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
+		}, now)
 	}
 	return nil
 }
