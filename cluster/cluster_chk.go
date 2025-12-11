@@ -1094,10 +1094,16 @@ func (cluster *Cluster) CheckDisksUsage() {
 		return
 	}
 
+	reducePolicy := ""
+
+	if cluster.Conf.BackupRestic {
+		reducePolicy = "Considering reducing restic keep-* policies to save disk space."
+	}
+
 	overThreshold := cluster.DiskStatManager.GetOverThresholdPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
 	for level, statlist := range overThreshold {
 		if level == "critical" {
-			cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], statlist, cluster.Conf.BackupDiskTresholdCrit), ErrFrom: "JOB"})
+			cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], reducePolicy, statlist, cluster.Conf.BackupDiskTresholdCrit), ErrFrom: "JOB"})
 		} else if level == "warning" {
 			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], statlist, cluster.Conf.BackupDiskTresholdWarn), ErrFrom: "JOB"})
 		}

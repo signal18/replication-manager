@@ -2577,12 +2577,6 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 
 	defer cluster.UpdateDiskStat(cluster.GetResticLocalDir())
 
-	//  Try to purge old backup by policy to free space
-	err := cluster.ResticPurgeRepo(true)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error restic purge check: %s", err)
-	}
-
 	if cluster.Conf.BackupCheckFreeSpace {
 		diskstat, err := cluster.GetDiskStat(cluster.GetResticLocalDir())
 		if err != nil {
