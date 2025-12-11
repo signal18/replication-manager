@@ -1,4 +1,4 @@
-import { Box, Grid, GridItem, Text } from '@chakra-ui/react'
+import { Box, Grid, GridItem, Text, VStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import NumberInput from '../../../components/NumberInput'
@@ -7,10 +7,11 @@ import { useDispatch } from 'react-redux'
 import { setSetting } from '../../../redux/settingsSlice'
 import CustomIcon from '../../../components/Icons/CustomIcon'
 import RMIconButton from '../../../components/RMIconButton'
-import { HiQuestionMarkCircle } from 'react-icons/hi'
+import { HiQuestionMarkCircle, HiTrash } from 'react-icons/hi'
 import CommonModal from '../../../components/Modals/CommonModal'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { purgeResticByPolicy } from '../../../redux/clusterSlice'
 
 function ResticPurgeStrategy({ clusterName, config }) {
   const dispatch = useDispatch()
@@ -112,31 +113,38 @@ The duration will be calculated from the time of the last snapshot.
   ];
 
   return (
-    <Grid className={`${styles.container}`} templateColumns="repeat(2, 1fr)" gap={2} w="full" p={4}>
-      {/* Headers */}
-      <GridItem className={`${styles.label}`} p={2} textAlign="center" fontWeight="bold">
-        <Text className={styles.marginCenter} textAlign={"center"}>Keep Last N</Text>
-        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Restic Keep Last N', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{ResticKeepLastNTooltip}</Markdown></Box> }); openCommonModal() }} />
-      </GridItem>
-      <GridItem className={`${styles.label}`} p={2} textAlign="center" fontWeight="bold">
-        <Text className={styles.marginCenter} textAlign={"center"}>Keep Within Duration</Text>
-        <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Restic Keep Within Duration', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{ResticKeepWithinTooltip}</Markdown></Box> }); openCommonModal() }} />
-      </GridItem>
+    <VStack spacing={2} align="stretch" w={"100%"}>
+      <Grid className={`${styles.container}`} templateColumns="repeat(2, 1fr)" gap={2} w="full" p={2}>
+        {/* Headers */}
+        <GridItem className={`${styles.label}`} p={2} textAlign="center" fontWeight="bold">
+          <Text className={styles.marginCenter} textAlign={"center"}>Keep Last N</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Restic Keep Last N', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{ResticKeepLastNTooltip}</Markdown></Box> }); openCommonModal() }} />
+        </GridItem>
+        <GridItem className={`${styles.label}`} p={2} textAlign="center" fontWeight="bold">
+          <Text className={styles.marginCenter} textAlign={"center"}>Keep Within Duration</Text>
+          <RMIconButton icon={HiQuestionMarkCircle} onClick={() => { setAction({ title: 'Restic Keep Within Duration', body: <Box><Markdown remarkPlugins={[remarkGfm]}>{ResticKeepWithinTooltip}</Markdown></Box> }); openCommonModal() }} />
+        </GridItem>
 
-      {/* Dynamic Sections */}
-      {sections.map((section, index) => (
-        <React.Fragment key={index}>
-          <GridItem className={`${styles.subLabel}`} colSpan={2} bg="gray.100" p={2} textAlign="center" fontWeight="bold">
-            {section.title}
-          </GridItem>
-          <GridItem className={`${styles.value}`} p={2} textAlign="center">
-            {section.colA}
-          </GridItem>
-          <GridItem className={`${styles.value}`} p={2} textAlign="center">
-            {section.colB}
-          </GridItem>
-        </React.Fragment>
-      ))}
+        {/* Dynamic Sections */}
+        {sections.map((section, index) => (
+          <React.Fragment key={index}>
+            <GridItem className={`${styles.subLabel}`} colSpan={2} bg="gray.100" p={2} textAlign="center" fontWeight="bold">
+              {section.title}
+            </GridItem>
+            <GridItem className={`${styles.value}`} p={2} textAlign="center">
+              {section.colA}
+            </GridItem>
+            <GridItem className={`${styles.value}`} p={2} textAlign="center">
+              {section.colB}
+            </GridItem>
+          </React.Fragment>
+        ))}
+      </Grid>
+      <Box className={styles.infoBox} m={2} p={4} borderWidth="1px" borderRadius="md" bg="gray.50">
+        <RMIconButton icon={HiTrash} confirm={true} onClick={() => dispatch(purgeResticByPolicy({clusterName}))} /> 
+        <Text as="span" ml={2}>Click the trash icon to purge restic backups according to the defined retention policy.</Text>
+      </Box>
+            
       {isCommonModalOpen && (
         <CommonModal
           isOpen={isCommonModalOpen}
@@ -148,7 +156,7 @@ The duration will be calculated from the time of the last snapshot.
           }}
         />
       )}
-    </Grid>
+    </VStack>
   );
 }
 

@@ -15,7 +15,6 @@ import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
 import remarkGfm from 'remark-gfm'
-import { DataTable } from '../../components/DataTable'
 import ResticPurgeStrategy from './ResticPurgeStrategy'
 import NumberInput from '../../components/NumberInput'
 
