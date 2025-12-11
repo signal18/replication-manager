@@ -101,26 +101,29 @@ type TaskStatus struct {
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
-	BinaryPath  string
-	Env         []string
-	Backups     []BackupSnapshot
-	BackupStat  BackupStat
-	TaskQueue   []*ResticTask
-	TaskErrors  map[TaskType]error
-	errorMutex  *sync.Mutex
-	ResultChan  chan ResticResult
-	LogModule   int
-	MessageChan chan sharedlog.Message
-	Shutdown    bool
-	Mutex       *sync.Mutex
-	cond        *sync.Cond    // Condition variable for waiting and notifying tasks
-	stopCh      chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch    bool
-	CanInitRepo bool
-	isPaused    bool
-	HasLocks    bool
-	taskID      int
-	CurrentID   int
+	BinaryPath     string
+	Env            []string
+	Backups        []BackupSnapshot
+	BackupStat     BackupStat
+	TaskQueue      []*ResticTask
+	TaskErrors     map[TaskType]error
+	errorMutex     *sync.Mutex
+	ResultChan     chan ResticResult
+	LogModule      int
+	MessageChan    chan sharedlog.Message
+	Shutdown       bool
+	Mutex          *sync.Mutex
+	cond           *sync.Cond    // Condition variable for waiting and notifying tasks
+	stopCh         chan struct{} // Stop channel to signal the goroutine to stop
+	CanFetch       bool
+	CanInitRepo    bool
+	NeedPurgeNow   bool
+	PurgeNowOption ResticPurgeOption
+	isPaused       bool
+	isPausedByDisk bool
+	HasLocks       bool
+	taskID         int
+	CurrentID      int
 }
 
 // NewResticRepo initializes the repository manager
@@ -145,6 +148,28 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 	return repo
 }
 
+func (repo *ResticManager) GetOldestSnapshot() (*BackupSnapshot, time.Time, error) {
+	if len(repo.Backups) == 0 {
+		return nil, time.Time{}, errors.New("no backups found")
+	}
+
+	var oldest *BackupSnapshot
+	var oldestTime time.Time
+	for i := len(repo.Backups) - 1; i >= 0; i-- {
+		snap := &repo.Backups[i]
+		// 2025-12-02T14:49:31.527323782Z
+		snaptime, err := time.Parse(time.RFC3339Nano, snap.Time)
+		if err != nil {
+			continue
+		}
+		if oldest == nil || snaptime.Before(oldestTime) {
+			oldest = snap
+			oldestTime = snaptime
+		}
+	}
+	return oldest, oldestTime, nil
+}
+
 func (repo *ResticManager) IsPaused() bool {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
@@ -162,6 +187,14 @@ func (repo *ResticManager) PauseWorker() {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 	repo.isPaused = true
+}
+
+func (repo *ResticManager) PauseWorkerOnDisk() {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+	repo.isPaused = true
+	repo.isPausedByDisk = true
+	repo.Print(logrus.WarnLevel, "Pausing Restic worker due to low disk space")
 }
 
 func (repo *ResticManager) HasAnyError() bool {
@@ -285,7 +318,7 @@ func (repo *ResticManager) worker() {
 	for {
 		repo.Mutex.Lock()
 
-		for (len(repo.TaskQueue) == 0 || repo.isPaused) && !repo.Shutdown {
+		for (len(repo.TaskQueue) == 0 || repo.isPaused) && !repo.Shutdown && !repo.NeedPurgeNow {
 			repo.cond.Wait()
 		}
 
@@ -295,7 +328,18 @@ func (repo *ResticManager) worker() {
 			return
 		}
 
+		if repo.NeedPurgeNow {
+			// Process purge now
+			repo.NeedPurgeNow = false
+			purgeOption := repo.PurgeNowOption
+			repo.PurgeRepo(purgeOption)
+		}
+
 		// Check for the stop signal before processing
+		if len(repo.TaskQueue) == 0 {
+			repo.Mutex.Unlock()
+			continue
+		}
 
 		// Get the task from TaskQueue
 		task := repo.TaskQueue[0]
@@ -321,12 +365,15 @@ func (repo *ResticManager) worker() {
 			result = ResticResult{TaskID: task.ID, Error: err}
 		case PurgeTask:
 			err := repo.PurgeRepo(task.Opt)
+			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, Error: err}
 		case BackupTask:
 			err := repo.Backup(task.DirPath, task.Tags)
+			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, Error: err}
 		case UnlockTask:
 			err := repo.UnlockRepo()
+			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, Error: err}
 		default:
 			repo.Print(logrus.WarnLevel, "Unknown task type: %d", task.Type)
@@ -368,7 +415,23 @@ func (repo *ResticManager) AddFetchTask() {
 	})
 }
 
-func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) {
+func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) error {
+	if immediate {
+		if repo.NeedPurgeNow {
+			return errors.New("a purge-now task is already scheduled")
+		}
+
+		repo.Mutex.Lock()
+		repo.NeedPurgeNow = true
+		repo.PurgeNowOption = opt
+		repo.Mutex.Unlock()
+	} else {
+		repo.appendPurgeTask(opt)
+	}
+	return nil
+}
+
+func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 	task := ResticTask{
 		ID:   repo.GenerateTaskID(),
 		Type: PurgeTask,
@@ -377,7 +440,6 @@ func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption) {
 
 	// Add task to slice
 	repo.appendTask(&task)
-	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
@@ -390,7 +452,6 @@ func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
 
 	// Add task to slice
 	repo.appendTask(&task)
-	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) AddUnlockTask() {
@@ -399,7 +460,6 @@ func (repo *ResticManager) AddUnlockTask() {
 		Type: UnlockTask,
 	}
 	repo.appendTask(&task)
-	repo.AddFetchTask()
 }
 
 func (repo *ResticManager) MoveTask(mvType string, taskID, afterTaskID int) error {
@@ -851,6 +911,8 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 }
 
 func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
+	repo.Print(logrus.InfoLevel, "Purging single snapshot ID: %s", snapshotID)
+
 	args := []string{"forget", "--prune", snapshotID}
 
 	// Execute the Restic "forget" command using RunCommand
@@ -864,6 +926,8 @@ func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
 }
 
 func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
+	repo.Print(logrus.InfoLevel, "Purging snapshots with policy: %+v", opt)
+
 	args := []string{"forget", "--prune"}
 
 	// Get the arguments for the "keep" options
@@ -910,7 +974,6 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 	}
 
 	// Prepare the arguments for the "forget" command
-
 	if opt.SnapshotID != "" {
 		err := repo.purgeSingleSnapshot(opt.SnapshotID)
 		if err != nil {
@@ -1132,6 +1195,23 @@ func (repo *ResticManager) TestPassword(newpass string) error {
 	if err != nil {
 		return fmt.Errorf("failed to test repo password: %v, stderr: %s", err, stderr)
 	}
+
+	return nil
+}
+
+func (repo *ResticManager) PurgeOldestBackup() error {
+	oldestSnap, _, err := repo.GetOldestSnapshot()
+	if err != nil {
+		return err
+	}
+
+	if oldestSnap == nil {
+		return errors.New("no snapshots found to purge")
+	}
+
+	repo.AddPurgeTask(ResticPurgeOption{
+		SnapshotID: oldestSnap.Id,
+	}, true)
 
 	return nil
 }

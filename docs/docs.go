@@ -20916,14 +20916,14 @@ const docTemplate = `{
                 "backupResticLocalRepository": {
                     "type": "string"
                 },
+                "backupResticPurgeOldestOnDiskSpace": {
+                    "type": "boolean"
+                },
+                "backupResticPurgeOldestOnDiskTreshold": {
+                    "type": "integer"
+                },
                 "backupResticRepository": {
                     "type": "string"
-                },
-                "backupResticRunQueueOnStartup": {
-                    "type": "boolean"
-                },
-                "backupResticSaveQueueOnShutdown": {
-                    "type": "boolean"
                 },
                 "backupResticTimeout": {
                     "type": "integer"

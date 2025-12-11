@@ -1845,3 +1845,58 @@ func (cluster *Cluster) GetChangeMasterBaseOptForMxs(sl *ServerMonitor, master *
 		SSL:       cluster.Conf.ReplicationSSL,
 	}
 }
+
+func (cluster *Cluster) GetDiskStat(dirpath string) (*misc.DiskUsageStat, error) {
+	diskstat := cluster.DiskStatManager.GetStatByClosestMount(dirpath)
+	if diskstat == nil {
+		err := cluster.UpdateDiskStat(dirpath)
+		if err != nil {
+			return nil, fmt.Errorf("No disk stat found for backup directory %s", dirpath)
+		}
+
+		diskstat = cluster.DiskStatManager.GetStatByClosestMount(dirpath)
+		if diskstat == nil {
+			return nil, fmt.Errorf("No disk stat found for backup directory %s", dirpath)
+		}
+	}
+	return diskstat, nil
+}
+
+func (cluster *Cluster) GetEstimatedBackupSize(backtype string) (uint64, error) {
+	if !cluster.Conf.BackupEstimateSize {
+		return 0, nil
+	}
+
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.GetMaster()
+		if bcksrv == nil {
+			return 0, fmt.Errorf("No backup server or master server found for cluster %s", cluster.Name)
+		}
+	}
+
+	// Estimate size if disk usage is over treshold and estimate size is enabled. For binlog we will always estimate size to 2GB
+	required := uint64(0)
+
+	switch backtype {
+	case "logical", "physical":
+		_, prev := bcksrv.GetLatestMeta(backtype)
+		if prev != nil && prev.Completed {
+			required = uint64(prev.Size * int64(100+cluster.Conf.BackupGrowthPercentage) / 100)
+
+			// If not keep until valid, we need to add the size of the previous backup to the free space
+			if cluster.Conf.BackupKeepUntilValid {
+				required += required
+			}
+
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "No previous %s backup found for size estimation on server %s. Skipping size estimation.", backtype, bcksrv.URL)
+			return 0, nil
+		}
+	case "binlog":
+		// Max binlog size per file is 1GB, additional 1GB for unexpected growth
+		required = 2 * 1024 * 1024 * 1024
+	}
+
+	return required, nil
+}

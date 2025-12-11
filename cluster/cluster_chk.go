@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/router/maxscale"
 	"github.com/signal18/replication-manager/utils/alert"
@@ -1086,4 +1087,78 @@ func (cluster *Cluster) CheckHasFailCertLoadP12() {
 	if cluster.failLoadP12Cert {
 		cluster.GetStateMachine().PreserveState("WARN0099")
 	}
+}
+
+func (cluster *Cluster) CheckDisksUsage() {
+	if !cluster.Conf.BackupCheckFreeSpace {
+		return
+	}
+
+	reducePolicy := ""
+
+	if cluster.Conf.BackupRestic {
+		reducePolicy = "Considering reducing restic keep-* policies to save disk space."
+	}
+
+	overThreshold := cluster.DiskStatManager.GetOverThresholdPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
+	for level, statlist := range overThreshold {
+		if level == "critical" {
+			cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], reducePolicy, statlist, cluster.Conf.BackupDiskTresholdCrit), ErrFrom: "JOB"})
+		} else if level == "warning" {
+			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], statlist, cluster.Conf.BackupDiskTresholdWarn), ErrFrom: "JOB"})
+		}
+	}
+}
+
+func (cluster *Cluster) CheckAllBackupEstimatedSize() {
+	backupTypes := []string{"logical", "physical", "binlog"}
+	for _, btype := range backupTypes {
+		err := cluster.CheckEstimatedBackupSize(btype)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Estimated backup size check for %s backup: %s", btype, err)
+		}
+	}
+}
+
+func (cluster *Cluster) CheckEstimatedBackupSize(backtype string) error {
+	if !cluster.Conf.BackupEstimateSize {
+		return nil
+	}
+
+	bcksrv := cluster.GetBackupServer()
+	if bcksrv == nil {
+		bcksrv = cluster.GetMaster()
+		if bcksrv == nil {
+			return fmt.Errorf("No backup server or master server found for cluster %s", cluster.Name)
+		}
+	}
+
+	diskstat, err := cluster.GetDiskStat(bcksrv.GetMyBackupDirectory())
+	if err != nil {
+		return err
+	}
+
+	// Estimate size if disk usage is over treshold and estimate size is enabled. For binlog we will always estimate size to 2GB
+
+	free := diskstat.Free
+	required := uint64(0)
+
+	required, err = cluster.GetEstimatedBackupSize(backtype)
+	if err != nil {
+		return err
+	}
+
+	if free < required {
+		if backtype == "logical" {
+			cluster.SetState("WARN0141", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0141"], cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		} else if backtype == "physical" {
+			cluster.SetState("WARN0142", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0142"], cluster.Conf.BackupPhysicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		} else if backtype == "binlog" {
+			cluster.SetState("WARN0143", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0143"], bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
+		}
+
+		return fmt.Errorf("Not enough free space on %s for backup. Free: %s", diskstat.Path, humanize.Bytes(diskstat.Free))
+	}
+
+	return nil
 }

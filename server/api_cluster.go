@@ -2390,6 +2390,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.BackupCheckFreeSpace = !mycluster.Conf.BackupCheckFreeSpace
 	case "backup-estimate-size":
 		mycluster.Conf.BackupEstimateSize = !mycluster.Conf.BackupEstimateSize
+	case "backup-restic-purge-oldest-on-disk-space":
+		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = !mycluster.Conf.BackupResticPurgeOldestOnDiskSpace
 	case "monitoring-pause":
 		mycluster.SwitchMonitoringPause()
 	case "monitoring-save-config":
@@ -2816,6 +2818,11 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-growth-percentage":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupGrowthPercentage = val
+	case "backup-restic-purge-oldest-on-disk-space":
+		mycluster.Conf.BackupResticPurgeOldestOnDiskSpace = applyIsActive(mycluster.Conf.BackupResticPurgeOldestOnDiskSpace, isactive)
+	case "backup-restic-purge-oldest-on-disk-threshold":
+		val, _ := strconv.Atoi(value)
+		mycluster.Conf.BackupResticPurgeOldestOnDiskThreshold = val
 	case "backup-logical-type":
 		mycluster.SetBackupLogicalType(value)
 	case "backup-physical-type":
@@ -6927,7 +6934,7 @@ func (repman *ReplicationManager) handlerMuxResticPurge(w http.ResponseWriter, r
 			return
 		}
 		if vars["snapshotID"] == "policy" {
-			err := mycluster.ResticPurgeRepo()
+			err := mycluster.ResticPurgeRepo(true)
 			if err != nil {
 				http.Error(w, "Error purging restic repo: "+err.Error(), 500)
 				return
