@@ -14,7 +14,7 @@ import DatabaseJobs from './DatabaseJobs'
 import { purgeResticSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume } from '../../redux/clusterSlice'
 import RMIconButton from '../../components/RMIconButton'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
-import { HiTrash } from 'react-icons/hi'
+import { HiPause, HiPlay, HiTrash } from 'react-icons/hi'
 import { showWarningToast } from '../../redux/toastSlice'
 
 const QueueMoveForm = React.memo(({ list = [], currentId, onChange = (dir, afterId) => { } }) => {
@@ -417,6 +417,26 @@ function Maintenance({ selectedCluster, user }) {
     })
   ])
 
+  const queuelength = queueData?.length || 0;
+
+  const queueDataHeader = useMemo(() =>[
+    {
+      key: 'Total Pending Tasks',
+      value: queuelength
+    },
+    {
+      key: 'Queue Status',
+      value: selectedCluster?.isResticQueuePaused ? 'Paused' : 'Running'
+    },
+    {
+      key: 'Action',
+      value: (selectedCluster?.isResticQueuePaused ?
+        <RMIconButton icon={HiPlay} onClick={() => openConfirmModal('Resume Restic Queue', { action: 'queueResume' })} /> :
+        <RMIconButton icon={HiPause} onClick={() => openConfirmModal('Pause Restic Queue', { action: 'queuePause' })} />
+      )
+    }
+  ], [selectedCluster?.isResticQueuePaused, queuelength])
+
   const queueColumns = useMemo(() => [
     columnHelper.accessor((row) => row.task_id, {
       header: 'ID',
@@ -483,6 +503,7 @@ function Maintenance({ selectedCluster, user }) {
           <VStack className={styles.snapshotContainer}>
             <TableType3 dataArray={snapshotDataStats} className={styles.statsTable} />
             <DataTable key="snapshot" data={snapshotData} columns={snapshotColumns} className={styles.table} />
+            <TableType3 dataArray={queueDataHeader} className={styles.statsTable} />
             <DataTable key="queue" data={queueData} columns={queueColumns} className={styles.table} />
           </VStack>
         }

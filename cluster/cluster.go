@@ -125,6 +125,7 @@ type Cluster struct {
 	IsRefreshStaging              bool                       `json:"isRefreshStaging" groups:"web"`
 	IsNeedStagingChange           bool                       `json:"isNeedStagingChange" groups:"web"`
 	IsConfigPathChange            bool                       `json:"isConfigPathChange" groups:"web"`
+	IsResticQueuePaused           bool                       `json:"isResticQueuePaused" groups:"web"`
 	Conf                          *config.Config             `json:"config" groups:"apps"`
 	Confs                         *config.ConfVersion        `json:"-"`
 	CleanAll                      bool                       `json:"cleanReplication" groups:"web"` //used in testing
@@ -686,6 +687,7 @@ func (cluster *Cluster) Run() {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			cluster.AppIdList = cluster.GetAppServerIdList()
+			cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
 			go cluster.CheckDefaultUser(false)
 
 			if cluster.HasBadConfigMeasurement() {
