@@ -829,6 +829,7 @@ The script will be executed with the following parameters:
               value: (
                 <NumberInput
                   min={1}
+                  max={100}
                   value={selectedCluster?.config?.backupDiskTresholdWarn}
                   showEditButton={true}
                   showConfirmModal={true}
@@ -842,11 +843,37 @@ The script will be executed with the following parameters:
               value: (
                 <NumberInput
                   min={1}
+                  max={100}
                   value={selectedCluster?.config?.backupDiskTresholdCrit}
                   showEditButton={true}
                   showConfirmModal={true}
                   confirmTitle={`Confirm change 'backup-disk-treshold-crit' to: `}
                   onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-disk-treshold-crit', value: value }))}
+                />
+              )
+            },
+            {
+              key: 'Custom Threshold for Purging Old Restic Backups (0 means follow critical threshold)',
+              value: (
+                <NumberInput
+                  min={0}
+                  max={100}
+                  value={selectedCluster?.config?.backupResticPurgeOldestOnDiskThreshold}
+                  showEditButton={true}
+                  showConfirmModal={true}
+                  confirmTitle={`Confirm change restic threshold to: `}
+                  onConfirm={(value) => dispatch(setSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-purge-oldest-on-disk-threshold', value: value }))}
+                />
+              )
+            },
+            {
+              key: "Purge oldest restic backups if disk usage exceed threshold",
+              value: (
+                <RMSwitch
+                  isChecked={selectedCluster?.config?.backupResticPurgeOldestOnDiskSpace}
+                  isDisabled={user?.grants['cluster-settings'] == false}
+                  confirmTitle={'Confirm switch settings for backup-restic-purge-oldest-on-disk-space?'}
+                  onChange={() => dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'backup-restic-purge-oldest-on-disk-space' }))}
                 />
               )
             },

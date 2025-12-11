@@ -797,7 +797,7 @@ func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskSpace(check bool) {
 }
 
 func (cluster *Cluster) SetBackupResticPurgeOldestOnDiskTreshold(threshold int) {
-	cluster.Conf.BackupResticPurgeOldestOnDiskTreshold = threshold
+	cluster.Conf.BackupResticPurgeOldestOnDiskThreshold = threshold
 }
 
 func (cluster *Cluster) SetMasterReadOnly() {

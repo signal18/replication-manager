@@ -803,7 +803,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupResticPassword, "backup-restic-password", "secret", "Restic backend password")
 	flags.BoolVar(&conf.BackupResticAws, "backup-restic-aws", false, "Restic will archive to s3 or to datadir/backups/archive")
 	flags.BoolVar(&conf.BackupResticPurgeOldestOnDiskSpace, "backup-restic-purge-oldest-on-disk-space", true, "Restic will purge oldest backup when disk space is critically low")
-	flags.IntVar(&conf.BackupResticPurgeOldestOnDiskTreshold, "backup-restic-purge-oldest-on-disk-treshold", 0, "Restic will purge oldest backup when disk space used is above this percentage. 0 means use backup-disk-treshold-crit value")
+	flags.IntVar(&conf.BackupResticPurgeOldestOnDiskThreshold, "backup-restic-purge-oldest-on-disk-threshold", 0, "Restic will purge oldest backup when disk space used is above this percentage. 0 means use backup-disk-threshold-crit value")
 	flags.BoolVar(&conf.BackupStreaming, "backup-streaming", false, "Backup streaming to cloud ")
 	flags.BoolVar(&conf.BackupStreamingDebug, "backup-streaming-debug", false, "Debug mode for streaming to cloud ")
 	flags.StringVar(&conf.BackupStreamingAwsAccessKeyId, "backup-streaming-aws-access-key-id", "admin", "Backup AWS key id")

@@ -2585,8 +2585,8 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 		} else {
 			// Use specific treshold if defined
 			treshold := cluster.Conf.BackupDiskTresholdCrit
-			if cluster.Conf.BackupResticPurgeOldestOnDiskTreshold > 0 {
-				treshold = cluster.Conf.BackupResticPurgeOldestOnDiskTreshold
+			if cluster.Conf.BackupResticPurgeOldestOnDiskThreshold > 0 {
+				treshold = cluster.Conf.BackupResticPurgeOldestOnDiskThreshold
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Using specific restic purge treshold %d%%", treshold)
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Using global backup disk treshold %d%%", treshold)
