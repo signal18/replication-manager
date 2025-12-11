@@ -18737,6 +18737,9 @@ const docTemplate = `{
                 "isRefreshStaging": {
                     "type": "boolean"
                 },
+                "isResticQueuePaused": {
+                    "type": "boolean"
+                },
                 "isSplitBrain": {
                     "type": "boolean"
                 },
