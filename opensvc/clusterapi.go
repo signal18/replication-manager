@@ -907,6 +907,7 @@ func (collector *Collector) GetDaemonNodeStats() ([]DaemonNodeStats, error) {
 }
 
 func (collector *Collector) GetNodesV2() ([]Host, error) {
+	// collector.Print(log.DebugLevel, "Getting nodes from OpenSVC API using V2")
 
 	url := "https://" + collector.Host + ":" + collector.Port + "/get_node"
 

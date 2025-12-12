@@ -128,8 +128,10 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 	hosts, err := svc.GetNodes()
 	if err != nil {
 		cluster.CanInitNodes = false
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetNodes: %s ", err)
 		return nil, err
 	} else {
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "GetNodes success: %d nodes found", len(hosts))
 		cluster.CanInitNodes = true
 	}
 	if hosts == nil {
@@ -147,6 +149,8 @@ func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
 		agent.HostName = n.Node_name
 		agents = append(agents, agent)
 	}
+
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Found %d OpenSVC Agents: %v", len(agents), agents)
 	return agents, nil
 }
 
@@ -464,7 +468,12 @@ info = 50
 func (cluster *Cluster) OpenSVCUnprovisionSecret() {
 	opensvc := cluster.OpenSVCConnect()
 	if !cluster.Conf.ProvOpensvcUseCollectorAPI {
-		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/sec/env", "")
-		opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/cfg/env", "")
+		if opensvc.IsV3() {
+			opensvc.PurgeServiceV3(cluster.Name, cluster.Name+"/sec/env")
+			opensvc.PurgeServiceV3(cluster.Name, cluster.Name+"/cfg/env")
+		} else {
+			opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/sec/env", "")
+			opensvc.PurgeServiceV2(cluster.Name, cluster.Name+"/cfg/env", "")
+		}
 	}
 }

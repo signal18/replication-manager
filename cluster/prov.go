@@ -827,14 +827,15 @@ func (cluster *Cluster) GetDatabaseAgent(server *ServerMonitor) (Agent, error) {
 	var agent Agent
 	agents := strings.Split(cluster.Conf.ProvAgents, ",")
 	if len(agents) == 0 {
+		// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No databases agent list provided")
 		return agent, errors.New("No databases agent list provided")
 	}
 	for i, srv := range cluster.Servers {
-
 		if srv.Id == server.Id {
 			agentName := agents[i%len(agents)]
 			agent, err := cluster.GetAgentInOrchetrator(agentName)
 			if err != nil {
+				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "GetDatabaseAgent agent %s error: %s", agentName, err)
 				return agent, err
 			} else {
 				return agent, nil
@@ -874,7 +875,7 @@ func (cluster *Cluster) GetAgentInOrchetrator(name string) (Agent, error) {
 			return node, nil
 		}
 	}
-	return node, errors.New("Agent not found in orechestrator node list")
+	return node, errors.New("Agent not found in orchestrator node list")
 }
 
 func (cluster *Cluster) ProvisionRotatePasswords(password string) error {

@@ -1781,6 +1781,8 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 
 func (collector *Collector) GetNodesV1() ([]Host, error) {
 
+	// collector.Print(log.DebugLevel, "Getting nodes from OpenSVC API using V1")
+
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
 
 	client := collector.GetHttpClient()

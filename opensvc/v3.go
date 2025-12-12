@@ -61,6 +61,13 @@ func (collector *Collector) RequestCloserV3() apiv3.RequestEditorFn {
 	}
 }
 
+func (collector *Collector) RequestPrinterV3() apiv3.RequestEditorFn {
+	return func(ctx context.Context, req *http.Request) error {
+		collector.Print(log.DebugLevel, "Sending request to OpenSVC API: %s %s", req.Method, req.URL.Path)
+		return nil
+	}
+}
+
 func (collector *Collector) GetAuthInfoV3() error {
 	client, err := collector.GetClientV3()
 	if err != nil {
@@ -71,7 +78,7 @@ func (collector *Collector) GetAuthInfoV3() error {
 	defer cancel()
 
 	// Use the client to check the API version
-	resp, err := client.GetAuthInfo(ctx, collector.RequestCloserV3())
+	resp, err := client.GetAuthInfo(ctx, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	if err != nil {
 		return fmt.Errorf("failed to check API version: %w", err)
 	}
@@ -94,6 +101,8 @@ func (collector *Collector) GetAuthInfoV3() error {
 }
 
 func (collector *Collector) GetNodesV3() ([]Host, error) {
+	collector.Print(log.DebugLevel, "Getting nodes from OpenSVC API using V3")
+
 	client, err := collector.GetClientV3()
 	if err != nil {
 		return nil, err
@@ -103,30 +112,30 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 	defer cancel()
 
 	// Use the client to get the nodes
-	resp, err := client.GetNodes(ctx, nil, collector.RequestCloserV3())
+	resp, err := client.GetNodes(ctx, nil, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	if err != nil {
+		collector.Print(log.ErrorLevel, "Error getting nodes from OpenSVC API: %v", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	startRead := time.Now()
 	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	endRead := time.Now()
 	collector.Print(log.DebugLevel, "OpenSVC Read response took: %s", endRead.Sub(startRead))
 	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		collector.Print(log.ErrorLevel, "Error reading nodes response from OpenSVC API: %v", err)
+		return nil, err
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
+		collector.Print(log.ErrorLevel, "Unexpected status code getting nodes from OpenSVC API: %d, body: %s", resp.StatusCode, body)
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
-	var hosts []Host
+	var hosts []Host = make([]Host, 0)
 	// Process the response to extract node information
 	nodes := gjson.GetBytes(body, "items.#.meta.node").Array()
 	for _, node := range nodes {
@@ -136,6 +145,8 @@ func (collector *Collector) GetNodesV3() ([]Host, error) {
 
 		hosts = append(hosts, h)
 	}
+
+	collector.Print(log.DebugLevel, "Found %d nodes from OpenSVC API: %v", len(hosts), hosts)
 
 	return hosts, nil
 }
@@ -153,20 +164,25 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 	defer cancel()
 
 	oKind := apiv3.Kind(kind)
-	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3())
+	resp, err = client.PostObjectConfigFileWithBody(ctx, namespace, oKind, service, "application/octet-stream", bytes.NewReader(data), collector.RequestCloserV3(), collector.RequestPrinterV3())
 	if err != nil {
+		collector.Print(log.ErrorLevel, "Error creating object in OpenSVC API %s/%s/%s: %v", namespace, kind, service, err)
 		return nil, fmt.Errorf("failed to create object in %s/%s/%s: %w", namespace, kind, service, err)
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
+		collector.Print(log.ErrorLevel, "Error reading create object response from OpenSVC API %s/%s/%s: %v", namespace, kind, service, err)
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if !handleSuccessGroup(resp.StatusCode) {
+		collector.Print(log.ErrorLevel, "Unexpected status code creating object in OpenSVC API %s/%s/%s: %d, body: %s", namespace, kind, service, resp.StatusCode, body)
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
+
+	collector.Print(log.DebugLevel, "Successfully created object in OpenSVC API %s/%s/%s. Body: %s", namespace, kind, service, body)
 
 	return body, nil
 }
@@ -187,7 +203,7 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 
 	oKind := apiv3.Kind(kind)
 
-	resp, err = client.GetObject(ctx, namespace, oKind, service, collector.RequestCloserV3())
+	resp, err = client.GetObject(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object path in %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -275,13 +291,13 @@ func (collector *Collector) handleObjectKeyValueV3(operation, namespace, kind, s
 
 	switch strings.ToLower(operation) {
 	case "get":
-		resp, err = client.GetObjectDataKey(ctx, namespace, oKind, service, &apiv3.GetObjectDataKeyParams{Name: key}, collector.RequestCloserV3())
+		resp, err = client.GetObjectDataKey(ctx, namespace, oKind, service, &apiv3.GetObjectDataKeyParams{Name: key}, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "create":
-		resp, err = client.PostObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PostObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3())
+		resp, err = client.PostObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PostObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "update":
-		resp, err = client.PutObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PutObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3())
+		resp, err = client.PutObjectDataKeyWithBody(ctx, namespace, oKind, service, &apiv3.PutObjectDataKeyParams{Name: key}, "application/octet-stream", vReader, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "delete":
-		resp, err = client.DeleteObjectDataKey(ctx, namespace, oKind, service, &apiv3.DeleteObjectDataKeyParams{Name: key}, collector.RequestCloserV3())
+		resp, err = client.DeleteObjectDataKey(ctx, namespace, oKind, service, &apiv3.DeleteObjectDataKeyParams{Name: key}, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	default:
 		return nil, fmt.Errorf("unsupported operation: %s", operation)
 	}
@@ -355,17 +371,17 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	oKind := apiv3.Kind(kind)
 	switch strings.ToLower(action) {
 	case "provision":
-		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service, collector.RequestCloserV3())
+		resp, err = client.PostObjectActionProvision(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "unprovision":
-		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service, collector.RequestCloserV3())
+		resp, err = client.PostObjectActionUnprovision(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "start":
-		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service, collector.RequestCloserV3())
+		resp, err = client.PostObjectActionStart(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "stop":
-		resp, err = client.PostObjectActionStop(ctx, namespace, oKind, service, collector.RequestCloserV3())
+		resp, err = client.PostObjectActionStop(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "restart":
-		resp, err = client.PostObjectActionRestartWithBody(ctx, namespace, oKind, service, "application/json", bytes.NewReader(data), collector.RequestCloserV3())
+		resp, err = client.PostObjectActionRestartWithBody(ctx, namespace, oKind, service, "application/json", bytes.NewReader(data), collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "purge":
-		resp, err = client.PostObjectActionPurge(ctx, namespace, oKind, service, collector.RequestCloserV3())
+		resp, err = client.PostObjectActionPurge(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
@@ -494,31 +510,31 @@ func (collector *Collector) handleInstanceActionV3(node, namespace, kind, servic
 		if params != nil {
 			pvparam = params.ToProvisionParams()
 		}
-		resp, err = client.PostInstanceActionProvision(ctx, node, namespace, oKind, service, pvparam, collector.RequestCloserV3())
+		resp, err = client.PostInstanceActionProvision(ctx, node, namespace, oKind, service, pvparam, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "unprovision":
 		var uparam *apiv3.PostInstanceActionUnprovisionParams
 		if params != nil {
 			uparam = params.ToUnprovisionParams()
 		}
-		resp, err = client.PostInstanceActionUnprovision(ctx, node, namespace, oKind, service, uparam, collector.RequestCloserV3())
+		resp, err = client.PostInstanceActionUnprovision(ctx, node, namespace, oKind, service, uparam, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "start":
 		var stparams *apiv3.PostInstanceActionStartParams
 		if params != nil {
 			stparams = params.ToStartParams()
 		}
-		resp, err = client.PostInstanceActionStart(ctx, node, namespace, oKind, service, stparams, collector.RequestCloserV3())
+		resp, err = client.PostInstanceActionStart(ctx, node, namespace, oKind, service, stparams, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "stop":
 		var spparams *apiv3.PostInstanceActionStopParams
 		if params != nil {
 			spparams = params.ToStopParams()
 		}
-		resp, err = client.PostInstanceActionStop(ctx, node, namespace, oKind, service, spparams, collector.RequestCloserV3())
+		resp, err = client.PostInstanceActionStop(ctx, node, namespace, oKind, service, spparams, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	case "restart":
 		var rtparams *apiv3.PostInstanceActionRestartParams
 		if params != nil {
 			rtparams = params.ToRestartParams()
 		}
-		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3())
+		resp, err = client.PostInstanceActionRestart(ctx, node, namespace, oKind, service, rtparams, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	default:
 		return nil, fmt.Errorf("unsupported action: %s", action)
 	}
@@ -555,7 +571,7 @@ func (collector *Collector) handleInstanceConsoleV3(node, namespace, kind, servi
 	oRid := apiv3.InQueryRid(rid)
 	oTimeout := apiv3.InQueryGreetTimeout(fmt.Sprintf("%ds", collector.ContextTimeoutSecond*2))
 	params := &apiv3.PostInstanceResourceConsoleParams{Rid: &oRid, GreetTimeout: &oTimeout}
-	resp, err = client.PostInstanceResourceConsole(ctx, node, namespace, oKind, service, params, collector.RequestCloserV3())
+	resp, err = client.PostInstanceResourceConsole(ctx, node, namespace, oKind, service, params, collector.RequestCloserV3(), collector.RequestPrinterV3())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get console resource '%s' on %s/%s/%s: %w", rid, namespace, kind, service, err)
 	}

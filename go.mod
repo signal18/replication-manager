@@ -68,7 +68,7 @@ require (
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
 	github.com/nsf/termbox-go v1.1.1
-	github.com/opensvc/om3 v1.0.0-alpha1.0.20251113070821-cb4ff41e7bcc
+	github.com/opensvc/om3 v1.0.0-alpha1.0.20251211172350-bbb07da3cb67
 	github.com/percona/go-mysql v0.0.0-20190307200310-f5cfaf6a5e55
 	github.com/peterbourgon/g2g v0.0.0-20161124161852-0c2bab2b173d
 	github.com/pingcap/dumpling v0.0.0-20200319081211-255ce0d25719
@@ -97,7 +97,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc
 	google.golang.org/grpc v1.56.3
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
-	google.golang.org/protobuf v1.36.3
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
@@ -177,6 +177,7 @@ require (
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/yamux v0.0.0-20211028200310-0bc27b27de87 // indirect
+	github.com/hexops/gotextdiff v1.0.3 // indirect
 	github.com/iancoleman/orderedmap v0.2.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
@@ -189,14 +190,14 @@ require (
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/labstack/echo/v4 v4.11.4 // indirect
+	github.com/labstack/echo/v4 v4.13.4 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/magiconair/properties v1.8.5 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect
 	github.com/mattermost/ldap v0.0.0-20201202150706-ee0e6284187d // indirect
 	github.com/mattermost/logr/v2 v2.0.15 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/micro/mdns v0.1.0 // indirect

@@ -607,7 +607,7 @@ func (cluster *Cluster) initOrchetratorNodes() {
 	cluster.inInitNodes = true
 
 	//defer cluster.insideInitNodes = false
-	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Loading nodes from orchestrator %s", cluster.Conf.ProvOrchestrator)
 	switch cluster.GetOrchestrator() {
 	case config.ConstOrchestratorOpenSVC:
 		cluster.Agents, cluster.errorInitNodes = cluster.OpenSVCGetNodes()
@@ -685,6 +685,8 @@ func (cluster *Cluster) Run() {
 	cluster.Lock()
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
+
+	go cluster.initOrchetratorNodes()
 
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
