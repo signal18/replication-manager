@@ -77,20 +77,50 @@ func (cluster *Cluster) OpenSVCConnect() opensvc.Collector {
 	svc.ProvNetCNI = cluster.Conf.ProvNetCNI
 	svc.ProvProxTags = cluster.Conf.ProvProxTags
 	svc.Verbose = cluster.GetLogLevel()
+	svc.ContextTimeoutSecond = 10
+
+	if cluster.OrchestratorVersion == "v3" {
+		// Set collector to v3 if already detected
+		svc.SetV3()
+	} else {
+		// Try to detect v3
+		err := svc.GetAuthInfoV3()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlDbg, "Can not connect to OpenSVC v3 API: %s ", err)
+		}
+
+		// Set OrchestratorVersion if v3 detected
+		if svc.IsV3() {
+			cluster.OrchestratorVersion = "v3"
+		}
+	}
 
 	return svc
 }
 
-func (cluster *Cluster) GetGottyServer(srv string, rid string) (string, string) {
+func (cluster *Cluster) GetGottyServer(srv string, rid string, agent string) (string, string, string) {
+	var url, node, ver string
+	var err error
 	svc := cluster.OpenSVCConnect()
-	url, node, err := svc.GetGottyServer(srv, rid)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
-		return "", ""
+	if svc.IsV3() {
+		ver = "v3"
+		node = agent
+		url, err = svc.GetGottyServerV3(agent, srv, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
+			return "", "", ver
+		}
+	} else {
+		ver = "v2"
+		url, node, err = svc.GetGottyServer(srv, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not GetGottyServer: %s ,Params: %s %s", err, srv, rid)
+			return "", "", ver
+		}
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "Response from GetGottyServer: %s %s", url, node)
 
-	return url, node
+	return url, node, ver
 }
 
 func (cluster *Cluster) OpenSVCGetNodes() ([]Agent, error) {
@@ -124,41 +154,54 @@ func (cluster *Cluster) OpenSVCCreateMaps(agent string) error {
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {
 		return errors.New("No support of Maps in Collector API")
 	}
+
 	svc := cluster.OpenSVCConnect()
-	err := svc.CreateSecretV2(cluster.Name, "env", agent)
+	err := svc.CreateSecret(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create secret: %s ", err)
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
+
+	errs := make(map[string]error)
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_PASSWORD", cluster.APIUsers["admin"].Password)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "REPLICATION_MANAGER_PASSWORD", err)
+		errs["REPLICATION_MANAGER_PASSWORD"] = err
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "MYSQL_ROOT_PASSWORD", cluster.GetDbPass())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "MYSQL_ROOT_PASSWORD", err)
+		errs["MYSQL_ROOT_PASSWORD"] = err
 	}
-	err = svc.CreateSecretKeyValueV2(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
+	err = svc.CreateSecretKeyValue(cluster.Name, "env", "SHARDPROXY_ROOT_PASSWORD", cluster.GetShardPass())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secret: %s %s ", "SHARDPROXY_ROOT_PASSWORD", err)
+		errs["SHARDPROXY_ROOT_PASSWORD"] = err
 	}
-	err = svc.CreateConfigV2(cluster.Name, "env", agent)
+
+	if len(errs) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to secrets: %v", errs)
+	}
+
+	err = svc.CreateConfig(cluster.Name, "env", agent)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not create config: %s ", err)
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
+
+	errs = make(map[string]error)
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_USER", "admin")
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_USER", err)
+		errs["REPLICATION_MANAGER_USER"] = err
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_URL", "https://"+cluster.Conf.MonitorAddress+":"+cluster.Conf.APIPort)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_URL", err)
+		errs["REPLICATION_MANAGER_URL"] = err
 	}
-	err = svc.CreateConfigKeyValueV2(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
+	err = svc.CreateConfigKeyValue(cluster.Name, "env", "REPLICATION_MANAGER_CLUSTER_NAME", cluster.GetClusterName())
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %s %s ", "REPLICATION_MANAGER_CLUSTER_NAME", err)
+		errs["REPLICATION_MANAGER_CLUSTER_NAME"] = err
+	}
+	if len(errs) > 0 {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not add key to config: %v", errs)
 	}
 
-	return err
+	return nil
 }
 
 func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) error {

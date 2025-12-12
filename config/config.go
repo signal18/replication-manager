@@ -521,6 +521,7 @@ type Config struct {
 	ProvUser                                  string                 `mapstructure:"opensvc-user" toml:"opensvc-user" json:"opensvcUser"`
 	ProvCodeApp                               string                 `mapstructure:"opensvc-codeapp" toml:"opensvc-codeapp" json:"opensvcCodeapp"`
 	ProvSerialized                            bool                   `mapstructure:"prov-serialized" toml:"prov-serialized" json:"provSerialized"`
+	ProvUseIpv6                               bool                   `mapstructure:"prov-use-ipv6" toml:"prov-use-ipv6" json:"provUseIpv6"`
 	ProvOrchestrator                          string                 `mapstructure:"prov-orchestrator" toml:"prov-orchestrator" json:"provOrchestrator"`
 	ProvOrchestratorEnable                    string                 `mapstructure:"prov-orchestrator-enable" toml:"prov-orchestrator-enable" json:"provOrchestratorEnable"`
 	ProvOrchestratorCluster                   string                 `mapstructure:"prov-orchestrator-cluster" toml:"prov-orchestrator-cluster" json:"provOrchestratorCluster"`
@@ -632,6 +633,7 @@ type Config struct {
 	ProvDBCompliance                          string                 `mapstructure:"prov-db-compliance" toml:"prov-db-compliance" json:"provDBCompliance"`
 	ProvProxyCompliance                       string                 `mapstructure:"prov-proxy-compliance" toml:"prov-proxy-compliance" json:"provProxyCompliance"`
 	ProvDockerRegistryCredentials             string                 `mapstructure:"prov-docker-registry-credentials" toml:"prov-docker-registry-credentials" json:"provDockerRegistryCredentials"`
+	ProvEventTimeout                          int                    `mapstructure:"prov-timeout" toml:"prov-timeout" json:"ProvEventTimeout"`
 	AppOn                                     bool                   `mapstructure:"app" toml:"app" json:"app"`
 	AppHosts                                  string                 `mapstructure:"app-hosts" toml:"app-hosts" json:"appHosts"`
 	AppHostsIPV6                              string                 `mapstructure:"app-hosts-ipv6" toml:"app-hosts-ipv6" json:"appHostsIpv6"`
@@ -757,6 +759,7 @@ type Config struct {
 	BackupMysqlclientOptions                  string                 `mapstructure:"backup-mysqlclient-options" toml:"backup-mysqlclient-options" json:"backupMysqlclientOptions"`
 	BackupMytopPath                           string                 `mapstructure:"backup-mytop-path" toml:"backup-mytop-path" json:"backupMytopPath"`
 	BackupGottyClientPath                     string                 `mapstructure:"backup-gotty-client-path" toml:"backup-gotty-client-path" json:"backupGottyClientPath"`
+	BackupTtySharePath                        string                 `mapstructure:"backup-tty-share-path" toml:"backup-tty-share-path" json:"backupTtySharePath"`
 	BackupBinlogs                             bool                   `mapstructure:"backup-binlogs" toml:"backup-binlogs" json:"backupBinlogs"`
 	BackupBinlogsKeep                         int                    `mapstructure:"backup-binlogs-keep" toml:"backup-binlogs-keep" json:"backupBinlogsKeep"`
 	BackupLockDDL                             bool                   `mapstructure:"backup-lockddl" toml:"backup-lockddl" json:"backupLockDDL"`

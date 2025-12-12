@@ -2522,3 +2522,7 @@ func (cluster *Cluster) SetRollingJobsUpgradeState() {
 
 	cluster.SetState("WARN0155", state.State{ErrType: "WARN0155", ErrDesc: clusterError["WARN0155"], ErrFrom: "MAINTENANCE"})
 }
+
+func (cluster *Cluster) SetOrchestratorVersion(value string) {
+	cluster.OrchestratorVersion = value
+}

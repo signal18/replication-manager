@@ -269,6 +269,7 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
+	OrchestratorVersion string       `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -661,6 +662,7 @@ var pstates30 = []string{
 	"WARN0153",             // Job related
 	"WARN0158",             // Job secrets mismatch
 	"WARN0159", "WARN0160", // Deprecated config keys
+	"WARN0161", "WARN0162", // Working agent mismatch
 	"CREDIT01", // Credit related
 }
 
@@ -777,6 +779,7 @@ func (cluster *Cluster) Run() {
 							cluster.JobsCheckSchedulerTable()
 							cluster.CheckGlobalDeprecatedKeys()
 							cluster.CheckClusterDeprecatedKeys()
+							cluster.CheckClusterServiceAgents()
 						} else {
 							cluster.StateMachine.PreserveState(pstates30...)
 						}
@@ -1866,6 +1869,7 @@ func (c *Cluster) AddProxy(prx DatabaseProxy) {
 	prx.SetServiceName(c.Name)
 	c.LogModulePrintf(c.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "New proxy monitored %s: %s:%s", prx.GetType(), prx.GetHost(), prx.GetPort())
 	prx.SetState(stateSuspect)
+	prx.GetWorkingOrchestratorNode()
 	c.Proxies = append(c.Proxies, prx)
 }
 

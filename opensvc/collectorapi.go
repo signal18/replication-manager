@@ -9,6 +9,7 @@ package opensvc
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/md5"
 	"crypto/tls"
@@ -22,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -210,6 +212,68 @@ func (collector *Collector) FromP12Bytes(bytes []byte, password string) (tls.Cer
 		PrivateKey:  key,
 		Leaf:        cert,
 	}, nil
+}
+
+func (collector *Collector) GeneratePemFromP12(p12Data []byte, password string) (string, string, string, error) {
+	// Get filename from path
+	prefix := filepath.Base(collector.CertPath)
+
+	// Decode PKCS#12
+	privateKey, cert, caCerts, err := pkcs12.DecodeChain(p12Data, password)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write PRIVATE KEY
+	//
+	keyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	if err != nil {
+		return "", "", "", err
+	}
+
+	keyPath := fmt.Sprintf("%s/.%s-key.pem", collector.ClusterDir, prefix)
+	if err := os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: keyBytes,
+	}), 0600); err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write CERTIFICATE
+	//
+	certPath := fmt.Sprintf("%s/.%s-cert.pem", collector.ClusterDir, prefix)
+	if err := os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Raw,
+	}), 0644); err != nil {
+		return "", "", "", err
+	}
+
+	//
+	// Write CA CHAIN (if any)
+	//
+	chainPath := ""
+	if len(caCerts) > 0 {
+		chainPath = fmt.Sprintf("%s/.%s-chain.pem", collector.ClusterDir, prefix)
+		f, err := os.Create(chainPath)
+		if err != nil {
+			return "", "", "", err
+		}
+		defer f.Close()
+
+		for _, ca := range caCerts {
+			if err := pem.Encode(f, &pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: ca.Raw,
+			}); err != nil {
+				return "", "", "", err
+			}
+		}
+	}
+
+	return keyPath, certPath, chainPath, nil
 }
 
 func (collector *Collector) FromPemBytes(bytes []byte, password string) (tls.Certificate, error) {
@@ -1713,4 +1777,60 @@ func (collector *Collector) DeleteService(serviceid string) (string, error) {
 
 	return string(body), nil
 
+}
+
+func (collector *Collector) GetNodesV1() ([]Host, error) {
+
+	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/nodes?props=id,node_id,nodename,status,cpu_cores,cpu_freq,mem_bytes,os_kernel,os_name,tz"
+
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.SetBasicAuth(collector.RplMgrUser, collector.RplMgrPassword)
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	startConnect := time.Now()
+	resp, err := client.Do(req)
+	stopConnect := time.Now()
+	collector.Print(log.DebugLevel, "OpenSVC Connect took: %s", stopConnect.Sub(startConnect))
+	if err != nil {
+		collector.Print(log.ErrorLevel, "OpenSVC API Error: %s", err)
+		return nil, err
+	}
+
+	defer client.CloseIdleConnections()
+	defer resp.Body.Close()
+	startRead := time.Now()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	endRead := time.Now()
+	collector.Print(log.DebugLevel, "OpenSVC Read response took: %s", endRead.Sub(startRead))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
+
+	type Message struct {
+		Data []Host `json:"data"`
+	}
+	var r Message
+
+	err = json.Unmarshal(body, &r)
+	if err != nil {
+		collector.Print(log.ErrorLevel, "OpenSVC API Error: %s", err)
+		return nil, err
+	}
+
+	for i, agent := range r.Data {
+		r.Data[i].Ips, _ = collector.getNetwork(agent.Node_id)
+		r.Data[i].Svc, _ = collector.getNodeServices(agent.Node_id)
+	}
+
+	return r.Data, nil
 }

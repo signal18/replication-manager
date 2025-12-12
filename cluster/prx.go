@@ -65,6 +65,7 @@ type Proxy struct {
 	Variables       map[string]string    `json:"-"`
 	ServiceName     string               `json:"serviceName"`
 	Agent           string               `json:"agent"`
+	WorkingAgent    string               `json:"workingAgent"`
 	Weight          string               `json:"weight"`
 	IsStaging       bool                 `json:"isStaging"`
 	Lock            sync.Mutex
@@ -109,7 +110,8 @@ type DatabaseProxy interface {
 	SetPrevState(state string)
 	GetCluster() *Cluster
 	GetClusterConnection() (*sqlx.DB, error)
-
+	GetWorkingAgent() string
+	GetWorkingOrchestratorNode() error
 	SetMaintenanceHaproxy(server *ServerMonitor)
 
 	IsFilterInTags(filter string) bool

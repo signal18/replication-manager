@@ -853,6 +853,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupMysqlclientOptions, "backup-mysqlclient-options", "--force --batch", "Extra options")
 	flags.StringVar(&conf.BackupMytopPath, "backup-mytop-path", "", "Path to mytop binary")
 	flags.StringVar(&conf.BackupGottyClientPath, "backup-gotty-client-path", "", "Path to gotty client binary")
+	flags.StringVar(&conf.BackupTtySharePath, "backup-tty-share-path", "", "Path to tty-share binary")
 	flags.BoolVar(&conf.BackupRestoreVersionStrict, "backup-restore-version-strict", false, "During restore, check backup version against tools version. False will just issue a warning. True will abort restore")
 
 	flags.BoolVar(&conf.BackupBinlogs, "backup-binlogs", false, "Archive binlogs")
@@ -1083,6 +1084,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		flags.StringVar(&conf.ProvProxyCompliance, "prov-proxy-compliance", "", "Path of compliance file for Proxy configuration")
 		flags.BoolVar(&conf.MeasurementAutoClampLimit, "measurement-auto-clamp-limit", false, "Auto clamp to allowed value for measurement if exceed the min-max boundaries")
 
+		flags.BoolVar(&conf.ProvUseIpv6, "prov-use-ipv6", false, "Use IPv6 addresses for provisioned services")
+
 		if WithOpenSVC == "ON" {
 
 			flags.BoolVar(&conf.Enterprise, "opensvc", true, "Provisioning via opensvc")
@@ -1111,6 +1114,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 
 	flags.StringVar(&conf.ProvDockerRegistryCredentials, "prov-docker-registry-credentials", "", "Docker registry credentials for private registry. Format: url:port:user:password")
+	flags.IntVar(&conf.ProvEventTimeout, "prov-timeout", 600, "Timeout in seconds for provisionning operations")
 
 	flags.BoolVar(&conf.AppOn, "app-on", false, "Enable application mode")
 	flags.IntVar(&conf.LogAppLevel, "app-log-level", 3, "Log level for application")
