@@ -194,8 +194,9 @@ type ObjectGetterFunc func([]byte) ([]byte, error)
 
 func (collector *Collector) WaitForObjectV3(namespace, kind, service string, timeout time.Duration) error {
 	start := time.Now()
+	printOnce := true
 	for {
-		_, err := collector.GetObjectV3(namespace, kind, service, nil)
+		_, err := collector.GetObjectV3(namespace, kind, service, nil, printOnce)
 		if err == nil {
 			return nil
 		}
@@ -203,10 +204,11 @@ func (collector *Collector) WaitForObjectV3(namespace, kind, service string, tim
 			return fmt.Errorf("timeout waiting for object %s/%s/%s: %w", namespace, kind, service, err)
 		}
 		time.Sleep(3 * time.Second)
+		printOnce = false
 	}
 }
 
-func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc ObjectGetterFunc) ([]byte, error) {
+func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc ObjectGetterFunc, printRequest bool) ([]byte, error) {
 	var resp *http.Response
 	var err error
 
@@ -220,7 +222,15 @@ func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc
 
 	oKind := apiv3.Kind(kind)
 
-	resp, err = client.GetObject(ctx, namespace, oKind, service, collector.RequestCloserV3(), collector.RequestPrinterV3())
+	requestModifier := []apiv3.RequestEditorFn{
+		collector.RequestCloserV3(),
+	}
+
+	if printRequest {
+		requestModifier = append(requestModifier, collector.RequestPrinterV3())
+	}
+
+	resp, err = client.GetObject(ctx, namespace, oKind, service, requestModifier...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object path in %s/%s/%s: %w", namespace, kind, service, err)
 	}
@@ -262,7 +272,7 @@ func (collector *Collector) GetServiceNodeFromStateV3(svc string) ([]string, err
 		return []byte(result.Raw), nil
 	}
 
-	data, err := collector.GetObjectV3(namespace, kind, service, getfunc)
+	data, err := collector.GetObjectV3(namespace, kind, service, getfunc, true)
 	if err != nil {
 		return nil, err
 	}
