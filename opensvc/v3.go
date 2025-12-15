@@ -685,7 +685,7 @@ func (collector *Collector) ReadOrchestrationLog(node, orchestration_id string) 
 		if strings.Contains(logMsg.Message, "orchestration is done") {
 			collector.Print(log.InfoLevel, "%s", logMsg.Message)
 			break
-		} else if strings.Contains(logMsg.Message, "failed") || strings.Contains(logMsg.Message, "error") {
+		} else if strings.Contains(logMsg.Message, "failed") {
 			collector.Print(log.ErrorLevel, "%s", logMsg.Message)
 		} else {
 			collector.Print(log.DebugLevel, "%s", logMsg.Message)
