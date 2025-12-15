@@ -1171,12 +1171,14 @@ func (cluster *Cluster) CheckClusterServiceAgents() {
 	for _, server := range cluster.Servers {
 		if server.HasProvisionCookie() && server.WorkingAgent != server.Agent {
 			cluster.SetState("WARN0161", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0161"], server.URL, server.Agent, server.WorkingAgent), ErrFrom: "CLUSTER", ServerUrl: server.URL})
+			server.GetWorkingOrchestratorNode()
 		}
 	}
 
 	for _, prx := range cluster.Proxies {
 		if prx.HasProvisionCookie() && prx.GetWorkingAgent() != prx.GetAgent() {
 			cluster.SetState("WARN0162", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0162"], prx.GetURL(), prx.GetAgent(), prx.GetWorkingAgent()), ErrFrom: "CLUSTER", ServerUrl: prx.GetURL()})
+			prx.GetWorkingOrchestratorNode()
 		}
 	}
 }
