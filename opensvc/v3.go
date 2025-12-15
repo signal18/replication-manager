@@ -3,12 +3,11 @@ package opensvc
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	clientv3 "github.com/opensvc/om3/v3/core/client"
@@ -182,12 +181,30 @@ func (collector *Collector) CreateObjectV3(namespace, kind, service string, data
 		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, body)
 	}
 
-	collector.Print(log.DebugLevel, "Successfully created object in OpenSVC API %s/%s/%s. Body: %s", namespace, kind, service, body)
+	err = collector.WaitForObjectV3(namespace, kind, service, time.Minute)
+	if err != nil {
+		collector.Print(log.ErrorLevel, "Error waiting for object %s/%s/%s to be available in OpenSVC API: %v", namespace, kind, service, err)
+		return nil, err
+	}
 
 	return body, nil
 }
 
 type ObjectGetterFunc func([]byte) ([]byte, error)
+
+func (collector *Collector) WaitForObjectV3(namespace, kind, service string, timeout time.Duration) error {
+	start := time.Now()
+	for {
+		_, err := collector.GetObjectV3(namespace, kind, service, nil)
+		if err == nil {
+			return nil
+		}
+		if time.Since(start) > timeout {
+			return fmt.Errorf("timeout waiting for object %s/%s/%s: %w", namespace, kind, service, err)
+		}
+		time.Sleep(3 * time.Second)
+	}
+}
 
 func (collector *Collector) GetObjectV3(namespace, kind, service string, getFunc ObjectGetterFunc) ([]byte, error) {
 	var resp *http.Response
@@ -402,6 +419,10 @@ func (collector *Collector) handleObjectActionV3(namespace, kind, service, actio
 	return body, nil
 }
 
+type OrchestrationResponse struct {
+	OrchestrationID string `json:"orchestration_id"`
+}
+
 func (collector *Collector) CreateTemplateV3(cluster string, svc string, node string, template []byte) error {
 
 	svcparts := strings.SplitN(svc, "/", 3)
@@ -413,10 +434,26 @@ func (collector *Collector) CreateTemplateV3(cluster string, svc string, node st
 	kind := svcparts[1]
 	svcname := svcparts[2]
 
-	collector.CreateObjectV3(ns, kind, svcname, template)
+	body, err := collector.CreateObjectV3(ns, kind, svcname, template)
+	if err != nil {
+		return err
+	}
 
-	_, err := collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
-	return err
+	body, err = collector.handleObjectActionV3(ns, kind, svcname, "provision", nil)
+	if err != nil {
+		return err
+	}
+
+	collector.Print(log.DebugLevel, "CreateTemplateV3 provision response body: %s", string(body))
+
+	var respProv OrchestrationResponse
+	if err := json.Unmarshal(body, &respProv); err != nil {
+		return err
+	}
+
+	collector.ReadOrchestrationLog(node, respProv.OrchestrationID)
+
+	return nil
 }
 
 func (collector *Collector) ProvisionServiceV3(cluster, svc string) error {
@@ -606,56 +643,46 @@ func (collector *Collector) GetGottyServerV3(node, srv, rid string) (string, err
 	return string(body), nil
 }
 
-func (collector *Collector) handleEventLogsV3(agents string, kindCloser []string, filters []string) error {
+type LogMessage struct {
+	Message string `json:"MESSAGE"`
+}
+
+func (collector *Collector) ReadOrchestrationLog(node, orchestration_id string) error {
 	client, err := collector.GetClientV3()
 	if err != nil {
 		return err
 	}
 
-	nodes := strings.Split(agents, ",")
-	var wg *sync.WaitGroup = &sync.WaitGroup{}
-	for _, node := range nodes {
-		wg.Add(1)
-		go collector.ReadNodeEventChannel(wg, client, node, filters, kindCloser...)
-	}
-	wg.Wait()
-	return nil
-}
+	filters := []string{"ORCHESTRATION_ID=" + orchestration_id}
+	follow := true
 
-type EventData struct {
-	ID string `json:"id"`
-}
+	logclient := client.NewGetLogs(node)
+	logclient.SetFilters(&filters)
+	logclient.SetFollow(&follow)
 
-func (collector *Collector) ReadNodeEventChannel(wg *sync.WaitGroup, client *clientv3.T, node string, filters []string, kindClosers ...string) {
-	defer wg.Done()
-	if client == nil {
-		return
-	}
-
-	evclient := client.NewGetEvents()
-	evclient.SetNodename(node)
-	evclient.SetFilter(filters...)
-
-	cev, err := evclient.Do()
+	logChan, err := logclient.GetRaw()
 	if err != nil {
-		collector.Print(log.ErrorLevel, fmt.Sprintf("Failed to open event channel for node %s: %v", node, err))
-		return
+		collector.Print(log.ErrorLevel, "Failed to open log channel for node %s orchestration %s: %v", node, orchestration_id, err)
+		return err
 	}
 
-	for {
-		select {
-		case e, ok := <-cev:
-			if !ok {
-				return
-			}
-
-			if slices.Contains(kindClosers, e.Kind) {
-				collector.Print(log.InfoLevel, string(e.Data))
-			} else {
-				collector.Print(log.DebugLevel, string(e.Data))
-			}
+	for nodelog := range logChan {
+		var logMsg LogMessage
+		if err := json.Unmarshal(nodelog, &logMsg); err != nil {
+			collector.Print(log.ErrorLevel, "Failed to unmarshal log message from node %s orchestration %s: %v", node, orchestration_id, err)
+			continue
+		}
+		if strings.Contains(logMsg.Message, "orchestration is done") {
+			collector.Print(log.InfoLevel, "%s", logMsg.Message)
+			break
+		} else if strings.Contains(logMsg.Message, "failed") || strings.Contains(logMsg.Message, "error") {
+			collector.Print(log.ErrorLevel, "%s", logMsg.Message)
+		} else {
+			collector.Print(log.DebugLevel, "%s", logMsg.Message)
 		}
 	}
+
+	return nil
 }
 
 func handleSuccessGroup(statusCode int) bool {
