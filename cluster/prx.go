@@ -476,3 +476,31 @@ func (proxy *Proxy) FetchStats() {
 
 	proxy.GetCluster().AddMetrics(metrics)
 }
+
+func (proxy *Proxy) GetWorkingOrchestratorNode() error {
+	cluster := proxy.ClusterGroup
+	if cluster.GetOrchestrator() != config.ConstOrchestratorOpenSVC {
+		return nil
+	}
+
+	srvname := cluster.Name + "/svc/" + proxy.GetName()
+
+	svc := cluster.OpenSVCConnect()
+	agents, err := svc.GetServiceNodeFromState(srvname)
+	if err != nil {
+		return fmt.Errorf("unable to get database agent from OpenSVC: %v", err)
+	}
+
+	if len(agents) == 0 {
+		return fmt.Errorf("no database agents found for service %s", srvname)
+	}
+
+	if !slices.Contains(agents, proxy.GetAgent()) {
+		// Fallback to the first agent in the list
+		proxy.WorkingAgent = agents[0]
+	} else {
+		proxy.WorkingAgent = proxy.GetAgent()
+	}
+
+	return nil
+}
