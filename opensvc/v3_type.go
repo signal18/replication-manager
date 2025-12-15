@@ -1,7 +1,7 @@
 package opensvc
 
 import (
-	apiv3 "github.com/opensvc/om3/daemon/api"
+	apiv3 "github.com/opensvc/om3/v3/daemon/api"
 )
 
 // InstanceActionParams combines all parameters from the various PostInstanceAction* parameter structs.

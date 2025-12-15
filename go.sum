@@ -1533,6 +1533,8 @@ github.com/opensvc/om3 v1.0.0-alpha1.0.20251113070821-cb4ff41e7bcc h1:MpGv69kGGU
 github.com/opensvc/om3 v1.0.0-alpha1.0.20251113070821-cb4ff41e7bcc/go.mod h1:kYEnDQWsYRr9V02F2bivsSocF+aS1aYgY5yB0IbtEoY=
 github.com/opensvc/om3 v1.0.0-alpha1.0.20251211172350-bbb07da3cb67 h1:+hewClcKx1hP/K5iM0MjG2UEpbtax8cS9Fww6mIkPwE=
 github.com/opensvc/om3 v1.0.0-alpha1.0.20251211172350-bbb07da3cb67/go.mod h1:caWoGkMO0RY4PMVV8Ri7FkyYOloLhtksFaW0xREtr7I=
+github.com/opensvc/om3/v3 v3.0.0-beta10 h1:5DqcZOyaY2x60FGv+IucJkvh63RdnCZbUAGCgq7NU1I=
+github.com/opensvc/om3/v3 v3.0.0-beta10/go.mod h1:5kHkJYetOfM3fyKQgZIIvZRZkWB5GOnWS8oP/mkmWQs=
 github.com/opensvc/testhelper v1.0.0/go.mod h1:fUJRZPmQs6iu4/gDlU8oTuTH7+c8vJ3uVOljkR6anL0=
 github.com/opentracing/opentracing-go v1.1.0/go.mod h1:UkNAQd3GIcIGf0SeVgPpRdFStlNbqXla1AfSYxPUl2o=
 github.com/opentracing/opentracing-go v1.2.0 h1:uEJPy/1a5RIPAJ0Ov+OIO8OxWu77jEv+1B0VhjKrZUs=

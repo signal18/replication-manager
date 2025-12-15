@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	clientv3 "github.com/opensvc/om3/core/client"
-	apiv3 "github.com/opensvc/om3/daemon/api"
-	"github.com/opensvc/om3/util/funcopt"
+	clientv3 "github.com/opensvc/om3/v3/core/client"
+	apiv3 "github.com/opensvc/om3/v3/daemon/api"
+	"github.com/opensvc/om3/v3/util/funcopt"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/tidwall/gjson"

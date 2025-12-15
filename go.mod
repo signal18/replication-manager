@@ -223,6 +223,7 @@ require (
 	github.com/opensvc/fcntllock v1.0.3 // indirect
 	github.com/opensvc/flock v1.1.1 // indirect
 	github.com/opensvc/locker v1.0.3 // indirect
+	github.com/opensvc/om3/v3 v3.0.0-beta10 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/perimeterx/marshmallow v1.1.5 // indirect
