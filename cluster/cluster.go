@@ -693,7 +693,9 @@ func (cluster *Cluster) Run() {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
 			cluster.AppIdList = cluster.GetAppServerIdList()
-			cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
+			if cluster.ResticManager != nil {
+				cluster.IsResticQueuePaused = cluster.ResticManager.IsPaused()
+			}
 			go cluster.CheckDefaultUser(false)
 
 			if cluster.HasBadConfigMeasurement() {
