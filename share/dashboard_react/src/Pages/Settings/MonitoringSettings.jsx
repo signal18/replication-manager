@@ -131,6 +131,52 @@ function MonitoringSettings({ selectedCluster, user, openConfirmModal }) {
       )
     },
     {
+      key: 'Monitoring Schema Columns',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-schema-columns?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-columns' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringSchemaColumns}
+          loading={monSchemaChangeLoading}
+        />
+      )
+    },
+     {
+      key: 'Monitoring Schema Indexes',
+      value: (
+        <RMSwitch
+          confirmTitle={'Confirm switch settings for monitoring-schema-indexes?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-indexes' }))
+          }
+          isDisabled={user?.grants['cluster-settings'] == false}
+          isChecked={selectedCluster?.config?.monitoringSchemaIndexes}
+          loading={monSchemaChangeLoading}
+        />
+      )
+    },
+    {
+      key: 'Monitoring Schema Ignore Tables',
+      value: (
+        <TextForm
+          value={selectedCluster?.config?.monitoringSchemaIgnoreTables}
+          confirmTitle={`Confirm change 'monitoring-schema-ignore-tables' to: `}
+          onSave={(errorListValue) =>
+            dispatch(
+              setSetting({
+                clusterName: selectedCluster?.name,
+                setting: 'monitoring-schema-ignore-tables',
+                value: errorListValue.length === 0 ? '&nbsp;' : errorListValue
+              })
+            )
+          }
+        />
+      )
+    },
+    {
       key: 'Monitoring Variable Diff',
       value: (
         <RMSwitch

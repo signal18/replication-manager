@@ -1538,6 +1538,9 @@ func (cluster *Cluster) SetMonitoringSchemaSchedulerCron(value string) error {
 }
 
 func (cluster *Cluster) SetMonitoringSchemaIgnoreTables(value string) error {
+	if value == "&nbsp;" {
+		value = ""
+	}
 	cluster.Conf.MonitorSchemaIgnoreTables = value
 	return nil
 }
