@@ -477,6 +477,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/monitor-schemas", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMonitorSchemas)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
@@ -5205,6 +5209,37 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 		return
 	}
 	return
+}
+
+// handlerMuxClusterMonitorSchemas triggers the monitoring of schemas for a given cluster.
+// @Summary Monitor schemas for a specific cluster
+// @Description This endpoint triggers the monitoring of schemas for the specified cluster.
+// @Tags ClusterMonitor
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully triggered schema monitoring"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/monitor-schemas [post]
+func (repman *ReplicationManager) handlerMuxClusterMonitorSchemas(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.SetWaitMonitorSchema()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
 }
 
 // handlerMuxClusterSchemaChecksumAllTable handles the checksum calculation for all tables in a given cluster.

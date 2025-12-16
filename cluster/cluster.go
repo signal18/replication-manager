@@ -969,6 +969,10 @@ func (cluster *Cluster) StateProcessing() {
 				go cluster.RollingJobsUpgrade()
 			}
 
+			if s.ErrKey == "WARN0163" {
+				go cluster.MonitorSchema()
+			}
+
 			//		cluster.statecloseChan <- s
 			cluster.CheckAlert(s, true)
 			cluster.BashScriptCloseSate(s)
