@@ -751,9 +751,11 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
 
-						if cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() && !cluster.StateMachine.IsInSchemaMonitor() {
+						// Monitor schema when shardproxy is used
+						if cluster.Conf.MdbsProxyOn {
 							go cluster.MonitorSchema()
 						}
+
 						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 							cluster.InjectProxiesTraffic()
 						}
@@ -1866,6 +1868,14 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 
 func (cluster *Cluster) MonitorSchema() {
 	if !cluster.Conf.MonitorSchemaChange {
+		return
+	}
+
+	if cluster.StateMachine.IsInSchemaMonitor() {
+		return
+	}
+
+	if cluster.StateMachine.SchemaMonitorEndTime+60 > time.Now().Unix() {
 		return
 	}
 
