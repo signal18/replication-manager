@@ -419,6 +419,18 @@ func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange
 }
 
+func (cluster *Cluster) SwitchMonitoringSchemaColumns() {
+	cluster.Conf.MonitorSchemaColumns = !cluster.Conf.MonitorSchemaColumns
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaIndexes() {
+	cluster.Conf.MonitorSchemaIndexes = !cluster.Conf.MonitorSchemaIndexes
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaOnReplicas() {
+	cluster.Conf.MonitorSchemaOnReplicas = !cluster.Conf.MonitorSchemaOnReplicas
+}
+
 func (cluster *Cluster) SwitchMonitoringCapture() {
 	cluster.Conf.MonitorCapture = !cluster.Conf.MonitorCapture
 	// delete cluster config

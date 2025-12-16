@@ -2406,6 +2406,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "monitoring-schema-columns":
+		mycluster.SwitchMonitoringSchemaColumns()
+	case "monitoring-schema-indexes":
+		mycluster.SwitchMonitoringSchemaIndexes()
+	case "monitoring-schema-on-replicas":
+		mycluster.SwitchMonitoringSchemaOnReplicas()
 	case "monitoring-capture":
 		mycluster.SwitchMonitoringCapture()
 	case "monitoring-innodb-status":
@@ -2943,6 +2949,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerJobsSshCron(value)
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
+	case "monitoring-schema-scheduler-cron":
+		mycluster.SetMonitoringSchemaSchedulerCron(value)
+	case "monitoring-schema-ignore-tables":
+		mycluster.SetMonitoringSchemaIgnoreTables(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":
@@ -3577,6 +3587,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringScheduler(applyIsActive(mycluster.Conf.MonitorScheduler, isactive))
 	case "monitoring-schema-change":
 		mycluster.Conf.MonitorSchemaChange = applyIsActive(mycluster.Conf.MonitorSchemaChange, isactive)
+	case "monitoring-schema-columns":
+		mycluster.Conf.MonitorSchemaColumns = applyIsActive(mycluster.Conf.MonitorSchemaColumns, isactive)
+	case "monitoring-schema-indexes":
+		mycluster.Conf.MonitorSchemaIndexes = applyIsActive(mycluster.Conf.MonitorSchemaIndexes, isactive)
+	case "monitoring-schema-on-replicas":
+		mycluster.Conf.MonitorSchemaOnReplicas = applyIsActive(mycluster.Conf.MonitorSchemaOnReplicas, isactive)
 	case "monitoring-capture":
 		mycluster.Conf.MonitorCapture = applyIsActive(mycluster.Conf.MonitorCapture, isactive)
 	case "monitoring-innodb-status":

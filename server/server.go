@@ -345,6 +345,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.BoolVar(&conf.MonitorInnoDBStatus, "monitoring-innodb-status", true, "Monitor innodb status")
 	flags.StringVar(&conf.MonitorIgnoreErrors, "monitoring-ignore-errors", "", "Comma separated list of error or warning to ignore")
 	flags.BoolVar(&conf.MonitorSchemaChange, "monitoring-schema-change", true, "Monitor schema change")
+	flags.StringVar(&conf.MonitorSchemaSchedulerCron, "monitoring-schema-schedule-cron", "0 0 1 * * *", "Cron format schedule for schema monitoring")
 	flags.BoolVar(&conf.MonitorSchemaColumns, "monitoring-schema-columns", true, "Monitor schema columns changes")
 	flags.BoolVar(&conf.MonitorSchemaIndexes, "monitoring-schema-indexes", true, "Monitor schema indexes changes")
 	flags.BoolVar(&conf.MonitorSchemaOnReplicas, "monitoring-schema-on-replicas", true, "Also monitor schema changes on replicas")

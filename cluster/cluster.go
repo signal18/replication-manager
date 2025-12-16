@@ -175,90 +175,79 @@ type Cluster struct {
 	//rplPass                   string                      `json:"-"`
 	//proxysqlUser              string                      `json:"-"`
 	//proxysqlPass              string                      `json:"-"`
-	StateMachine              *state.StateMachine         `json:"stateMachine" groups:"web"`
-	runOnceAfterTopology      bool                        `json:"-"`
-	logPtr                    *os.File                    `json:"-"`
-	termlength                int                         `json:"-"`
-	runUUID                   string                      `json:"-"`
-	cfgGroupDisplay           string                      `json:"-"`
-	RepMgrVersion             string                      `json:"-"`
-	RepMgrHostname            string                      `json:"-"`
-	exitMsg                   string                      `json:"-"`
-	exit                      bool                        `json:"-"`
-	canFlashBack              bool                        `json:"-"`
-	canResticFetchRepo        bool                        `json:"-"`
-	failoverCond              *nbc.NonBlockingChan        `json:"-"`
-	switchoverCond            *nbc.NonBlockingChan        `json:"-"`
-	rejoinCond                *nbc.NonBlockingChan        `json:"-"`
-	bootstrapCond             *nbc.NonBlockingChan        `json:"-"`
-	altertableCond            *nbc.NonBlockingChan        `json:"-"`
-	addtableCond              *nbc.NonBlockingChan        `json:"-"`
-	statecloseChan            chan state.State            `json:"-"`
-	switchoverChan            chan bool                   `json:"-"`
-	errorChan                 chan error                  `json:"-"`
-	testStopCluster           bool                        `json:"-"`
-	testStartCluster          bool                        `json:"-"`
-	lastmaster                *ServerMonitor              `json:"-"`
-	benchmarkType             string                      `json:"-"`
-	HaveDBTLSCert             bool                        `json:"haveDBTLSCert" groups:"web"`
-	HaveDBTLSOldCert          bool                        `json:"haveDBTLSOldCert" groups:"web"`
-	tlsconf                   *tls.Config                 `json:"-"`
-	tlsoldconf                *tls.Config                 `json:"-"`
-	tunnel                    *ssh.Client                 `json:"-"`
-	QueryRules                map[uint32]config.QueryRule `json:"-"`
-	Backups                   []v3.Backup                 `json:"-"`
-	BackupStat                v3.BackupStat               `json:"backupStat" groups:"web"`
-	BackupMetaMap             *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
-	SLAHistory                []state.Sla                 `json:"slaHistory" groups:"web"`
-	APIUsers                  map[string]APIUser          `json:"apiUsers" groups:"web"`
-	Schedule                  map[string]cron.Entry       `json:"-"`
-	scheduler                 *cron.Cron                  `json:"-"`
-	idSchedulerPhysicalBackup cron.EntryID                `json:"-"`
-	idSchedulerLogicalBackup  cron.EntryID                `json:"-"`
-	idSchedulerOptimize       cron.EntryID                `json:"-"`
-	idSchedulerAnalyze        cron.EntryID                `json:"-"`
-	idSchedulerErrorLogs      cron.EntryID                `json:"-"`
-	idSchedulerLogRotateTable cron.EntryID                `json:"-"`
-	idSchedulerSLARotate      cron.EntryID                `json:"-"`
-	idSchedulerRollingRestart cron.EntryID                `json:"-"`
-	idSchedulerDbsjobsSsh     cron.EntryID                `json:"-"`
-	idSchedulerRollingReprov  cron.EntryID                `json:"-"`
-	idSchedulerAlertDisable   cron.EntryID                `json:"-"`
-	debugLineMap              map[string]int              `json:"-"`
-	WaitingRejoin             int                         `json:"waitingRejoin" groups:"web"`
-	WaitingSwitchover         int                         `json:"waitingSwitchover" groups:"web"`
-	WaitingFailover           int                         `json:"waitingFailover" groups:"web"`
-	Configurator              configurator.Configurator   `json:"configurator" groups:"web"`
-	DiffVariables             []VariableDiff              `json:"diffVariables" groups:"web"`
-	inInitNodes               bool                        `json:"-"`
-	inOptimizeTables          bool                        `json:"inOptimizeTables" groups:"web"`
-	inAnalyzeTables           bool                        `json:"inAnalyzeTables" groups:"web"`
-	inConnectVault            bool                        `json:"-"`
-	CanInitNodes              bool                        `json:"canInitNodes" groups:"web"`
-	errorInitNodes            error                       `json:"-"`
-	CanConnectVault           bool                        `json:"canConnectVault"`
-	errorConnectVault         error                       `json:"-"`
-	SqlErrorLog               *logsql.Logger              `json:"-"`
-	SqlGeneralLog             *logsql.Logger              `json:"-"`
-	SstAvailablePorts         map[string]string           `json:"sstAvailablePorts" groups:"web"`
-	InPhysicalBackup          bool                        `json:"inPhysicalBackup" groups:"web"`
-	InLogicalBackup           bool                        `json:"inLogicalBackup" groups:"web"`
-	InBinlogBackup            bool                        `json:"inBinlogBackup" groups:"web"`
-	InResticBackup            bool                        `json:"inResticBackup" groups:"web"`
-	InRollingRestart          bool                        `json:"inRollingRestart" groups:"web"`
-	failLoadP12Cert           bool                        `json:"-"`
-	Mailer                    *mailer.Mailer              `json:"-"`
-	ResticManager             *backupmgr.ResticManager    `json:"-"`
-	MessageChan               chan sharedlog.Message      `json:"-"`
-	ErrorConfigs              config.ErrorConfigs         `json:"-"` //To store error config
-	Partner                   *config.Partner             `json:"partner" groups:"web"`
-	ConfigManager             *manager.ConfigManager      `json:"-"`
-	failSendCount             int                         `json:"-"`
-	MeetUserID                string                      `json:"-"` //To store meet user id
-	ServiceTemplates          []string                    `json:"-"` //To store application templates
-	DiskStatManager           *misc.DiskStatManager       `json:"diskStat" groups:"web"`
-	RefreshTemplateMD5Chan    chan *App                   `json:"-"`
-	LastDelayStatPrint        time.Time
+	StateMachine           *state.StateMachine         `json:"stateMachine" groups:"web"`
+	runOnceAfterTopology   bool                        `json:"-"`
+	logPtr                 *os.File                    `json:"-"`
+	termlength             int                         `json:"-"`
+	runUUID                string                      `json:"-"`
+	cfgGroupDisplay        string                      `json:"-"`
+	RepMgrVersion          string                      `json:"-"`
+	RepMgrHostname         string                      `json:"-"`
+	exitMsg                string                      `json:"-"`
+	exit                   bool                        `json:"-"`
+	canFlashBack           bool                        `json:"-"`
+	canResticFetchRepo     bool                        `json:"-"`
+	failoverCond           *nbc.NonBlockingChan        `json:"-"`
+	switchoverCond         *nbc.NonBlockingChan        `json:"-"`
+	rejoinCond             *nbc.NonBlockingChan        `json:"-"`
+	bootstrapCond          *nbc.NonBlockingChan        `json:"-"`
+	altertableCond         *nbc.NonBlockingChan        `json:"-"`
+	addtableCond           *nbc.NonBlockingChan        `json:"-"`
+	statecloseChan         chan state.State            `json:"-"`
+	switchoverChan         chan bool                   `json:"-"`
+	errorChan              chan error                  `json:"-"`
+	testStopCluster        bool                        `json:"-"`
+	testStartCluster       bool                        `json:"-"`
+	lastmaster             *ServerMonitor              `json:"-"`
+	benchmarkType          string                      `json:"-"`
+	HaveDBTLSCert          bool                        `json:"haveDBTLSCert" groups:"web"`
+	HaveDBTLSOldCert       bool                        `json:"haveDBTLSOldCert" groups:"web"`
+	tlsconf                *tls.Config                 `json:"-"`
+	tlsoldconf             *tls.Config                 `json:"-"`
+	tunnel                 *ssh.Client                 `json:"-"`
+	QueryRules             map[uint32]config.QueryRule `json:"-"`
+	Backups                []v3.Backup                 `json:"-"`
+	BackupStat             v3.BackupStat               `json:"backupStat" groups:"web"`
+	BackupMetaMap          *backupmgr.BackupMetaMap    `json:"backupList" groups:"web"`
+	SLAHistory             []state.Sla                 `json:"slaHistory" groups:"web"`
+	APIUsers               map[string]APIUser          `json:"apiUsers" groups:"web"`
+	Schedule               map[string]cron.Entry       `json:"-"`
+	scheduler              *cron.Cron                  `json:"-"`
+	debugLineMap           map[string]int              `json:"-"`
+	WaitingRejoin          int                         `json:"waitingRejoin" groups:"web"`
+	WaitingSwitchover      int                         `json:"waitingSwitchover" groups:"web"`
+	WaitingFailover        int                         `json:"waitingFailover" groups:"web"`
+	Configurator           configurator.Configurator   `json:"configurator" groups:"web"`
+	DiffVariables          []VariableDiff              `json:"diffVariables" groups:"web"`
+	inInitNodes            bool                        `json:"-"`
+	inOptimizeTables       bool                        `json:"inOptimizeTables" groups:"web"`
+	inAnalyzeTables        bool                        `json:"inAnalyzeTables" groups:"web"`
+	inConnectVault         bool                        `json:"-"`
+	CanInitNodes           bool                        `json:"canInitNodes" groups:"web"`
+	errorInitNodes         error                       `json:"-"`
+	CanConnectVault        bool                        `json:"canConnectVault"`
+	errorConnectVault      error                       `json:"-"`
+	SqlErrorLog            *logsql.Logger              `json:"-"`
+	SqlGeneralLog          *logsql.Logger              `json:"-"`
+	SstAvailablePorts      map[string]string           `json:"sstAvailablePorts" groups:"web"`
+	InPhysicalBackup       bool                        `json:"inPhysicalBackup" groups:"web"`
+	InLogicalBackup        bool                        `json:"inLogicalBackup" groups:"web"`
+	InBinlogBackup         bool                        `json:"inBinlogBackup" groups:"web"`
+	InResticBackup         bool                        `json:"inResticBackup" groups:"web"`
+	InRollingRestart       bool                        `json:"inRollingRestart" groups:"web"`
+	failLoadP12Cert        bool                        `json:"-"`
+	Mailer                 *mailer.Mailer              `json:"-"`
+	ResticManager          *backupmgr.ResticManager    `json:"-"`
+	MessageChan            chan sharedlog.Message      `json:"-"`
+	ErrorConfigs           config.ErrorConfigs         `json:"-"` //To store error config
+	Partner                *config.Partner             `json:"partner" groups:"web"`
+	ConfigManager          *manager.ConfigManager      `json:"-"`
+	failSendCount          int                         `json:"-"`
+	MeetUserID             string                      `json:"-"` //To store meet user id
+	ServiceTemplates       []string                    `json:"-"` //To store application templates
+	DiskStatManager        *misc.DiskStatManager       `json:"diskStat" groups:"web"`
+	RefreshTemplateMD5Chan chan *App                   `json:"-"`
+	LastDelayStatPrint     time.Time
 	sync.Mutex
 	crcTable               *crc64.Table
 	SlavesOldestMasterFile SlavesOldestMasterFile
