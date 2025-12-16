@@ -1533,7 +1533,7 @@ func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
 
 func (cluster *Cluster) SetMonitoringSchemaSchedulerCron(value string) error {
 	cluster.Conf.MonitorSchemaSchedulerCron = value
-	cluster.SetSchedulerMonitorSchemas()
+	cluster.SetSchedulerMonitorSchema()
 	return nil
 }
 

@@ -189,6 +189,6 @@ func (cluster *Cluster) SetSchedulerAlertDisable() {
 	cluster.SetScheduler(cluster.Conf.SchedulerAlertDisable, "alertdisable", cluster.Conf.SchedulerAlertDisableCron, cluster.GetAlertDisableFunction())
 }
 
-func (cluster *Cluster) SetSchedulerMonitorSchemas() {
-	cluster.SetScheduler(cluster.Conf.MonitorSchemaChange, "monitorschema", cluster.Conf.MonitorSchemaSchedulerCron, cluster.GetMonitorSchemasFunction())
+func (cluster *Cluster) SetSchedulerMonitorSchema() {
+	cluster.SetScheduler(cluster.Conf.MonitorSchemaScheduler, "monitorschema", cluster.Conf.MonitorSchemaSchedulerCron, cluster.GetMonitorSchemasFunction())
 }

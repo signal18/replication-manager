@@ -312,6 +312,12 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 
 func (cluster *Cluster) SwitchSchedulerAlertDisable() {
 	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
+	cluster.SetSchedulerAlertDisable()
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaScheduler() {
+	cluster.Conf.MonitorSchemaScheduler = !cluster.Conf.MonitorSchemaScheduler
+	cluster.SetSchedulerMonitorSchema()
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {

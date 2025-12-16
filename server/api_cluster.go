@@ -3440,64 +3440,61 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		oldValue := mycluster.Conf.SchedulerBackupLogical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupLogical = newValue
-			mycluster.SetSchedulerBackupLogical()
+			mycluster.SwitchSchedulerBackupLogical()
 		}
 	case "scheduler-db-servers-physical-backup":
 		oldValue := mycluster.Conf.SchedulerBackupPhysical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupPhysical = newValue
-			mycluster.SetSchedulerBackupPhysical()
+			mycluster.SwitchSchedulerBackupPhysical()
 		}
 	case "scheduler-db-servers-logs":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogs
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogs = newValue
-			mycluster.SetSchedulerBackupLogs()
+			mycluster.SwitchSchedulerDatabaseLogs()
 		}
 	case "scheduler-jobs-ssh":
 		oldValue := mycluster.Conf.SchedulerJobsSSH
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerJobsSSH = newValue
-			mycluster.SetSchedulerDbJobsSsh()
+			mycluster.SwitchSchedulerDbJobsSsh()
 		}
 	case "scheduler-db-servers-logs-table-rotate":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogsTableRotate
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogsTableRotate = newValue
-			mycluster.SetSchedulerLogsTableRotate()
+			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
 		}
 	case "scheduler-rolling-restart":
 		oldValue := mycluster.Conf.SchedulerRollingRestart
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingRestart = newValue
-			mycluster.SetSchedulerRollingRestart()
+			mycluster.SwitchSchedulerRollingRestart()
 		}
 	case "scheduler-rolling-reprov":
 		oldValue := mycluster.Conf.SchedulerRollingReprov
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingReprov = newValue
-			mycluster.SetSchedulerRollingReprov()
+			mycluster.SwitchSchedulerRollingReprov()
 		}
 	case "scheduler-db-servers-optimize":
 		oldValue := mycluster.Conf.SchedulerDatabaseOptimize
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseOptimize = newValue
-			mycluster.SetSchedulerOptimize()
+			mycluster.SwitchSchedulerDatabaseOptimize()
 		}
 	case "scheduler-db-servers-analyze":
 		oldValue := mycluster.Conf.SchedulerDatabaseAnalyze
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseAnalyze = newValue
-			mycluster.SetSchedulerAnalyze()
+			mycluster.SwitchSchedulerDatabaseAnalyze()
+		}
+	case "monitoring-schema-scheduler":
+		oldValue := mycluster.Conf.MonitorSchemaScheduler
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.SwitchMonitoringSchemaScheduler()
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)

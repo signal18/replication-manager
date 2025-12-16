@@ -87,7 +87,8 @@ type Config struct {
 	MonitorSchemaIndexes                      bool                   `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`
 	MonitorSchemaOnReplicas                   bool                   `mapstructure:"monitoring-schema-on-replicas" toml:"monitoring-schema-on-replicas" json:"monitoringSchemaOnReplicas"`
 	MonitorSchemaIgnoreTables                 string                 `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
-	MonitorSchemaSchedulerCron                string                 `mapstructure:"monitoring-schema-schedule-cron" toml:"monitoring-schema-schedule-cron" json:"monitoringSchemaScheduleCron"`
+	MonitorSchemaScheduler                    bool                   `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
+	MonitorSchemaSchedulerCron                string                 `mapstructure:"monitoring-schema-scheduler-cron" toml:"monitoring-schema-scheduler-cron" json:"monitoringSchemaSchedulerCron"`
 	MonitorQueryRules                         bool                   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string                 `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool                   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
