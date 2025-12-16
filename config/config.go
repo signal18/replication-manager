@@ -83,6 +83,10 @@ type Config struct {
 	MonitorWriteHeartbeatCredential           string                 `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                       bool                   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                       bool                   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
+	MonitorSchemaColumns                      bool                   `mapstructure:"monitoring-schema-columns" toml:"monitoring-schema-columns" json:"monitoringSchemaColumns"`
+	MonitorSchemaIndexes                      bool                   `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`
+	MonitorSchemaOnReplicas                   bool                   `mapstructure:"monitoring-schema-on-replicas" toml:"monitoring-schema-on-replicas" json:"monitoringSchemaOnReplicas"`
+	MonitorSchemaIgnoreTables                 string                 `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
 	MonitorQueryRules                         bool                   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string                 `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool                   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`

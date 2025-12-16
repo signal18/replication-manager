@@ -1704,27 +1704,23 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 	}
 }
 
-func (cluster *Cluster) MonitorSchema() {
-	if !cluster.Conf.MonitorSchemaChange {
-		return
-	}
-
+func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cmaster := cluster.GetMaster()
-
 	if cmaster == nil {
-		return
+		return fmt.Errorf("No master found")
 	}
+
 	if cmaster.State == stateFailed || cmaster.State == stateMaintenance || cmaster.State == stateUnconn {
-		return
+		return fmt.Errorf("Master is not in a valid state")
 	}
 	if cmaster.Conn == nil {
-		return
+		return fmt.Errorf("Master connection is not established")
 	}
 
 	cluster.StateMachine.SetMonitorSchemaState()
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
-	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion)
+	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
 	cluster.LogSQL(logs, err, cmaster.URL, "Monitor", config.LvlDbg, "Could not fetch master tables %s", err)
 	cmaster.Tables = tablelist
 
@@ -1793,6 +1789,94 @@ func (cluster *Cluster) MonitorSchema() {
 	cluster.WorkLoad.DBTableSize = tottablesize
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
 	cluster.StateMachine.RemoveMonitorSchemaState()
+	return nil
+}
+
+func (cluster *Cluster) MonitorAllSlavesTableSchema() {
+	for _, sl := range cluster.slaves {
+		cluster.MonitorSlaveTableSchema(sl)
+	}
+}
+
+func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
+	if sl.State == stateFailed || sl.State == stateMaintenance || sl.State == stateUnconn {
+		return fmt.Errorf("Slave is not in a valid state")
+	}
+
+	if sl.Conn == nil {
+		return fmt.Errorf("Slave connection is not established")
+	}
+
+	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
+	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
+	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
+	sl.Tables = tablelist
+	sl.DictTables = dbhelper.FromNormalTablesMap(sl.DictTables, tables)
+
+	return nil
+}
+
+func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([]string, []string) {
+	diffs := make([]string, 0)
+	ignored := make([]string, 0)
+
+	if cluster.GetMaster() == nil || sl == nil {
+		return diffs, ignored
+	}
+
+	ignoreTables := strings.Split(cluster.Conf.MonitorSchemaIgnoreTables, ",")
+	masterTables := cluster.GetMaster().DictTables.ToNewMap()
+	slTables := sl.DictTables.ToNewMap()
+
+	for tblname, mtbl := range masterTables {
+		if slices.Contains(ignoreTables, tblname) {
+			ignored = append(ignored, tblname)
+			continue
+		}
+		stbl, ok := slTables[tblname]
+		if !ok {
+			diffs = append(diffs, fmt.Sprintf("Table %s missing on slave %s\n", tblname, sl.URL))
+			continue
+		}
+		if mtbl.TableCrc != stbl.TableCrc {
+			tbldiffs := make([]string, 0)
+			if mtbl.TableColumnsCrc64 != stbl.TableColumnsCrc64 {
+				tbldiffs = append(tbldiffs, "columns: (", strings.Join(mtbl.ColumnDiffs(stbl, sl.URL), ", "), ") ")
+			}
+			if mtbl.TableIndexesCrc64 != stbl.TableIndexesCrc64 {
+				tbldiffs = append(tbldiffs, "indexes: (", strings.Join(mtbl.IndexDiffs(stbl, sl.URL), ", "), ") ")
+			}
+			diffs = append(diffs, fmt.Sprintf("Table %s differs on slave %s -> %s\n", tblname, sl.URL, strings.Join(tbldiffs, " ")))
+		}
+	}
+
+	for tblname, _ := range slTables {
+		_, ok := masterTables[tblname]
+		if !ok {
+			if slices.Contains(ignoreTables, tblname) {
+				ignored = append(ignored, tblname)
+				continue
+			}
+			ignored = append(ignored, fmt.Sprintf("Extra table %s found on slave %s\n", tblname, sl.URL))
+		}
+	}
+
+	return diffs, ignored
+}
+
+func (cluster *Cluster) MonitorSchema() {
+	if !cluster.Conf.MonitorSchemaChange {
+		return
+	}
+
+	err := cluster.MonitorMasterTableSchema()
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error during schema monitoring: %s", err)
+	}
+
+	if cluster.Conf.MonitorSchemaOnReplicas {
+		cluster.MonitorAllSlavesTableSchema()
+	}
 }
 
 func (cluster *Cluster) MonitorQueryRules() {
