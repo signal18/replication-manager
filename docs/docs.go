@@ -22003,7 +22003,10 @@ const docTemplate = `{
                 "monitoringSchemaOnReplicas": {
                     "type": "boolean"
                 },
-                "monitoringSchemaScheduleCron": {
+                "monitoringSchemaScheduler": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaSchedulerCron": {
                     "type": "string"
                 },
                 "monitoringSharedir": {

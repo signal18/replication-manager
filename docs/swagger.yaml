@@ -2556,7 +2556,9 @@ definitions:
         type: boolean
       monitoringSchemaOnReplicas:
         type: boolean
-      monitoringSchemaScheduleCron:
+      monitoringSchemaScheduler:
+        type: boolean
+      monitoringSchemaSchedulerCron:
         type: string
       monitoringSharedir:
         type: string
