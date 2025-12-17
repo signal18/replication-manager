@@ -750,8 +750,9 @@ func (cluster *Cluster) Run() {
 						}
 						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
 							cluster.CheckJobsVersion()
+							cluster.MonitorTableSchemaDiff()
 						} else {
-							cluster.StateMachine.PreserveState("WARN0147")
+							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
 						}
 
 						if cluster.StateMachine.GetHeartbeats()%30 == 0 {
@@ -1842,7 +1843,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		}
 		stbl, ok := slTables[tblname]
 		if !ok {
-			diffs = append(diffs, fmt.Sprintf("Table %s missing on slave %s\n", tblname, sl.URL))
+			diffs = append(diffs, fmt.Sprintf("Table %s missing on slave %s", tblname, sl.URL))
 			continue
 		}
 		if mtbl.TableCrc != stbl.TableCrc {
@@ -1853,7 +1854,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 			if mtbl.TableIndexesCrc64 != stbl.TableIndexesCrc64 {
 				tbldiffs = append(tbldiffs, "indexes: (", strings.Join(mtbl.IndexDiffs(stbl, sl.URL), ", "), ") ")
 			}
-			diffs = append(diffs, fmt.Sprintf("Table %s differs on slave %s -> %s\n", tblname, sl.URL, strings.Join(tbldiffs, " ")))
+			diffs = append(diffs, fmt.Sprintf("Table %s differs on slave %s -> %s", tblname, sl.URL, strings.Join(tbldiffs, " ")))
 		}
 	}
 
@@ -1864,11 +1865,32 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 				ignored = append(ignored, tblname)
 				continue
 			}
-			ignored = append(ignored, fmt.Sprintf("Extra table %s found on slave %s\n", tblname, sl.URL))
+			ignored = append(ignored, fmt.Sprintf("Extra table %s found on slave %s", tblname, sl.URL))
 		}
 	}
 
 	return diffs, ignored
+}
+
+func (cluster *Cluster) MonitorTableSchemaDiff() {
+	if !cluster.Conf.MonitorSchemaChange {
+		return
+	}
+
+	if !cluster.Conf.MonitorSchemaOnReplicas {
+		return
+	}
+
+	for _, sl := range cluster.slaves {
+		if sl == nil {
+			continue
+		}
+
+		diffs, _ := cluster.CompareSchemaBetweenMasterAndSlave(sl)
+		if len(diffs) > 0 {
+			cluster.SetState("WARN0164", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0164"], sl.URL, strings.Join(diffs, "\n")), ErrFrom: "MON", ServerUrl: sl.URL})
+		}
+	}
 }
 
 func (cluster *Cluster) MonitorSchema() {
