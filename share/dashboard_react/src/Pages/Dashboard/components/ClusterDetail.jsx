@@ -17,6 +17,7 @@ import {
   configDynamic,
   configReload,
   failOverCluster,
+  monitorAllSchemas,
   provisionCluster,
   reloadCertificates,
   resetFailOverCounter,
@@ -227,6 +228,14 @@ function ClusterDetail({ selectedCluster }) {
     {
       name: 'Maintenance',
       subMenu: [
+        {
+          name: 'Run Monitor Schema',
+          onClick: () => {
+            openConfirmModal()
+            setConfirmTitle('Run monitor schema for all databases?')
+            setConfirmHandler(() => () => dispatch(monitorAllSchemas({ clusterName: selectedCluster?.name })))
+          }
+        },
         {
           name: 'Rolling Optimize',
           onClick: () => {

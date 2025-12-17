@@ -1898,6 +1898,21 @@ export const connectDockerRegistry = createAsyncThunk(
   }
 )
 
+export const monitorAllSchemas = createAsyncThunk('cluster/monitorAllSchemas', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.monitorAllSchemas(clusterName, baseURL)
+    if (status !== 200) {
+      throw new Error(data)
+    }
+    showSuccessBanner('All schemas are now monitored!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner('Error while monitoring all schemas', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
 const initialState = {
   loading: false,
   isFetching: {
@@ -2367,7 +2382,8 @@ export const clusterSlice = createSlice({
         refreshStaging.pending,
         killThread.pending,
         killQuery.pending,
-        rollingJobsUpgrade.pending
+        rollingJobsUpgrade.pending,
+        monitorAllSchemas.pending
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2439,7 +2455,8 @@ export const clusterSlice = createSlice({
         refreshStaging.fulfilled,
         killThread.fulfilled,
         killQuery.fulfilled,
-        rollingJobsUpgrade.fulfilled
+        rollingJobsUpgrade.fulfilled,
+        monitorAllSchemas.fulfilled
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
@@ -2512,7 +2529,8 @@ export const clusterSlice = createSlice({
         refreshStaging.rejected,
         killThread.rejected,
         killQuery.rejected,
-        rollingJobsUpgrade.rejected
+        rollingJobsUpgrade.rejected,
+        monitorAllSchemas.rejected
       ),
       (state, action) => {
         if (action.type.includes('switchOverCluster')) {
