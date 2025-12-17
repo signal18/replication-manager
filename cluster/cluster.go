@@ -633,9 +633,9 @@ func (cluster *Cluster) initScheduler() {
 		cluster.SetSchedulerRollingRestart()
 		cluster.SetSchedulerRollingReprov()
 		cluster.SetSchedulerSlaRotate()
-		cluster.SetSchedulerRollingRestart()
 		cluster.SetSchedulerDbJobsSsh()
 		cluster.SetSchedulerAlertDisable()
+		cluster.SetSchedulerMonitorSchema()
 		cluster.scheduler.Start()
 	}
 
