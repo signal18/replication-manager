@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"path"
 	"reflect"
 	"strings"
 
@@ -617,11 +618,21 @@ func (cluster *Cluster) IsInErrorState(key, serverURL string) bool {
 	}
 }
 
-func (cluster *Cluster) IsInSchemaIgnoreRegex(table string) bool {
-	for _, re := range cluster.SchemaIgnoreRegex {
-		if re.MatchString(table) {
+func (cluster *Cluster) IsInSchemaIgnore(table string) bool {
+	if cluster.Conf.MonitorSchemaIgnoreTables == "" {
+		return false
+	}
+
+	for _, pattern := range strings.Split(cluster.Conf.MonitorSchemaIgnoreTables, ",") {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+		matched, _ := path.Match(trimmed, table)
+		if matched {
 			return true
 		}
 	}
+
 	return false
 }
