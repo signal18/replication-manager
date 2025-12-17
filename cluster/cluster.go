@@ -741,7 +741,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshApps(wg)
 
 						// Monitor schema when shardproxy is used
-						if cluster.Conf.MdbsProxyOn {
+						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
 							go cluster.MonitorSchema()
 						}
 
@@ -1898,10 +1898,6 @@ func (cluster *Cluster) MonitorSchema() {
 	}
 
 	if cluster.StateMachine.IsInSchemaMonitor() {
-		return
-	}
-
-	if cluster.StateMachine.SchemaMonitorEndTime+60 > time.Now().Unix() {
 		return
 	}
 
