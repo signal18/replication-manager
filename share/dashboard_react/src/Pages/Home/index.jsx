@@ -98,7 +98,7 @@ function Home() {
           const apiUser = clusterData.apiUsers[loggedUser.User] ? clusterData.apiUsers[loggedUser.User] : clusterData.apiUsers[loggedUser.Email]
           if (apiUser) {
             setUser(apiUser)
-            const authorizedTabs = ['Dashboard', 'Settings', 'Configs']
+            const authorizedTabs = [selectedClusterNameRef.current, 'Settings', 'Configs']
             if (clusterData.config.graphiteMetrics && apiUser.grants['cluster-show-graphs']) {
               authorizedTabs.push('Graphs')
             }
