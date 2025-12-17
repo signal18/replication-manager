@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -245,6 +246,7 @@ type Cluster struct {
 	failSendCount          int                         `json:"-"`
 	MeetUserID             string                      `json:"-"` //To store meet user id
 	ServiceTemplates       []string                    `json:"-"` //To store application templates
+	SchemaIgnoreRegex      []*regexp.Regexp            `json:"-"`
 	DiskStatManager        *misc.DiskStatManager       `json:"diskStat" groups:"web"`
 	RefreshTemplateMD5Chan chan *App                   `json:"-"`
 	LastDelayStatPrint     time.Time
@@ -408,6 +410,7 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.testStartCluster = true
 	cluster.BackupMetaMap = backupmgr.NewBackupMetaMap()
 	cluster.VersionsMap = config.NewVersionsMap()
+	cluster.SetMonitoringSchemaIgnoreRegexp()
 
 	cluster.WorkingDir = cluster.Conf.WorkingDir + "/" + cluster.Name
 	if cluster.Conf.Arbitration {
@@ -1832,12 +1835,11 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		return diffs, ignored
 	}
 
-	ignoreTables := strings.Split(cluster.Conf.MonitorSchemaIgnoreTables, ",")
 	masterTables := cluster.GetMaster().DictTables.ToNewMap()
 	slTables := sl.DictTables.ToNewMap()
 
 	for tblname, mtbl := range masterTables {
-		if slices.Contains(ignoreTables, tblname) {
+		if cluster.IsInSchemaIgnoreRegex(tblname) {
 			ignored = append(ignored, tblname)
 			continue
 		}
@@ -1861,7 +1863,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 	for tblname, _ := range slTables {
 		_, ok := masterTables[tblname]
 		if !ok {
-			if slices.Contains(ignoreTables, tblname) {
+			if cluster.IsInSchemaIgnoreRegex(tblname) {
 				ignored = append(ignored, tblname)
 				continue
 			}

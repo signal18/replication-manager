@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -1542,6 +1543,30 @@ func (cluster *Cluster) SetMonitoringSchemaIgnoreTables(value string) error {
 		value = ""
 	}
 	cluster.Conf.MonitorSchemaIgnoreTables = value
+	cluster.SetMonitoringSchemaIgnoreRegexp()
+	return nil
+}
+
+func (cluster *Cluster) SetMonitoringSchemaIgnoreRegexp() error {
+	cluster.SchemaIgnoreRegex = make([]*regexp.Regexp, 0)
+	if cluster.Conf.MonitorSchemaIgnoreTables == "" {
+		return nil
+	}
+
+	list := misc.ConvertWildcards(strings.Split(cluster.Conf.MonitorSchemaIgnoreTables, ","))
+	for _, pattern := range list {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+
+		re, err := regexp.Compile(trimmed)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Invalid regexp pattern %s: %s", pattern, err)
+			continue
+		}
+		cluster.SchemaIgnoreRegex = append(cluster.SchemaIgnoreRegex, re)
+	}
 	return nil
 }
 

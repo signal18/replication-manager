@@ -616,3 +616,12 @@ func (cluster *Cluster) IsInErrorState(key, serverURL string) bool {
 		return cluster.StateMachine.IsInState(fmt.Sprintf("%s@%s", key, serverURL))
 	}
 }
+
+func (cluster *Cluster) IsInSchemaIgnoreRegex(table string) bool {
+	for _, re := range cluster.SchemaIgnoreRegex {
+		if re.MatchString(table) {
+			return true
+		}
+	}
+	return false
+}
