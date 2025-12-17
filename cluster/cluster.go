@@ -1712,6 +1712,13 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		return fmt.Errorf("Master connection is not established")
 	}
 
+	loglevel := config.LvlInfo
+	// Shardproxy will increase the intensity of monitoring, so set to debug
+	if cluster.Conf.MdbsProxyOn {
+		loglevel = config.LvlDbg
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring master table schema on %s", cmaster.URL)
+
 	cluster.StateMachine.SetMonitorSchemaState()
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
@@ -1802,6 +1809,13 @@ func (cluster *Cluster) MonitorSlaveTableSchema(sl *ServerMonitor) error {
 		return fmt.Errorf("Slave connection is not established")
 	}
 
+	loglevel := config.LvlInfo
+	// Shardproxy will increase the intensity of monitoring, so set to debug
+	if cluster.Conf.MdbsProxyOn {
+		loglevel = config.LvlDbg
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring slave table schema on %s", sl.URL)
+
 	sl.Conn.SetConnMaxLifetime(3595 * time.Second)
 	tables, tablelist, logs, err := dbhelper.GetTables(sl.Conn, sl.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
 	cluster.LogSQL(logs, err, sl.URL, "Monitor", config.LvlDbg, "Could not fetch slave tables %s", err)
@@ -1871,6 +1885,13 @@ func (cluster *Cluster) MonitorSchema() {
 	if cluster.StateMachine.SchemaMonitorEndTime+60 > time.Now().Unix() {
 		return
 	}
+
+	loglevel := config.LvlInfo
+	// Shardproxy will increase the intensity of monitoring, so set to debug
+	if cluster.Conf.MdbsProxyOn {
+		loglevel = config.LvlDbg
+	}
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Starting schema monitoring")
 
 	err := cluster.MonitorMasterTableSchema()
 	if err != nil {
