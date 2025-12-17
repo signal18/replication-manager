@@ -230,6 +230,7 @@ function ClusterDetail({ selectedCluster }) {
       subMenu: [
         {
           name: 'Run Monitor Schema',
+          isDisabled: !selectedCluster?.config?.monitoringSchemaChange,
           onClick: () => {
             openConfirmModal()
             setConfirmTitle('Run monitor schema for all databases?')

@@ -46,6 +46,7 @@ function MenuOptions({
                       subMenuOption.onClick()
                       onClose()
                     }}
+                    {...(subMenuOption.isDisabled ? { isDisabled: subMenuOption.isDisabled } : {})}
                     key={subIndex}>
                     {subMenuOption.name}
                   </MenuItem>
@@ -62,7 +63,9 @@ function MenuOptions({
                       onClose()
                     }
                   }
-                : {})}>
+                : {})}
+              {...(option.isDisabled ? { isDisabled: option.isDisabled } : {})}
+              >
               {option.name}
             </MenuItem>
           )
