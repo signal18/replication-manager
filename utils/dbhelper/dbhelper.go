@@ -2418,7 +2418,7 @@ func columnDefQuery(db *sqlx.DB, myver *version.Version, schema string) string {
 		return ""
 	}
 
-	return GetNoBlockOnMetadataLock(db, myver) + "SELECT TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = `" + schema + "`"
+	return GetNoBlockOnMetadataLock(db, myver) + "SELECT TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '" + schema + "'"
 }
 
 func indexDefQuery(db *sqlx.DB, myver *version.Version, schema string) string {
