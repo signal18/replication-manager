@@ -1252,6 +1252,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/monitor-schemas": {
+            "post": {
+                "description": "This endpoint triggers the monitoring of schemas for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Monitor schemas for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully triggered schema monitoring",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/optimize": {
             "post": {
                 "description": "This endpoint triggers the optimization process for the specified cluster.",
@@ -21937,6 +21989,24 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "monitoringSchemaChangeScript": {
+                    "type": "string"
+                },
+                "monitoringSchemaColumns": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaIgnoreTables": {
+                    "type": "string"
+                },
+                "monitoringSchemaIndexes": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaOnReplicas": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaScheduler": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaSchedulerCron": {
                     "type": "string"
                 },
                 "monitoringSharedir": {

@@ -621,6 +621,9 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return cluster.IsURLPassAppsACL(strUser, URL)
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSharding] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/monitor-schemas") {
+			return true
+		}
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/schema") {
 			return true
 		}

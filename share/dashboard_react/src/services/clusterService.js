@@ -111,6 +111,7 @@ export const clusterService = {
   analyzeSchema,
   killThread,
   killQuery,
+  monitorAllSchemas,
 
   // Test run APIs
   runSysbench,
@@ -544,6 +545,10 @@ function analyzeTable(clusterName, schema, table, persistent, baseURL) {
 
 function analyzeSchema(clusterName, schema, persistent, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/schema/${schema}/all/actions/analyze-schema/${persistent}`)
+}
+
+function monitorAllSchemas(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/actions/monitor-schemas`)
 }
 
 //#endregion Database service APIs

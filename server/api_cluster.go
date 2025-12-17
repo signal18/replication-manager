@@ -477,6 +477,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
 	))
+	router.Handle("/api/clusters/{clusterName}/actions/monitor-schemas", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMonitorSchemas)),
+	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterSchemaChecksumAllTable)),
@@ -2402,6 +2406,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "monitoring-schema-columns":
+		mycluster.SwitchMonitoringSchemaColumns()
+	case "monitoring-schema-indexes":
+		mycluster.SwitchMonitoringSchemaIndexes()
+	case "monitoring-schema-on-replicas":
+		mycluster.SwitchMonitoringSchemaOnReplicas()
 	case "monitoring-capture":
 		mycluster.SwitchMonitoringCapture()
 	case "monitoring-innodb-status":
@@ -2939,6 +2949,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerJobsSshCron(value)
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
+	case "monitoring-schema-scheduler-cron":
+		mycluster.SetMonitoringSchemaSchedulerCron(value)
+	case "monitoring-schema-ignore-tables":
+		mycluster.SetMonitoringSchemaIgnoreTables(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":
@@ -3426,64 +3440,61 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		oldValue := mycluster.Conf.SchedulerBackupLogical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupLogical = newValue
-			mycluster.SetSchedulerBackupLogical()
+			mycluster.SwitchSchedulerBackupLogical()
 		}
 	case "scheduler-db-servers-physical-backup":
 		oldValue := mycluster.Conf.SchedulerBackupPhysical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupPhysical = newValue
-			mycluster.SetSchedulerBackupPhysical()
+			mycluster.SwitchSchedulerBackupPhysical()
 		}
 	case "scheduler-db-servers-logs":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogs
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogs = newValue
-			mycluster.SetSchedulerBackupLogs()
+			mycluster.SwitchSchedulerDatabaseLogs()
 		}
 	case "scheduler-jobs-ssh":
 		oldValue := mycluster.Conf.SchedulerJobsSSH
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerJobsSSH = newValue
-			mycluster.SetSchedulerDbJobsSsh()
+			mycluster.SwitchSchedulerDbJobsSsh()
 		}
 	case "scheduler-db-servers-logs-table-rotate":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogsTableRotate
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogsTableRotate = newValue
-			mycluster.SetSchedulerLogsTableRotate()
+			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
 		}
 	case "scheduler-rolling-restart":
 		oldValue := mycluster.Conf.SchedulerRollingRestart
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingRestart = newValue
-			mycluster.SetSchedulerRollingRestart()
+			mycluster.SwitchSchedulerRollingRestart()
 		}
 	case "scheduler-rolling-reprov":
 		oldValue := mycluster.Conf.SchedulerRollingReprov
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingReprov = newValue
-			mycluster.SetSchedulerRollingReprov()
+			mycluster.SwitchSchedulerRollingReprov()
 		}
 	case "scheduler-db-servers-optimize":
 		oldValue := mycluster.Conf.SchedulerDatabaseOptimize
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseOptimize = newValue
-			mycluster.SetSchedulerOptimize()
+			mycluster.SwitchSchedulerDatabaseOptimize()
 		}
 	case "scheduler-db-servers-analyze":
 		oldValue := mycluster.Conf.SchedulerDatabaseAnalyze
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseAnalyze = newValue
-			mycluster.SetSchedulerAnalyze()
+			mycluster.SwitchSchedulerDatabaseAnalyze()
+		}
+	case "monitoring-schema-scheduler":
+		oldValue := mycluster.Conf.MonitorSchemaScheduler
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.SwitchMonitoringSchemaScheduler()
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
@@ -3573,6 +3584,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringScheduler(applyIsActive(mycluster.Conf.MonitorScheduler, isactive))
 	case "monitoring-schema-change":
 		mycluster.Conf.MonitorSchemaChange = applyIsActive(mycluster.Conf.MonitorSchemaChange, isactive)
+	case "monitoring-schema-columns":
+		mycluster.Conf.MonitorSchemaColumns = applyIsActive(mycluster.Conf.MonitorSchemaColumns, isactive)
+	case "monitoring-schema-indexes":
+		mycluster.Conf.MonitorSchemaIndexes = applyIsActive(mycluster.Conf.MonitorSchemaIndexes, isactive)
+	case "monitoring-schema-on-replicas":
+		mycluster.Conf.MonitorSchemaOnReplicas = applyIsActive(mycluster.Conf.MonitorSchemaOnReplicas, isactive)
 	case "monitoring-capture":
 		mycluster.Conf.MonitorCapture = applyIsActive(mycluster.Conf.MonitorCapture, isactive)
 	case "monitoring-innodb-status":
@@ -5205,6 +5222,37 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 		return
 	}
 	return
+}
+
+// handlerMuxClusterMonitorSchemas triggers the monitoring of schemas for a given cluster.
+// @Summary Monitor schemas for a specific cluster
+// @Description This endpoint triggers the monitoring of schemas for the specified cluster.
+// @Tags ClusterMonitor
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully triggered schema monitoring"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/monitor-schemas [post]
+func (repman *ReplicationManager) handlerMuxClusterMonitorSchemas(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.SetWaitMonitorSchema()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
 }
 
 // handlerMuxClusterSchemaChecksumAllTable handles the checksum calculation for all tables in a given cluster.

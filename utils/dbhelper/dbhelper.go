@@ -31,7 +31,6 @@ import (
 	"github.com/percona/go-mysql/query"
 	"github.com/signal18/replication-manager/utils/misc"
 	"github.com/signal18/replication-manager/utils/version"
-	"google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const debug = false
@@ -102,20 +101,198 @@ func (a PFSQuerySorter) Less(i, j int) bool {
 	return l > r
 }
 
-type Table struct {
-	state         protoimpl.MessageState
-	sizeCache     protoimpl.SizeCache
-	unknownFields protoimpl.UnknownFields
+type Column struct {
+	Name      string  `json:"name"`
+	Type      string  `json:"type"`
+	Nullable  bool    `json:"nullable"`
+	Default   *string `json:"default,omitempty"`
+	Extra     string  `json:"extra,omitempty"`
+	Charset   *string `json:"charset,omitempty"`
+	Collation *string `json:"collation,omitempty"`
+	Crc64     uint64  `json:"crc64,omitempty"`
+}
 
-	TableSchema   string `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
-	TableName     string `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
-	Engine        string `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
-	TableRows     int64  `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows,omitempty"`
-	DataLength    int64  `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length,omitempty"`
-	IndexLength   int64  `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length,omitempty"`
-	TableCrc      uint64 `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc,omitempty"`
-	TableClusters string `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
-	TableSync     string `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync,omitempty"`
+type IndexColumn struct {
+	Name   string  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Prefix *uint16 `protobuf:"varint,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
+}
+
+type Index struct {
+	Name    string        `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Unique  bool          `protobuf:"varint,2,opt,name=unique,proto3" json:"unique,omitempty"`
+	Type    string        `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	Crc64   uint64        `protobuf:"varint,4,opt,name=crc64,proto3" json:"crc64,omitempty"`
+	Columns []IndexColumn `protobuf:"bytes,4,opt,name=columns,proto3" json:"columns,omitempty"`
+}
+
+type Table struct {
+	TableSchema       string             `protobuf:"bytes,1,opt,name=table_schema,json=tableSchema,proto3" json:"table_schema,omitempty"`
+	TableName         string             `protobuf:"bytes,2,opt,name=table_name,json=tableName,proto3" json:"table_name,omitempty"`
+	Engine            string             `protobuf:"bytes,3,opt,name=engine,proto3" json:"engine,omitempty"`
+	TableRows         int64              `protobuf:"varint,4,opt,name=table_rows,json=tableRows,proto3" json:"table_rows,omitempty"`
+	DataLength        int64              `protobuf:"varint,5,opt,name=data_length,json=dataLength,proto3" json:"data_length,omitempty"`
+	IndexLength       int64              `protobuf:"varint,6,opt,name=index_length,json=indexLength,proto3" json:"index_length,omitempty"`
+	TableCrc          uint64             `protobuf:"varint,7,opt,name=table_crc,json=tableCrc,proto3" json:"table_crc,omitempty"`
+	TableClusters     string             `protobuf:"bytes,8,opt,name=table_clusters,json=tableClusters,proto3" json:"table_clusters,omitempty"`
+	TableSync         string             `protobuf:"bytes,9,opt,name=table_sync,json=tableSync,proto3" json:"table_sync,omitempty"`
+	TableColumns      []Column           `protobuf:"bytes,10,opt,name=table_columns,json=tableColumns,proto3" json:"table_columns,omitempty"`
+	TableIndexes      []Index            `protobuf:"bytes,11,opt,name=table_indexes,json=tableIndexes,proto3" json:"table_indexes,omitempty"`
+	TableColumnsCrc64 uint64             `protobuf:"varint,12,opt,name=table_columns_crc64,json=tableColumnsCrc64,proto3" json:"table_columns_crc64,omitempty"`
+	TableIndexesCrc64 uint64             `protobuf:"varint,13,opt,name=table_indexes_crc64,json=tableIndexesCrc64,proto3" json:"table_indexes_crc64,omitempty"`
+	TableColumnMap    map[string]*Column `protobuf:"-" json:"-"`
+	TableIndexMap     map[string]*Index  `protobuf:"-" json:"-"`
+}
+
+func (x *Table) CanonicalizeColumns() {
+	// columns
+	sort.Slice(x.TableColumns, func(i, j int) bool {
+		return x.TableColumns[i].Name < x.TableColumns[j].Name
+	})
+}
+
+func (x *Table) CanonicalizeIndexes() {
+	// indexes
+	sort.Slice(x.TableIndexes, func(i, j int) bool {
+		return x.TableIndexes[i].Name < x.TableIndexes[j].Name
+	})
+
+	// index columns (order matters!)
+	for i := range x.TableIndexes {
+		sort.Slice(x.TableIndexes[i].Columns, func(a, b int) bool {
+			return x.TableIndexes[i].Columns[a].Name <
+				x.TableIndexes[i].Columns[b].Name
+		})
+	}
+}
+
+func (x *Table) BuildColumnMap() {
+	x.CanonicalizeColumns()
+	// columns
+	colMap := make(map[string]*Column, len(x.TableColumns))
+	for _, c := range x.TableColumns {
+		colMap[c.Name] = &c
+	}
+	x.TableColumnMap = colMap
+}
+
+func (x *Table) BuildIndexMap() {
+	x.CanonicalizeIndexes()
+	// indexes
+	idxMap := make(map[string]*Index, len(x.TableIndexes))
+	for _, i := range x.TableIndexes {
+		idxMap[i.Name] = &i
+	}
+	x.TableIndexMap = idxMap
+}
+
+func (x *Table) HashColumns(crc64Table *crc64.Table) {
+	x.BuildColumnMap()
+	var tableData strings.Builder
+	for _, col := range x.TableColumnMap {
+		if tableData.Len() > 0 {
+			tableData.WriteString("||")
+		}
+
+		var columnData strings.Builder
+		columnData.WriteString(col.Name)
+		columnData.WriteString("|" + col.Type)
+		if col.Nullable {
+			columnData.WriteString("|NULLABLE")
+		} else {
+			columnData.WriteString("|")
+		}
+		if col.Default != nil {
+			columnData.WriteString("|DEFAULT " + *col.Default)
+		} else {
+			columnData.WriteString("|")
+		}
+		if col.Extra != "" {
+			columnData.WriteString("|" + col.Extra)
+		}
+		if col.Charset != nil {
+			columnData.WriteString("|CHARSET|" + *col.Charset)
+		}
+		if col.Collation != nil {
+			columnData.WriteString("|COLLATION|" + *col.Collation)
+		}
+		col.Crc64 = crc64.Checksum([]byte(columnData.String()), crc64Table)
+		tableData.WriteString(fmt.Sprintf("%d", col.Crc64))
+	}
+
+	x.TableColumnsCrc64 = crc64.Checksum([]byte(tableData.String()), crc64Table)
+}
+
+func (x *Table) HashIndexes(crc64Table *crc64.Table) {
+	x.BuildIndexMap()
+	var tableData strings.Builder
+
+	for _, idx := range x.TableIndexMap {
+		if tableData.Len() > 0 {
+			tableData.WriteString("||")
+		}
+
+		var indexData strings.Builder
+		indexData.WriteString(idx.Name)
+		if idx.Unique {
+			indexData.WriteString("|UNIQUE|")
+		} else {
+			indexData.WriteString("|NONUNIQUE|")
+		}
+		indexData.WriteString(idx.Type)
+		for _, col := range idx.Columns {
+			indexData.WriteString("|" + col.Name)
+			if col.Prefix != nil {
+				indexData.WriteString("(" + strconv.Itoa(int(*col.Prefix)) + ")")
+			}
+		}
+		indexData.WriteString("||")
+
+		idx.Crc64 = crc64.Checksum([]byte(indexData.String()), crc64Table)
+		tableData.WriteString(fmt.Sprintf("%d", idx.Crc64))
+	}
+}
+
+func (x *Table) ColumnDiffs(other *Table, replicaID string) []string {
+	var diffs []string
+	for colName, col := range x.TableColumnMap {
+		otherCol, ok := other.TableColumnMap[colName]
+		if !ok {
+			diffs = append(diffs, fmt.Sprintf("%s: missing on replica %s", colName, replicaID))
+			continue
+		}
+
+		if col.Crc64 != otherCol.Crc64 {
+			diffs = append(diffs, fmt.Sprintf("%s: different", colName))
+		}
+	}
+
+	for _, colName := range other.TableColumns {
+		if _, ok := x.TableColumnMap[colName.Name]; !ok {
+			diffs = append(diffs, fmt.Sprintf("%s: missing on master", colName.Name))
+		}
+	}
+
+	return diffs
+}
+
+func (x *Table) IndexDiffs(other *Table, replicaID string) []string {
+	var diffs []string
+	for idxName, idx := range x.TableIndexMap {
+		otherIdx, ok := other.TableIndexMap[idxName]
+		if !ok {
+			diffs = append(diffs, fmt.Sprintf("index %s: missing on replica %s", idxName, replicaID))
+			continue
+		}
+		if idx.Crc64 != otherIdx.Crc64 {
+			diffs = append(diffs, fmt.Sprintf("index %s: different with replica %s", idxName, replicaID))
+		}
+	}
+	for _, idxName := range other.TableIndexes {
+		if _, ok := x.TableIndexMap[idxName.Name]; !ok {
+			diffs = append(diffs, fmt.Sprintf("index %s: missing on master", idxName.Name))
+		}
+	}
+	return diffs
 }
 
 func (x *Table) GetTableSchema() string {
@@ -2180,7 +2357,7 @@ func GetPFSVariablesConsumer(db *sqlx.DB) (map[string]string, string, error) {
 	return vars, query, err
 }
 
-func GetNoBlockOnMedataLock(db *sqlx.DB, myver *version.Version) string {
+func GetNoBlockOnMetadataLock(db *sqlx.DB, myver *version.Version) string {
 	if myver.IsPostgreSQL() {
 		return ""
 	}
@@ -2190,74 +2367,371 @@ func GetNoBlockOnMedataLock(db *sqlx.DB, myver *version.Version) string {
 	}
 	return noBlockOnMedataLock
 }
-func GetTables(db *sqlx.DB, myver *version.Version) (map[string]*Table, []Table, string, error) {
-	vars := make(map[string]*Table)
-	var tblList []Table
 
-	logs := ""
-	query := GetNoBlockOnMedataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema', 'sys') AND SCHEMA_NAME NOT LIKE '#%'"
+func schemaQuery(db *sqlx.DB, myver *version.Version) string {
 	if myver.IsPostgreSQL() {
-		query = `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
+		return `SELECT SCHEMA_NAME AS "SCHEMA_NAME" FROM information_schema.schemata  WHERE SCHEMA_NAME not in ('information_schema','pg_catalog')`
 	}
-	databases, err := db.Queryx(query)
+
+	return GetNoBlockOnMetadataLock(db, myver) + "SELECT SCHEMA_NAME from information_schema.SCHEMATA WHERE SCHEMA_NAME NOT IN('information_schema','mysql','performance_schema', 'sys') AND SCHEMA_NAME NOT LIKE '#%'"
+}
+
+func getSchemas(db *sqlx.DB, myver *version.Version) ([]string, string, error) {
+	query := schemaQuery(db, myver)
+
+	rows, err := db.Queryx(query)
 	if err != nil {
-		return nil, nil, query, errors.New("Could not get table list")
+		return nil, query, errors.New("could not get schema list")
 	}
-	defer databases.Close()
-	logs += query
+	defer rows.Close()
 
-	for databases.Next() {
-		var schema string
-		err = databases.Scan(&schema)
-		if err != nil {
-			return vars, tblList, query, err
+	var schemas []string
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, query, err
 		}
-		query := GetNoBlockOnMedataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,COALESCE(a.TABLE_ROWS,0) as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
-		if myver.IsPostgreSQL() {
-			query = `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
-		}
-		logs += "\n" + query
+		schemas = append(schemas, s)
+	}
 
-		rows, err := db.Queryx(query)
+	return schemas, query, nil
+}
 
-		//	rows, err := db.Queryx("SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name ,a.ENGINE as Engine,a.TABLE_ROWS as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length ,COALESCE((select CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10)    FROM information_schema.COLUMNS b left join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  and  b.table_name=c.table_name where b.table_schema=a.table_schema  and  b.table_name=a.table_name ),0) as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' and a.TABLE_SCHEMA NOT IN('information_schema','mysql','performance_schema')")
-		if err != nil {
-			return nil, nil, logs, errors.New("Could not get table list : " + err.Error())
+func tablesQuery(db *sqlx.DB, myver *version.Version, schema string) string {
+	if myver.IsPostgreSQL() {
+		return `SELECT a.schemaname as "Table_schema" ,  a.tablename as "Table_name" ,'postgres' as "Engine",COALESCE(b.n_live_tup,0) as "Table_rows" ,0 as "Data_length",0 as "Index_length" , 0 as "Table_crc"  FROM pg_catalog.pg_tables  a LEFT JOIN pg_catalog.pg_stat_user_tables b ON (a.schemaname=b.schemaname AND a.tablename=b.relname )  WHERE  a.schemaname='` + schema + `'`
+	}
+
+	return GetNoBlockOnMetadataLock(db, myver) + "SELECT a.TABLE_SCHEMA as Table_schema ,  a.TABLE_NAME as Table_name, COALESCE(a.ENGINE,'') as Engine,COALESCE(a.TABLE_ROWS,0) as Table_rows ,COALESCE(a.DATA_LENGTH,0) as Data_length,COALESCE(a.INDEX_LENGTH,0) as Index_length , 0 as Table_crc FROM information_schema.TABLES a WHERE a.TABLE_TYPE='BASE TABLE' AND  a.TABLE_SCHEMA='" + schema + "'"
+}
+
+func ddlQuery(db *sqlx.DB, myver *version.Version, schema, table string) string {
+	if myver.IsPostgreSQL() {
+		return "SELECT 'CREATE TABLE `" + schema + "`.`" + table + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + table + "' ORDER BY ordinal_position) column_list"
+	}
+
+	return GetNoBlockOnMetadataLock(db, myver) + "SHOW CREATE TABLE `" + schema + "`.`" + table + "`"
+}
+
+func columnDefQuery(db *sqlx.DB, myver *version.Version, schema string) string {
+	if myver.IsPostgreSQL() {
+		return ""
+	}
+
+	return GetNoBlockOnMetadataLock(db, myver) + "SELECT TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_DEFAULT, EXTRA, CHARACTER_SET_NAME, COLLATION_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = '" + schema + "'"
+}
+
+func indexDefQuery(db *sqlx.DB, myver *version.Version, schema string) string {
+	if myver.IsPostgreSQL() {
+		return ""
+	}
+
+	return GetNoBlockOnMetadataLock(db, myver) + "SELECT TABLE_SCHEMA, TABLE_NAME, INDEX_NAME, NON_UNIQUE, INDEX_TYPE, SEQ_IN_INDEX, COLUMN_NAME, SUB_PART FROM information_schema.STATISTICS WHERE TABLE_SCHEMA='" + schema + "'"
+}
+
+func normalizeExtra(e string) string {
+	return strings.ToLower(strings.TrimSpace(e))
+}
+
+func normalizeDefault(d string) *string {
+	d = strings.TrimSpace(d)
+	if strings.EqualFold(d, "NULL") {
+		return nil
+	}
+	return &d
+}
+
+func getTableDDLCRC(
+	db *sqlx.DB,
+	myver *version.Version,
+	schema, table string,
+	crcTable *crc64.Table,
+) (uint64, string) {
+
+	query := ddlQuery(db, myver, schema, table)
+	logs := "\n" + query
+
+	var tbl, ddl string
+	if err := db.QueryRowx(query).Scan(&tbl, &ddl); err != nil {
+		return 0, logs
+	}
+
+	if pos := strings.Index(ddl, "ENGINE="); pos > 0 {
+		ddl = ddl[12:pos]
+	}
+
+	return crc64.Checksum([]byte(ddl), crcTable), logs
+}
+
+type columnRow struct {
+	TableSchema      string
+	TableName        string
+	OrdinalPosition  int
+	ColumnName       string
+	ColumnType       string
+	IsNullable       string
+	ColumnDefault    sql.NullString
+	Extra            string
+	CharacterSetName sql.NullString
+	CollationName    sql.NullString
+}
+
+func getTableColumns(
+	db *sqlx.DB,
+	myver *version.Version,
+	schema string,
+	tables map[string]*Table,
+	crc64Table *crc64.Table,
+) (string, error) {
+
+	query := columnDefQuery(db, myver, schema)
+	logs := "\n" + query
+
+	defer func() {
+		for _, t := range tables {
+			t.HashColumns(crc64Table)
 		}
-		defer rows.Close()
+	}()
+
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return logs, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r columnRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.OrdinalPosition,
+			&r.ColumnName,
+			&r.ColumnType,
+			&r.IsNullable,
+			&r.ColumnDefault,
+			&r.Extra,
+			&r.CharacterSetName,
+			&r.CollationName,
+		); err != nil {
+			return logs, err
+		}
+
+		key := r.TableSchema + "." + r.TableName
+		t, ok := tables[key]
+		if !ok {
+			t = &Table{
+				TableSchema: r.TableSchema,
+				TableName:   r.TableName,
+			}
+			tables[key] = t
+		}
+
+		col := Column{
+			Name:     r.ColumnName,
+			Type:     strings.ToLower(r.ColumnType),
+			Nullable: r.IsNullable == "YES",
+			Extra:    normalizeExtra(r.Extra),
+		}
+
+		if r.ColumnDefault.Valid {
+			col.Default = normalizeDefault(r.ColumnDefault.String)
+		}
+
+		if r.CharacterSetName.Valid {
+			col.Charset = &r.CharacterSetName.String
+		}
+		if r.CollationName.Valid {
+			col.Collation = &r.CollationName.String
+		}
+
+		t.TableColumns = append(t.TableColumns, col)
+	}
+
+	return logs, nil
+}
+
+type indexRow struct {
+	TableSchema string
+	TableName   string
+	IndexName   string
+	NonUnique   int
+	IndexType   string
+	SeqInIndex  int
+	ColumnName  string
+	SubPart     sql.NullInt64
+}
+
+func getTableIndexes(
+	db *sqlx.DB,
+	myver *version.Version,
+	schema string,
+	tables map[string]*Table,
+	crc64Table *crc64.Table,
+) (string, error) {
+
+	query := indexDefQuery(db, myver, schema)
+	logs := "\n" + query
+
+	defer func() {
+		for _, t := range tables {
+			t.HashIndexes(crc64Table)
+		}
+	}()
+
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return logs, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var r indexRow
+		if err := rows.Scan(
+			&r.TableSchema,
+			&r.TableName,
+			&r.IndexName,
+			&r.NonUnique,
+			&r.IndexType,
+			&r.SeqInIndex,
+			&r.ColumnName,
+			&r.SubPart,
+		); err != nil {
+			return logs, err
+		}
+
+		key := r.TableSchema + "." + r.TableName
+		t, ok := tables[key]
+		if !ok {
+			// columns loader should have created this,
+			// but be defensive
+			t = &Table{
+				TableSchema: r.TableSchema,
+				TableName:   r.TableName,
+			}
+			tables[key] = t
+		}
+
+		// find or create index
+		var idx *Index
+		for i := range t.TableIndexes {
+			if t.TableIndexes[i].Name == r.IndexName {
+				idx = &t.TableIndexes[i]
+				break
+			}
+		}
+		if idx == nil {
+			idx = &Index{
+				Name:   r.IndexName,
+				Unique: r.NonUnique == 0,
+				Type:   strings.ToUpper(r.IndexType),
+			}
+			t.TableIndexes = append(t.TableIndexes, *idx)
+			idx = &t.TableIndexes[len(t.TableIndexes)-1]
+		}
+
+		// add index column (order preserved by SQL)
+		col := IndexColumn{
+			Name: r.ColumnName,
+		}
+		if r.SubPart.Valid {
+			p := uint16(r.SubPart.Int64)
+			col.Prefix = &p
+		}
+
+		idx.Columns = append(idx.Columns, col)
+	}
+
+	if err := rows.Err(); err != nil {
+		return logs, err
+	}
+
+	return logs, nil
+}
+
+func getTablesForSchema(db *sqlx.DB, myver *version.Version, schema string, crc64Table *crc64.Table) ([]Table, string, error) {
+	var logs string
+	query := tablesQuery(db, myver, schema)
+	logs += "\n" + query
+
+	rows, err := db.Queryx(query)
+	if err != nil {
+		return nil, logs, errors.New("could not get table list: " + err.Error())
+	}
+	defer rows.Close()
+
+	var tables []Table
+
+	for rows.Next() {
+		var t Table
+		if err := rows.Scan(
+			&t.TableSchema,
+			&t.TableName,
+			&t.Engine,
+			&t.TableRows,
+			&t.DataLength,
+			&t.IndexLength,
+			&t.TableCrc,
+		); err != nil {
+			return nil, logs, err
+		}
+
+		crc, qlog := getTableDDLCRC(db, myver, schema, t.TableName, crc64Table)
+		logs += qlog
+		if crc != 0 {
+			t.TableCrc = crc
+		}
+
+		tables = append(tables, t)
+	}
+
+	return tables, logs, nil
+}
+
+func GetTables(db *sqlx.DB, myver *version.Version, getColumns, getIndexes bool) (map[string]*Table, []Table, string, error) {
+
+	var tablemap map[string]*Table = make(map[string]*Table)
+	var tblList []Table
+	logs := ""
+
+	schemas, q, err := getSchemas(db, myver)
+	logs += q
+	if err != nil {
+		return nil, nil, logs, err
+	}
+
+	for _, schema := range schemas {
 		crc64Table := crc64.MakeTable(0xC96C5795D7870F42)
-		for rows.Next() {
-			var v Table
-
-			err = rows.Scan(&v.TableSchema, &v.TableName, &v.Engine, &v.TableRows, &v.DataLength, &v.IndexLength, &v.TableCrc)
-			if err != nil {
-				return vars, tblList, logs, err
-			}
-			//This produce 12 temp table on disk
-			/*	query := "SELECT COALESCE(CONV(LEFT(MD5(group_concat(concat(b.column_name,b.column_type,COALESCE(b.is_nullable,''),COALESCE(b.CHARACTER_SET_NAME,''), COALESCE(b.COLLATION_NAME,''),COALESCE(b.COLUMN_DEFAULT,''),COALESCE(c.CONSTRAINT_NAME,''),COALESCE(c.ORDINAL_POSITION,'')))), 16), 16, 10),0)  FROM information_schema.COLUMNS b inner join information_schema.KEY_COLUMN_USAGE c ON b.table_schema=c.table_schema  AND  b.table_name=c.table_name where b.table_schema='" + schema + "' AND  b.table_name='" + v.Table_name + "'"
-				err = db.QueryRowx(query).Scan(&crcTable)
-			*/
-
-			query := GetNoBlockOnMedataLock(db, myver) + "SHOW CREATE TABLE `" + schema + "`.`" + v.TableName + "`"
-			if myver.IsPostgreSQL() {
-				query = "SELECT 'CREATE TABLE `" + schema + "`.`" + v.TableName + "` (' || E'\n'|| '' || string_agg(column_list.column_expr, ', ' || E'\n' || '') ||   '' || E'\n' || ') ENGINE=postgress;' FROM (   SELECT '    `' || column_name || '` ' || data_type ||   coalesce('(' || character_maximum_length || ')', '') ||   case when is_nullable = 'YES' then '' else ' NOT NULL' end as column_expr  FROM information_schema.columns  WHERE table_schema = '" + schema + "' AND table_name = '" + v.TableName + "' ORDER BY ordinal_position) column_list"
-			}
-			logs += "\n" + query
-			var tbl, ddl string
-			err := db.QueryRowx(query).Scan(&tbl, &ddl)
-			if err == nil {
-				//	v.Table_crc = crcTable
-				pos := strings.Index(ddl, "ENGINE=")
-				ddl = ddl[12:pos]
-				crc64Int := crc64.Checksum([]byte(ddl), crc64Table)
-				v.TableCrc = crc64Int
-			}
-			tblList = append(tblList, v)
-			vars[v.TableSchema+"."+v.TableName] = &v
+		var qlog string
+		tables, qlog, err := getTablesForSchema(db, myver, schema, crc64Table)
+		logs += qlog
+		if err != nil {
+			return nil, nil, logs, err
 		}
-		rows.Close()
+
+		for _, t := range tables {
+			key := t.TableSchema + "." + t.TableName
+			tblList = append(tblList, t)
+			tablemap[key] = &t
+		}
+
+		if getColumns {
+			qlog, err := getTableColumns(db, myver, schema, tablemap, crc64Table)
+			logs += qlog
+			if err != nil {
+				return tablemap, tblList, logs, err
+			}
+		}
+
+		if getIndexes {
+			qlog, err := getTableIndexes(db, myver, schema, tablemap, crc64Table)
+			logs += qlog
+			if err != nil {
+				return tablemap, tblList, logs, err
+			}
+		}
 	}
-	return vars, tblList, logs, nil
+
+	return tablemap, tblList, logs, nil
 }
 
 func GetUsers(db *sqlx.DB, myver *version.Version) (map[string]*Grant, string, error) {

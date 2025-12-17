@@ -94,259 +94,6 @@ func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	}
 }
 
-func (cluster *Cluster) SetSchedulerBackupLogical() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("backuplogical") {
-		cluster.scheduler.Remove(cluster.idSchedulerLogicalBackup)
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logical backup ")
-		delete(cluster.Schedule, "backuplogical")
-	}
-	if cluster.Conf.SchedulerBackupLogical {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule logical backup time at: %s", cluster.Conf.BackupLogicalCron)
-		cluster.idSchedulerLogicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupLogicalCron, func() {
-			mysrv := cluster.GetBackupServer()
-			if mysrv != nil {
-				mysrv.JobBackupLogical()
-			} else {
-				cluster.master.JobBackupLogical()
-			}
-		})
-		if err == nil {
-			cluster.Schedule["backuplogical"] = cluster.scheduler.Entry(cluster.idSchedulerPhysicalBackup)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerBackupPhysical() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("backupphysical") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database physical backup")
-		cluster.scheduler.Remove(cluster.idSchedulerPhysicalBackup)
-		delete(cluster.Schedule, "backupphysical")
-	}
-	if cluster.Conf.SchedulerBackupPhysical {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule Physical backup time at: %s", cluster.Conf.BackupPhysicalCron)
-		cluster.idSchedulerPhysicalBackup, err = cluster.scheduler.AddFunc(cluster.Conf.BackupPhysicalCron, func() {
-			cluster.master.JobBackupPhysical()
-		})
-		if err == nil {
-			cluster.Schedule["backupphysical"] = cluster.scheduler.Entry(cluster.idSchedulerPhysicalBackup)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerLogsTableRotate() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("logstablerotate") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logs table rotate")
-		cluster.scheduler.Remove(cluster.idSchedulerLogRotateTable)
-		delete(cluster.Schedule, "logstablerotate")
-	}
-	if cluster.Conf.SchedulerDatabaseLogsTableRotate {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database logs table rotate time at: %s", cluster.Conf.SchedulerDatabaseLogsTableRotateCron)
-		cluster.idSchedulerLogRotateTable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerDatabaseLogsTableRotateCron, func() {
-			cluster.RotateLogs()
-		})
-		if err == nil {
-			cluster.Schedule["logstablerotate"] = cluster.scheduler.Entry(cluster.idSchedulerLogRotateTable)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerBackupLogs() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("errorlogs") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database logs error fetching")
-		cluster.scheduler.Remove(cluster.idSchedulerErrorLogs)
-		delete(cluster.Schedule, "errorlogs")
-	}
-	if cluster.Conf.SchedulerDatabaseLogs && cluster.scheduler != nil {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database logs error fetching at: %s", cluster.Conf.BackupDatabaseLogCron)
-		cluster.idSchedulerErrorLogs, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseLogCron, func() {
-			cluster.BackupLogs()
-		})
-		if err == nil {
-			cluster.Schedule["errorlogs"] = cluster.scheduler.Entry(cluster.idSchedulerErrorLogs)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerOptimize() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("optimize") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database optimize")
-		cluster.scheduler.Remove(cluster.idSchedulerOptimize)
-		delete(cluster.Schedule, "optimize")
-	}
-	if cluster.Conf.SchedulerDatabaseOptimize {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database optimize at: %s", cluster.Conf.BackupDatabaseOptimizeCron)
-		cluster.idSchedulerOptimize, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseOptimizeCron, func() {
-			cluster.RollingOptimize()
-		})
-		if err == nil {
-			cluster.Schedule["optimize"] = cluster.scheduler.Entry(cluster.idSchedulerOptimize)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerAnalyze() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("analyze") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable database analyze")
-		cluster.scheduler.Remove(cluster.idSchedulerAnalyze)
-		delete(cluster.Schedule, "analyze")
-	}
-	if cluster.Conf.SchedulerDatabaseAnalyze {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule database analyze at: %s", cluster.Conf.BackupDatabaseAnalyzeCron)
-		cluster.idSchedulerAnalyze, err = cluster.scheduler.AddFunc(cluster.Conf.BackupDatabaseAnalyzeCron, func() {
-			cluster.JobAnalyzeSQL(cluster.Conf.AnalyzeUsePersistent)
-		})
-		if err == nil {
-			cluster.Schedule["analyze"] = cluster.scheduler.Entry(cluster.idSchedulerAnalyze)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerRollingRestart() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("rollingrestart") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rolling restart")
-		cluster.scheduler.Remove(cluster.idSchedulerRollingRestart)
-		delete(cluster.Schedule, "rollingrestart")
-	}
-	if cluster.Conf.SchedulerRollingRestart {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule rolling restart at: %s", cluster.Conf.SchedulerRollingRestartCron)
-		cluster.idSchedulerRollingRestart, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingRestartCron, func() {
-			cluster.RollingRestart()
-		})
-		if err == nil {
-			cluster.Schedule["rollingrestart"] = cluster.scheduler.Entry(cluster.idSchedulerRollingRestart)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerRollingReprov() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("rollingreprov") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rolling reprov")
-		cluster.scheduler.Remove(cluster.idSchedulerRollingReprov)
-		delete(cluster.Schedule, "rollingreprov")
-	}
-	if cluster.Conf.SchedulerRollingReprov {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule rolling reprov at: %s", cluster.Conf.SchedulerRollingReprovCron)
-		cluster.idSchedulerRollingReprov, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerRollingReprovCron, func() {
-			cluster.RollingReprov()
-		})
-		if err == nil {
-			cluster.Schedule["rollingreprov"] = cluster.scheduler.Entry(cluster.idSchedulerRollingReprov)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerSlaRotate() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("slarotate") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable rotate Sla ")
-		cluster.scheduler.Remove(cluster.idSchedulerSLARotate)
-		delete(cluster.Schedule, "slarotate")
-	}
-
-	var err error
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule Sla rotate at: %s", cluster.Conf.SchedulerSLARotateCron)
-	cluster.idSchedulerSLARotate, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerSLARotateCron, func() {
-		cluster.SetEmptySla()
-	})
-	if err == nil {
-		cluster.Schedule["slarotate"] = cluster.scheduler.Entry(cluster.idSchedulerSLARotate)
-	}
-}
-
-func (cluster *Cluster) SetSchedulerDbJobsSsh() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("dbjobsssh") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Disable Db Jobs SSH Execution ")
-		cluster.scheduler.Remove(cluster.idSchedulerDbsjobsSsh)
-		delete(cluster.Schedule, "dbjobsssh")
-	}
-	if cluster.Conf.SchedulerJobsSSH {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule SshDbJob rotate at: %s", cluster.Conf.SchedulerJobsSSHCron)
-		cluster.idSchedulerDbsjobsSsh, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerJobsSSHCron, func() {
-			for _, s := range cluster.Servers {
-				if s != nil {
-					s.JobRunViaSSH()
-				}
-
-			}
-		})
-		if err == nil {
-			cluster.Schedule["dbjobsssh"] = cluster.scheduler.Entry(cluster.idSchedulerDbsjobsSsh)
-		}
-	}
-}
-
-func (cluster *Cluster) SetSchedulerAlertDisable() {
-	if cluster.scheduler == nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Scheduler is disable cancel")
-		return
-	}
-	if cluster.HasSchedulerEntry("alertdisable") {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Stopping scheduler to disable alert")
-		cluster.scheduler.Remove(cluster.idSchedulerAlertDisable)
-		delete(cluster.Schedule, "alertdisable")
-	}
-	if cluster.Conf.SchedulerAlertDisable {
-		var err error
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Schedule disable alert at: %s", cluster.Conf.SchedulerAlertDisableCron)
-		cluster.idSchedulerAlertDisable, err = cluster.scheduler.AddFunc(cluster.Conf.SchedulerAlertDisableCron, func() {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Alerting is disabled from scheduler")
-			cluster.IsAlertDisable = true
-			go cluster.WaitAlertDisable()
-		})
-		if err == nil {
-			cluster.Schedule["alertdisable"] = cluster.scheduler.Entry(cluster.idSchedulerAlertDisable)
-		}
-	}
-}
-
 func (cluster *Cluster) CompressBackups() {
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,LvlInfo, "COUCOU compress backups")
 }
@@ -1323,6 +1070,10 @@ func (cluster *Cluster) SetWaitSponsorCredCookie() {
 	}
 }
 
+func (cluster *Cluster) SetWaitMonitorSchema() {
+	cluster.SetState("WARN0163", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(config.ClusterError["WARN0163"], cluster.Name), ErrFrom: "API"})
+}
+
 func (cluster *Cluster) SetDBDynamicConfig() {
 	for _, srv := range cluster.Servers {
 		//conf:=
@@ -1777,6 +1528,20 @@ func (cluster *Cluster) SetSchedulerJobsSshCron(value string) error {
 func (cluster *Cluster) SetSchedulerAlertDisableCron(value string) error {
 	cluster.Conf.SchedulerAlertDisableCron = value
 	cluster.SetSchedulerAlertDisable()
+	return nil
+}
+
+func (cluster *Cluster) SetMonitoringSchemaSchedulerCron(value string) error {
+	cluster.Conf.MonitorSchemaSchedulerCron = value
+	cluster.SetSchedulerMonitorSchema()
+	return nil
+}
+
+func (cluster *Cluster) SetMonitoringSchemaIgnoreTables(value string) error {
+	if value == "&nbsp;" {
+		value = ""
+	}
+	cluster.Conf.MonitorSchemaIgnoreTables = value
 	return nil
 }
 

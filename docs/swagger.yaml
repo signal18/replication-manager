@@ -2548,6 +2548,18 @@ definitions:
         type: boolean
       monitoringSchemaChangeScript:
         type: string
+      monitoringSchemaColumns:
+        type: boolean
+      monitoringSchemaIgnoreTables:
+        type: string
+      monitoringSchemaIndexes:
+        type: boolean
+      monitoringSchemaOnReplicas:
+        type: boolean
+      monitoringSchemaScheduler:
+        type: boolean
+      monitoringSchemaSchedulerCron:
+        type: string
       monitoringSharedir:
         type: string
       monitoringSocket:
@@ -4583,6 +4595,42 @@ paths:
       summary: Perform a physical backup for the master of a specific cluster
       tags:
       - ClusterBackup
+  /api/clusters/{clusterName}/actions/monitor-schemas:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint triggers the monitoring of schemas for the specified
+        cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully triggered schema monitoring
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: No cluster
+          schema:
+            type: string
+      summary: Monitor schemas for a specific cluster
+      tags:
+      - ClusterMonitor
   /api/clusters/{clusterName}/actions/optimize:
     post:
       consumes:

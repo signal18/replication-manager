@@ -1900,3 +1900,11 @@ func (cluster *Cluster) GetEstimatedBackupSize(backtype string) (uint64, error) 
 
 	return required, nil
 }
+
+func (cluster *Cluster) GetSchedule(myname string) *cron.Entry {
+	if entry, ok := cluster.Schedule[myname]; ok {
+		return &entry
+	}
+
+	return nil
+}
