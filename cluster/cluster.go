@@ -1718,8 +1718,6 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 		loglevel = config.LvlDbg
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Monitoring master table schema on %s", cmaster.URL)
-
-	cluster.StateMachine.SetMonitorSchemaState()
 	cmaster.Conn.SetConnMaxLifetime(3595 * time.Second)
 
 	tables, tablelist, logs, err := dbhelper.GetTables(cmaster.Conn, cmaster.DBVersion, cluster.Conf.MonitorSchemaColumns, cluster.Conf.MonitorSchemaIndexes)
@@ -1790,7 +1788,7 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 	cluster.WorkLoad.DBIndexSize = totindexsize
 	cluster.WorkLoad.DBTableSize = tottablesize
 	cmaster.DictTables = dbhelper.FromNormalTablesMap(cmaster.DictTables, tables)
-	cluster.StateMachine.RemoveMonitorSchemaState()
+
 	return nil
 }
 
@@ -1892,6 +1890,9 @@ func (cluster *Cluster) MonitorSchema() {
 		loglevel = config.LvlDbg
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, loglevel, "Starting schema monitoring")
+
+	cluster.StateMachine.SetMonitorSchemaState()
+	defer cluster.StateMachine.RemoveMonitorSchemaState()
 
 	err := cluster.MonitorMasterTableSchema()
 	if err != nil {
