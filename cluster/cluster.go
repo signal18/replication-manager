@@ -748,6 +748,7 @@ func (cluster *Cluster) Run() {
 						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 							cluster.InjectProxiesTraffic()
 						}
+
 						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
 							cluster.CheckJobsVersion()
 							cluster.MonitorTableSchemaDiff()
