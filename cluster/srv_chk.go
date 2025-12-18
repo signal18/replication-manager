@@ -610,3 +610,13 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 	}
 	return false, nil
 }
+
+func (server *ServerMonitor) CheckNeedConfigFetch() {
+	cluster := server.ClusterGroup
+	// Default action from cluster config
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
+}

@@ -2287,12 +2287,7 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 					node.DelConfigPathCookie() // Overwrite config path
 				}
 			} else if vars["cfgAction"] == "" {
-				// Default action from cluster config
-				if mycluster.Conf.ProvDbStartFetchConfig && node.HasNoConfigFetchCookie() {
-					node.DelNoConfigFetchCookie()
-				} else if !mycluster.Conf.ProvDbStartFetchConfig && !node.HasNoConfigFetchCookie() {
-					node.SetNoConfigFetchCookie()
-				}
+				node.CheckNeedConfigFetch()
 			} else { // If cfgAction is not empty and not "KEEP" or "FETCH" or "OVERWRITE"
 				http.Error(w, "Invalid config action", http.StatusBadRequest)
 				return
@@ -2713,21 +2708,30 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.Respons
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
 			if node.HasNoConfigFetchCookie() {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s:%s has no config fetch cookie, skip fetching new config.", vars["serverName"], vars["serverPort"])
+
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("500 -No config fetch needed!"))
+				return
 			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s:%s has no config fetch cookie, fetching new config.", vars["serverName"], vars["serverPort"])
 			w.Write([]byte("200 -Need config fetch!"))
 			return
 		} else if proxy != nil {
 			if proxy.HasNoConfigFetchCookie() {
+				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Proxy %s:%s has no config fetch cookie, skip fetching new config.", vars["serverName"], vars["serverPort"])
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte("500 -No config fetch needed!"))
+				return
 			}
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Proxy %s:%s has no config fetch cookie, fetching new config.", vars["serverName"], vars["serverPort"])
 			w.Write([]byte("200 -Need config fetch!"))
 			return
 		} else {
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Requesting config fetch check for invalid server %s:%s!", vars["serverName"], vars["serverPort"])
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("500 -No valid server!"))
+			return
 		}
 	} else {
 		w.WriteHeader(http.StatusInternalServerError)
