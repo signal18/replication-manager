@@ -219,7 +219,7 @@ var ClusterError = map[string]string{
 	"WARN0141":  "Not enough free space estimated for %s logical backup on %s. Mount: %s Free: %s Required: %s",
 	"WARN0142":  "Not enough free space estimated for %s physical backup on %s. Mount: %s Free: %s Required: %s",
 	"WARN0143":  "Not enough free space estimated for binary log backup on %s. Mount: %s Free: %s Required: %s",
-	"WARN0144":  "HAProxy inconsistent server ID between haproxy %s and cluster %s for host %s",
+	"WARN0144":  "HAProxy found issue for server %s: %s",
 	"WARN0145":  "Failed to backup restic config file: %s",
 	"WARN0146":  "Failed to restore restic config file: %s",
 	"WARN0147":  "Current jobs script is different than the one in node %s. New: %s Current: %s. Err : %s",

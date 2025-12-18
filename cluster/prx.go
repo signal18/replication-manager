@@ -177,6 +177,7 @@ type Backend struct {
 	Host           string `json:"host"`
 	Port           string `json:"port"`
 	Status         string `json:"status"`
+	Sid            string `json:"sid"`
 	Svname         string `json:"svname"`
 	PrxName        string `json:"prxName"`
 	PrxStatus      string `json:"prxStatus"`
