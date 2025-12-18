@@ -67,6 +67,7 @@ func (proxy *HaproxyProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) {
 	flags.StringVar(&conf.HaproxyWriteBindIp, "haproxy-ip-write-bind", "0.0.0.0", "HAProxy input bind address for write")
 	flags.StringVar(&conf.HaproxyAPIReadBackend, "haproxy-api-read-backend", "service_read", "HAProxy API backend name used for read")
 	flags.StringVar(&conf.HaproxyAPIWriteBackend, "haproxy-api-write-backend", "service_write", "HAProxy API backend name used for write")
+	flags.StringVar(&conf.HaproxyStagingBackend, "haproxy-staging-backend", "staging_write", "HAProxy staging backend name used for write")
 	flags.StringVar(&conf.HaproxyHostsIPV6, "haproxy-servers-ipv6", "", "HAProxy IPv6 bind address ")
 }
 
@@ -140,11 +141,13 @@ func (proxy *HaproxyProxy) Init() {
 		stagingsrv = cluster.SetStandaloneAsStaging()
 	}
 
-	if cluster.Conf.TopologyStaging && proxy.IsStaging && stagingsrv != nil {
-		p, _ := strconv.Atoi(stagingsrv.Port)
-		s := haproxy.ServerDetail{Name: "leader", Host: stagingsrv.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
+	if cluster.Conf.TopologyStaging && proxy.IsStaging {
+		if stagingsrv != nil {
+			p, _ := strconv.Atoi(stagingsrv.Port)
+			s := haproxy.ServerDetail{Name: "leader", Host: stagingsrv.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
+			if err = haConfig.AddServer(cluster.Conf.HaproxyStagingBackend, &s); err != nil {
+				//	log.Printf("Failed to add server to service_write ")
+			}
 		}
 	} else if cluster.GetMaster() != nil {
 		p, _ := strconv.Atoi(cluster.GetMaster().Port)

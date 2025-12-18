@@ -400,8 +400,6 @@ type Config struct {
 	HaproxyBinaryPath                         string                 `mapstructure:"haproxy-binary-path" toml:"haproxy-binary-path" json:"haproxyBinaryPath"`
 	HaproxyAPIReadBackend                     string                 `mapstructure:"haproxy-api-read-backend"  toml:"haproxy-api-read-backend" json:"haproxyAPIReadBackend"`
 	HaproxyAPIWriteBackend                    string                 `mapstructure:"haproxy-api-write-backend"  toml:"haproxy-api-write-backend" json:"haproxyAPIWriteBackend"`
-	HaproxyStagingPort                        string                 `mapstructure:"haproxy-staging-port"  toml:"haproxy-staging-port" json:"haproxyStagingPort"`
-	HaproxyStagingBind                        string                 `mapstructure:"haproxy-staging-bind" toml:"haproxy-staging-bind" json:"haproxyStagingBind"`
 	HaproxyStagingBackend                     string                 `mapstructure:"haproxy-staging-backend" toml:"haproxy-staging-backend" json:"haproxyStagingBackend"`
 	ProxysqlOn                                bool                   `mapstructure:"proxysql" toml:"proxysql" json:"proxysql"`
 	ProxysqlDebug                             bool                   `mapstructure:"proxysql-debug" toml:"proxysql-debug" json:"proxysqlDebug"`
