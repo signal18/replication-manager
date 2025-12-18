@@ -673,6 +673,8 @@ func (cluster *Cluster) Run() {
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
+	cluster.CheckNeedConfigFetch()
+
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
@@ -748,8 +750,6 @@ func (cluster *Cluster) Run() {
 						if cluster.Conf.TestInjectTraffic || cluster.Conf.TestInjectTrafficStaging || cluster.Conf.AutorejoinSlavePositionalHeartbeat || cluster.Conf.MonitorWriteHeartbeat {
 							cluster.InjectProxiesTraffic()
 						}
-
-						cluster.CheckNeedConfigFetch()
 
 						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
 							cluster.CheckJobsVersion()
