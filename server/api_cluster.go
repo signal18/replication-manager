@@ -2374,6 +2374,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = !mycluster.Conf.ProvDbStartFetchConfig
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
@@ -3540,6 +3541,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBConfigPreserve = applyIsActive(mycluster.Conf.ProvDBConfigPreserve, isactive)
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = applyIsActive(mycluster.Conf.ProvDbStartFetchConfig, isactive)
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-docker-daemon-private":

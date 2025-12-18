@@ -1165,6 +1165,9 @@ func (cluster *Cluster) CheckEstimatedBackupSize(backtype string) error {
 
 func (cluster *Cluster) CheckNeedConfigFetch() {
 	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
 		srv.CheckNeedConfigFetch()
 	}
 }
