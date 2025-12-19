@@ -222,7 +222,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	sst.in, err = sst.listener.Accept()
 
 	if err != nil {
-
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s : %v", task, err)
 		return
 	}
 
@@ -259,7 +259,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 	sst.in, err = sst.listener.Accept()
 	if err != nil {
-		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener : %v", err)
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s: %v", task, err)
 		return
 	}
 
