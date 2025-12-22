@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/jordan-wright/email"
-	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/meethelper"
 )
