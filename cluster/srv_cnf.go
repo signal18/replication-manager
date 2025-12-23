@@ -308,6 +308,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 
 	wg.Wait()
 
+	server.ReadPreservedVariables()
+
 	server.IsNeedPathCheck = true
 }
 
@@ -415,9 +417,47 @@ func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
 	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
 }
 
+func (server *ServerMonitor) ReadVariablesInConfig(path string) map[string]string {
+	vars := make(map[string]string)
+	cluster := server.ClusterGroup
+
+	srcfile, err := os.Open(path)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
+		return vars
+	}
+	defer srcfile.Close()
+
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		if line == "" {
+			continue
+		}
+
+		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) == 2 {
+			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
+			value := strings.TrimSpace(parts[1])
+			vars[varname] = value
+		}
+	}
+
+	return vars
+}
+
 func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deployed bool) error {
 	cluster := server.ClusterGroup
-	var srcfile *os.File
 	var err error
 
 	var lastUpdate time.Time
@@ -453,16 +493,6 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		server.LastConfigUpdate.Config = finfo.ModTime()
 	}
 
-	// Read the file
-	srcfile, err = os.Open(srcpath)
-	if err != nil {
-		server.LastConfigUpdate.Config = time.Time{}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
-		return err
-	}
-
-	defer srcfile.Close()
-
 	// Clear all previous values
 	if deployed {
 		server.VariablesMap.EmptyDeployedValues()
@@ -470,66 +500,35 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		server.VariablesMap.EmptyConfigValues()
 	}
 
-	// Read the file content
-	scanner := bufio.NewScanner(srcfile)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Only process lines that start with --
-		if !strings.HasPrefix(line, "--") {
-			continue
-		}
-
-		// Remove the -- prefix and trim whitespace
-		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
-		if line == "" {
-			continue
-		}
-
-		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
-			key := strings.ToUpper(varname)
-			value := strings.TrimSpace(parts[1])
-			v, ok := server.VariablesMap.CheckAndGet(key)
-			if ok {
-				v.Variable_name = varname
-				if deployed {
-					if v.Deployed == nil {
-						v.Deployed = &value
-					} else if *v.Deployed != value {
-						// If the value contains "=" in the value, append else replace
-						if strings.Contains(value, "=") {
-							*v.Deployed += "\n" + value
-						} else {
-							*v.Deployed = value
-						}
-					}
-				} else {
-					if v.Config == nil {
-						v.Config = &value
-					} else if *v.Config != value {
-						// If the value contains "=" in the value, append else replace
-						if strings.Contains(value, "=") {
-							*v.Config += "\n" + value
-						} else {
-							*v.Config = value
-						}
-					}
-				}
+	variables := server.ReadVariablesInConfig(srcpath)
+	for varname, value := range variables {
+		key := strings.ToUpper(varname)
+		v, ok := server.VariablesMap.CheckAndGet(key)
+		if ok {
+			v.Variable_name = varname
+			if deployed {
+				v.SetDeployedValue(value)
 			} else {
-				v = &config.VariableState{Variable_name: varname}
-				if deployed {
-					v.Deployed = &value
-				} else {
-					v.Config = &value
-				}
-				server.VariablesMap.Store(key, v)
+				v.SetConfigValue(value)
 			}
+		} else {
+			v = &config.VariableState{Variable_name: varname}
+			if deployed {
+				v.SetDeployedValue(value)
+			} else {
+				v.SetConfigValue(value)
+			}
+			server.VariablesMap.Store(key, v)
 		}
 	}
 
+	return nil
+}
+
+func (server *ServerMonitor) ReadPreservedVariables() error {
+	cluster := server.ClusterGroup
+
+	// Read the preserved variables from config
 	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
 	for _, opt := range list {
 		opt = strings.TrimSpace(opt)

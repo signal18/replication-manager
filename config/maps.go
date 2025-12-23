@@ -541,23 +541,35 @@ func (v *VariableState) IsEqual() bool {
 
 func (v *VariableState) SetConfigValue(value string) {
 	if v.Config == nil {
-		v.Config = new(string)
+		v.Config = &value
+	} else if *v.Config != value {
+		// If the value contains "=" in the value, append else replace
+		if strings.Contains(value, "=") {
+			*v.Config += "\n" + value
+		} else {
+			*v.Config = value
+		}
 	}
-	*v.Config = value
 }
 
 func (v *VariableState) SetDeployedValue(value string) {
 	if v.Deployed == nil {
-		v.Deployed = new(string)
+		v.Deployed = &value
+	} else if *v.Deployed != value {
+		if strings.Contains(value, "=") {
+			*v.Deployed += "\n" + value
+		} else {
+			*v.Deployed = value
+		}
 	}
-	*v.Deployed = value
 }
 
 func (v *VariableState) SetRuntimeValue(value string) {
 	if v.Runtime == nil {
-		v.Runtime = new(string)
+		v.Runtime = &value
+	} else if *v.Runtime != value {
+		*v.Runtime = value
 	}
-	*v.Runtime = value
 }
 
 type VariablesMap struct {
