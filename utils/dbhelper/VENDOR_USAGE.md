@@ -4,6 +4,22 @@
 
 Phase 2 introduces the `DatabaseVendor` interface to eliminate vendor-specific conditionals scattered throughout the codebase. This makes code cleaner, more testable, and easier to extend.
 
+## ⚠️ Safety First
+
+**This abstraction layer is completely additive and does NOT modify existing code.**
+
+- ✅ All existing functions work unchanged
+- ✅ No behavior changes or risk to production
+- ✅ Vendor layer exists alongside current code
+- ✅ Migration is optional and gradual
+
+**Do not rush to refactor existing functions.** Use the vendor layer for:
+1. New features being developed
+2. Functions you're already modifying
+3. Code with comprehensive test coverage
+
+The vendor implementations were created to match existing behavior, but **validation is essential** before migrating any production code.
+
 ## Before (Phase 1)
 
 ```go
@@ -158,13 +174,66 @@ func NewDatabaseVendor(ver *version.Version) DatabaseVendor {
 
 ## Migration Strategy
 
-Existing code continues to work unchanged. Migrate functions gradually:
+**IMPORTANT: Migration is optional.** Existing code continues to work unchanged.
 
-1. Identify functions with vendor conditionals
-2. Add vendor abstraction methods
-3. Refactor functions to use vendor
-4. Test thoroughly
-5. Remove old conditional code
+### Safe Migration Approach
+
+When you do decide to migrate a function:
+
+1. **Write tests first** - Capture current behavior
+2. **Create new function** - Side-by-side with original
+3. **Validate thoroughly** - Compare outputs across all vendors
+4. **Use feature flags** - Enable new code gradually
+5. **Monitor in production** - Watch for differences
+6. **Remove old code** - Only after proven stability
+
+### Example: Safe Migration Pattern
+
+```go
+// Step 1: Keep existing function (temporarily rename)
+func getSlaveStatusLegacy(db *sqlx.DB, channel string, ver *version.Version) (SlaveStatus, string, error) {
+    // Original implementation with version checks
+    if ver.IsPostgreSQL() {
+        // ... existing code
+    }
+    // ...
+}
+
+// Step 2: Create new function using vendor
+func GetSlaveStatus(db *sqlx.DB, channel string, ver *version.Version) (SlaveStatus, string, error) {
+    vendor := NewDatabaseVendor(ver)
+    query := vendor.GetReplicationStatusQuery(channel)
+
+    // Execute query (rest of implementation)
+    // ...
+}
+
+// Step 3: Test both, compare results
+func TestMigrationParity(t *testing.T) {
+    oldResult, _, _ := getSlaveStatusLegacy(db, "", ver)
+    newResult, _, _ := GetSlaveStatus(db, "", ver)
+
+    assert.Equal(t, oldResult, newResult, "Migration broke behavior!")
+}
+
+// Step 4: After validation, remove legacy function
+```
+
+### Low-Risk Migration Targets
+
+Start with these types of functions:
+- Non-critical utility functions
+- Functions with good test coverage
+- Simple query builders
+- Display/formatting logic
+
+### High-Risk - Avoid Migrating
+
+Do NOT migrate without extensive testing:
+- Core replication control (START/STOP SLAVE)
+- Failover logic
+- GTID position tracking
+- Critical production queries
 
 ## Current Interface Methods
 
