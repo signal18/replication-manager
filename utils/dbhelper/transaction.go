@@ -5,6 +5,8 @@
 package dbhelper
 
 import (
+	"fmt"
+
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -43,8 +45,12 @@ func UnsetInnoDBLockMonitor(db *sqlx.DB) (string, error) {
 }
 
 func SetRelayLogSpaceLimit(db *sqlx.DB, size string) (string, error) {
-	query := "SET GLOBAL relay_log_space_limit=" + size
-	_, err := db.Exec(query)
+	// Validate numeric value before using
+	if err := ValidateNumeric(size); err != nil {
+		return "", fmt.Errorf("invalid relay_log_space_limit value: %w", err)
+	}
+	query := "SET GLOBAL relay_log_space_limit = ?"
+	_, err := db.Exec(query, size)
 	if err != nil {
 		return query, err
 	}
@@ -80,6 +86,11 @@ func FlushTablesNoLog(db *sqlx.DB) (string, error) {
 }
 
 func MariaDBFlushTablesNoLogTimeout(db *sqlx.DB, timeout string) (string, error) {
+	// Validate numeric value before using
+	if err := ValidateNumeric(timeout); err != nil {
+		return "", fmt.Errorf("invalid timeout value: %w", err)
+	}
+	// NOTE: SET STATEMENT cannot use parameterized queries, but value is validated as numeric
 	query := "SET STATEMENT max_statement_time=" + timeout + " FOR FLUSH NO_WRITE_TO_BINLOG TABLES"
 	_, err := db.Exec(query)
 	//MySQL does not support DML timeout only SELECT
@@ -99,9 +110,12 @@ func UnlockTables(db *sqlx.DB) (string, error) {
 }
 
 func SetMaxConnections(db *sqlx.DB, connections string, myver *version.Version) (string, error) {
-
-	query := "SET GLOBAL max_connections=" + connections
-	_, err := db.Exec(query)
+	// Validate numeric value before using
+	if err := ValidateNumeric(connections); err != nil {
+		return "", fmt.Errorf("invalid max_connections value: %w", err)
+	}
+	query := "SET GLOBAL max_connections = ?"
+	_, err := db.Exec(query, connections)
 	return query, err
 }
 

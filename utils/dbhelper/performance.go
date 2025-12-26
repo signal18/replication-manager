@@ -24,7 +24,11 @@ func GetQueryExplain(db *sqlx.DB, version *version.Version, schema string, query
 	pl := []Explain{}
 	var err error
 	if schema != "" {
-		_, err = db.Exec("USE " + schema)
+		// Validate schema name before using in USE statement (cannot be parameterized)
+		if err := ValidateIdentifier(schema); err != nil {
+			return nil, "", fmt.Errorf("invalid schema name: %w", err)
+		}
+		_, err = db.Exec("USE " + QuoteMySQLIdentifier(schema))
 	}
 	stmt := "Explain " + query
 	err = db.Select(&pl, stmt)
@@ -68,7 +72,11 @@ func GetQueryResponseTime(db *sqlx.DB, version *version.Version) ([]ResponseTime
 func AnalyzeQuery(db *sqlx.DB, version *version.Version, schema string, query string) (string, string, error) {
 	var res string
 	if schema != "" {
-		db.Exec("USE " + schema)
+		// Validate schema name before using in USE statement (cannot be parameterized)
+		if err := ValidateIdentifier(schema); err != nil {
+			return "", "", fmt.Errorf("invalid schema name: %w", err)
+		}
+		db.Exec("USE " + QuoteMySQLIdentifier(schema))
 	}
 	stmt := "ANALYZE  FORMAT=JSON " + query
 	rows, err := db.Query(stmt)
@@ -116,8 +124,12 @@ func GetServers(db *sqlx.DB) ([]MySQLServer, string, error) {
 }
 
 func SetLongQueryTime(db *sqlx.DB, querytime string) (string, error) {
-	query := "SET GLOBAL long_query_time=" + querytime
-	_, err := db.Exec(query)
+	// Validate numeric value before using in SET GLOBAL
+	if err := ValidateNumeric(querytime); err != nil {
+		return "", fmt.Errorf("invalid query time value: %w", err)
+	}
+	query := "SET GLOBAL long_query_time = ?"
+	_, err := db.Exec(query, querytime)
 	if err != nil {
 		return query, err
 	}
@@ -157,8 +169,8 @@ func DisablePFSQueries(db *sqlx.DB) (string, error) {
 }
 
 func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
-	query := "SELECT COALESCE( B.SQL_TEXT,'')  as query FROM performance_schema.events_statements_history_long B WHERE B.DIGEST =''" + Query.Digest + "'"
-	rows, err := db.Queryx(query)
+	query := "SELECT COALESCE(B.SQL_TEXT,'') as query FROM performance_schema.events_statements_history_long B WHERE B.DIGEST = ?"
+	rows, err := db.Queryx(query, Query.Digest)
 	if err != nil {
 		return "", err
 	}
@@ -300,12 +312,12 @@ func GetNoBlockOnMetadataLock(db *sqlx.DB, myver *version.Version) string {
 
 func SetQueryCaptureMode(db *sqlx.DB, mode string) (string, error) {
 	var err error
-	query := "SET GLOBAL log_output='" + mode + "'"
+	query := "SET GLOBAL log_output = ?"
 
 	if mode == "TABLE" || mode == "FILE" {
-		_, err = db.Exec(query)
+		_, err = db.Exec(query, mode)
 	} else {
-		err = errors.New("Unvalid mode")
+		err = errors.New("Invalid mode: must be TABLE or FILE")
 	}
 	return query, err
 }
@@ -342,22 +354,34 @@ func KillThreads(db *sqlx.DB, myver *version.Version) (string, error) {
 }
 
 func KillThread(db *sqlx.DB, id string, myver *version.Version) (string, error) {
-	if myver.IsPostgreSQL() {
-		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
-		return "SELECT pg_terminate_backend(" + id + ")", err
+	// Validate id is numeric to prevent SQL injection
+	if err := ValidateNumeric(id); err != nil {
+		return "", fmt.Errorf("invalid thread id: %w", err)
 	}
-	_, err := db.Exec("KILL ?", id)
-	return "KILL ? (" + id + ")", err
+
+	if myver.IsPostgreSQL() {
+		query := "SELECT pg_terminate_backend(?)"
+		_, err := db.Exec(query, id)
+		return query + " (" + id + ")", err
+	}
+	query := "KILL ?"
+	_, err := db.Exec(query, id)
+	return query + " (" + id + ")", err
 }
 
 func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
+	// Validate id is numeric to prevent SQL injection
+	if err := ValidateNumeric(id); err != nil {
+		return "", fmt.Errorf("invalid query id: %w", err)
+	}
 
 	if myver.IsPostgreSQL() {
-		_, err := db.Exec("SELECT pg_terminate_backend(" + id + ")")
-		return "SELECT pg_terminate_backend(" + id + ")", err
+		query := "SELECT pg_terminate_backend(?)"
+		_, err := db.Exec(query, id)
+		return query + " (" + id + ")", err
 	}
-	_, err := db.Exec("KILL QUERY ?", id)
-	return "KILL QUERY ? (" + id + ")", err
-
+	query := "KILL QUERY ?"
+	_, err := db.Exec(query, id)
+	return query + " (" + id + ")", err
 }
 

@@ -177,3 +177,135 @@ func (bs *BenchmarkSuite) Run() string {
 	back = back + fmt.Sprintln("Finished... Total running time:", endTime.Sub(startTime).String())
 	return back
 }
+
+// ChecksumTable performs CHECKSUM TABLE on the given table
+func ChecksumTable(db *sqlx.DB, table string) (string, error) {
+	// Validate table name to prevent SQL injection
+	if err := ValidateIdentifier(table); err != nil {
+		return "", fmt.Errorf("invalid table name: %w", err)
+	}
+
+	var tableres string
+	var checkres string
+	query := "CHECKSUM TABLE " + QuoteMySQLIdentifier(table) + " EXTENDED"
+	err := db.QueryRowx(query).Scan(&tableres, &checkres)
+	return checkres, err
+}
+
+// InjectLongTrx injects a long-running transaction for testing
+func InjectLongTrx(db *sqlx.DB, time int) error {
+	if err := benchWarmup(db); err != nil {
+		return err
+	}
+
+	_, err := db.Exec("START TRANSACTION")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val) VALUES(1)")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(fmt.Sprintf("SELECT SLEEP(%d)", time))
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("COMMIT")
+	return err
+}
+
+// InjectTrxWithoutCommit injects a transaction without committing for testing
+func InjectTrxWithoutCommit(db *sqlx.DB) error {
+	if err := benchWarmup(db); err != nil {
+		return err
+	}
+
+	_, err := db.Exec("START TRANSACTION")
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val) VALUES(1)")
+	return err
+}
+
+// WriteConcurrent2 performs concurrent write benchmarks
+func WriteConcurrent2(dsn string, qt int) (string, error) {
+	bs := BenchmarkSuite{
+		WarmUp:      benchWarmup,
+		Repetitions: 1,
+		PrintStats:  true,
+	}
+
+	if err := bs.AddDriver("mysql", "mysql", dsn); err != nil {
+		return "", err
+	}
+
+	bs.AddBenchmark("PreparedExecConcurrent2", qt, benchPreparedExecConcurrent2)
+
+	result := bs.Run()
+	return result, nil
+}
+
+// BenchCleanup cleans up benchmark tables
+func BenchCleanup(db *sqlx.DB) error {
+	_, err := db.Exec("DROP TABLE IF EXISTS replication_manager_schema.bench")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("DROP DATABASE IF EXISTS replication_manager_schema")
+	return err
+}
+
+// benchWarmup prepares the database for benchmarking
+func benchWarmup(db *sqlx.DB) error {
+	db.SetMaxIdleConns(16)
+	_, err := db.Exec("CREATE DATABASE IF NOT EXISTS replication_manager_schema")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("DROP TABLE IF EXISTS replication_manager_schema.bench")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS replication_manager_schema.bench(id bigint unsigned primary key auto_increment, val bigint unsigned)")
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec("INSERT INTO replication_manager_schema.bench(val) VALUES(1)")
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < 2; i++ {
+		rows, err := db.Query("SELECT val FROM replication_manager_schema.bench")
+		if err != nil {
+			return err
+		}
+
+		if err = rows.Close(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// benchPreparedExecConcurrent2 is the actual benchmark function
+func benchPreparedExecConcurrent2(db *sqlx.DB, _ int) error {
+	stmt, err := db.Prepare("INSERT INTO replication_manager_schema.bench(val) VALUES(?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for i := 0; i < 100; i++ {
+		_, err = stmt.Exec(i)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

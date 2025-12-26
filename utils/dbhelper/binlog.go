@@ -154,8 +154,12 @@ func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, string, error)
 }
 
 func SetBinlogFormat(db *sqlx.DB, format string) (string, error) {
-	query := "set global binlog_format='" + format + "'"
-	_, err := db.Exec(query)
+	// Validate binlog format before using
+	if err := ValidateBinlogFormat(format); err != nil {
+		return "", err
+	}
+	query := "SET GLOBAL binlog_format = ?"
+	_, err := db.Exec(query, format)
 	if err != nil {
 		return query, err
 	}
@@ -225,45 +229,46 @@ func FlushBinaryLogs(db *sqlx.DB) (string, error) {
 
 func PurgeBinlogTo(db *sqlx.DB, filename string) (string, error) {
 	var err error
-	query := "PURGE BINARY LOGS TO '" + filename + "'"
 
-	if filename != "" {
-		_, err = db.Exec(query)
-	} else {
-		return query, errors.New("Invalid filename for PURGE BINARY LOGS TO")
+	// Validate filename to prevent SQL injection and path traversal
+	if err := ValidateFilename(filename); err != nil {
+		return "", err
 	}
+
+	query := "PURGE BINARY LOGS TO ?"
+	_, err = db.Exec(query, filename)
 	return query, err
 }
 
 func PurgeBinlogBefore(db *sqlx.DB, ts int64) (string, error) {
 	var err error
 	var tstring string = time.Unix(ts, 0).Format(DDMMYYYYhhmmss)
-	query := "PURGE BINARY LOGS BEFORE '" + tstring + "'"
-	_, err = db.Exec(query)
+	query := "PURGE BINARY LOGS BEFORE ?"
+	_, err = db.Exec(query, tstring)
 	return query, err
 }
 
 func SetMaxBinlogTotalSize(db *sqlx.DB, size int) (string, error) {
 	var err error
-	query := "SET GLOBAL max_binlog_total_size = " + strconv.Itoa(size) + ""
 
-	if size >= 0 {
-		_, err = db.Exec(query)
-	} else {
-		return query, errors.New("Invalid size for max_binlog_total_size")
+	if size < 0 {
+		return "", errors.New("Invalid size for max_binlog_total_size: must be >= 0")
 	}
+
+	query := "SET GLOBAL max_binlog_total_size = ?"
+	_, err = db.Exec(query, size)
 	return query, err
 }
 
 func SetSlaveConnectionsNeededForPurge(db *sqlx.DB, size int) (string, error) {
 	var err error
-	query := "SET GLOBAL slave_connections_needed_for_purge = " + strconv.Itoa(size) + ""
 
-	if size >= 0 {
-		_, err = db.Exec(query)
-	} else {
-		return query, errors.New("Invalid value for slave_connections_needed_for_purge")
+	if size < 0 {
+		return "", errors.New("Invalid value for slave_connections_needed_for_purge: must be >= 0")
 	}
+
+	query := "SET GLOBAL slave_connections_needed_for_purge = ?"
+	_, err = db.Exec(query, size)
 	return query, err
 }
 

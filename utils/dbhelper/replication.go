@@ -321,15 +321,20 @@ func GetSlaveStatus(db *sqlx.DB, Channel string, myver *version.Version) (SlaveS
 		}
 
 	} else {
+		// Validate channel name before using in SHOW commands (cannot be parameterized)
+		if err := ValidateChannel(Channel); err != nil {
+			return ss, query, fmt.Errorf("invalid channel name: %w", err)
+		}
+
 		if myver.IsMariaDB() {
-			query = "SHOW SLAVE '" + Channel + "' STATUS"
+			query = "SHOW SLAVE '" + EscapeSingleQuotes(Channel) + "' STATUS"
 			err = udb.Get(&ss, query)
 		} else if myver.IsMySQLOrPercona() {
 			if myver.GreaterEqual("8.4") {
 				query = "SHOW REPLICA STATUS"
 				err = udb.Get(&rs, query)
 			} else {
-				query = "SHOW SLAVE STATUS FOR CHANNEL '" + Channel + "'"
+				query = "SHOW SLAVE STATUS FOR CHANNEL '" + EscapeSingleQuotes(Channel) + "'"
 				err = udb.Get(&ss, query)
 			}
 		}
@@ -857,8 +862,8 @@ func SetSlaveParallelMode(db *sqlx.DB, mode string, Channel string, myver *versi
 }
 
 func SetGTIDSlavePos(db *sqlx.DB, gtid string) (string, error) {
-	query := "SET GLOBAL gtid_slave_pos='" + gtid + "'"
-	_, err := db.Exec(query)
+	query := "SET GLOBAL gtid_slave_pos = ?"
+	_, err := db.Exec(query, gtid)
 	return query, err
 }
 
@@ -1135,25 +1140,22 @@ func MasterPosWait(db *sqlx.DB, myver *version.Version, log string, pos string, 
 }
 
 func SetMySQLGtidMode(db *sqlx.DB, mode string) (string, error) {
-	var err error
-	query := "SET GLOBAL gtid_mode = '" + mode + "'"
-
-	if mode == "OFF" || mode == "ON" || mode == "ON_PERMISSIVE" || mode == "OFF_PERMISSIVE" {
-		_, err = db.Exec(query)
-	} else {
-		return query, errors.New("Invalid GTID mode")
+	// Validate GTID mode before using
+	if err := ValidateGTIDMode(mode); err != nil {
+		return "", err
 	}
+	query := "SET GLOBAL gtid_mode = ?"
+	_, err := db.Exec(query, mode)
 	return query, err
 }
 
 func SetEnforceGTIDConsistency(db *sqlx.DB, mode string) (string, error) {
-	var err error
-	query := "SET GLOBAL ENFORCE_GTID_CONSISTENCY = '" + mode + "'"
-	if mode == "ON" || mode == "OFF" {
-		_, err = db.Exec(query)
-	} else {
-		return query, errors.New("Invalid GTID mode")
+	// Validate boolean value before using
+	if err := ValidateBoolean(mode); err != nil {
+		return "", fmt.Errorf("invalid ENFORCE_GTID_CONSISTENCY mode: %w", err)
 	}
+	query := "SET GLOBAL ENFORCE_GTID_CONSISTENCY = ?"
+	_, err := db.Exec(query, mode)
 	return query, err
 }
 
