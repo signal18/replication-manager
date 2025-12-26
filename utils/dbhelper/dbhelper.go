@@ -844,16 +844,78 @@ func GetProcesslistTable(db *sqlx.DB, version *version.Version, inactive_queryin
 	}
 	if version.IsMariaDB() {
 		//MariaDB
-		stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`,IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL ,'Trx sleep',a.Command) as Command, a.Time_ms/1000 as Time, a.State, SUBSTRING(COALESCE(a.INFO_BINARY,''),1,1000) as Info, CASE WHEN a.Max_Stage < 2 THEN Progress ELSE (a.Stage-1)/a.Max_Stage*100+a.Progress/a.Max_Stage END AS Progress, COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " + filter_order_limit
+		stmt = "SELECT " +
+			"a.Id, " +
+			"a.User, " +
+			"a.Host, " +
+			"a.`Db` AS `db`, " +
+			"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
+			"a.Time_ms/1000 as Time, " +
+			"a.State, " +
+			"SUBSTRING(COALESCE(a.INFO_BINARY,''),1,1000) as Info, " +
+			"CASE WHEN a.Max_Stage < 2 THEN Progress ELSE (a.Stage-1)/a.Max_Stage*100+a.Progress/a.Max_Stage END AS Progress, " +
+			"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
+			"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
+			"COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, " +
+			"COALESCE(b.trx_tables_locked,0) as trx_tables_locked, " +
+			"COALESCE(b.trx_lock_structs,0) as trx_lock_structs, " +
+			"COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, " +
+			"COALESCE(b.trx_rows_locked,0) as trx_rows_locked, " +
+			"COALESCE(b.trx_rows_modified,0) as trx_rows_modified, " +
+			"COALESCE(b.trx_is_read_only,0) as trx_is_read_only " +
+			"FROM INFORMATION_SCHEMA.PROCESSLIST a " +
+			"LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " +
+			filter_order_limit
 		if !full_process_is {
 			stmt = "SHOW FULL PROCESSLIST"
 		}
 	} else if version.IsMySQLOrPercona() {
 		//MySQL
-
-		stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`,IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL ,'Trx sleep',a.Command) as Command, a.Time as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info ,0 as Progress,  COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " + filter_order_limit
+		stmt = "SELECT " +
+			"a.Id, " +
+			"a.User, " +
+			"a.Host, " +
+			"a.`Db` AS `db`, " +
+			"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
+			"a.Time as Time, " +
+			"a.State, " +
+			"SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info, " +
+			"0 as Progress, " +
+			"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
+			"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
+			"COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, " +
+			"COALESCE(b.trx_tables_locked,0) as trx_tables_locked, " +
+			"COALESCE(b.trx_lock_structs,0) as trx_lock_structs, " +
+			"COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, " +
+			"COALESCE(b.trx_rows_locked,0) as trx_rows_locked, " +
+			"COALESCE(b.trx_rows_modified,0) as trx_rows_modified, " +
+			"COALESCE(b.trx_is_read_only,0) as trx_is_read_only " +
+			"FROM INFORMATION_SCHEMA.PROCESSLIST a " +
+			"LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " +
+			filter_order_limit
 		if version.IsPercona() && version.GreaterEqual("8.0") {
-			stmt = "SELECT a.Id, a.User, a.Host, a.`Db` AS `db`,IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL ,'Trx sleep',a.Command) as Command, a.Time_ms as Time, a.State, SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info ,0 as Progress , COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started , now()),0) as trx_time, COALESCE(b.trx_isolation_level,'') as trx_isolation_level, COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, COALESCE(b.trx_tables_locked,0) as trx_tables_locked, COALESCE(b.trx_lock_structs,0) as trx_lock_structs, COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, COALESCE(b.trx_rows_locked,0) as trx_rows_locked, COALESCE(b.trx_rows_modified,0) as trx_rows_modified, COALESCE(b.trx_is_read_only,0) as trx_is_read_only  FROM INFORMATION_SCHEMA.PROCESSLIST a LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id  " + filter_order_limit
+			stmt = "SELECT " +
+				"a.Id, " +
+				"a.User, " +
+				"a.Host, " +
+				"a.`Db` AS `db`, " +
+				"IF(a.Command='Sleep' AND b.trx_isolation_level IS NOT NULL, 'Trx sleep', a.Command) as Command, " +
+				"a.Time_ms as Time, " +
+			"a.State, " +
+			"SUBSTRING(COALESCE(a.INFO,''),1,1000) as Info, " +
+			"0 as Progress, " +
+			"GREATEST(COALESCE(TIMESTAMPDIFF(SECOND,b.trx_started, now()),0),0) as trx_time, " +
+			"COALESCE(b.trx_isolation_level,'') as trx_isolation_level, " +
+				"COALESCE(b.trx_tables_in_use,0) as trx_tables_in_use, " +
+				"COALESCE(b.trx_tables_locked,0) as trx_tables_locked, " +
+				"COALESCE(b.trx_lock_structs,0) as trx_lock_structs, " +
+				"COALESCE(b.trx_lock_memory_bytes,0) as trx_lock_memory_bytes, " +
+				"COALESCE(b.trx_rows_locked,0) as trx_rows_locked, " +
+				"COALESCE(b.trx_rows_modified,0) as trx_rows_modified, " +
+				"COALESCE(b.trx_is_read_only,0) as trx_is_read_only " +
+				"FROM INFORMATION_SCHEMA.PROCESSLIST a " +
+				"LEFT JOIN INFORMATION_SCHEMA.INNODB_TRX b ON b.trx_mysql_thread_id=a.id " +
+				filter_order_limit
 		}
 		if !full_process_is {
 			stmt = "SHOW FULL PROCESSLIST"
