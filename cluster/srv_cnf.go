@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -286,13 +285,14 @@ func (server *ServerMonitor) RemovePreservedConfigPath() {
 
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	cluster := server.ClusterGroup
+	defer server.WriteDeltaVariables()
 
 	var err error
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), false)
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), "config", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
@@ -300,7 +300,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), true)
+		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), "deployed", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
@@ -417,14 +417,20 @@ func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
 	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
 }
 
-func (server *ServerMonitor) ReadVariablesInConfig(path string) map[string]string {
-	vars := make(map[string]string)
-	cluster := server.ClusterGroup
+func (server *ServerMonitor) LoadFromTempConfigFile(srcpath, dstpath string) error {
+	vars := make([]string, 0)
 
-	srcfile, err := os.Open(path)
+	_, err := os.Stat(srcpath)
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
-		return vars
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	srcfile, err := os.Open(srcpath)
+	if err != nil {
+		return err
 	}
 	defer srcfile.Close()
 
@@ -444,36 +450,46 @@ func (server *ServerMonitor) ReadVariablesInConfig(path string) map[string]strin
 			continue
 		}
 
-		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
-			value := strings.TrimSpace(parts[1])
-			vars[varname] = value
+		vars = append(vars, line)
+	}
+
+	dstFile, err := os.OpenFile(dstpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = dstFile.WriteString("[mysqld]\n")
+	if err != nil {
+		return err
+	}
+
+	for _, v := range vars {
+		_, err = dstFile.WriteString(v + "\n")
+		if err != nil {
+			return err
 		}
 	}
 
-	return vars
+	return nil
 }
 
-func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deployed bool) error {
+func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype string, empty bool) error {
 	cluster := server.ClusterGroup
 	var err error
 
-	var lastUpdate time.Time
-	if deployed {
-		lastUpdate = server.LastConfigUpdate.Deployed
-	} else {
-		lastUpdate = server.LastConfigUpdate.Config
+	var lastUpdate *time.Time
+	switch cnftype {
+	case "deployed":
+		lastUpdate = &server.LastConfigUpdate.Deployed
+	case "config":
+		lastUpdate = &server.LastConfigUpdate.Config
+	default:
+		return fmt.Errorf("invalid config type: %s", cnftype)
 	}
 
 	finfo, err := os.Stat(srcpath)
 	if err != nil {
-		if deployed {
-			server.LastConfigUpdate.Deployed = time.Time{}
-		} else {
-			server.LastConfigUpdate.Config = time.Time{}
-		}
 		if os.IsNotExist(err) {
 			return nil
 		}
@@ -487,40 +503,24 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		return nil
 	}
 
-	if deployed {
-		server.LastConfigUpdate.Deployed = finfo.ModTime()
-	} else {
-		server.LastConfigUpdate.Config = finfo.ModTime()
+	*lastUpdate = finfo.ModTime()
+
+	if server.VariablesMap == nil {
+		server.VariablesMap = config.NewVariablesMap()
 	}
 
 	// Clear all previous values
-	if deployed {
-		server.VariablesMap.EmptyDeployedValues()
-	} else {
-		server.VariablesMap.EmptyConfigValues()
-	}
-
-	variables := server.ReadVariablesInConfig(srcpath)
-	for varname, value := range variables {
-		key := strings.ToUpper(varname)
-		v, ok := server.VariablesMap.CheckAndGet(key)
-		if ok {
-			v.Variable_name = varname
-			if deployed {
-				v.SetDeployedValue(value)
-			} else {
-				v.SetConfigValue(value)
-			}
-		} else {
-			v = &config.VariableState{Variable_name: varname}
-			if deployed {
-				v.SetDeployedValue(value)
-			} else {
-				v.SetConfigValue(value)
-			}
-			server.VariablesMap.Store(key, v)
+	if empty {
+		switch cnftype {
+		case "deployed":
+			server.VariablesMap.EmptyDeployedValues()
+		case "config":
+			server.VariablesMap.EmptyConfigValues()
 		}
 	}
+
+	// Read the file
+	server.VariablesMap.LoadFromConfigFile(srcpath, cnftype)
 
 	return nil
 }
@@ -543,11 +543,20 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 			value = parts[1]
 		}
 
+		isMap := strings.Contains(value, "=")
+
 		key := strings.ToUpper(opt)
 		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-			v.Preserve = &value
+			v.SetPreservedValue(value)
 		} else if value != "" {
-			v = &config.VariableState{Variable_name: opt, Preserve: &value}
+			v = new(config.VariableState)
+			if isMap {
+				v.Preserved = make(config.MapValue)
+			} else {
+				v.Preserved = new(config.SingleValue)
+			}
+			v.SetPreservedValue(value)
+
 			server.VariablesMap.Store(key, v)
 		}
 	}
@@ -555,122 +564,73 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	return nil
 }
 
-func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) error {
+func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
+	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
 
-	// Check if the source file exists
-	if _, err := os.Stat(srcpath); os.IsNotExist(err) {
-		return nil
-	}
-
-	destfile, err := os.OpenFile(destpath+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	deltafile, err := os.OpenFile(deltapath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
 	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", deltapath, err)
 	}
-	defer destfile.Close()
+	defer deltafile.Close()
 
-	if _, err := destfile.WriteString("[mysqld]" + "\n"); err != nil {
+	if _, err := deltafile.WriteString("[mysqld]" + "\n"); err != nil {
 		return err
 	}
 
-	// Read the file
-	srcfile, err := os.Open(srcpath)
-	if err != nil {
-		server.LastConfigUpdate.Config = time.Time{}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
-		return err
-	}
-
-	defer srcfile.Close()
-
-	fixedlist := make([]string, 0)
-	dynamiclist := make([]string, 0)
-	remaining := make(map[string]bool)
-	for _, opt := range strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";") {
-		opt = strings.TrimSpace(opt)
-		if opt == "" {
-			continue
-		}
-
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 1 {
-			dynamiclist = append(dynamiclist, parts[0])
-			remaining[parts[0]] = true
-		} else {
-			fixedlist = append(fixedlist, opt)
-		}
-	}
-
-	errvarlist := make([]error, 0)
-	// Read the file content
-	scanner := bufio.NewScanner(srcfile)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Only process lines that start with --
-		if !strings.HasPrefix(line, "--") {
-			continue
-		}
-
-		// Remove the -- prefix and trim whitespace
-		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
-		if line == "" {
-			continue
-		}
-
-		varname := strings.ToLower(strings.TrimPrefix(line, "loose_")) // handle --loose_option
-		parts := strings.SplitN(varname, "=", 2)
-		varname = strings.TrimSpace(parts[0])
-
-		if slices.Contains(dynamiclist, varname) {
-			// Write the line to the file
-			if _, err := destfile.WriteString(line + "\n"); err != nil {
-				errvarlist = append(errvarlist, err)
+	delta := server.VariablesMap.GetVariables(true)
+	for _, v := range delta {
+		if v.Deployed != nil && v.Deployed.String() != "" {
+			if _, err := deltafile.WriteString(fmt.Sprintf("%s=%s\n", v.VariableName, v.Deployed.String())); err != nil {
+				return err
 			}
 		}
 	}
 
-	// Write the remaining variables in runtime
-	for opt := range remaining {
-		if opt == "" {
-			continue
-		}
+	return nil
+}
 
-		key := strings.ToUpper(opt)
-		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-			if v.Runtime != nil {
-				if _, err := destfile.WriteString(opt + "=" + *v.Runtime + "\n"); err != nil {
-					errvarlist = append(errvarlist, err)
+func (server *ServerMonitor) WritePreservedVariables() error {
+	cluster := server.ClusterGroup
+	preservepath := filepath.Join(server.Datadir, "01_preserve.cnf")
+	agreedpath := filepath.Join(server.Datadir, "03_agreed.cnf")
+
+	agreedfile, err := os.OpenFile(agreedpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", agreedpath, err)
+	}
+	defer agreedfile.Close()
+
+	if _, err := agreedfile.WriteString("[mysqld]" + "\n"); err != nil {
+		return err
+	}
+
+	preservefile, err := os.OpenFile(preservepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", preservepath, err)
+	}
+	defer preservefile.Close()
+
+	if _, err := preservefile.WriteString("[mysqld]" + "\n"); err != nil {
+		return err
+	}
+
+	for key, v := range server.VariablesMap.ToNewMap() {
+		// If preserve is set, write to preserve.cnf or agreed.cnf
+		if v.Preserved != nil {
+			if v.IsPreserved() {
+				// Write preserved variables to preserve.cnf
+				if _, err := preservefile.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String())); err != nil {
+					return err
+				}
+			} else {
+				// Write non-preserved variables to agreed.cnf
+				if _, err := agreedfile.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String())); err != nil {
+					return err
 				}
 			}
 		}
 	}
 
-	// Write the fixed variables
-	for _, opt := range fixedlist {
-		if opt == "" {
-			continue
-		}
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 2 {
-			opt = parts[0]
-			value := parts[1]
-			if _, err := destfile.WriteString("loose_" + opt + "=" + value + "\n"); err != nil {
-				errvarlist = append(errvarlist, err)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
-		return err
-	}
-
-	if len(errvarlist) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", destpath, errvarlist)
-		return err
-	}
-
 	return nil
-
 }

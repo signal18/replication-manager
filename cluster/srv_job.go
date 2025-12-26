@@ -3471,8 +3471,13 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
 		os.Rename(filename, filename+".old")
-		os.Rename(filename+".tmp", filename)
-		err := server.ReadVariablesFromConfigFile(filename, true)
+		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
+			return err
+		}
+
+		err = server.ReadVariablesFromConfigFile(filename, "deployed", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 			return err
@@ -3481,7 +3486,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 		filename := filepath.Join(server.Datadir, "dummy.cnf")
 		os.Rename(filename, filename+".old")
 		os.Rename(filename+".tmp", filename)
-		err := server.ReadVariablesFromConfigFile(filename, false)
+		err := server.ReadVariablesFromConfigFile(filename, "config", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
