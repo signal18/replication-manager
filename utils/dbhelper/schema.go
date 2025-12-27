@@ -626,9 +626,22 @@ func GetSpiderMonitor(db *sqlx.DB) (string, error) {
 }
 
 // DuplicateUserPassword duplicates user password to new user
-// TODO: Contains SQL injection risks - needs complete refactoring
+// TODO: Grant text manipulation still has risks - consider alternative approach
 func DuplicateUserPassword(db *sqlx.DB, myver *version.Version, old_user_name string, user_host string, new_user_name string) (string, error) {
-	query := "SHOW GRANTS FOR '" + old_user_name + "'@'" + user_host + "'"
+	// Validate identifiers
+	if err := ValidateIdentifier(old_user_name); err != nil {
+		return "", fmt.Errorf("invalid old username: %w", err)
+	}
+	if err := ValidateIdentifier(user_host); err != nil {
+		return "", fmt.Errorf("invalid host: %w", err)
+	}
+	if err := ValidateIdentifier(new_user_name); err != nil {
+		return "", fmt.Errorf("invalid new username: %w", err)
+	}
+
+	query := fmt.Sprintf("SHOW GRANTS FOR %s@%s",
+		QuoteMySQLIdentifier(old_user_name),
+		QuoteMySQLIdentifier(user_host))
 	rows, err := db.Queryx(query)
 	if err != nil {
 		return query, errors.New("Could not get grants for user")

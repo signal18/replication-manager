@@ -170,8 +170,8 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *vers
 		iprange3 := splitip[0] + ":" + splitip[1] + ":" + splitip[2] + ":%"
 
 		if myver.IsPostgreSQL() {
-			stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
-			row := db.QueryRowx(stmt)
+			stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
+			row := db.QueryRowx(stmt, user)
 			err = row.StructScan(&priv)
 			if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
 				return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
@@ -199,8 +199,8 @@ func GetPrivileges(db *sqlx.DB, user string, host string, ip string, myver *vers
 	iprange3 := splitip[0] + "." + splitip[1] + "." + splitip[2] + ".%"
 
 	if myver.IsPostgreSQL() {
-		stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = '` + user + `'`
-		row := db.QueryRowx(stmt)
+		stmt = `SELECT 'Y' as "Select_priv" ,'Y'  as "Process_priv",  CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END  as "Super_priv",  CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_slave_priv", CASE WHEN  u.userepl THEN 'Y' ELSE 'N' END as "Repl_client_priv" ,CASE WHEN u.usesuper THEN 'Y' ELSE 'N' END as "Reload_priv" FROM pg_catalog.pg_user u WHERE u.usename = $1`
+		row := db.QueryRowx(stmt, user)
 		err = row.StructScan(&priv)
 		if err != nil && strings.Contains(err.Error(), "unsupported Scan") {
 			return priv, stmt, errors.New("No replication user defined. Please check the replication user is created with the required privileges")
