@@ -1,7 +1,9 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -541,6 +543,7 @@ func (mv MapValue) String() string {
 	for k, v := range mv {
 		pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
 	}
+	slices.Sort(pairs)
 	return strings.Join(pairs, ",")
 }
 
@@ -549,6 +552,7 @@ func (mv MapValue) Print(varname string) string {
 	for k, v := range mv {
 		pairs = append(pairs, fmt.Sprintf("%s='%s=%s'", varname, k, v))
 	}
+	slices.Sort(pairs)
 	return strings.Join(pairs, "\n")
 }
 
@@ -691,6 +695,22 @@ func (v *VariableState) SetPreservedValue(value string) {
 	v.Preserved.Set(value)
 }
 
+func (v *VariableState) UnsetConfigValue() {
+	v.Config = nil
+}
+
+func (v *VariableState) UnsetDeployedValue() {
+	v.Deployed = nil
+}
+
+func (v *VariableState) UnsetRuntimeValue() {
+	v.Runtime = nil
+}
+
+func (v *VariableState) UnsetPreservedValue() {
+	v.Preserved = nil
+}
+
 func (v *VariableState) Print(conftype string) string {
 	if conftype == "config" && v.Config != nil {
 		return v.Config.Print(v.VariableName)
@@ -702,6 +722,32 @@ func (v *VariableState) Print(conftype string) string {
 		return v.Preserved.Print(v.VariableName)
 	}
 	return ""
+}
+
+func (vs VariableState) MarshalJSON() ([]byte, error) {
+	type Alias VariableState
+
+	toStr := func(v VariableValue) *string {
+		if v == nil {
+			return nil
+		}
+		s := v.String()
+		return &s
+	}
+
+	return json.Marshal(&struct {
+		Config    *string `json:"cfgValue"`
+		Deployed  *string `json:"value"`
+		Runtime   *string `json:"runtimeValue"`
+		Preserved *string `json:"preservedValue"`
+		Alias
+	}{
+		Config:    toStr(vs.Config),
+		Deployed:  toStr(vs.Deployed),
+		Runtime:   toStr(vs.Runtime),
+		Preserved: toStr(vs.Preserved),
+		Alias:     (Alias)(vs),
+	})
 }
 
 type VariablesMap struct {
@@ -947,7 +993,7 @@ func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 	}
 
 	// Allow shadows to handle multiple same options
-	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true}, path)
+	cfgFile, err := ini.LoadSources(ini.LoadOptions{AllowShadows: true, AllowBooleanKeys: true}, path)
 	if err != nil {
 		return err
 	}

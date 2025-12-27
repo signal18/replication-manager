@@ -261,6 +261,7 @@ func (server *ServerMonitor) GetDatabaseConfig() error {
 	}
 
 	server.IsConfigGen = true
+	server.SetConfigRefreshCookie()
 	return nil
 }
 
@@ -478,6 +479,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	cluster := server.ClusterGroup
 	var err error
 
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading %s variables from %s", cnftype, srcpath)
+
 	var lastUpdate *time.Time
 	switch cnftype {
 	case "deployed":
@@ -498,7 +501,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 		return err
 	}
 
-	if !lastUpdate.Before(finfo.ModTime()) {
+	if !lastUpdate.IsZero() && !lastUpdate.Before(finfo.ModTime()) {
 		// No need to read the file if it hasn't changed
 		return nil
 	}
@@ -520,13 +523,23 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	}
 
 	// Read the file
-	server.VariablesMap.LoadFromConfigFile(srcpath, cnftype)
+	err = server.VariablesMap.LoadFromConfigFile(srcpath, cnftype)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
+		return err
+	}
 
 	return nil
 }
 
 func (server *ServerMonitor) ReadPreservedVariables() error {
 	cluster := server.ClusterGroup
+
+	if server.VariablesMap == nil {
+		server.VariablesMap = config.NewVariablesMap()
+	}
+
+	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "01_preserved.cnf"), "preserved")
 
 	// Read the preserved variables from config
 	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
@@ -580,8 +593,8 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 	delta := server.VariablesMap.GetVariables(true)
 	for _, v := range delta {
-		if v.Deployed != nil && v.Deployed.String() != "" {
-			if _, err := deltafile.WriteString(fmt.Sprintf("%s=%s\n", v.VariableName, v.Deployed.String())); err != nil {
+		for _, val := range strings.Split(v.Print("deployed"), "\n") {
+			if _, err := deltafile.WriteString(val + "\n"); err != nil {
 				return err
 			}
 		}
@@ -592,7 +605,7 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 func (server *ServerMonitor) WritePreservedVariables() error {
 	cluster := server.ClusterGroup
-	preservepath := filepath.Join(server.Datadir, "01_preserve.cnf")
+	preservepath := filepath.Join(server.Datadir, "01_preserved.cnf")
 	agreedpath := filepath.Join(server.Datadir, "03_agreed.cnf")
 
 	agreedfile, err := os.OpenFile(agreedpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it

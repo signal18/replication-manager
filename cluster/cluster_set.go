@@ -2160,7 +2160,7 @@ func (cluster *Cluster) SetPreserveFlagToAllNodes(variable string, value string)
 	for _, srv := range cluster.Servers {
 		v, ok := srv.VariablesMap.CheckAndGet(variable)
 		if ok {
-			v.Preserve = &value
+			v.SetPreservedValue(value)
 		}
 	}
 }
@@ -2169,7 +2169,7 @@ func (cluster *Cluster) DelPreserveFlagToAllNodes(variable string) {
 	for _, srv := range cluster.Servers {
 		v, ok := srv.VariablesMap.CheckAndGet(variable)
 		if ok {
-			v.Preserve = nil
+			v.UnsetPreservedValue()
 		}
 	}
 }

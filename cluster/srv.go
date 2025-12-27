@@ -397,6 +397,7 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
+
 	server.SetConfigRefreshCookie()
 	server.CheckNeedConfigFetch()
 	go server.FetchLastBackupMetadata()

@@ -37,7 +37,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			value = v.Runtime
 		}
 
-		if value != nil && *value == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
+		if value != nil && value.String() == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -46,7 +46,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			changed = true
 		}
 
-		if (value == nil || *value == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
+		if (value == nil || value.String() == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -55,7 +55,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			changed = true
 		}
 
-		if value != nil && v.Config != nil && *value != *v.Config {
+		if value != nil && v.Config != nil && value.String() != v.Config.String() {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -65,7 +65,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 		}
 
 		if !changed {
-			if value != nil && *value == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+			if value != nil && value.String() == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
 				_, file, no, ok := runtime.Caller(1)
 				if ok {
 					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -74,7 +74,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 				changed = true
 			}
 
-			if (value == nil || *value == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
+			if (value == nil || value.String() == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
 				_, file, no, ok := runtime.Caller(1)
 				if ok {
 					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)

@@ -2633,9 +2633,12 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 
 func (server *ServerMonitor) JobRunViaSSH() error {
 	cluster := server.ClusterGroup
+
 	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Cancel dbjob via ssh during failover")
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
+
 	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
 		if !server.HaveSSHError {
@@ -2654,7 +2657,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	)
 	scriptpath := server.Datadir + "/init/init/dbjobs_new"
 
-	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
+	if _, err := os.Stat(scriptpath); os.IsNotExist(err) {
 		server.GetDatabaseConfig()
 	}
 
@@ -2674,6 +2677,8 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Running database jobs via SSH script: %s with env: %v", scriptpath, server.GetSshEnv())
 
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
@@ -3485,8 +3490,14 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case "printdefault-dummy":
 		filename := filepath.Join(server.Datadir, "dummy.cnf")
 		os.Rename(filename, filename+".old")
-		os.Rename(filename+".tmp", filename)
-		err := server.ReadVariablesFromConfigFile(filename, "config", true)
+
+		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
+			return err
+		}
+
+		err = server.ReadVariablesFromConfigFile(filename, "config", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}

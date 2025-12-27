@@ -2119,3 +2119,18 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 		}
 	}
 }
+
+func (cluster *Cluster) RefreshDatabaseConfigs() error {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		err := srv.GetDatabaseConfig()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not refresh database config for %s: %s", srv.URL, err)
+		}
+	}
+
+	return nil
+}

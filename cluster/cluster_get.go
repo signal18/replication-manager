@@ -686,6 +686,10 @@ func (cluster *Cluster) GetIgnoredROList() string {
 
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
+	if len(cluster.Servers) == 0 {
+		return ""
+	}
+
 	for _, server := range cluster.Servers {
 		if cluster.Conf.MultiMasterWsrep {
 			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))

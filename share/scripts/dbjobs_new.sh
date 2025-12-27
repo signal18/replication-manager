@@ -234,8 +234,8 @@ send_to_api_with_retry() {
 check_log_level() {
     local host_port="$1"
     local cluster="$2"
-    local taskname="$5"
-    local log_level="$6"
+    local taskname="$3"
+    local log_level="$4"
 
     local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
 
@@ -1054,6 +1054,7 @@ fi
 
 if [ -f "$REPMAN_CLIENT" ]; then
     ENC_KEY=$(encrypt_data "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    chmod +x
     $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --log-dir="$LOG_DIR" > $LOG_DIR/repman.out
 fi
 

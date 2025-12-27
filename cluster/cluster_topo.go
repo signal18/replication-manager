@@ -52,6 +52,8 @@ func (cluster *Cluster) newServerList() error {
 
 		}
 	}
+
+	cluster.RefreshDatabaseConfigs()
 	cluster.Unlock()
 	return nil
 }
