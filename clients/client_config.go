@@ -253,12 +253,12 @@ func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir 
 
 	// Construct the config URL
 	if cliServerID != "" {
-		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config/dummy", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
 	} else {
 		if cliServerPort == "" {
 			cliServerPort = "3306"
 		}
-		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config/dummy", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
 	}
 
 	req, err := http.NewRequest("GET", configURL, nil)

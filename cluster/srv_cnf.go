@@ -248,20 +248,27 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 }
 
 func (server *ServerMonitor) GetDatabaseConfig() error {
+	return server.getDatabaseConfig(true)
+}
+
+func (server *ServerMonitor) GetDummyConfig() error {
+	return server.getDatabaseConfig(false)
+}
+
+func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
 	cluster := server.ClusterGroup
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
 
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, cluster.Conf.ProvDBConfigPreserve, server.HasConfigPathCookie())
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, preserve)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err
 	}
 
 	server.IsConfigGen = true
-	server.SetConfigRefreshCookie()
 	return nil
 }
 
@@ -593,10 +600,8 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 	delta := server.VariablesMap.GetVariables(true)
 	for _, v := range delta {
-		for _, val := range strings.Split(v.Print("deployed"), "\n") {
-			if _, err := deltafile.WriteString(val + "\n"); err != nil {
-				return err
-			}
+		if _, err := deltafile.WriteString(v.PrintDeployedDelta() + "\n"); err != nil {
+			return err
 		}
 	}
 

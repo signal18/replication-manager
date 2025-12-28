@@ -124,6 +124,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfig)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config/{dummy}", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfig)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
 	))
@@ -133,7 +136,7 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{generate}", negroni.New(
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{dummy}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfig)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen", negroni.New(
@@ -3005,11 +3008,13 @@ func (repman *ReplicationManager) handlerMuxServersPortBackup(w http.ResponseWri
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
 // @Param serverPort path string true "Server Port"
+// @Param dummy path string false "Dummy Config"
 // @Success 200 {file} file "Configuration file"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "File not found"
 // @Failure 500 {string} string "No cluster" or "No server"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{dummy} [get]
 func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -3026,7 +3031,11 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
-			node.GetDatabaseConfig()
+			if vars["dummy"] == "dummy" {
+				node.GetDummyConfig()
+			} else {
+				node.GetDatabaseConfig()
+			}
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"
@@ -3593,9 +3602,7 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 			return
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil && !node.IsDown() {
-			node.ReadVariablesFromConfigs()
-
+		if node != nil {
 			diff := vars["diff"] == "true"
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
@@ -4146,11 +4153,13 @@ func (repman *ReplicationManager) handlerMuxServerTaskCancel(w http.ResponseWrit
 // @Produce application/octet-stream
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
+// @Param dummy path string false "Config is a dummy file"
 // @Success 200 {file} file "Configuration file"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 404 {string} string "File not found"
 // @Failure 500 {string} string "No cluster" or "No server"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/config [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config/{dummy} [get]
 func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -4167,7 +4176,11 @@ func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		proxy := mycluster.GetProxyFromName(vars["serverName"])
 		if node != nil {
-			node.GetDatabaseConfig()
+			if vars["dummy"] == "dummy" {
+				node.GetDummyConfig()
+			} else {
+				node.GetDatabaseConfig()
+			}
 			data, err := os.ReadFile(string(node.Datadir + "/config.tar.gz"))
 			if err != nil {
 				r.URL.Path = r.URL.Path + ".tar.gz"

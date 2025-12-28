@@ -521,12 +521,20 @@ func (s *SingleValue) Print(varname string) string {
 	return fmt.Sprintf("%s=%s", varname, s.String())
 }
 
-func (s *SingleValue) Set(value string) {
-	*s = SingleValue(value)
+func (s *SingleValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	if exclude != nil && s.IsEqual(exclude) {
+		return nil
+	}
+
+	return []string{s.Print(varname)}
 }
 
-func (s *SingleValue) IsMap() bool {
-	return false
+func (s *SingleValue) Append(value string) {
+	s.Set(value)
+}
+
+func (s *SingleValue) Set(value string) {
+	*s = SingleValue(value)
 }
 
 func (s SingleValue) IsEqual(other VariableValue) bool {
@@ -534,6 +542,88 @@ func (s SingleValue) IsEqual(other VariableValue) bool {
 		return s == *o
 	}
 	return false
+}
+
+type SliceValue []string
+
+func (sv SliceValue) String() string {
+	sorted := make([]string, len(sv))
+	copy(sorted, sv)
+	slices.Sort(sorted)
+	return strings.Join(sorted, ",")
+}
+
+func (sv SliceValue) Print(varname string) string {
+	return strings.Join(sv.PrintWithExclude(varname, nil), "\n")
+}
+
+func (sv SliceValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	excludeMap := make(map[string]struct{})
+	if exclude != nil {
+		if o, ok := exclude.(*SliceValue); ok {
+			for _, v := range *o {
+				excludeMap[v] = struct{}{}
+			}
+		}
+	}
+
+	filtered := make([]string, 0, len(sv))
+	for _, v := range sv {
+		if _, found := excludeMap[v]; !found {
+			filtered = append(filtered, v)
+		}
+	}
+
+	slices.Sort(filtered)
+
+	pairs := make([]string, 0, len(filtered))
+	for _, v := range filtered {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", varname, v))
+	}
+	return pairs
+}
+
+func (sv *SliceValue) Append(value string) {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		if !slices.Contains(*sv, v) {
+			*sv = append(*sv, v)
+		}
+	}
+}
+
+func (sv *SliceValue) Set(value string) {
+	parts := strings.Split(value, ",")
+	for _, part := range parts {
+		v := strings.TrimSpace(part)
+		*sv = append(*sv, v)
+	}
+}
+
+func (sv *SliceValue) IsEqual(other VariableValue) bool {
+	o, ok := other.(*SliceValue)
+	if !ok {
+		return false
+	}
+	if len(*sv) != len(*o) {
+		return false
+	}
+
+	sortedA := make([]string, len(*sv))
+	copy(sortedA, *sv)
+	slices.Sort(sortedA)
+
+	sortedB := make([]string, len(*o))
+	copy(sortedB, *o)
+	slices.Sort(sortedB)
+
+	for i := range sortedA {
+		if sortedA[i] != sortedB[i] {
+			return false
+		}
+	}
+	return true
 }
 
 type MapValue map[string]string
@@ -548,12 +638,31 @@ func (mv MapValue) String() string {
 }
 
 func (mv MapValue) Print(varname string) string {
-	pairs := make([]string, 0, len(mv))
+	return strings.Join(mv.PrintWithExclude(varname, nil), "\n")
+}
+
+func (mv MapValue) PrintWithExclude(varname string, exclude VariableValue) []string {
+	pairs := make([]string, 0)
+
+	o, ok := exclude.(MapValue)
+	if !ok {
+		o = make(MapValue)
+	}
+
 	for k, v := range mv {
+		if ov, found := o[k]; found && ov == v {
+			continue
+		}
+
 		pairs = append(pairs, fmt.Sprintf("%s='%s=%s'", varname, k, v))
 	}
+
 	slices.Sort(pairs)
-	return strings.Join(pairs, "\n")
+	return pairs
+}
+
+func (mv MapValue) Append(value string) {
+	mv.Set(value)
 }
 
 func (mv MapValue) Set(value string) {
@@ -566,10 +675,6 @@ func (mv MapValue) Set(value string) {
 			mv[k] = vv
 		}
 	}
-}
-
-func (mv MapValue) IsMap() bool {
-	return true
 }
 
 func (mv MapValue) IsEqual(other VariableValue) bool {
@@ -591,9 +696,27 @@ func (mv MapValue) IsEqual(other VariableValue) bool {
 type VariableValue interface {
 	String() string
 	Print(varname string) string
+	PrintWithExclude(varname string, exclude VariableValue) []string
+	Append(value string)
 	Set(value string)
 	IsEqual(other VariableValue) bool
-	IsMap() bool
+}
+
+var RepeatOptions = []string{
+	"optimizer_switch",
+	"performance_schema_instrument",
+	"replicate_do_db",
+	"replicate_ignore_db",
+	"replicate_do_table",
+	"replicate_ignore_table",
+	"replicate_wild_do_table",
+	"replicate_wild_ignore_table",
+	"replicate_rewrite_db",
+	"binlog_do_db",
+	"binlog_ignore_db",
+	"plugin_load_add",
+	"init_connect",
+	"ignore_db_dir",
 }
 
 type VariableState struct {
@@ -616,6 +739,7 @@ func NewVariableState(varname string) *VariableState {
 		Config:       nil,
 		Deployed:     nil,
 		Preserved:    nil,
+		Runtime:      nil,
 	}
 }
 
@@ -643,56 +767,43 @@ func (v *VariableState) IsPreserved() bool {
 	return false
 }
 
-func (v *VariableState) SetConfigValue(value string) {
-	isMap := strings.Contains(value, "=")
-	if v.Config == nil {
-		if isMap {
-			v.Config = make(MapValue)
+func (v *VariableState) AllowRepeatOptions() bool {
+	return slices.Contains(RepeatOptions, v.VariableName)
+}
+
+func (v *VariableState) setVariableValue(target *VariableValue, value string) {
+	if *target == nil {
+		isMap := strings.Contains(value, "=")
+		if !v.AllowRepeatOptions() {
+			*target = new(SingleValue)
+		} else if isMap {
+			*target = make(MapValue)
 		} else {
-			v.Config = new(SingleValue)
+			*target = new(SliceValue)
 		}
 	}
 
-	v.Config.Set(value)
+	if v.AllowRepeatOptions() {
+		(*target).Append(value)
+	} else {
+		(*target).Set(value)
+	}
+}
+
+func (v *VariableState) SetConfigValue(value string) {
+	v.setVariableValue(&v.Config, value)
 }
 
 func (v *VariableState) SetDeployedValue(value string) {
-	isMap := strings.Contains(value, "=")
-	if v.Deployed == nil {
-		if isMap {
-			v.Deployed = make(MapValue)
-		} else {
-			v.Deployed = new(SingleValue)
-		}
-	}
-
-	v.Deployed.Set(value)
+	v.setVariableValue(&v.Deployed, value)
 }
 
 func (v *VariableState) SetRuntimeValue(value string) {
-	isMap := strings.Contains(value, "=")
-	if v.Runtime == nil {
-		if isMap {
-			v.Runtime = make(MapValue)
-		} else {
-			v.Runtime = new(SingleValue)
-		}
-	}
-
-	v.Runtime.Set(value)
+	v.setVariableValue(&v.Runtime, value)
 }
 
 func (v *VariableState) SetPreservedValue(value string) {
-	isMap := strings.Contains(value, "=")
-	if v.Preserved == nil {
-		if isMap {
-			v.Preserved = make(MapValue)
-		} else {
-			v.Preserved = new(SingleValue)
-		}
-	}
-
-	v.Preserved.Set(value)
+	v.setVariableValue(&v.Preserved, value)
 }
 
 func (v *VariableState) UnsetConfigValue() {
@@ -722,6 +833,14 @@ func (v *VariableState) Print(conftype string) string {
 		return v.Preserved.Print(v.VariableName)
 	}
 	return ""
+}
+
+func (v *VariableState) PrintDeployedDelta() string {
+	if v.Deployed == nil {
+		return ""
+	}
+
+	return strings.Join(v.Deployed.PrintWithExclude(v.VariableName, v.Config), "\n")
 }
 
 func (vs VariableState) MarshalJSON() ([]byte, error) {
@@ -1001,7 +1120,7 @@ func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 	section := cfgFile.Section("mysqld")
 	for _, key := range section.Keys() {
 		varname := strings.ReplaceAll(strings.TrimSpace(strings.TrimPrefix(key.Name(), "loose_")), "-", "_")
-		if varname == "optimizer_switch" {
+		if slices.Contains(RepeatOptions, varname) {
 			values := key.ValueWithShadows()
 			for _, v := range values {
 				if cnftype == "config" {

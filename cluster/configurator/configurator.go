@@ -517,7 +517,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve, preservepath bool) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve bool) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -602,15 +602,17 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
 
-	difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
+	if preserve {
+		difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
 
-	for _, fname := range difflist {
-		srcpath := filepath.Join(Datadir, fname)
-		destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/", fname)
+		for _, fname := range difflist {
+			srcpath := filepath.Join(Datadir, fname)
+			destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/", fname)
 
-		// Check if the source file exists before copying
-		if _, err := os.Stat(srcpath); err == nil {
-			misc.CopyFile(srcpath, destpath)
+			// Check if the source file exists before copying
+			if _, err := os.Stat(srcpath); err == nil {
+				misc.CopyFile(srcpath, destpath)
+			}
 		}
 	}
 
