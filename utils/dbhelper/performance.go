@@ -128,8 +128,15 @@ func SetLongQueryTime(db *sqlx.DB, querytime string) (string, error) {
 	if err := ValidateNumeric(querytime); err != nil {
 		return "", fmt.Errorf("invalid query time value: %w", err)
 	}
+
+	// Convert to float64 for type-safe query execution (long_query_time accepts decimal values)
+	timeValue, err := strconv.ParseFloat(querytime, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid query time value: %w", err)
+	}
+
 	query := "SET GLOBAL long_query_time = ?"
-	_, err := db.Exec(query, querytime)
+	_, err = db.Exec(query, timeValue)
 	if err != nil {
 		return query, err
 	}
@@ -359,13 +366,19 @@ func KillThread(db *sqlx.DB, id string, myver *version.Version) (string, error) 
 		return "", fmt.Errorf("invalid thread id: %w", err)
 	}
 
+	// Convert to int64 for type-safe query execution
+	idValue, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid thread id: %w", err)
+	}
+
 	if myver.IsPostgreSQL() {
 		query := "SELECT pg_terminate_backend(?)"
-		_, err := db.Exec(query, id)
+		_, err = db.Exec(query, idValue)
 		return query + " (" + id + ")", err
 	}
 	query := "KILL ?"
-	_, err := db.Exec(query, id)
+	_, err = db.Exec(query, idValue)
 	return query + " (" + id + ")", err
 }
 
@@ -375,13 +388,19 @@ func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
 		return "", fmt.Errorf("invalid query id: %w", err)
 	}
 
+	// Convert to int64 for type-safe query execution
+	idValue, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid query id: %w", err)
+	}
+
 	if myver.IsPostgreSQL() {
 		query := "SELECT pg_terminate_backend(?)"
-		_, err := db.Exec(query, id)
+		_, err = db.Exec(query, idValue)
 		return query + " (" + id + ")", err
 	}
 	query := "KILL QUERY ?"
-	_, err := db.Exec(query, id)
+	_, err = db.Exec(query, idValue)
 	return query + " (" + id + ")", err
 }
 

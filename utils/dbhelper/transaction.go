@@ -6,6 +6,7 @@ package dbhelper
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
@@ -49,8 +50,15 @@ func SetRelayLogSpaceLimit(db *sqlx.DB, size string) (string, error) {
 	if err := ValidateNumeric(size); err != nil {
 		return "", fmt.Errorf("invalid relay_log_space_limit value: %w", err)
 	}
+
+	// Convert to int64 for type-safe query execution
+	sizeValue, err := strconv.ParseInt(size, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid relay_log_space_limit value: %w", err)
+	}
+
 	query := "SET GLOBAL relay_log_space_limit = ?"
-	_, err := db.Exec(query, size)
+	_, err = db.Exec(query, sizeValue)
 	if err != nil {
 		return query, err
 	}
@@ -114,8 +122,15 @@ func SetMaxConnections(db *sqlx.DB, connections string, myver *version.Version) 
 	if err := ValidateNumeric(connections); err != nil {
 		return "", fmt.Errorf("invalid max_connections value: %w", err)
 	}
+
+	// Convert to int64 for type-safe query execution
+	connValue, err := strconv.ParseInt(connections, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid max_connections value: %w", err)
+	}
+
 	query := "SET GLOBAL max_connections = ?"
-	_, err := db.Exec(query, connections)
+	_, err = db.Exec(query, connValue)
 	return query, err
 }
 
