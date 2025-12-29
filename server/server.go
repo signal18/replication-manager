@@ -1362,13 +1362,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
 	}
 	secRead := fistRead.Sub("DEFAULT")
-	repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
 
 	//fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
 	if secRead != nil {
+		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 		for _, f := range secRead.AllKeys() {
 			v := secRead.Get(f)
 			if v != nil {
