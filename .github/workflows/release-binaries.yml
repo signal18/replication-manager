@@ -21,16 +21,21 @@ jobs:
           # Linux builds
           - os: linux
             arch: amd64
+            build_servers: true
           - os: linux
             arch: arm64
+            build_servers: true
           # macOS builds
           - os: darwin
             arch: amd64
+            build_servers: true
           - os: darwin
             arch: arm64
-          # Windows builds
+            build_servers: true
+          # Windows builds (CLI and arbitrator only, server has syslog dependency)
           - os: windows
             arch: amd64
+            build_servers: false
 
     steps:
       - name: Checkout
@@ -98,6 +103,7 @@ jobs:
             -o "build/binaries/${BINARY_NAME}"
 
       - name: Build Embedded server
+        if: matrix.build_servers
         env:
           CGO_ENABLED: 0
           GOOS: ${{ matrix.os }}
