@@ -2634,6 +2634,20 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 func (server *ServerMonitor) JobRunViaSSH() error {
 	cluster := server.ClusterGroup
 
+	if server.IsRunningJobs {
+		loglvl := config.LvlErr
+
+		if cluster.Conf.SchedulerJobsSSH {
+			loglvl = config.LvlDbg
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, loglvl, "Cancel dbjob via ssh since another job is running")
+		return errors.New("Cancel dbjob via ssh since another job is running")
+	}
+
+	server.SetRunningJobs(true)
+	defer server.SetRunningJobs(false)
+
 	if cluster.IsInFailover() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Cancel dbjob via ssh during failover")
 		return errors.New("Cancel dbjob via ssh during failover")

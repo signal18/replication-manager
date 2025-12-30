@@ -179,3 +179,7 @@ func (server *ServerMonitor) DelWaitJobsUpgradeCookie() error {
 func (server *ServerMonitor) DelRollingJobsUpgradeCookie() error {
 	return server.delCookie("cookie_rolling_jobs_upgrade")
 }
+
+func (server *ServerMonitor) DelWaitRunJobSSHCookie() error {
+	return server.delCookie("cookie_waitrunjobssh")
+}

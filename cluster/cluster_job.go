@@ -277,3 +277,16 @@ func (cluster *Cluster) JobParseMyDumperMetaOld(dir string) (config.MyDumperMeta
 func (cluster *Cluster) SetJobsUpgradeSender(server *ServerMonitor) {
 	cluster.SetState("WARN0148", state.State{ErrDesc: fmt.Sprintf(config.ClusterError["WARN0148"], server.URL), ErrType: config.LvlWarn, ErrFrom: "JOBS", ServerUrl: server.URL})
 }
+
+func (cluster *Cluster) CheckWaitRunJobSSH() {
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+
+		if s.HasWaitRunJobSSHCookie() {
+			s.DelWaitRunJobSSHCookie()
+			go s.JobRunViaSSH()
+		}
+	}
+}

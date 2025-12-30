@@ -189,6 +189,10 @@ func (server *ServerMonitor) HasProvisionDBUsersCookie() bool {
 	return server.hasCookie("cookie_provision_db_users")
 }
 
+func (server *ServerMonitor) HasWaitRunJobSSHCookie() bool {
+	return server.hasCookie("cookie_waitrunjobssh")
+}
+
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:

@@ -407,6 +407,10 @@ func (server *ServerMonitor) SetBackupLogicalCookie(tool string) error {
 	}
 }
 
+func (server *ServerMonitor) SetWaitRunJobSSHCookie() error {
+	return server.createCookie("cookie_waitrunjobssh")
+}
+
 func (server *ServerMonitor) SetLoadingJobList(val bool) {
 	server.IsLoadingJobList = val
 }
@@ -740,4 +744,8 @@ func (server *ServerMonitor) SetErrState(key, errtype, from, desc string, args .
 		ErrFrom:   from,
 		ServerUrl: server.URL,
 	})
+}
+
+func (server *ServerMonitor) SetRunningJobs(running bool) {
+	server.IsRunningJobs = running
 }

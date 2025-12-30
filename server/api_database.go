@@ -3145,7 +3145,7 @@ func (repman *ReplicationManager) handlerMuxServersWriteLog(w http.ResponseWrite
 			mod = config.ConstLogModDbOptimize
 		case "mariabackup", "xtrabackup", "reseedxtrabackup", "reseedmariabackup", "flashbackxtrabackup", "flashbackmariadbackup", "reseedmysqldump", "flashbackmysqldump":
 			mod = config.ConstLogModBackupStream
-		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade":
+		case "zfssnapback", "stop", "restart", "start", "main", "jobs-check", "jobs-upgrade", "print-defaults":
 			mod = config.ConstLogModTask
 		default:
 			http.Error(w, "Bad request: Task is not registered", http.StatusBadRequest)
@@ -3804,9 +3804,9 @@ func (repman *ReplicationManager) handlerMuxServerVTables(w http.ResponseWriter,
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
-// @Success 200 {string} string "Jobs run successfully"
+// @Success 200 {string} string "Run jobs command issued"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error running job"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/run-jobs [get]
 func (repman *ReplicationManager) handlerMuxRunJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -3819,11 +3819,8 @@ func (repman *ReplicationManager) handlerMuxRunJobs(w http.ResponseWriter, r *ht
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			err := node.JobRunViaSSH()
-			if err != nil {
-				http.Error(w, "Error running job: "+err.Error(), 500)
-				return
-			}
+			node.SetWaitRunJobSSHCookie()
+			w.Write([]byte("Run jobs command issued"))
 			return
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -4096,6 +4093,12 @@ func (repman *ReplicationManager) handlerMuxGetDatabaseServiceConfig(w http.Resp
 			http.Error(w, "No valid ACL", 403)
 			return
 		}
+
+		if mycluster.Conf.ProvOrchestrator != "opensvc" {
+			w.Write([]byte(""))
+			return
+		}
+
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
 			res := mycluster.GetDatabaseServiceConfig(node)
@@ -4188,8 +4191,8 @@ func (repman *ReplicationManager) handlerMuxServerConfig(w http.ResponseWriter, 
 				w.Write([]byte("404 Something went wrong reading : " + string(node.Datadir+"/config.tar.gz") + " " + err.Error() + " - " + http.StatusText(404)))
 				return
 			}
+			defer node.SetWaitJobsCheckCookie()
 			w.Write(data)
-			node.SetWaitJobsCheckCookie()
 		} else if proxy != nil {
 			proxy.GetProxyConfig()
 			data, err := os.ReadFile(string(proxy.GetDatadir() + "/config.tar.gz"))

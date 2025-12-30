@@ -130,6 +130,7 @@ type ServerMonitor struct {
 	IsDelayed                   bool                       `json:"isDelayed"`
 	IsFull                      bool                       `json:"isFull"`
 	IsConfigGen                 bool                       `json:"isConfigGen"`
+	IsRunningJobs               bool                       `json:"isRunningJobs"`
 	Ignored                     bool                       `json:"ignored"`
 	IgnoredRO                   bool                       `json:"ignoredRO"`
 	Prefered                    bool                       `json:"prefered"`
@@ -398,9 +399,9 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
 
-	server.ReadVariablesFromConfigs()
-	server.SetConfigRefreshCookie()
 	server.CheckNeedConfigFetch()
+	server.SetConfigRefreshCookie()
+	server.ReadVariablesFromConfigs()
 	go server.FetchLastBackupMetadata()
 	return server, err
 }
