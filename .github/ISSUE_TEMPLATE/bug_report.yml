@@ -1,0 +1,151 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in replication-manager
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix the issue.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Server (monitoring/orchestration)
+        - CLI Client
+        - Arbitrator
+        - Web Dashboard
+        - Proxy Integration (MaxScale/ProxySQL/HAProxy)
+        - Provisioning (OpenSVC)
+        - Backup/Restore
+        - Configuration
+        - API (REST/gRPC)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Start replication-manager with config...
+        2. Execute command...
+        3. Observe error...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe what should happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please paste any relevant log output (use code blocks with triple backticks)
+      render: shell
+
+  - type: input
+    id: version
+    attributes:
+      label: Replication Manager Version
+      description: Output of `replication-manager-cli version` or `replication-manager version`
+      placeholder: e.g., 3.1.16
+    validations:
+      required: true
+
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database System
+      description: Which database system are you using?
+      options:
+        - MariaDB
+        - MySQL
+        - Percona Server
+        - Other
+      multiple: true
+    validations:
+      required: true
+
+  - type: input
+    id: db-version
+    attributes:
+      label: Database Version
+      description: Version of the database system
+      placeholder: e.g., MariaDB 10.11.6
+
+  - type: dropdown
+    id: replication-mode
+    attributes:
+      label: Replication Mode
+      description: Which replication mode are you using?
+      options:
+        - GTID-based (standard)
+        - Multi-source
+        - Multi-tier
+        - Master-Master
+        - Galera/PXC Cluster
+        - Other
+
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Proxy Type
+      description: Which proxy are you using (if applicable)?
+      options:
+        - None
+        - MaxScale
+        - ProxySQL
+        - HAProxy
+        - Spider
+        - MyProxy
+      multiple: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating System
+      description: OS and version where replication-manager is running
+      placeholder: e.g., Ubuntu 22.04, RHEL 8, Docker
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Configuration
+      description: Relevant parts of your config.toml (remove sensitive data like passwords)
+      render: toml
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Any other context about the problem (topology diagram, cluster state, etc.)
