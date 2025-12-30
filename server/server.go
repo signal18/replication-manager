@@ -1133,12 +1133,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
-
-	if WithProvisioning == "ON" {
-		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
-	} else {
-		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
-	}
+	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -1362,13 +1357,13 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
 	}
 	secRead := fistRead.Sub("DEFAULT")
-	repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
 
 	//fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
 	if secRead != nil {
+		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 		for _, f := range secRead.AllKeys() {
 			v := secRead.Get(f)
 			if v != nil {
@@ -1436,9 +1431,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := fistRead.Sub(clusterName)
-		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
 		clOrch := conf.ProvOrchestrator
 		if clRead != nil {
+			repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
 			if v := clRead.Get("prov-orchestrator"); v != nil {
 				clOrch = clRead.GetString("prov-orchestrator")
 			}
