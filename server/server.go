@@ -276,16 +276,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		//	initDeprecated() // not needed used alias in main
 	}
 	var usr string
-	var configPath string
-	//var pid string
-	if !isClient { // client should not use this
-		flag.StringVar(&usr, "user", "", "help message")
-	}
-	//flag.StringVar(&pid, "pidfile", "", "help message")
-	flag.StringVar(&configPath, "config", "", "help message")
-	flag.Parse()
-
-	if usr == "" && repman != nil {
+	if repman != nil && repman.OsUser != nil {
 		usr = repman.OsUser.Username
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
@@ -1185,7 +1176,7 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	//repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Embeded run config dir : %s", conf.ConfDir)
 
-	if conf.ConfDirBackup == "" {
+	if conf.ConfDirBackup == "" && WithArbitration != "ON" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
 	}
 

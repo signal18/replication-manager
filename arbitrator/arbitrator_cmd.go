@@ -52,6 +52,7 @@ func init() {
 	conf.FullVersion = FullVersion
 	conf.MemProfile = memprofile
 	conf.WithTarball = WithTarball
+	server.WithArbitration = "ON"
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
