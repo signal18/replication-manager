@@ -122,7 +122,7 @@ body:
       label: Proxy Type
       description: Which proxy are you using (if applicable)?
       options:
-        - None
+        - No proxy
         - MaxScale
         - ProxySQL
         - HAProxy
