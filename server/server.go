@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -1183,7 +1182,9 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
 		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
 		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
-		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		if WithArbitration != "ON" && conf.ConfDirBackup != "" {
+			os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		}
 	}
 
 	if conf.WithEmbed == "ON" {
@@ -1756,6 +1757,10 @@ func (repman *ReplicationManager) PushConfigToBackupDir() {
 	}()
 
 	if repman.Conf.WithEmbed == "ON" {
+		return
+	}
+
+	if WithArbitration == "ON" {
 		return
 	}
 

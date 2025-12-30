@@ -1,9 +1,11 @@
 [Unit]
-Description=replication-manager arbitrator 
+Description=replication-manager arbitrator
 
 [Service]
 Type=simple
 ExecStart=/usr/bin/replication-manager-arb --user repman arbitrator
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
