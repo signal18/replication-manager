@@ -8533,7 +8533,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Jobs run successfully",
+                        "description": "Run jobs command issued",
                         "schema": {
                             "type": "string"
                         }
@@ -8545,7 +8545,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error running job",
+                        "description": "Cluster Not Found\" or \"Server Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -10197,6 +10197,66 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config/{dummy}": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Config is a dummy file",
+                        "name": "dummy",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -11858,6 +11918,13 @@ const docTemplate = `{
                         "name": "serverName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "false",
+                        "description": "Show differences (true/false)",
+                        "name": "diff",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -11883,16 +11950,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}": {
-            "get": {
-                "description": "Retrieves the variables of a specified server within a cluster.",
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-accept": {
+            "post": {
+                "description": "Marks a variable difference as \"accepted\" (use config value) on a specified server within a cluster.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Database"
+                    "DatabaseConfig"
                 ],
-                "summary": "Get variables of a server",
+                "summary": "Accept a variable difference on a server",
                 "parameters": [
                     {
                         "type": "string",
@@ -11918,17 +11985,23 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Show differences",
-                        "name": "diff",
-                        "in": "path"
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Variables retrieved successfully",
+                        "description": "Variable accepted successfully",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -11938,7 +12011,145 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error accepting variable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-clear": {
+            "post": {
+                "description": "Removes preservation status from a variable on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Clear variable preservation status on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable preservation cleared successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error clearing variable preservation",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-preserve": {
+            "post": {
+                "description": "Marks a variable difference as \"preserved\" (keep deployed value) on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Preserve a variable difference on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable preserved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error preserving variable",
                         "schema": {
                             "type": "string"
                         }
@@ -12483,6 +12694,73 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{dummy}": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Dummy Config",
+                        "name": "dummy",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -19487,6 +19765,9 @@ const docTemplate = `{
                 },
                 "isReseeding": {
                     "type": "string"
+                },
+                "isRunningJobs": {
+                    "type": "boolean"
                 },
                 "isSlave": {
                     "type": "boolean"

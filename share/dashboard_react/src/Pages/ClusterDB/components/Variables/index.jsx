@@ -1,16 +1,18 @@
-import { Box, Checkbox, Flex, HStack, Input, Text, VStack } from '@chakra-ui/react'
+import { Box, Checkbox, Flex, HStack, Input, Text, VStack, Button } from '@chakra-ui/react'
 import React, { useEffect, useMemo, useState, useRef, useReducer } from 'react'
 
 import styles from '../../styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { getDatabaseVariables, preserveVariable } from '../../../../redux/clusterSlice'
+import { getDatabaseService, preserveVariable, setCustomVariableValue } from '../../../../redux/clusterSlice'
 import { createColumnHelper } from '@tanstack/react-table'
 import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
 import RMIconButton from '../../../../components/RMIconButton'
-import { TbShield, TbTrash } from 'react-icons/tb'
+import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, TbEdit } from 'react-icons/tb'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
+import ComplexVariableModal from './ComplexVariableModal'
+import EditVariableModal from './EditVariableModal'
 
 const defaultState = {
   showCfg: true,
@@ -26,6 +28,14 @@ const defaultState = {
     title: '',
     action: null,
     payload: ''
+  },
+  complexVariableModal: {
+    isOpen: false,
+    data: null
+  },
+  editVariableModal: {
+    isOpen: false,
+    data: null
   }
 }
 
@@ -49,26 +59,33 @@ const reducer = (state, action) => {
       return { ...state, confirmState: { ...state.confirmState, isOpen: action.payload } }
     case 'SET_CONFIRM_ACTION':
       return { ...state, confirmState: { ...state.confirmState, ...action.payload, isOpen: true} }
+    case 'SET_COMPLEX_MODAL':
+      return { ...state, complexVariableModal: action.payload }
+    case 'SET_EDIT_MODAL':
+      return { ...state, editVariableModal: action.payload }
     default:
       return state
   }
 }
 
-function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
+function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
-  const {
-    cluster: {
-      database: { variables }
-    }
-  } = useSelector((state) => state)
+  const variables = useSelector((state) => state.cluster.database.variables)
 
   const [variablesData, setVariablesData] = useState(variables || [])
   const [variablesAllData, setvariablesAllData] = useState(variables || [])
   const prevVariablesRef = useRef(variables)
 
-  const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, search, confirmState } = vState
+  const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, search, confirmState, complexVariableModal, editVariableModal } = vState
   const { isOpen, title, payload } = confirmState
+
+  // Set search filter when navigating from PFS Instruments page
+  useEffect(() => {
+    if (searchFilter) {
+      vDispatch({ type: 'SET_SEARCH', payload: searchFilter })
+    }
+  }, [searchFilter])
 
   useEffect(() => {
       vDispatch({ type: 'SET_SHOW_ROW_DIFF', payload: (variableMode === 'diff') })
@@ -85,16 +102,44 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   }
 
   const handleConfirm = () => {
-      if (type === 'preserve-true') {
-        dispatch(preserveVariable({ clusterName, preserve: true, variableName: payload }))
-      } else if (type === 'preserve-false') {
-        dispatch(preserveVariable({ clusterName, preserve: false, variableName: payload }))
-      }
-      closeConfirmModal()
+    const { type } = confirmState
+    
+    if (type === 'preserve') {
+      dispatch(preserveVariable({ clusterName, dbId, variableName: payload, action: 'preserve' }))
+        .unwrap()
+        .then(() => {
+          // Refresh variables after successful preserve
+          dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: showRowDiff } }))
+        })
+    } else if (type === 'accept') {
+      dispatch(preserveVariable({ clusterName, dbId, variableName: payload, action: 'accept' }))
+        .unwrap()
+        .then(() => {
+          // Refresh variables after successful accept
+          dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: showRowDiff } }))
+        })
+    } else if (type === 'clear') {
+      dispatch(preserveVariable({ clusterName, dbId, variableName: payload, action: 'clear' }))
+        .unwrap()
+        .then(() => {
+          // Refresh variables after successful clear
+          dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: showRowDiff } }))
+        })
     }
+    closeConfirmModal()
+  }
+
+  const handleSaveCustomValue = (variableName, customValue) => {
+    dispatch(setCustomVariableValue({ clusterName, dbId, variableName, customValue }))
+      .unwrap()
+      .then(() => {
+        // Refresh variables after successful custom value set
+        dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: showRowDiff } }))
+      })
+  }
 
   useEffect(() => {
-    dispatch(getDatabaseVariables({ clusterName, serviceName: 'variables', dbId, diff: showRowDiff }))
+    dispatch(getDatabaseService({ clusterName, serviceName: 'variables', dbId, queryParams: { diff: showRowDiff } }))
   }, [])
 
   useEffect(() => {
@@ -117,7 +162,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
       }
     }) || []
     if (showRowPreserved) {
-      return searchedData.filter((x) => x.preserveValue != null)
+      return searchedData.filter((x) => x.preservedValue != null)
     }
     return searchedData
   }
@@ -131,10 +176,26 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
   const columns = useMemo(
     () => [
       columnHelper.accessor((row) => row.variableName, {
-        header: 'Status',
-        size: 100,
-        maxSize: 200,
-        minSize: 100,
+        header: 'Variable Name',
+        size: 150,
+        maxSize: 250,
+        minSize: 150,
+        cell: (info) => {
+          const row = info.row.original
+          const hasDiff = row.cfgValue !== row.value
+          const hasPreserve = row.preservedValue != null
+          const isPFSInstrument = row.variableName === 'performance_schema_instrument'
+          const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue && !isPFSInstrument
+          
+          return (
+            <HStack spacing={2}>
+              {runtimeDiffersFromPreserved && <TbAlertCircle color="red" title="Runtime changed manually!" />}
+              {hasDiff && !runtimeDiffersFromPreserved && <TbAlertCircle color="orange" title="Has difference" />}
+              {hasPreserve && <TbShield color="blue" title="Preservation set" />}
+              <Text>{info.getValue()}</Text>
+            </HStack>
+          )
+        }
       }),
       ...(showCfg ? [columnHelper.accessor((row) => row.cfgValue, {
         header: 'Configurator',
@@ -144,14 +205,51 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Complex variable detection: either long strings OR known complex variables
+          const isLongVariable = fullLength > 100 || 
+                                  (row.value?.length > 100) || 
+                                  (row.runtimeValue?.length > 100)
+          const knownComplexVars = [
+            'optimizer_switch',
+            'performance_schema_instrument',
+            'replicate_do_db',
+            'replicate_ignore_db',
+            'replicate_do_table',
+            'replicate_ignore_table',
+            'replicate_wild_do_table',
+            'replicate_wild_ignore_table',
+            'replicate_rewrite_db',
+            'binlog_do_db',
+            'binlog_ignore_db',
+            'plugin_load_add'
+          ]
+          const isKnownComplex = knownComplexVars.includes(row.variableName)
+          const isComplex = isLongVariable || isKnownComplex
+          
           return (
-            <>
+            <HStack spacing={2}>
+              {isComplex && (
+                <RMIconButton 
+                  tooltip="View details" 
+                  icon={TbZoomIn} 
+                  size="xs"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_COMPLEX_MODAL", 
+                      payload: { isOpen: true, data: row }
+                    })
+                  }} 
+                />
+              )}
               {fullLength > 15 ? (
                 <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
               ) : (
                 <span>{info.getValue()}</span>
               )}
-            </>
+            </HStack>
           )
         }
       })]: []),
@@ -182,18 +280,59 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Check if this is the performance_schema_instrument variable
+          const isPFSInstrument = row.variableName === 'performance_schema_instrument'
+          
+          // Show PFS Instruments button for performance_schema_instrument
+          if (isPFSInstrument) {
+            return (
+              <Button
+                size="sm"
+                colorScheme="purple"
+                leftIcon={<TbExternalLink />}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (onNavigateToPFSInstruments) {
+                    onNavigateToPFSInstruments()
+                  }
+                }}
+              >
+                View PFS Instruments
+              </Button>
+            )
+          }
+          
+          // Check if runtime differs from preserved value (not for PFS instrument)
+          const hasPreserve = row.preservedValue != null
+          const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue
+          
           return (
-            <>
-              {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
-              ) : (
-                <span>{info.getValue()}</span>
+            <HStack spacing={2}>
+              {runtimeDiffersFromPreserved && (
+                <TbAlertCircle 
+                  color="red" 
+                  size={18}
+                  title="Runtime value differs from preserved! Manual change detected - will be lost on restart unless re-preserved" 
+                />
               )}
-            </>
+              {fullLength > 15 ? (
+                <CopyToClipboard 
+                  copyIconPosition='start' 
+                  className={styles.longVariable} 
+                  text={info.getValue()} 
+                />
+              ) : (
+                <span style={runtimeDiffersFromPreserved ? { color: 'red', fontWeight: 'bold' } : {}}>
+                  {info.getValue()}
+                </span>
+              )}
+            </HStack>
           )
         }
       })]: []),
-      ...(showPreserve ? [columnHelper.accessor((row) => row.preserveValue, {
+      ...(showPreserve ? [columnHelper.accessor((row) => row.preservedValue, {
         header: 'Preserve',
         size: 100,
         maxSize: 200,
@@ -212,15 +351,143 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
           )
         }
       })]: []),
-      columnHelper.accessor((row) => (
-        <VStack align={"center"} justifyContent={"center"}>
-          { row.preserveValue == null ? (
-            <RMIconButton tooltip={"Preserve: True"} icon={TbShield} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-true", title: "Are you sure to preserve variable? This will prevent configurator to change the value for whole cluster", payload: row.variableName }}) }} />
-          ) : (
-            <RMIconButton tooltip={"Preserve: False"} icon={TbTrash} onClick={(e) => { e.stopPropagation(); vDispatch({ type: "SET_CONFIRM_ACTION", payload:{ type: "preserve-false", title: "Are you sure to remove variable's preservation? This will allow configurator to change the value for whole cluster", payload: row.variableName }}) }} />
-          )}
-        </VStack>
-      ), {
+      columnHelper.accessor((row) => {
+        const hasPreserve = row.preservedValue != null
+        const hasDiff = row.cfgValue !== row.value
+        const isPreserved = hasPreserve && row.preservedValue === row.value
+        const isPFSInstrument = row.variableName === 'performance_schema_instrument'
+        const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue && !isPFSInstrument
+        
+        return (
+          <VStack align={"center"} justifyContent={"center"} spacing={2}>
+            {runtimeDiffersFromPreserved && (
+              <HStack spacing={1} bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.300">
+                <TbAlertCircle color="red" size={16} />
+                <Text fontSize="xs" color="red.600" fontWeight="bold">
+                  Manual change detected!
+                </Text>
+              </HStack>
+            )}
+            <HStack align={"center"} justifyContent={"center"} spacing={2}>
+                {hasDiff && !hasPreserve && (
+              <>
+                <RMIconButton 
+                  tooltip="Preserve deployed value (keep current database value)" 
+                  icon={TbShield} 
+                  colorScheme="blue"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_CONFIRM_ACTION", 
+                      payload: { 
+                        type: "preserve", 
+                        title: `Preserve deployed value for '${row.variableName}'?`,
+                        payload: row.variableName 
+                      }
+                    })
+                  }} 
+                />
+                <RMIconButton 
+                  tooltip="Accept config value (use configurator value)" 
+                  icon={TbCheck} 
+                  colorScheme="green"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_CONFIRM_ACTION", 
+                      payload: { 
+                        type: "accept", 
+                        title: `Accept config value for '${row.variableName}'?`,
+                        payload: row.variableName 
+                      }
+                    })
+                  }} 
+                />
+              </>
+            )}
+            {hasPreserve && !runtimeDiffersFromPreserved && (
+              <>
+                <Text fontSize="xs" color={isPreserved ? "blue.500" : "green.500"} fontWeight="bold">
+                  {isPreserved ? "Preserved" : "Accepted"}
+                </Text>
+                <RMIconButton 
+                  tooltip="Clear preservation status" 
+                  icon={TbTrash} 
+                  colorScheme="red"
+                  size="sm"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_CONFIRM_ACTION", 
+                      payload: { 
+                        type: "clear", 
+                        title: `Clear preservation for '${row.variableName}'? This will allow automatic configuration.`,
+                        payload: row.variableName 
+                      }
+                    })
+                  }} 
+                />
+              </>
+            )}
+            {runtimeDiffersFromPreserved && (
+              <>
+                <RMIconButton 
+                  tooltip="Re-preserve with current runtime value (update preserved value to match runtime)" 
+                  icon={TbShield} 
+                  colorScheme="orange"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_CONFIRM_ACTION", 
+                      payload: { 
+                        type: "preserve", 
+                        title: `Re-preserve '${row.variableName}' with current runtime value? This will update the preserved value to ${row.runtimeValue}`,
+                        payload: row.variableName 
+                      }
+                    })
+                  }} 
+                />
+                <RMIconButton 
+                  tooltip="Restart required to restore preserved value" 
+                  icon={TbTrash} 
+                  colorScheme="red"
+                  size="sm"
+                  onClick={(e) => { 
+                    e.stopPropagation()
+                    vDispatch({ 
+                      type: "SET_CONFIRM_ACTION", 
+                      payload: { 
+                        type: "clear", 
+                        title: `Clear preservation for '${row.variableName}'? Runtime change will be lost on next restart.`,
+                        payload: row.variableName 
+                      }
+                    })
+                  }} 
+                />
+              </>
+            )}
+            {!hasDiff && !hasPreserve && (
+              <Text fontSize="xs" color="gray.500">No diff</Text>
+            )}
+            </HStack>
+            <HStack align={"center"} justifyContent={"center"} spacing={2} mt={2}>
+              <RMIconButton 
+                tooltip="Edit/Override variable value (set custom value)" 
+                icon={TbEdit} 
+                colorScheme="purple"
+                size="sm"
+                onClick={(e) => { 
+                  e.stopPropagation()
+                  vDispatch({ 
+                    type: "SET_EDIT_MODAL", 
+                    payload: { isOpen: true, data: row }
+                  })
+                }} 
+              />
+            </HStack>
+          </VStack>
+        )
+      }, {
         cell: (info) => info.getValue(),
         header: 'Actions',
         id: 'actions',
@@ -229,7 +496,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         minSize: 50
       })
     ],
-    [showCfg, showDeployed, showRuntime, showPreserve]
+    [showCfg, showDeployed, showRuntime, showPreserve, onNavigateToPFSInstruments, vDispatch]
   )
 
   return (
@@ -268,6 +535,21 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode }) {
         <DataTable key="variables" data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
       {isOpen && <ConfirmModal title={title} isOpen={isOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
+      {complexVariableModal.isOpen && (
+        <ComplexVariableModal 
+          isOpen={complexVariableModal.isOpen} 
+          onClose={() => vDispatch({ type: "SET_COMPLEX_MODAL", payload: { isOpen: false, data: null }})}
+          variableData={complexVariableModal.data}
+        />
+      )}
+      {editVariableModal.isOpen && (
+        <EditVariableModal 
+          isOpen={editVariableModal.isOpen} 
+          onClose={() => vDispatch({ type: "SET_EDIT_MODAL", payload: { isOpen: false, data: null }})}
+          variableData={editVariableModal.data}
+          onSave={handleSaveCustomValue}
+        />
+      )}
     </VStack>
   )
 }

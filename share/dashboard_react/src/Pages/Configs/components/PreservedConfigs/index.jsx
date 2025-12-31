@@ -2,7 +2,7 @@ import { Box, VStack } from '@chakra-ui/react'
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import styles from './styles.module.scss'
 import { useDispatch, useSelector } from 'react-redux'
-import { getDatabaseVariables, preserveVariable } from '../../../../redux/clusterSlice'
+import { getDatabaseService, preserveVariable } from '../../../../redux/clusterSlice'
 import { isEqual } from 'lodash'
 import RMIconButton from '../../../../components/RMIconButton'
 import { TbTrash } from 'react-icons/tb'
@@ -38,11 +38,11 @@ function PreservedConfigs({ selectedCluster, user }) {
           const dbId = clusterMaster?.id
             || selectedCluster?.dbServers?.[0]
             || '';
-          dispatch(getDatabaseVariables({
+          dispatch(getDatabaseService({
             clusterName: selectedCluster?.name,
             serviceName: 'variables',
             dbId,
-            diff: false,
+            queryParams: { diff: false },
           }))
         }
       }, [selectedCluster?.name, selectedCluster?.dbServers?.[0], clusterMaster?.id])

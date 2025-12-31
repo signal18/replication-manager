@@ -174,13 +174,25 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerProcesslist)),
 	))
-	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}", negroni.New(
-		negroni.HandlerFunc(repman.validateTokenMiddleware),
-		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
-	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariables)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables-preserve", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariablePreserve)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables-accept", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariableAccept)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables-clear", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariableClear)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/variables-set-custom", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerVariableSetCustom)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/status", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -2864,10 +2876,6 @@ func (repman *ReplicationManager) handlerMuxServersPortIsMasterStatus(w http.Res
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node == nil {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -2905,10 +2913,6 @@ func (repman *ReplicationManager) handlerMuxServersIsSlaveStatus(w http.Response
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}*/
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
@@ -2942,18 +2946,12 @@ func (repman *ReplicationManager) handlerMuxServersPortIsSlaveStatus(w http.Resp
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		/*		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-				http.Error(w, "No valid ACL", 403)
-				return
-			}*/
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && mycluster.IsActive() && node.IsDown() == false && node.IsMaintenance == false && ((node.IsSlave && node.HasReplicationIssue() == false) || (node.IsMaster() && node.ClusterGroup.Conf.PRXServersReadOnMaster)) {
 			w.Write([]byte("200 -Valid Slave!"))
 			return
 		} else {
-			//	w.WriteHeader(http.StatusInternalServerError)
 			http.Error(w, "-Not a Valid Slave!", 503)
-			//	w.Write([]byte("503 -Not a Valid Slave!"))
 			return
 		}
 
@@ -3586,12 +3584,11 @@ func (repman *ReplicationManager) handlerMuxServerPFSStatementsSlowLog(w http.Re
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
-// @Param diff path string false "Show differences"
+// @Param diff query string false "Show differences (true/false)" default(false)
 // @Success 200 {object} map[string]interface{} "Variables retrieved successfully"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Encoding error"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/variables [get]
-// @Router /api/clusters/{clusterName}/servers/{serverName}/variables/{diff} [get]
 func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
@@ -3603,7 +3600,8 @@ func (repman *ReplicationManager) handlerMuxServerVariables(w http.ResponseWrite
 		}
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
-			diff := vars["diff"] == "true"
+			// Read diff from query parameter instead of path parameter
+			diff := r.URL.Query().Get("diff") == "true"
 			e := json.NewEncoder(w)
 			e.SetIndent("", "\t")
 			l := node.GetVariables(diff)
@@ -4790,5 +4788,203 @@ func (repman *ReplicationManager) handlerMuxServerIsInErrorState(w http.Response
 		}
 	} else {
 		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
+	}
+}
+
+// handlerMuxServerVariablePreserve handles the HTTP request to preserve a variable difference (keep deployed value) on a specific server within a cluster.
+// @Summary Preserve a variable difference on a server
+// @Description Marks a variable difference as "preserved" (keep deployed value) on a specified server within a cluster.
+// @Tags DatabaseConfig
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param variableName query string true "Variable Name"
+// @Success 200 {string} string "Variable preserved successfully"
+// @Failure 400 {string} string "Variable name required"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error preserving variable"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables-preserve [post]
+func (repman *ReplicationManager) handlerMuxServerVariablePreserve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			variableName := r.URL.Query().Get("variableName")
+			if variableName == "" {
+				http.Error(w, "Variable name required", 400)
+				return
+			}
+
+			err := node.SetVariablePreserved(variableName)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error preserving variable: %s", err.Error()), 500)
+				return
+			}
+
+			w.Write([]byte(fmt.Sprintf("Variable %s preserved successfully", variableName)))
+			return
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerVariableAccept handles the HTTP request to accept a variable difference (use config value) on a specific server within a cluster.
+// @Summary Accept a variable difference on a server
+// @Description Marks a variable difference as "accepted" (use config value) on a specified server within a cluster.
+// @Tags DatabaseConfig
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param variableName query string true "Variable Name"
+// @Success 200 {string} string "Variable accepted successfully"
+// @Failure 400 {string} string "Variable name required"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error accepting variable"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables-accept [post]
+func (repman *ReplicationManager) handlerMuxServerVariableAccept(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			variableName := r.URL.Query().Get("variableName")
+			if variableName == "" {
+				http.Error(w, "Variable name required", 400)
+				return
+			}
+
+			err := node.SetVariableAccepted(variableName)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error accepting variable: %s", err.Error()), 500)
+				return
+			}
+
+			w.Write([]byte(fmt.Sprintf("Variable %s accepted successfully", variableName)))
+			return
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerVariableClear handles the HTTP request to clear preservation status from a variable on a specific server within a cluster.
+// @Summary Clear variable preservation status on a server
+// @Description Removes preservation status from a variable on a specified server within a cluster.
+// @Tags DatabaseConfig
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param variableName query string true "Variable Name"
+// @Success 200 {string} string "Variable preservation cleared successfully"
+// @Failure 400 {string} string "Variable name required"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error clearing variable preservation"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables-clear [post]
+func (repman *ReplicationManager) handlerMuxServerVariableClear(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			variableName := r.URL.Query().Get("variableName")
+			if variableName == "" {
+				http.Error(w, "Variable name required", 400)
+				return
+			}
+
+			err := node.ClearVariablePreservation(variableName)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error clearing variable preservation: %s", err.Error()), 500)
+				return
+			}
+
+			w.Write([]byte(fmt.Sprintf("Variable %s preservation cleared successfully", variableName)))
+			return
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerVariableSetCustom handles the HTTP request to set a custom value for a variable on a specific server within a cluster.
+// @Summary Set custom value for a variable on a server
+// @Description Sets a custom preserved value for a variable on a specified server within a cluster. This allows DBAs to manually override variable values like in my.cnf.
+// @Tags DatabaseConfig
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param variableName query string true "Variable Name"
+// @Param customValue query string true "Custom Value"
+// @Success 200 {string} string "Variable custom value set successfully"
+// @Failure 400 {string} string "Variable name or custom value required"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error setting custom variable value"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/variables-set-custom [post]
+func (repman *ReplicationManager) handlerMuxServerVariableSetCustom(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			variableName := r.URL.Query().Get("variableName")
+			customValue := r.URL.Query().Get("customValue")
+			if variableName == "" || customValue == "" {
+				http.Error(w, "Variable name and custom value required", 400)
+				return
+			}
+
+			err := node.SetVariableCustomPreserved(variableName, customValue)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Error setting custom variable value: %s", err.Error()), 500)
+				return
+			}
+
+			w.Write([]byte(fmt.Sprintf("Variable %s custom value set successfully to: %s", variableName, customValue)))
+			return
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
 	}
 }

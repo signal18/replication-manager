@@ -880,14 +880,16 @@ func NewVariablesMap() *VariablesMap {
 }
 
 func (m *VariablesMap) Get(key string) *VariableState {
-	if v, ok := m.Load(key); ok {
+	lowKey := strings.ToLower(key)
+	if v, ok := m.Load(lowKey); ok {
 		return v.(*VariableState)
 	}
 	return nil
 }
 
 func (m *VariablesMap) CheckAndGet(key string) (*VariableState, bool) {
-	v, ok := m.Load(key)
+	lowKey := strings.ToLower(key)
+	v, ok := m.Load(lowKey)
 	if ok {
 		return v.(*VariableState), true
 	}
@@ -895,7 +897,7 @@ func (m *VariablesMap) CheckAndGet(key string) (*VariableState, bool) {
 }
 
 func (m *VariablesMap) Set(key string, value *VariableState) {
-	m.Store(key, value)
+	m.Store(strings.ToLower(key), value)
 }
 
 func (m *VariablesMap) ToNormalMap(c map[string]*VariableState) {
@@ -1001,12 +1003,13 @@ func (m *VariablesMap) EmptyPreservedValues() {
 }
 
 func (m *VariablesMap) SetDeployedValue(varname string, value string) {
-	if state, ok := m.Load(varname); ok {
+	lowerVarName := strings.ToLower(varname)
+	if state, ok := m.Load(lowerVarName); ok {
 		state.(*VariableState).SetDeployedValue(value)
 	} else {
-		state := NewVariableState(varname)
+		state := NewVariableState(lowerVarName)
 		state.SetDeployedValue(value)
-		m.Store(varname, state)
+		m.Store(lowerVarName, state)
 	}
 }
 
@@ -1017,12 +1020,13 @@ func (m *VariablesMap) SetDeployedValues(strmap map[string]string) {
 }
 
 func (m *VariablesMap) SetRuntimeValue(varname string, value string) {
-	if state, ok := m.Load(varname); ok {
+	lowervarname := strings.ToLower(varname)
+	if state, ok := m.Load(lowervarname); ok {
 		state.(*VariableState).SetRuntimeValue(value)
 	} else {
-		state := NewVariableState(varname)
+		state := NewVariableState(lowervarname)
 		state.SetRuntimeValue(value)
-		m.Store(varname, state)
+		m.Store(lowervarname, state)
 	}
 }
 
@@ -1033,12 +1037,13 @@ func (m *VariablesMap) SetRuntimeValues(strmap map[string]string) {
 }
 
 func (m *VariablesMap) SetConfigValue(varname string, value string) {
-	if state, ok := m.Load(varname); ok {
+	lowervarname := strings.ToLower(varname)
+	if state, ok := m.Load(lowervarname); ok {
 		state.(*VariableState).SetConfigValue(value)
 	} else {
-		state := NewVariableState(varname)
+		state := NewVariableState(lowervarname)
 		state.SetConfigValue(value)
-		m.Store(varname, state)
+		m.Store(lowervarname, state)
 	}
 }
 
@@ -1049,12 +1054,13 @@ func (m *VariablesMap) SetConfigValues(strmap map[string]string) {
 }
 
 func (m *VariablesMap) SetPreservedValue(varname string, value string) {
-	if state, ok := m.Load(varname); ok {
+	lowerVarName := strings.ToLower(varname)
+	if state, ok := m.Load(lowerVarName); ok {
 		state.(*VariableState).SetPreservedValue(value)
 	} else {
-		state := NewVariableState(varname)
+		state := NewVariableState(lowerVarName)
 		state.SetPreservedValue(value)
-		m.Store(varname, state)
+		m.Store(lowerVarName, state)
 	}
 }
 

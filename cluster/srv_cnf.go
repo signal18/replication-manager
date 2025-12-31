@@ -602,6 +602,12 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 
 	delta := server.VariablesMap.GetVariables(true)
 	for _, v := range delta {
+		// Skip variables that have preservation status set
+		// These are handled by 01_preserved.cnf or 03_agreed.cnf
+		if v.Preserved != nil {
+			continue
+		}
+
 		if _, err := deltafile.WriteString(v.PrintDeployedDelta() + "\n"); err != nil {
 			return err
 		}
@@ -653,4 +659,108 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	}
 
 	return nil
+}
+
+// SetVariablePreserved marks a variable difference as "preserved" (keep deployed value)
+func (server *ServerMonitor) SetVariablePreserved(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Set preserved to deployed value to keep current deployed value
+	if varState.Deployed != nil {
+		varState.Preserved = varState.Deployed
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable %s marked as preserved with value: %s", variableName, varState.Deployed.String())
+	} else {
+		return fmt.Errorf("variable %s has no deployed value", variableName)
+	}
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// SetVariableCustomPreserved sets a custom preserved value for a variable
+// This allows DBAs to manually override variable values like in my.cnf
+func (server *ServerMonitor) SetVariableCustomPreserved(variableName string, customValue string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Create a new variable value from the custom string
+	// Determine the type based on the existing value type
+	var newValue config.VariableValue
+
+	switch varState.Config.(type) {
+	case config.MapValue:
+		// For map values (like optimizer_switch, performance_schema_instrument)
+		mv := make(config.MapValue)
+		mv.Set(customValue)
+		newValue = mv
+	case *config.SliceValue:
+		// For slice values
+		sv := &config.SliceValue{}
+		sv.Set(customValue)
+		newValue = sv
+	case *config.SingleValue:
+		// For simple string values
+		singleVal := config.SingleValue(customValue)
+		newValue = &singleVal
+	default:
+		// Default to single value
+		singleVal := config.SingleValue(customValue)
+		newValue = &singleVal
+	}
+
+	varState.Preserved = newValue
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Variable %s set to custom preserved value: %s", variableName, customValue)
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// SetVariableAccepted marks a variable difference as "accepted" (use config value)
+func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Set preserved to config value to accept config value
+	if varState.Config != nil {
+		varState.Preserved = varState.Config
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable %s marked as accepted with value: %s", variableName, varState.Config.String())
+	} else {
+		return fmt.Errorf("variable %s has no config value", variableName)
+	}
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// ClearVariablePreservation removes preservation status from a variable
+func (server *ServerMonitor) ClearVariablePreservation(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	varState.Preserved = nil
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Variable %s preservation cleared", variableName)
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
 }
