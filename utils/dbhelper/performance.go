@@ -124,11 +124,6 @@ func GetServers(db *sqlx.DB) ([]MySQLServer, string, error) {
 }
 
 func SetLongQueryTime(db *sqlx.DB, querytime string) (string, error) {
-	// Validate numeric value before using in SET GLOBAL
-	if err := ValidateNumeric(querytime); err != nil {
-		return "", fmt.Errorf("invalid query time value: %w", err)
-	}
-
 	// Convert to float64 for type-safe query execution (long_query_time accepts decimal values)
 	timeValue, err := strconv.ParseFloat(querytime, 64)
 	if err != nil {
@@ -361,11 +356,6 @@ func KillThreads(db *sqlx.DB, myver *version.Version) (string, error) {
 }
 
 func KillThread(db *sqlx.DB, id string, myver *version.Version) (string, error) {
-	// Validate id is numeric to prevent SQL injection
-	if err := ValidateNumeric(id); err != nil {
-		return "", fmt.Errorf("invalid thread id: %w", err)
-	}
-
 	// Convert to int64 for type-safe query execution
 	idValue, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -383,11 +373,6 @@ func KillThread(db *sqlx.DB, id string, myver *version.Version) (string, error) 
 }
 
 func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
-	// Validate id is numeric to prevent SQL injection
-	if err := ValidateNumeric(id); err != nil {
-		return "", fmt.Errorf("invalid query id: %w", err)
-	}
-
 	// Convert to int64 for type-safe query execution
 	idValue, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
@@ -403,4 +388,3 @@ func KillQuery(db *sqlx.DB, id string, myver *version.Version) (string, error) {
 	_, err = db.Exec(query, idValue)
 	return query + " (" + id + ")", err
 }
-

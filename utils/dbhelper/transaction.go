@@ -118,11 +118,6 @@ func UnlockTables(db *sqlx.DB) (string, error) {
 }
 
 func SetMaxConnections(db *sqlx.DB, connections string, myver *version.Version) (string, error) {
-	// Validate numeric value before using
-	if err := ValidateNumeric(connections); err != nil {
-		return "", fmt.Errorf("invalid max_connections value: %w", err)
-	}
-
 	// Convert to int64 for type-safe query execution
 	connValue, err := strconv.ParseInt(connections, 10, 64)
 	if err != nil {
@@ -155,4 +150,3 @@ func SetSuperReadOnly(db *sqlx.DB, flag bool) (string, error) {
 		return "SET GLOBAL super_read_only=0", err
 	}
 }
-
