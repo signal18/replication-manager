@@ -105,9 +105,6 @@ func ChangeMaster(db *sqlx.DB, opt ChangeMasterOpt, myver *version.Version) (str
 			if opt.IgnoreDomainIds != "" {
 				cm += " ,IGNORE_DOMAIN_IDS=" + opt.IgnoreDomainIds
 			}
-			if opt.IgnoreDomainIds != "" {
-				cm += " ,IGNORE_DOMAIN_IDS=" + opt.IgnoreDomainIds
-			}
 			if opt.IgnoreServerIds != "" {
 				cm += " ,IGNORE_SERVER_IDS=" + opt.IgnoreServerIds
 			}
@@ -1158,4 +1155,3 @@ func SetEnforceGTIDConsistency(db *sqlx.DB, mode string) (string, error) {
 	_, err := db.Exec(query, mode)
 	return query, err
 }
-
