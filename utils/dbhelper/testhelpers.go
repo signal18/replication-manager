@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/go-sql-driver/mysql" // MySQL driver
 	"github.com/jmoiron/sqlx"
 	"github.com/signal18/replication-manager/utils/version"
 )
@@ -25,7 +26,7 @@ func setupTestDB(t *testing.T) *sqlx.DB {
 
 	dsn := os.Getenv("TEST_DB_DSN")
 	if dsn == "" {
-		dsn = "root:@tcp(127.0.0.1:3306)/test"
+		dsn = "root:admin@tcp(127.0.0.1:3306)/test"
 	}
 
 	db, err := sqlx.Connect("mysql", dsn)
