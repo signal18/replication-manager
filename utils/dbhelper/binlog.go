@@ -21,7 +21,7 @@ func GetBinaryLogs(db *sqlx.DB, version *version.Version, metamap *BinaryLogMeta
 	trimmed := make([]string, 0)
 	query := "SHOW BINARY LOGS"
 	if version.IsPostgreSQL() {
-		return counter, oldest, trimmed, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgeSQL")
+		return counter, oldest, trimmed, query, fmt.Errorf("ERROR: QUERY_RESPONSE_TIME not available on PostgreSQL")
 	}
 	rows, err := db.Queryx(query)
 
@@ -64,15 +64,32 @@ func GetLastPseudoGTID(db *sqlx.DB) (string, string, error) {
 }
 
 func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string, string, string, error) {
+	// Validate binlog filename to prevent injection
+	if err := ValidateFilename(lastfile); err != nil {
+		return "", "", "", fmt.Errorf("invalid binlog filename: %w", err)
+	}
 
 	lastpos := "4"
-	exitloop := true
 	logs := ""
-	for exitloop {
+
+	// Loop backwards through binlog files searching for pseudo-GTID marker
+	// Exit conditions:
+	//   1. UUID found in event info (returns found position)
+	//   2. Database error (returns error)
+	//   3. Binlog index becomes negative (returns error - reached first binlog)
+	//   4. Invalid filename after decrement (returns error)
+	for {
 		events := []BinlogEvents{}
-		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 60"
-		logs += sql + "\n"
-		err := db.Select(&events, sql)
+
+		// Validate position is numeric
+		if err := ValidateNumeric(lastpos); err != nil {
+			return "", "", logs, fmt.Errorf("invalid position: %w", err)
+		}
+
+		sql := "SHOW BINLOG EVENTS IN ? FROM ? LIMIT 60"
+		logs += fmt.Sprintf("SHOW BINLOG EVENTS IN '%s' FROM %s LIMIT 60\n", lastfile, lastpos)
+
+		err := db.Select(&events, sql, lastfile, lastpos)
 		if err != nil {
 			return "", "", logs, err
 		}
@@ -86,71 +103,127 @@ func GetBinlogEventPseudoGTID(db *sqlx.DB, uuid string, lastfile string) (string
 			lastpos = endpos
 		}
 		if len(events) == 0 {
-			binlogindex, _ := strconv.Atoi(strings.Split(lastfile, ".")[1])
+			// Parse and decrement binlog index safely
+			parts := strings.Split(lastfile, ".")
+			if len(parts) != 2 {
+				return "", "", logs, errors.New("invalid binlog filename format")
+			}
+			binlogindex, err := strconv.Atoi(parts[1])
+			if err != nil {
+				return "", "", logs, fmt.Errorf("invalid binlog index: %w", err)
+			}
 			binlogindex = binlogindex - 1
-			lastfile = strings.Split(lastfile, ".")[0] + "." + fmt.Sprintf("%06d", binlogindex)
+			if binlogindex < 0 {
+				return "", "", logs, errors.New("binlog index cannot be negative")
+			}
+			lastfile = parts[0] + "." + fmt.Sprintf("%06d", binlogindex)
+
+			// Validate the newly constructed filename
+			if err := ValidateFilename(lastfile); err != nil {
+				return "", "", logs, fmt.Errorf("invalid constructed binlog filename: %w", err)
+			}
 			lastpos = "4"
 		}
 	}
-	return "", "", logs, errors.New("Not found Psudo GTID")
 }
 
 func GetBinlogPosAfterSkipNumberOfEvents(db *sqlx.DB, file string, pos string, skip int) (string, string, string, error) {
+	// Validate binlog filename to prevent injection
+	if err := ValidateFilename(file); err != nil {
+		return "", "", "", fmt.Errorf("invalid binlog filename: %w", err)
+	}
+
+	// Validate position is numeric
+	if err := ValidateNumeric(pos); err != nil {
+		return "", "", "", fmt.Errorf("invalid position: %w", err)
+	}
+
+	// Validate skip is non-negative
+	if skip < 0 {
+		return "", "", "", errors.New("skip value cannot be negative")
+	}
 
 	events := []BinlogEvents{}
-	sql := "show binlog events IN '" + file + "'  from " + pos + " LIMIT " + strconv.Itoa(skip)
+	sql := "SHOW BINLOG EVENTS IN ? FROM ? LIMIT ?"
+	logQuery := fmt.Sprintf("SHOW BINLOG EVENTS IN '%s' FROM %s LIMIT %d", file, pos, skip)
 
-	err := db.Select(&events, sql)
+	err := db.Select(&events, sql, file, pos, skip)
 	if err != nil {
-		return "", "", sql, err
+		return "", "", logQuery, err
 	}
 	if len(events) == 0 {
-		return "", "", sql, err
+		return "", "", logQuery, err
 	}
-	return events[(len(events) - 1)].Log_name, strconv.FormatUint(uint64(events[(len(events)-1)].Pos), 10), sql, err
+	return events[(len(events) - 1)].Log_name, strconv.FormatUint(uint64(events[(len(events)-1)].Pos), 10), logQuery, err
 }
 
 func GetNumberOfEventsAfterPos(db *sqlx.DB, lastfile string, lastpos string) (int, string, error) {
+	// Validate binlog filename to prevent injection
+	if err := ValidateFilename(lastfile); err != nil {
+		return 0, "", fmt.Errorf("invalid binlog filename: %w", err)
+	}
 
-	exitloop := true
+	// Validate position is numeric
+	if err := ValidateNumeric(lastpos); err != nil {
+		return 0, "", fmt.Errorf("invalid position: %w", err)
+	}
+
 	logs := ""
 	ct := 0
-	for exitloop {
+
+	// Loop through remaining binlog events counting them
+	// Exit conditions:
+	//   1. No more events in binlog (returns count)
+	//   2. Database error (returns error)
+	for {
 		events := []BinlogEvents{}
-		sql := "show binlog events IN '" + lastfile + "'  from " + lastpos + " LIMIT 1"
-		logs += sql + "\n"
-		err := db.Select(&events, sql)
+		sql := "SHOW BINLOG EVENTS IN ? FROM ? LIMIT 1"
+		logQuery := fmt.Sprintf("SHOW BINLOG EVENTS IN '%s' FROM %s LIMIT 1\n", lastfile, lastpos)
+		logs += logQuery
+
+		err := db.Select(&events, sql, lastfile, lastpos)
 		if err != nil {
 			return 0, logs, err
 		}
 
 		for _, row := range events {
-			lastfile = strconv.FormatUint(uint64(row.End_log_pos), 10)
+			lastpos = strconv.FormatUint(uint64(row.End_log_pos), 10)
 		}
 		if len(events) == 0 {
 			return ct, logs, nil
 		}
 		ct = ct + 1
 	}
-	return 0, logs, errors.New("Not found Psudo GTID")
 }
 
 func HaveExtraEvents(db *sqlx.DB, file string, pos string) (bool, string, error) {
+	// Validate binlog filename to prevent injection
+	if err := ValidateFilename(file); err != nil {
+		return true, "", fmt.Errorf("invalid binlog filename: %w", err)
+	}
+
+	// Validate position is numeric
+	if err := ValidateNumeric(pos); err != nil {
+		return true, "", fmt.Errorf("invalid position: %w", err)
+	}
+
 	db.MapperFunc(strings.Title)
 	evts := []BinlogEvents{}
 	udb := db.Unsafe()
-	stmt := "SHOW BINLOG EVENTS IN '" + file + "' FROM " + pos
-	err := udb.Get(&evts, stmt)
+	stmt := "SHOW BINLOG EVENTS IN ? FROM ?"
+	logQuery := fmt.Sprintf("SHOW BINLOG EVENTS IN '%s' FROM %s", file, pos)
+
+	err := udb.Select(&evts, stmt, file, pos)
 	if err != nil {
-		return true, stmt, err
+		return true, logQuery, err
 	}
 	if len(evts) == 1 {
-		return false, stmt, nil
+		return false, logQuery, nil
 	}
 	if len(evts) > 1 {
-		return true, stmt, nil
+		return true, logQuery, nil
 	}
-	return false, stmt, nil
+	return false, logQuery, nil
 }
 
 func SetBinlogFormat(db *sqlx.DB, format string) (string, error) {
@@ -273,13 +346,20 @@ func SetSlaveConnectionsNeededForPurge(db *sqlx.DB, size int) (string, error) {
 }
 
 func GetBinlogFormatDesc(db *sqlx.DB, binlogfile string) ([]BinlogEvents, string, error) {
+	// Validate binlog filename to prevent injection
+	if err := ValidateFilename(binlogfile); err != nil {
+		return nil, "", fmt.Errorf("invalid binlog filename: %w", err)
+	}
+
 	logs := ""
 	logpos := "0"
 	events := []BinlogEvents{}
 
-	sql := fmt.Sprintf("show binlog events IN '%s' from %s LIMIT 3", binlogfile, logpos)
-	logs += sql + "\n"
-	err := db.Select(&events, sql)
+	sql := "SHOW BINLOG EVENTS IN ? FROM ? LIMIT 3"
+	logQuery := fmt.Sprintf("SHOW BINLOG EVENTS IN '%s' FROM %s LIMIT 3\n", binlogfile, logpos)
+	logs += logQuery
+
+	err := db.Select(&events, sql, binlogfile, logpos)
 	if err != nil {
 		return nil, logs, err
 	}
@@ -297,7 +377,7 @@ func CountBinaryLogs(db *sqlx.DB, version *version.Version) (int, error) {
 	counter := 0
 	query := "SHOW BINARY LOGS"
 	if version.IsPostgreSQL() {
-		return counter, fmt.Errorf("ERROR: SHOW BINARY LOGS not available on PostgeSQL")
+		return counter, fmt.Errorf("ERROR: SHOW BINARY LOGS not available on PostgreSQL")
 	}
 	rows, err := db.Queryx(query)
 
@@ -316,4 +396,3 @@ func CountBinaryLogs(db *sqlx.DB, version *version.Version) (int, error) {
 
 	return counter, nil
 }
-
