@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains binary log operations, management, and configuration functions.
+// It provides utilities for listing, purging, and configuring binary logs,
+// as well as working with pseudo-GTID markers and binlog events.
+
 package dbhelper
 
 import (

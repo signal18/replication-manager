@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains table, schema, user, and event management functions.
+// It provides utilities for creating/dropping tables, managing users and grants,
+// configuring Group Replication, and handling database schema operations.
+
 package dbhelper
 
 import (

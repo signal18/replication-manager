@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains replication control functions for GTID and slave/master management.
+// It provides utilities for managing replication channels, GTID positions, slave operations,
+// and master/slave topology configuration for MySQL, MariaDB, and Percona Server.
+
 package dbhelper
 
 import (

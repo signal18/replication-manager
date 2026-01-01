@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains the database vendor abstraction layer.
+// It defines the DatabaseVendor interface and concrete implementations for MySQL, MariaDB,
+// and PostgreSQL, abstracting vendor-specific behaviors and capabilities.
+
 package dbhelper
 
 import (
@@ -9,7 +13,7 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
-// DatabaseVendor provides vendor-specific database operations
+// DatabaseVendor provides vendor-specific database operations.
 // This interface abstracts differences between MySQL, MariaDB, PostgreSQL, etc.
 type DatabaseVendor interface {
 	// Metadata

@@ -4,6 +4,10 @@
 //          Stephane Varoqui  <svaroqui@gmail.com>
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains database connection benchmarking utilities.
+// It provides tools for testing and measuring database connection performance
+// across different drivers and configurations.
+
 package dbhelper
 
 import (

@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains SQL injection prevention utilities and safe query builders.
+// It provides validation functions for identifiers, filenames, and values,
+// as well as utilities for safely quoting identifiers and building parameterized queries.
+
 package dbhelper
 
 import (
@@ -10,9 +14,6 @@ import (
 	"regexp"
 	"strings"
 )
-
-// SQL Injection Prevention Utilities
-// Phase 3: Safe query building and identifier validation
 
 // QuoteIdentifier safely quotes a database identifier (table, column, database name)
 // MySQL/MariaDB use backticks, PostgreSQL uses double quotes

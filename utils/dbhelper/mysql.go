@@ -1,4 +1,6 @@
-// MySQL related functions
+// This file contains MySQL-specific utility functions.
+// It provides MySQL-only operations such as errant transaction detection
+// using GTID subset comparison that are not available in MariaDB or PostgreSQL.
 
 package dbhelper
 

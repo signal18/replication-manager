@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains server status queries, variable retrieval, and monitoring functions.
+// It provides utilities for querying global variables, status counters, system information,
+// and runtime configuration of MySQL, MariaDB, and PostgreSQL servers.
+
 package dbhelper
 
 import (

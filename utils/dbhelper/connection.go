@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains database connection helpers and address resolution utilities.
+// It provides functions for establishing connections to MySQL, MariaDB, and PostgreSQL,
+// as well as parsing and resolving database server addresses.
+
 package dbhelper
 
 import (

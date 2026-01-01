@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains Performance Schema queries and analysis functions.
+// It provides utilities for querying slow queries, query digests, response time metrics,
+// and other performance-related data from MySQL/MariaDB Performance Schema.
+
 package dbhelper
 
 import (

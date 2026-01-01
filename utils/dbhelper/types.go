@@ -7,6 +7,10 @@
 // an additional term, ALL code must carry the original Author(s) credit in comment form.
 // See LICENSE in this directory for the integral text.
 
+// This file contains data structure definitions for database operations.
+// It defines types for slave status, master status, tables, grants, processlist,
+// binlog events, performance schema queries, and other database metadata structures.
+
 package dbhelper
 
 import (

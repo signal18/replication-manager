@@ -2,6 +2,10 @@
 // Copyright 2017-2021 SIGNAL18 CLOUD SAS
 // This source code is licensed under the GNU General Public License, version 3.
 
+// This file contains transaction control, locking, and InnoDB configuration functions.
+// It provides utilities for managing locks, configuring InnoDB monitoring,
+// controlling transaction isolation levels, and handling long-running queries.
+
 package dbhelper
 
 import (
