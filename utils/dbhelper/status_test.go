@@ -399,6 +399,20 @@ func TestGetCPUUsageFromUserStats_Integration(t *testing.T) {
 		t.Skip("USER_STATISTICS only available on MariaDB")
 	}
 
+	// Ensure user statistics are enabled for this integration test.
+	if _, err := db.Exec("SET GLOBAL userstat = 1"); err != nil {
+		if strings.Contains(err.Error(), "Access denied") || strings.Contains(err.Error(), "SUPER") {
+			t.Skip("userstat requires elevated privileges")
+		}
+		t.Fatalf("SET GLOBAL userstat=1 failed: %v", err)
+	}
+
+	// Generate a bit of activity so USER_STATISTICS has a row.
+	var dummy int
+	if err := db.QueryRow("SELECT 1").Scan(&dummy); err != nil {
+		t.Fatalf("failed to generate user activity: %v", err)
+	}
+
 	value, query, err := GetCPUUsageFromUserStats(db)
 	if err != nil {
 		// USER_STATISTICS might not be enabled

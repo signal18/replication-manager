@@ -850,6 +850,7 @@ func (m *BinaryLogMetaMap) MarshalIndent(prefix, indent string) ([]byte, error) 
 
 // ClearObsoleteMetadata removes entries older than the specified binlog file
 func (m *BinaryLogMetaMap) ClearObsoleteMetadata(oldest string) (deleted []string) {
+	deleted = make([]string, 0)
 	keys := make([]string, 0)
 	m.Range(func(k, v any) bool {
 		keys = append(keys, k.(string))
