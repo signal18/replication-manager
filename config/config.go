@@ -3165,22 +3165,29 @@ func IsScope(toml string, scope string) bool {
 	return false
 }
 
-func (conf *Config) ReadCloud18Config(viper *viper.Viper, path string) {
-	viper = viper.Sub("default")
-	viper.SetConfigType("toml")
-
+func (conf *Config) ReadCloud18Config(v *viper.Viper, path string) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return
 	}
+	if v == nil {
+		return
+	}
+
+	subViper := v.Sub("default")
+	if subViper == nil {
+		subViper = viper.New()
+	}
+	subViper.SetConfigType("toml")
+
 	fmt.Printf("Parsing saved config from working directory %s ", path)
 
-	viper.SetConfigFile(path)
-	err := viper.MergeInConfig()
+	subViper.SetConfigFile(path)
+	err := subViper.MergeInConfig()
 	if err != nil {
 		log.Error("Config error in " + path + ":" + err.Error())
 	}
 
-	viper.Unmarshal(&conf)
+	subViper.Unmarshal(&conf)
 
 }
 

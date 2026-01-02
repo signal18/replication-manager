@@ -328,8 +328,12 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 func (repman *ReplicationManager) ReadCloud18Config() {
 	filePath := conf.WorkingDir + "/.pull/cloud18.toml"
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		repman.Conf.ReadCloud18Config(repman.ViperConfig, filePath)
+		return
 	}
+	if repman.ViperConfig == nil {
+		return
+	}
+	repman.Conf.ReadCloud18Config(repman.ViperConfig, filePath)
 }
 
 func (repman *ReplicationManager) ComputeFileChecksum(filePath string) (hash.Hash, error) {
