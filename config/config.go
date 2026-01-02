@@ -671,7 +671,6 @@ type Config struct {
 	APIErrorDisregardPort                     bool                   `scope:"server" mapstructure:"api-error-disregard-port" toml:"api-error-disregard-port" json:"apiErrorDisregardPort"`
 	AlertScript                               string                 `mapstructure:"alert-script" toml:"alert-script" json:"alertScript"`
 	ConfigFile                                string                 `mapstructure:"config" toml:"-" json:"-"`
-	SkipConfig                                bool                   `scope:"server" mapstructure:"skip-config" toml:"-" json:"-"`
 	MonitorScheduler                          bool                   `mapstructure:"monitoring-scheduler" toml:"monitoring-scheduler" json:"monitoringScheduler"`
 	SchedulerReceiverPorts                    string                 `mapstructure:"scheduler-db-servers-receiver-ports" toml:"scheduler-db-servers-receiver-ports" json:"schedulerDbServersReceiverPorts"`
 	SchedulerSenderPorts                      string                 `mapstructure:"scheduler-db-servers-sender-ports" toml:"scheduler-db-servers-sender-ports" json:"schedulerDbServersSenderPorts"`

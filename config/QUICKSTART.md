@@ -254,7 +254,6 @@ fmt.Println(config.MergePrecedenceDoc())
 ```
 
 Only prefixed environment variables are read; unprefixed keys are ignored.
-Set `REPLICATION_MANAGER_DEFAULT_SKIP_CONFIG=true` to skip config file reads (env/flags only).
 
 ## Testing Your Configuration
 

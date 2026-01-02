@@ -39,7 +39,6 @@ type ConfigV2 struct {
 
 	// Configuration Management
 	ConfigFile        string `mapstructure:"config" toml:"-" json:"-"`
-	SkipConfig        bool   `mapstructure:"skip-config" toml:"-" json:"-"`
 	Include           string `mapstructure:"include" toml:"-" json:"-"`
 	ClusterConfigPath string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 

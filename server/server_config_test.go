@@ -49,15 +49,6 @@ func TestCLIOverridesEnv(t *testing.T) {
 	}
 }
 
-func TestSkipConfigEnv(t *testing.T) {
-	t.Setenv("REPLICATION_MANAGER_DEFAULT_SKIP_CONFIG", "true")
-
-	envViper := envViperForScope("DEFAULT")
-	if !envViper.GetBool("skip-config") {
-		t.Fatal("expected skip-config to be true from env")
-	}
-}
-
 func TestClusterEnvOverridesConfig(t *testing.T) {
 	t.Setenv("REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS", "db1,db2")
 
@@ -84,12 +75,8 @@ func TestFallbackWorkingDirForNonRoot(t *testing.T) {
 	conf := config.Config{WorkingDir: "/var/lib/replication-manager"}
 	defaultViper := viper.New()
 
-	if repman.hasExplicitWorkingDir(defaultViper, false) {
+	if repman.hasExplicitWorkingDir(defaultViper) {
 		t.Fatal("expected no explicit working dir")
-	}
-
-	if repman.hasExplicitWorkingDir(defaultViper, true) {
-		t.Fatal("expected no explicit working dir when skip-config is true")
 	}
 
 	configKeys := []string{}
@@ -100,7 +87,7 @@ func TestFallbackWorkingDirForNonRoot(t *testing.T) {
 		t.Fatalf("applyViperOverrides failed: %v", err)
 	}
 
-	if !repman.hasExplicitWorkingDir(defaultViper, false) {
+	if !repman.hasExplicitWorkingDir(defaultViper) {
 		conf.WorkingDir = filepath.Join(repman.OsUser.HomeDir, ".local", "replication-manager", "data")
 	}
 
