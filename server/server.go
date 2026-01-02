@@ -1177,7 +1177,6 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 		if !ok {
 			clusterDiscovery[mycluster] = mycluster
 			discoveries = append(discoveries, mycluster)
-			repman.Logrus.Infof("Cluster discover from env: %s", mycluster)
 		}
 	}
 	return strings.Join(discoveries, ",")
