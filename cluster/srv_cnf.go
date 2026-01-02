@@ -294,26 +294,21 @@ func (server *ServerMonitor) RemovePreservedConfigPath() {
 }
 
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
-	cluster := server.ClusterGroup
 	defer server.WriteDeltaVariables()
 
-	var err error
 	var wg sync.WaitGroup
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), "config", true)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
-		}
+		// Error is already logged inside ReadVariablesFromConfigFile
+		server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), "config", true)
 	}()
 
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), "deployed", true)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
-		}
+		// Error is already logged inside ReadVariablesFromConfigFile
+		server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), "deployed", true)
 	}()
 
 	wg.Wait()
@@ -488,8 +483,6 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 	cluster := server.ClusterGroup
 	var err error
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading %s variables from %s", cnftype, srcpath)
-
 	var lastUpdate *time.Time
 	switch cnftype {
 	case "deployed":
@@ -514,6 +507,8 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 		// No need to read the file if it hasn't changed
 		return nil
 	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading %s variables from %s", cnftype, srcpath)
 
 	*lastUpdate = finfo.ModTime()
 
