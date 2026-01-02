@@ -55,13 +55,18 @@ func TestClusterEnvOverridesConfig(t *testing.T) {
 	repman := &ReplicationManager{}
 	conf := config.Config{Hosts: "db0"}
 	keys := []string{"db-servers-hosts"}
+	immutable := make(map[string]interface{})
 
 	if err := repman.applyViperOverrides(&conf, envViperForScope("cluster1"), keys); err != nil {
 		t.Fatalf("applyViperOverrides failed: %v", err)
 	}
+	repman.applyViperOverridesToMap(immutable, envViperForScope("cluster1"), keys)
 
 	if conf.Hosts != "db1,db2" {
 		t.Fatalf("expected db-servers-hosts from env, got %q", conf.Hosts)
+	}
+	if immutable["db-servers-hosts"] != "db1,db2" {
+		t.Fatalf("expected immutable map override, got %v", immutable["db-servers-hosts"])
 	}
 }
 

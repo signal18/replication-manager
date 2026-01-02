@@ -1291,6 +1291,14 @@ func (repman *ReplicationManager) applyViperOverrides(dest *config.Config, sourc
 	return decoder.Decode(overrides)
 }
 
+func (repman *ReplicationManager) applyViperOverridesToMap(dest map[string]interface{}, source *viper.Viper, keys []string) {
+	for _, key := range keys {
+		if source.IsSet(key) {
+			dest[key] = source.Get(key)
+		}
+	}
+}
+
 func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test si y'a  un repertoire ./.replication-manager sinon on le créer
 	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
@@ -1685,9 +1693,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if err := repman.applyViperOverrides(&conf, envViperForScope("DEFAULT"), configKeys); err != nil {
 		repman.Logrus.WithError(err).Warn("Failed to apply default env overrides")
 	}
+	repman.applyViperOverridesToMap(ImmuableMap, envViperForScope("DEFAULT"), configKeys)
 	if err := repman.applyViperOverrides(&conf, viper.GetViper(), repman.CommandLineFlag); err != nil {
 		repman.Logrus.WithError(err).Warn("Failed to apply command-line overrides")
 	}
+	repman.applyViperOverridesToMap(ImmuableMap, viper.GetViper(), repman.CommandLineFlag)
 	if !repman.hasExplicitWorkingDir(cf1) {
 		if repman.OsUser != nil && repman.OsUser.Uid != "0" {
 			conf.WorkingDir = filepath.Join(repman.OsUser.HomeDir, ".local", "replication-manager", "data")
@@ -1850,9 +1860,11 @@ func (repman *ReplicationManager) GetClusterConfig(firstRead *viper.Viper, Immua
 		if err := repman.applyViperOverrides(&clusterconf, envViperForScope(cluster), configKeys); err != nil {
 			repman.Logrus.WithError(err).Warn("Failed to apply cluster env overrides")
 		}
+		repman.applyViperOverridesToMap(clustImmuableMap, envViperForScope(cluster), configKeys)
 		if err := repman.applyViperOverrides(&clusterconf, viper.GetViper(), repman.CommandLineFlag); err != nil {
 			repman.Logrus.WithError(err).Warn("Failed to apply command-line overrides")
 		}
+		repman.applyViperOverridesToMap(clustImmuableMap, viper.GetViper(), repman.CommandLineFlag)
 
 		//clusterconf.PrintConf()
 
