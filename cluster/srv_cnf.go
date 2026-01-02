@@ -583,16 +583,9 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
 
-	deltafile, err := os.OpenFile(deltapath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", deltapath, err)
-		return err
-	}
-	defer deltafile.Close()
-
-	if _, err := deltafile.WriteString("[mysqld]" + "\n"); err != nil {
-		return err
-	}
+	// Build content in memory first
+	var content strings.Builder
+	content.WriteString("[mysqld]\n")
 
 	delta := server.VariablesMap.GetVariables(true)
 	for _, v := range delta {
@@ -601,10 +594,61 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		if v.Preserved != nil {
 			continue
 		}
+		content.WriteString(v.PrintDeployedDelta() + "\n")
+	}
 
-		if _, err := deltafile.WriteString(v.PrintDeployedDelta() + "\n"); err != nil {
-			return err
+	// Write atomically
+	if err := atomicWriteFile(deltapath, []byte(content.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", deltapath, err)
+		return err
+	}
+
+	return nil
+}
+
+// atomicWriteFile writes data to a file atomically by writing to a temp file first,
+// then renaming it to the target path. This prevents partial writes and corruption.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	// Create temp file in the same directory to ensure same filesystem
+	dir := filepath.Dir(path)
+	tmpfile, err := os.CreateTemp(dir, ".tmp-*.cnf")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpfile.Name()
+
+	// Clean up temp file on error
+	defer func() {
+		if tmpfile != nil {
+			tmpfile.Close()
+			os.Remove(tmpPath)
 		}
+	}()
+
+	// Write data to temp file
+	if _, err := tmpfile.Write(data); err != nil {
+		return fmt.Errorf("failed to write to temp file: %w", err)
+	}
+
+	// Sync to ensure data is written to disk
+	if err := tmpfile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+
+	// Close the temp file
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	tmpfile = nil // Mark as closed for defer cleanup
+
+	// Set permissions
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return fmt.Errorf("failed to set permissions: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed to rename temp file: %w", err)
 	}
 
 	return nil
@@ -615,43 +659,34 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	preservepath := filepath.Join(server.Datadir, "01_preserved.cnf")
 	agreedpath := filepath.Join(server.Datadir, "03_agreed.cnf")
 
-	agreedfile, err := os.OpenFile(agreedpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", agreedpath, err)
-		return err
-	}
-	defer agreedfile.Close()
-
-	if _, err := agreedfile.WriteString("[mysqld]" + "\n"); err != nil {
-		return err
-	}
-
-	preservefile, err := os.OpenFile(preservepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", preservepath, err)
-		return err
-	}
-	defer preservefile.Close()
-
-	if _, err := preservefile.WriteString("[mysqld]" + "\n"); err != nil {
-		return err
-	}
+	// Build content for both files in memory
+	var preservedContent strings.Builder
+	var agreedContent strings.Builder
+	preservedContent.WriteString("[mysqld]\n")
+	agreedContent.WriteString("[mysqld]\n")
 
 	for key, v := range server.VariablesMap.ToNewMap() {
 		// If preserve is set, write to preserve.cnf or agreed.cnf
 		if v.Preserved != nil {
 			if v.IsPreserved() {
 				// Write preserved variables to preserve.cnf
-				if _, err := preservefile.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String())); err != nil {
-					return err
-				}
+				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
 			} else {
 				// Write non-preserved variables to agreed.cnf
-				if _, err := agreedfile.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String())); err != nil {
-					return err
-				}
+				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
 			}
 		}
+	}
+
+	// Write both files atomically
+	if err := atomicWriteFile(agreedpath, []byte(agreedContent.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", agreedpath, err)
+		return err
+	}
+
+	if err := atomicWriteFile(preservepath, []byte(preservedContent.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", preservepath, err)
+		return err
 	}
 
 	return nil
