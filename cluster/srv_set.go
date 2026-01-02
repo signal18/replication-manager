@@ -747,5 +747,28 @@ func (server *ServerMonitor) SetErrState(key, errtype, from, desc string, args .
 }
 
 func (server *ServerMonitor) SetRunningJobs(running bool) {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
 	server.IsRunningJobs = running
+}
+
+// TryAcquireJobLock atomically checks if a job is running and sets the flag if not
+// Returns true if the lock was acquired, false if a job is already running
+func (server *ServerMonitor) TryAcquireJobLock() bool {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
+
+	if server.IsRunningJobs {
+		return false
+	}
+
+	server.IsRunningJobs = true
+	return true
+}
+
+// ReleaseJobLock releases the job lock
+func (server *ServerMonitor) ReleaseJobLock() {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
+	server.IsRunningJobs = false
 }

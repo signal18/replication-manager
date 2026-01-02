@@ -222,6 +222,7 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
+	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 }
 
 type ServerBackupMeta struct {
