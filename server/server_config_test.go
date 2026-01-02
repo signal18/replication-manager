@@ -1,10 +1,12 @@
 package server
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/spf13/viper"
+	"os/user"
 )
 
 func TestEnvOverridesConfig(t *testing.T) {
@@ -68,5 +70,40 @@ func TestClusterEnvOverridesConfig(t *testing.T) {
 
 	if conf.Hosts != "db1,db2" {
 		t.Fatalf("expected db-servers-hosts from env, got %q", conf.Hosts)
+	}
+}
+
+func TestFallbackWorkingDirForNonRoot(t *testing.T) {
+	repman := &ReplicationManager{
+		OsUser: &user.User{
+			Uid:     "1000",
+			HomeDir: "/home/tester",
+		},
+	}
+	conf := config.Config{WorkingDir: "/var/lib/replication-manager"}
+	defaultViper := viper.New()
+
+	if repman.hasExplicitWorkingDir(defaultViper, false) {
+		t.Fatal("expected no explicit working dir")
+	}
+
+	if repman.hasExplicitWorkingDir(defaultViper, true) {
+		t.Fatal("expected no explicit working dir when skip-config is true")
+	}
+
+	configKeys := []string{}
+	if err := repman.applyViperOverrides(&conf, envViperForScope("DEFAULT"), configKeys); err != nil {
+		t.Fatalf("applyViperOverrides failed: %v", err)
+	}
+	if err := repman.applyViperOverrides(&conf, viper.GetViper(), repman.CommandLineFlag); err != nil {
+		t.Fatalf("applyViperOverrides failed: %v", err)
+	}
+
+	if !repman.hasExplicitWorkingDir(defaultViper, false) {
+		conf.WorkingDir = filepath.Join(repman.OsUser.HomeDir, ".local", "replication-manager", "data")
+	}
+
+	if conf.WorkingDir != "/home/tester/.local/replication-manager/data" {
+		t.Fatalf("expected fallback working dir, got %q", conf.WorkingDir)
 	}
 }

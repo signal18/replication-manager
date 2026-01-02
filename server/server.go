@@ -1192,6 +1192,20 @@ func shouldParseFlags() bool {
 	return !strings.HasSuffix(os.Args[0], ".test")
 }
 
+func (repman *ReplicationManager) hasExplicitWorkingDir(defaultViper *viper.Viper, skipConfig bool) bool {
+	if skipConfig {
+		return false
+	}
+	if defaultViper != nil && defaultViper.IsSet("monitoring-datadir") {
+		return true
+	}
+	envDefault := envViperForScope("DEFAULT")
+	if envDefault.IsSet("monitoring-datadir") {
+		return true
+	}
+	return slices.Contains(repman.CommandLineFlag, "monitoring-datadir")
+}
+
 func (repman *ReplicationManager) defaultConfigKeys() []string {
 	keys := make([]string, 0, len(repman.DefaultFlagMap))
 	for key := range repman.DefaultFlagMap {
@@ -1645,6 +1659,16 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 	if err := repman.applyViperOverrides(&conf, viper.GetViper(), repman.CommandLineFlag); err != nil {
 		repman.Logrus.WithError(err).Warn("Failed to apply command-line overrides")
+	}
+	if !repman.hasExplicitWorkingDir(cf1, skipConfig) {
+		if repman.OsUser != nil && repman.OsUser.Uid != "0" {
+			conf.WorkingDir = filepath.Join(repman.OsUser.HomeDir, ".local", "replication-manager", "data")
+			conf.ClusterConfigPath = filepath.Join(conf.WorkingDir, "cluster.d")
+			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Defaulting working directory to %s for non-root user", conf.WorkingDir)
+			if err := os.MkdirAll(conf.WorkingDir, 0o755); err != nil {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Failed to ensure working directory %s: %v", conf.WorkingDir, err)
+			}
+		}
 	}
 
 	//if dynamic config, load modified parameter from the saved config
