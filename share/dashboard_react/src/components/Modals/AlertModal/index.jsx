@@ -30,7 +30,11 @@ function AlertModal({ type, isOpen, closeModal }) {
     () => [
       columnHelper.accessor((row) => row.desc, {
         id: 'desc',
-        cell: (info) => info.getValue(),
+        cell: (info) => {
+          const value = info.getValue()
+          // Add space after comma if not present
+          return value?.replace(/,(?!\s)/g, ', ') || ''
+        },
         header: () => <span>Description</span>
       }),
       columnHelper.accessor((row) => row.from, {
