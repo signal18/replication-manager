@@ -294,8 +294,6 @@ func (server *ServerMonitor) RemovePreservedConfigPath() {
 }
 
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
-	defer server.WriteDeltaVariables()
-
 	var wg sync.WaitGroup
 	wg.Add(2)
 
@@ -314,7 +312,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigs() {
 	wg.Wait()
 
 	server.ReadPreservedVariables()
-
+	server.WriteDeltaVariables()
 	server.IsNeedPathCheck = true
 }
 
