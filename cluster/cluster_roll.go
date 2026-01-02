@@ -208,6 +208,24 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on %s ", s.URL)
 	}
 
+	for _, s := range cluster.GetStandaloneServers() {
+		ts = time.Now()
+		s.SetWaitJobsUpgradeCookie()
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on standalone %s ", s.URL)
+
+		// Wait for the server to clear the cookie
+		for s.HasRollingJobsUpgradeCookie() {
+			if time.Since(ts) > 5*time.Minute {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on standalone %s ", s.URL)
+				return errors.New("Timeout waiting for jobs upgrade on standalone")
+			}
+
+			time.Sleep(2 * time.Second)
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on standalone %s ", s.URL)
+	}
+
 	ts = time.Now()
 	cluster.master.SetWaitJobsUpgradeCookie()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on master %s ", cluster.master.URL)
