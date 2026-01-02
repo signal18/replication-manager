@@ -11,7 +11,6 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"errors"
-	"flag"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -278,18 +277,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		//	initDeprecated() // not needed used alias in main
 	}
 	var usr string
-	var configPath string
-	//var pid string
-	if !isClient { // client should not use this
-		flag.StringVar(&usr, "user", "", "help message")
-	}
-	//flag.StringVar(&pid, "pidfile", "", "help message")
-	flag.StringVar(&configPath, "config", "", "help message")
-	if shouldParseFlags() {
-		flag.Parse()
-	}
-
-	if usr == "" && repman != nil {
+	if repman != nil && repman.OsUser != nil {
 		usr = repman.OsUser.Username
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
@@ -1137,12 +1125,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.IntVar(&conf.ProvAppTemplateRepoTimeout, "prov-app-template-repo-timeout", 30, "Git repository timeout for application templates")
 	flags.BoolVar(&conf.TerminalSessionResume, "terminal-session-resume", false, "Enable terminal session resume")
 	flags.StringVar(&conf.TerminalSessionManager, "terminal-session-manager", "tmux", "Terminal session manager: tmux|screen")
-
-	if WithProvisioning == "ON" {
-		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", true, "Enable terminal session")
-	} else {
-		flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
-	}
+	flags.BoolVar(&conf.TerminalSessionEnabled, "terminal-session-enabled", false, "Enable terminal session")
 }
 
 // DicoverClusters from viper merged config send a sperated list of clusters
@@ -1306,14 +1289,16 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	//repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Embeded run config dir : %s", conf.ConfDir)
 
-	if conf.ConfDirBackup == "" {
+	if conf.ConfDirBackup == "" && WithArbitration != "ON" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
 	}
 
 	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
 		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
 		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
-		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		if WithArbitration != "ON" && conf.ConfDirBackup != "" {
+			os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		}
 	}
 
 	if conf.WithEmbed == "ON" {
@@ -1491,6 +1476,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//fmt.Printf("REPMAN DEFAULT SECTION : %s", secRead.AllSettings())
 	if secRead != nil {
+		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
 		for _, f := range secRead.AllKeys() {
 			v := secRead.Get(f)
 			if v != nil {
@@ -1562,6 +1548,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		}
 		clOrch := conf.ProvOrchestrator
 		if clRead != nil {
+			repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
 			if v := clRead.Get("prov-orchestrator"); v != nil {
 				clOrch = clRead.GetString("prov-orchestrator")
 			}
@@ -1932,6 +1919,10 @@ func (repman *ReplicationManager) PushConfigToBackupDir() {
 	}()
 
 	if repman.Conf.WithEmbed == "ON" {
+		return
+	}
+
+	if WithArbitration == "ON" {
 		return
 	}
 
