@@ -220,6 +220,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
   const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, showInfoAlert, search, confirmState, complexVariableModal, editVariableModal } = vState
   const { isOpen, title, payload } = confirmState
 
+  // Truncate length for table cell values
+  const TRUNCATE_LENGTH = 100
+
   // Get username for user-specific localStorage key
   const username = localStorage.getItem('username') || 'default'
   const alertStorageKey = `variables_info_alert_dismissed_${username}`
@@ -395,6 +398,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           const isKnownComplex = knownComplexVars.includes(row.variableName)
           const isComplex = isLongVariable || isKnownComplex
           
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
           return (
             <HStack spacing={2}>
               {isComplex && (
@@ -411,11 +418,14 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   }} 
                 />
               )}
-              {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
-              ) : (
-                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
-              )}
+              <Text 
+                title={fullLength > TRUNCATE_LENGTH ? fullString : undefined} 
+                whiteSpace="normal" 
+                wordBreak="break-word"
+                fontWeight={isBoolean ? 'bold' : 'normal'}
+              >
+                {truncatedString}
+              </Text>
             </HStack>
           )
         }
@@ -433,14 +443,19 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           // Check if this is a boolean variable
           const isBoolean = isBooleanVariable(row)
           
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
           return (
-            <>
-              {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
-              ) : (
-                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
-              )}
-            </>
+            <Text 
+              title={fullLength > TRUNCATE_LENGTH ? fullString : undefined}
+              whiteSpace="normal" 
+              wordBreak="break-word"
+              fontWeight={isBoolean ? 'bold' : 'normal'}
+            >
+              {truncatedString}
+            </Text>
           )
         }
       })]:[]),
@@ -484,6 +499,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           const runtimeDiffersFromPreserved = hasPreserve && 
             !areValuesEqual(row.runtimeValue, row.preservedValue, row)
           
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
           return (
             <HStack spacing={2}>
               {runtimeDiffersFromPreserved && (
@@ -493,20 +512,15 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   title="Runtime value differs from preserved! Manual change detected - will be lost on restart unless re-preserved" 
                 />
               )}
-              {fullLength > 15 ? (
-                <CopyToClipboard 
-                  copyIconPosition='start' 
-                  className={styles.longVariable} 
-                  text={fullString} 
-                />
-              ) : (
-                <span style={{ 
-                  ...(runtimeDiffersFromPreserved ? { color: 'red', fontWeight: 'bold' } : {}),
-                  ...(isBoolean && !runtimeDiffersFromPreserved ? { fontWeight: 'bold' } : {})
-                }}>
-                  {fullString}
-                </span>
-              )}
+              <Text 
+                title={fullLength > TRUNCATE_LENGTH ? fullString : undefined}
+                whiteSpace="normal"
+                wordBreak="break-word"
+                color={runtimeDiffersFromPreserved ? 'red' : undefined}
+                fontWeight={runtimeDiffersFromPreserved || isBoolean ? 'bold' : 'normal'}
+              >
+                {truncatedString}
+              </Text>
             </HStack>
           )
         }
@@ -524,14 +538,19 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           // Check if this is a boolean variable
           const isBoolean = isBooleanVariable(row)
           
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
           return (
-            <>
-              {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
-              ) : (
-                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
-              )}
-            </>
+            <Text 
+              title={fullLength > TRUNCATE_LENGTH ? fullString : undefined}
+              whiteSpace="normal" 
+              wordBreak="break-word"
+              fontWeight={isBoolean ? 'bold' : 'normal'}
+            >
+              {truncatedString}
+            </Text>
           )
         }
       })]: []),
@@ -545,22 +564,14 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           !isPFSInstrument
         
         return (
-          <VStack align={"center"} justifyContent={"center"} spacing={2}>
-            {runtimeDiffersFromPreserved && (
-              <HStack spacing={1} bg="red.50" p={2} borderRadius="md" border="1px solid" borderColor="red.300">
-                <TbAlertCircle color="red" size={16} />
-                <Text fontSize="xs" color="red.600" fontWeight="bold">
-                  Manual change detected!
-                </Text>
-              </HStack>
-            )}
-            <HStack align={"center"} justifyContent={"center"} spacing={2}>
-                {hasDiff && !hasPreserve && (
+          <HStack align={"center"} justifyContent={"center"} spacing={2} wrap={"nowrap"}>
+            {hasDiff && !hasPreserve && (
               <>
                 <RMIconButton 
                   tooltip="Preserve deployed value (keep current database value)" 
                   icon={TbShield} 
                   colorScheme="blue"
+                  size="sm"
                   onClick={(e) => { 
                     e.stopPropagation()
                     vDispatch({ 
@@ -577,6 +588,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   tooltip="Accept config value (use configurator value)" 
                   icon={TbCheck} 
                   colorScheme="green"
+                  size="sm"
                   onClick={(e) => { 
                     e.stopPropagation()
                     vDispatch({ 
@@ -593,9 +605,6 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             )}
             {hasPreserve && !runtimeDiffersFromPreserved && (
               <>
-                <Text fontSize="xs" color={isPreserved ? "blue.500" : "green.500"} fontWeight="bold">
-                  {isPreserved ? "Preserved" : "Accepted"}
-                </Text>
                 <RMIconButton 
                   tooltip="Clear preservation status" 
                   icon={TbTrash} 
@@ -621,6 +630,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   tooltip="Re-preserve with current runtime value (update preserved value to match runtime)" 
                   icon={TbShield} 
                   colorScheme="orange"
+                  size="sm"
                   onClick={(e) => { 
                     e.stopPropagation()
                     vDispatch({ 
@@ -655,31 +665,28 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             {!hasDiff && !hasPreserve && (
               <Text fontSize="xs" color="gray.500">No diff</Text>
             )}
-            </HStack>
-            <HStack align={"center"} justifyContent={"center"} spacing={2} mt={2}>
-              <RMIconButton 
-                tooltip="Edit/Override variable value (set custom value)" 
-                icon={TbEdit} 
-                colorScheme="purple"
-                size="sm"
-                onClick={(e) => { 
-                  e.stopPropagation()
-                  vDispatch({ 
-                    type: "SET_EDIT_MODAL", 
-                    payload: { isOpen: true, data: row }
-                  })
-                }} 
-              />
-            </HStack>
-          </VStack>
+            <RMIconButton 
+              tooltip="Edit/Override variable value (set custom value)" 
+              icon={TbEdit} 
+              colorScheme="purple"
+              size="sm"
+              onClick={(e) => { 
+                e.stopPropagation()
+                vDispatch({ 
+                  type: "SET_EDIT_MODAL", 
+                  payload: { isOpen: true, data: row }
+                })
+              }} 
+            />
+          </HStack>
         )
       }, {
         cell: (info) => info.getValue(),
         header: 'Actions',
         id: 'actions',
-        size: 100,
-        maxSize: 200,
-        minSize: 50
+        size: 150,
+        maxSize: 250,
+        minSize: 150
       })
     ],
     [showCfg, showDeployed, showRuntime, showPreserve, onNavigateToPFSInstruments, vDispatch]
