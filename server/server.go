@@ -1172,6 +1172,15 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 
 		}
 	}
+
+	for _, mycluster := range repman.discoverClustersFromEnv() {
+		_, ok := clusterDiscovery[mycluster]
+		if !ok {
+			clusterDiscovery[mycluster] = mycluster
+			discoveries = append(discoveries, mycluster)
+			repman.Logrus.Infof("Cluster discover from env: %s", mycluster)
+		}
+	}
 	return strings.Join(discoveries, ",")
 
 }
@@ -1204,6 +1213,50 @@ func (repman *ReplicationManager) hasExplicitWorkingDir(defaultViper *viper.Vipe
 		return true
 	}
 	return slices.Contains(repman.CommandLineFlag, "monitoring-datadir")
+}
+
+func (repman *ReplicationManager) discoverClustersFromEnv() []string {
+	keys := repman.defaultConfigKeys()
+	if len(keys) == 0 {
+		return nil
+	}
+
+	suffixes := make([]string, 0, len(keys))
+	for _, key := range keys {
+		normalized := strings.ToUpper(strings.ReplaceAll(key, "-", "_"))
+		normalized = strings.ReplaceAll(normalized, ".", "_")
+		suffixes = append(suffixes, "_"+normalized)
+	}
+
+	prefix := config.EnvPrefix + "_"
+	clusters := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		name := parts[0]
+		if !strings.HasPrefix(name, prefix) {
+			continue
+		}
+		if strings.HasPrefix(name, prefix+"DEFAULT_") {
+			continue
+		}
+		for _, suffix := range suffixes {
+			if strings.HasSuffix(name, suffix) {
+				scope := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
+				if scope == "" {
+					break
+				}
+				cluster := strings.ToLower(scope)
+				if _, ok := seen[cluster]; !ok {
+					seen[cluster] = struct{}{}
+					clusters = append(clusters, cluster)
+				}
+				break
+			}
+		}
+	}
+
+	return clusters
 }
 
 func (repman *ReplicationManager) defaultConfigKeys() []string {

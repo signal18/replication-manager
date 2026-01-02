@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/signal18/replication-manager/config"
+	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
 	"os/user"
 )
@@ -105,5 +106,21 @@ func TestFallbackWorkingDirForNonRoot(t *testing.T) {
 
 	if conf.WorkingDir != "/home/tester/.local/replication-manager/data" {
 		t.Fatalf("expected fallback working dir, got %q", conf.WorkingDir)
+	}
+}
+
+func TestDiscoverClustersFromEnv(t *testing.T) {
+	t.Setenv("REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS", "db1,db2")
+
+	repman := &ReplicationManager{
+		DefaultFlagMap: map[string]interface{}{
+			"db-servers-hosts": "",
+		},
+		Logrus: logrus.New(),
+	}
+
+	clusters := repman.DiscoverClusters(viper.New())
+	if clusters != "cluster1" {
+		t.Fatalf("expected cluster1 from env, got %q", clusters)
 	}
 }
