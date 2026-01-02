@@ -1,4 +1,4 @@
-import { Box, Checkbox, Flex, HStack, Input, Text, VStack, Button } from '@chakra-ui/react'
+import { Box, Checkbox, Flex, HStack, Input, Text, VStack, Button, Alert, AlertIcon, AlertTitle, AlertDescription, CloseButton } from '@chakra-ui/react'
 import React, { useEffect, useMemo, useState, useRef, useReducer } from 'react'
 
 import styles from '../../styles.module.scss'
@@ -9,7 +9,7 @@ import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
 import RMIconButton from '../../../../components/RMIconButton'
-import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, TbEdit } from 'react-icons/tb'
+import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, TbEdit, TbInfoCircle } from 'react-icons/tb'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import ComplexVariableModal from './ComplexVariableModal'
 import EditVariableModal from './EditVariableModal'
@@ -21,6 +21,7 @@ const defaultState = {
   showPreserve: true,
   showRowDiff: false,
   showRowPreserved: false,
+  showInfoAlert: true,
   search: '',
   confirmState: {
     isOpen: false,
@@ -55,6 +56,8 @@ const reducer = (state, action) => {
       return { ...state, showRowDiff: action.payload }
     case 'SET_SHOW_ROW_PRESERVED':
       return { ...state, showRowPreserved: action.payload }
+    case 'SET_SHOW_INFO_ALERT':
+      return { ...state, showInfoAlert: action.payload }
     case 'SET_CONFIRM_OPEN':
       return { ...state, confirmState: { ...state.confirmState, isOpen: action.payload } }
     case 'SET_CONFIRM_ACTION':
@@ -68,6 +71,37 @@ const reducer = (state, action) => {
   }
 }
 
+// Helper function to normalize boolean values for comparison only (not for display)
+const normalizeBooleanValue = (value) => {
+  if (value === null || value === undefined || value === '') return value
+  
+  const strValue = String(value).toUpperCase().trim()
+  
+  // Check for boolean representations
+  if (['1', 'ON', 'TRUE', 'YES'].includes(strValue)) return 'ON'
+  if (['0', 'OFF', 'FALSE', 'NO'].includes(strValue)) return 'OFF'
+  
+  return value
+}
+
+// Helper to check if two values are equivalent booleans (for comparison, not display)
+const areBooleanValuesEqual = (val1, val2) => {
+  const normalized1 = normalizeBooleanValue(val1)
+  const normalized2 = normalizeBooleanValue(val2)
+  
+  return normalized1 === normalized2
+}
+
+// Helper to identify boolean variables by checking if runtime value is ON/OFF
+const isBooleanVariable = (row) => {
+  if (!row || !row.runtimeValue) return false
+  
+  const runtimeStr = String(row.runtimeValue).toUpperCase().trim()
+  
+  // If runtime value is ON or OFF, it's a boolean variable
+  return runtimeStr === 'ON' || runtimeStr === 'OFF'
+}
+
 function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
@@ -77,8 +111,20 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
   const [variablesAllData, setvariablesAllData] = useState(variables || [])
   const prevVariablesRef = useRef(variables)
 
-  const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, search, confirmState, complexVariableModal, editVariableModal } = vState
+  const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, showInfoAlert, search, confirmState, complexVariableModal, editVariableModal } = vState
   const { isOpen, title, payload } = confirmState
+
+  // Get username for user-specific localStorage key
+  const username = localStorage.getItem('username') || 'default'
+  const alertStorageKey = `variables_info_alert_dismissed_${username}`
+
+  // Check localStorage on mount to see if user dismissed the alert
+  useEffect(() => {
+    const dontShowAgain = localStorage.getItem(alertStorageKey)
+    if (dontShowAgain === 'true') {
+      vDispatch({ type: 'SET_SHOW_INFO_ALERT', payload: false })
+    }
+  }, [alertStorageKey])
 
   // Set search filter when navigating from PFS Instruments page
   useEffect(() => {
@@ -171,6 +217,15 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
     vDispatch({ type: 'SET_SEARCH', payload: e.target.value })
   }
 
+  const handleDismissAlert = () => {
+    localStorage.setItem(alertStorageKey, 'true')
+    vDispatch({ type: 'SET_SHOW_INFO_ALERT', payload: false })
+  }
+
+  const handleShowInfo = () => {
+    vDispatch({ type: 'SET_SHOW_INFO_ALERT', payload: true })
+  }
+
   const columnHelper = createColumnHelper()
 
   const columns = useMemo(
@@ -182,10 +237,17 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
         minSize: 150,
         cell: (info) => {
           const row = info.row.original
-          const hasDiff = row.cfgValue !== row.value
+          const isBoolean = isBooleanVariable(row)
+          const hasDiff = isBoolean 
+            ? !areBooleanValuesEqual(row.cfgValue, row.value)
+            : row.cfgValue !== row.value
           const hasPreserve = row.preservedValue != null
           const isPFSInstrument = row.variableName === 'performance_schema_instrument'
-          const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue && !isPFSInstrument
+          const runtimeDiffersFromPreserved = hasPreserve && 
+            (isBoolean 
+              ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
+              : row.runtimeValue !== row.preservedValue) && 
+            !isPFSInstrument
           
           return (
             <HStack spacing={2}>
@@ -206,6 +268,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           const fullString = info.getValue()
           const fullLength = fullString?.length
           const row = info.row.original
+          
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
           
           // Complex variable detection: either long strings OR known complex variables
           const isLongVariable = fullLength > 100 || 
@@ -245,9 +310,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                 />
               )}
               {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
+                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
               ) : (
-                <span>{info.getValue()}</span>
+                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
               )}
             </HStack>
           )
@@ -261,12 +326,17 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
+          
           return (
             <>
               {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
+                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
               ) : (
-                <span>{info.getValue()}</span>
+                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
               )}
             </>
           )
@@ -304,9 +374,15 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             )
           }
           
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
+          
           // Check if runtime differs from preserved value (not for PFS instrument)
           const hasPreserve = row.preservedValue != null
-          const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue
+          const runtimeDiffersFromPreserved = hasPreserve && 
+            (isBoolean 
+              ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
+              : row.runtimeValue !== row.preservedValue)
           
           return (
             <HStack spacing={2}>
@@ -321,11 +397,14 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                 <CopyToClipboard 
                   copyIconPosition='start' 
                   className={styles.longVariable} 
-                  text={info.getValue()} 
+                  text={fullString} 
                 />
               ) : (
-                <span style={runtimeDiffersFromPreserved ? { color: 'red', fontWeight: 'bold' } : {}}>
-                  {info.getValue()}
+                <span style={{ 
+                  ...(runtimeDiffersFromPreserved ? { color: 'red', fontWeight: 'bold' } : {}),
+                  ...(isBoolean && !runtimeDiffersFromPreserved ? { fontWeight: 'bold' } : {})
+                }}>
+                  {fullString}
                 </span>
               )}
             </HStack>
@@ -340,12 +419,17 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
         cell: (info) => {
           const fullString = info.getValue()
           const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
+          
           return (
             <>
               {fullLength > 15 ? (
-                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={info.getValue()} />
+                <CopyToClipboard copyIconPosition='start' className={styles.longVariable} text={fullString} />
               ) : (
-                <span>{info.getValue()}</span>
+                <span style={isBoolean ? { fontWeight: 'bold' } : {}}>{fullString}</span>
               )}
             </>
           )
@@ -353,10 +437,20 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
       })]: []),
       columnHelper.accessor((row) => {
         const hasPreserve = row.preservedValue != null
-        const hasDiff = row.cfgValue !== row.value
-        const isPreserved = hasPreserve && row.preservedValue === row.value
+        const isBoolean = isBooleanVariable(row)
+        const hasDiff = isBoolean 
+          ? !areBooleanValuesEqual(row.cfgValue, row.value)
+          : row.cfgValue !== row.value
+        const isPreserved = hasPreserve && 
+          (isBoolean 
+            ? areBooleanValuesEqual(row.preservedValue, row.value)
+            : row.preservedValue === row.value)
         const isPFSInstrument = row.variableName === 'performance_schema_instrument'
-        const runtimeDiffersFromPreserved = hasPreserve && row.runtimeValue !== row.preservedValue && !isPFSInstrument
+        const runtimeDiffersFromPreserved = hasPreserve && 
+          (isBoolean 
+            ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
+            : row.runtimeValue !== row.preservedValue) && 
+          !isPFSInstrument
         
         return (
           <VStack align={"center"} justifyContent={"center"} spacing={2}>
@@ -501,12 +595,57 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
 
   return (
     <VStack className={styles.contentContainer}>
+      {showInfoAlert && (
+        <Alert status="info" variant="left-accent" mb={4}>
+          <AlertIcon />
+          <Box flex="1">
+            <AlertTitle fontSize="sm" fontWeight="bold">Important Note for DBAs</AlertTitle>
+            <AlertDescription fontSize="xs">
+              If deployed values don't match configurator values after applying changes, please check the database nodes for:
+              <br />
+              • Custom configuration files in <strong>custom.d/</strong> or <strong>conf.d/</strong> directories
+              <br />
+              • Manual variable overrides in <strong>my.cnf</strong> or <strong>my.ini</strong>
+              <br />
+              • Runtime SET GLOBAL/PERSIST commands that may override configuration
+              <br />
+              These external configurations may take precedence over Replication Manager settings.
+              <br />
+              <Button 
+                size="xs" 
+                colorScheme="blue" 
+                variant="link" 
+                mt={2}
+                onClick={handleDismissAlert}
+              >
+                Don't show this again
+              </Button>
+            </AlertDescription>
+          </Box>
+          <CloseButton
+            alignSelf="flex-start"
+            position="relative"
+            right={-1}
+            top={-1}
+            onClick={handleDismissAlert}
+          />
+        </Alert>
+      )}
       <Flex className={styles.actions}>
         <HStack gap='4'>
           <HStack className={styles.search}>
             <label htmlFor='search'>Search</label>
             <Input id='search' type='search' onChange={handleSearch} />
           </HStack>
+          {!showInfoAlert && (
+            <RMIconButton
+              tooltip="Show important information for DBAs"
+              icon={TbInfoCircle}
+              size="sm"
+              colorScheme="blue"
+              onClick={handleShowInfo}
+            />
+          )}
         </HStack>
         <Box className={styles.divider} />
         <Checkbox size='lg' isChecked={showRowDiff} onChange={setVariableMode} className={styles.checkbox}>
