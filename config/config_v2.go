@@ -23,10 +23,10 @@ type ConfigV2 struct {
 	WithEmbed   string `mapstructure:"-" toml:"-" json:"withEmbed"`
 
 	// Domain-Specific Configurations
-	Monitoring   MonitoringConfig   `mapstructure:",squash" toml:",inline" json:"monitoring"`
-	Database     DatabaseConfig     `mapstructure:",squash" toml:",inline" json:"database"`
-	Replication  ReplicationConfig  `mapstructure:",squash" toml:",inline" json:"replication"`
-	Failover     FailoverConfig     `mapstructure:",squash" toml:",inline" json:"failover"`
+	Monitoring  MonitoringConfig  `mapstructure:",squash" toml:",inline" json:"monitoring"`
+	Database    DatabaseConfig    `mapstructure:",squash" toml:",inline" json:"database"`
+	Replication ReplicationConfig `mapstructure:",squash" toml:",inline" json:"replication"`
+	Failover    FailoverConfig    `mapstructure:",squash" toml:",inline" json:"failover"`
 	// TODO: Add remaining domain configs:
 	// Switchover   SwitchoverConfig   `mapstructure:",squash" toml:",inline" json:"switchover"`
 	// Backup       BackupConfig       `mapstructure:",squash" toml:",inline" json:"backup"`
@@ -39,6 +39,7 @@ type ConfigV2 struct {
 
 	// Configuration Management
 	ConfigFile        string `mapstructure:"config" toml:"-" json:"-"`
+	SkipConfig        bool   `mapstructure:"skip-config" toml:"-" json:"-"`
 	Include           string `mapstructure:"include" toml:"-" json:"-"`
 	ClusterConfigPath string `mapstructure:"cluster-config-file" toml:"-" json:"-"`
 

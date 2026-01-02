@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"hash"
@@ -37,6 +38,7 @@ import (
 	"time"
 
 	"github.com/improbable-eng/grpc-web/go/grpcweb"
+	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
@@ -289,6 +291,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		usr = repman.OsUser.Username
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
+	flags.BoolVar(&conf.SkipConfig, "skip-config", false, "Skip reading config files")
 	if WithTarball == "ON" {
 		flags.StringVar(&conf.BaseDir, "monitoring-basedir", "/usr/local/replication-manager", "Path to a basedir where data and share sub directory can be found")
 		flags.StringVar(&conf.WorkingDir, "monitoring-datadir", "/usr/local/replication-manager/data", "Path to write temporary and persistent files")
@@ -1183,6 +1186,43 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 }
 
+func (repman *ReplicationManager) defaultConfigKeys() []string {
+	keys := make([]string, 0, len(repman.DefaultFlagMap))
+	for key := range repman.DefaultFlagMap {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func envViperForScope(scope string) *viper.Viper {
+	envViper := viper.New()
+	envViper.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	envViper.SetEnvPrefix(config.EnvScopePrefix(scope))
+	envViper.AutomaticEnv()
+	return envViper
+}
+
+func (repman *ReplicationManager) applyViperOverrides(dest *config.Config, source *viper.Viper, keys []string) error {
+	overrides := make(map[string]interface{})
+	for _, key := range keys {
+		if source.IsSet(key) {
+			overrides[key] = source.Get(key)
+		}
+	}
+	if len(overrides) == 0 {
+		return nil
+	}
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		TagName:          "mapstructure",
+		WeaklyTypedInput: true,
+		Result:           dest,
+	})
+	if err != nil {
+		return err
+	}
+	return decoder.Decode(overrides)
+}
+
 func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test si y'a  un repertoire ./.replication-manager sinon on le créer
 	//test si y'a  un repertoire ./.replication-manager/config.toml sinon on le créer depuis embed
@@ -1301,43 +1341,50 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	//init viper to read config file .toml
 	fistRead := viper.GetViper()
 	fistRead.SetConfigType("toml")
+	fistRead.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	fistRead.SetEnvPrefix(config.EnvScopePrefix("DEFAULT"))
+	fistRead.AutomaticEnv()
 
 	//DefaultFlagMap is a map that contain all default flag value, set in the server_monitor.go file
 	//fmt.Printf("%s", repman.DefaultFlagMap)
 
+	skipConfig := conf.SkipConfig || fistRead.GetBool("skip-config")
+
 	//if a config file is already define
-	if conf.ConfigFile != "" {
-		if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
-			//	repman.Logrus.Fatal("No config file " + conf.ConfigFile)
-			repman.Logrus.Error("No config file " + conf.ConfigFile)
-		}
-		fistRead.SetConfigFile(conf.ConfigFile)
-
-	} else {
-		//adds config files by searching them in different folders
-		fistRead.SetConfigName("config")
-		if conf.WithEmbed == "OFF" {
-			fistRead.AddConfigPath("/etc/replication-manager/")
-		} else {
-			fistRead.AddConfigPath(conf.ConfDirExtra)
-		}
-		fistRead.AddConfigPath(".")
-
-		//if tarball, add config path
-		if conf.WithTarball == "ON" {
-			fistRead.AddConfigPath("/usr/local/replication-manager/etc")
-			if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Warning("No config file /usr/local/replication-manager/etc/config.toml")
+	if !skipConfig {
+		if conf.ConfigFile != "" {
+			if _, err := os.Stat(conf.ConfigFile); os.IsNotExist(err) {
+				//	repman.Logrus.Fatal("No config file " + conf.ConfigFile)
+				repman.Logrus.Error("No config file " + conf.ConfigFile)
 			}
-		}
-		//if embed, add config path
-		if conf.WithEmbed == "ON" {
-			if _, err := os.Stat(conf.ConfDirExtra + "/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Warning("No config file " + conf.ConfDirExtra + "/config.toml ")
-			}
+			fistRead.SetConfigFile(conf.ConfigFile)
+
 		} else {
-			if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
-				repman.Logrus.Warning("No config file /etc/replication-manager/config.toml ")
+			//adds config files by searching them in different folders
+			fistRead.SetConfigName("config")
+			if conf.WithEmbed == "OFF" {
+				fistRead.AddConfigPath("/etc/replication-manager/")
+			} else {
+				fistRead.AddConfigPath(conf.ConfDirExtra)
+			}
+			fistRead.AddConfigPath(".")
+
+			//if tarball, add config path
+			if conf.WithTarball == "ON" {
+				fistRead.AddConfigPath("/usr/local/replication-manager/etc")
+				if _, err := os.Stat("/usr/local/replication-manager/etc/config.toml"); os.IsNotExist(err) {
+					repman.Logrus.Warning("No config file /usr/local/replication-manager/etc/config.toml")
+				}
+			}
+			//if embed, add config path
+			if conf.WithEmbed == "ON" {
+				if _, err := os.Stat(conf.ConfDirExtra + "/config.toml"); os.IsNotExist(err) {
+					repman.Logrus.Warning("No config file " + conf.ConfDirExtra + "/config.toml ")
+				}
+			} else {
+				if _, err := os.Stat("/etc/replication-manager/config.toml"); os.IsNotExist(err) {
+					repman.Logrus.Warning("No config file /etc/replication-manager/config.toml ")
+				}
 			}
 		}
 	}
@@ -1346,23 +1393,32 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//search for default section in config file and read
 	//setEnvPrefix is case insensitive
-	fistRead.SetEnvPrefix(config.EnvScopePrefix("DEFAULT"))
-	err := fistRead.ReadInConfig()
-	if err == nil {
-		repman.Logrus.WithFields(log.Fields{
-			"file": fistRead.ConfigFileUsed(),
-		}).Debug("Using config file")
+	if !skipConfig {
+		err := fistRead.ReadInConfig()
+		if err == nil {
+			repman.Logrus.WithFields(log.Fields{
+				"file": fistRead.ConfigFileUsed(),
+			}).Debug("Using config file")
+		} else {
+			var configNotFound viper.ConfigFileNotFoundError
+			if errors.As(err, &configNotFound) {
+				repman.Logrus.Info("Config file not found; skipping config file read")
+				skipConfig = true
+			} else {
+				repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse config file: %s", err)
+			}
+		}
+
 	} else {
-		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not parse config file: %s", err)
+		repman.Logrus.Info("Skipping config file read")
 	}
 
 	//recup tous les param set dans le default (avec les lignes de commandes)
 	//err = fistRead.MergeInConfig()
-	if err != nil {
-		repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + ":" + err.Error())
-	}
 	secRead := fistRead.Sub("DEFAULT")
-	repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
+	if secRead != nil {
+		repman.DeprecatedKeys["default"] = repman.GetUsedAliasKeys(secRead, false) //get deprecated keys used in the config file (/etc/replication-manager/config.toml)
+	}
 
 	//var test config.Config
 	//secRead.UnmarshalKey("default", &test)
@@ -1392,50 +1448,56 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	// Proceed include files
 	//if include is defined in a config file
-	if fistRead.GetString("default.include") != "" {
-		repman.Logrus.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
+	if !skipConfig {
+		if fistRead.GetString("default.include") != "" {
+			repman.Logrus.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
 
-		if _, err := os.Stat(fistRead.GetString("default.include")); os.IsNotExist(err) {
-			repman.Logrus.Warning("Include config directory does not exist " + conf.Include)
-		} else {
-			//if this path exist, set cluster config path to it
-			conf.ClusterConfigPath = fistRead.GetString("default.include")
-		}
-
-		//load files from the include path
-		files, err := os.ReadDir(conf.ClusterConfigPath)
-		if err != nil {
-			repman.Logrus.Infof("No config include directory %s ", conf.ClusterConfigPath)
-		}
-		//read and set config from all files in the include path
-		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
-				//file_name := strings.Split(f.Name(), ".")
-				//cluster_name := file_name[0]
-				fistRead.SetConfigName(f.Name())
-				fistRead.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
-				//	viper.Debug()
-				fistRead.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-
-				err := fistRead.MergeInConfig()
-				if err != nil {
-					repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
-				}
-
-				//recup tous les param set dans le include
-				//secRead = fistRead.Sub(cluster_name)
-				//secRead.UnmarshalKey(cluster_name, &test)
+			if _, err := os.Stat(fistRead.GetString("default.include")); os.IsNotExist(err) {
+				repman.Logrus.Warning("Include config directory does not exist " + conf.Include)
+			} else {
+				//if this path exist, set cluster config path to it
+				conf.ClusterConfigPath = fistRead.GetString("default.include")
 			}
+
+			//load files from the include path
+			files, err := os.ReadDir(conf.ClusterConfigPath)
+			if err != nil {
+				repman.Logrus.Infof("No config include directory %s ", conf.ClusterConfigPath)
+			}
+			//read and set config from all files in the include path
+			for _, f := range files {
+				if !f.IsDir() && strings.HasSuffix(f.Name(), ".toml") {
+					//file_name := strings.Split(f.Name(), ".")
+					//cluster_name := file_name[0]
+					fistRead.SetConfigName(f.Name())
+					fistRead.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
+					//	viper.Debug()
+					fistRead.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+
+					err := fistRead.MergeInConfig()
+					if err != nil {
+						repman.Logrus.Fatal("Config error in " + conf.ClusterConfigPath + "/" + f.Name() + ":" + err.Error())
+					}
+
+					//recup tous les param set dans the include
+					//secRead = fistRead.Sub(cluster_name)
+					//secRead.UnmarshalKey(cluster_name, &test)
+				}
+			}
+		} else {
+			repman.Logrus.Warning("No include directory in default section")
 		}
 	} else {
-		repman.Logrus.Warning("No include directory in default section")
+		repman.Logrus.Info("Skipping include directory config read")
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := fistRead.Sub(clusterName)
-		repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+		if clRead != nil {
+			repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
+		}
 		clOrch := conf.ProvOrchestrator
 		if clRead != nil {
 			if v := clRead.Get("prov-orchestrator"); v != nil {
@@ -1456,7 +1518,18 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	// Proceed dynamic config
-	if fistRead.GetBool("default.monitoring-save-config") {
+	monitoringSaveConfig := false
+	if !skipConfig {
+		monitoringSaveConfig = fistRead.GetBool("default.monitoring-save-config")
+		envDefault := envViperForScope("DEFAULT")
+		if envDefault.IsSet("monitoring-save-config") {
+			monitoringSaveConfig = envDefault.GetBool("monitoring-save-config")
+		}
+		if slices.Contains(repman.CommandLineFlag, "monitoring-save-config") {
+			monitoringSaveConfig = viper.GetViper().GetBool("monitoring-save-config")
+		}
+	}
+	if !skipConfig && monitoringSaveConfig {
 		//read working dir from config
 		if fistRead.GetString("default.monitoring-datadir") != "" {
 			conf.WorkingDir = fistRead.GetString("default.monitoring-datadir")
@@ -1542,8 +1615,12 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	}
 
 	cfgGroupIndex = 0
+	configKeys := repman.defaultConfigKeys()
 	//extract the default section of the config files
 	cf1 := fistRead.Sub("default")
+	if cf1 == nil && skipConfig {
+		cf1 = viper.New()
+	}
 
 	//cf1.Debug()
 	if cf1 == nil {
@@ -1555,51 +1632,58 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		cf1.AutomaticEnv()
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
+	}
 
-		//if dynamic config, load modified parameter from the saved config
-		if conf.ConfRewrite {
+	if err := repman.applyViperOverrides(&conf, envViperForScope("DEFAULT"), configKeys); err != nil {
+		repman.Logrus.WithError(err).Warn("Failed to apply default env overrides")
+	}
+	if err := repman.applyViperOverrides(&conf, viper.GetViper(), repman.CommandLineFlag); err != nil {
+		repman.Logrus.WithError(err).Warn("Failed to apply command-line overrides")
+	}
 
-			cf3 := fistRead.Sub("saved-default")
+	//if dynamic config, load modified parameter from the saved config
+	if !skipConfig && cf1 != nil && conf.ConfRewrite {
 
-			//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
-			if cf3 == nil {
-				repman.Logrus.WithField("group", "default").Info("Could not parse saved configuration group")
-			} else {
-				for _, f := range cf3.AllKeys() {
-					v, ok := ImmuableMap[f]
-					if ok {
-						cf3.Set(f, v)
-					}
-				}
-				repman.initAlias(cf3)
-				cf3.Unmarshal(&conf)
-				//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
-				for _, f := range cf3.AllKeys() {
-					v := cf3.Get(f)
-					if v != nil {
-						imm_v, ok := ImmuableMap[f]
-						if ok && imm_v != v {
-							DynamicMap[f] = v
-						}
-						if !ok {
-							DynamicMap[f] = v
-						}
+		cf3 := fistRead.Sub("saved-default")
 
-					}
-
+		//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
+		if cf3 == nil {
+			repman.Logrus.WithField("group", "default").Info("Could not parse saved configuration group")
+		} else {
+			for _, f := range cf3.AllKeys() {
+				v, ok := ImmuableMap[f]
+				if ok {
+					cf3.Set(f, v)
 				}
 			}
-		}
+			repman.initAlias(cf3)
+			cf3.Unmarshal(&conf)
+			//to add flag in cluster dynamic map only if not defined yet or if the flag value read is diff from immuable flag value
+			for _, f := range cf3.AllKeys() {
+				v := cf3.Get(f)
+				if v != nil {
+					imm_v, ok := ImmuableMap[f]
+					if ok && imm_v != v {
+						DynamicMap[f] = v
+					}
+					if !ok {
+						DynamicMap[f] = v
+					}
 
-		// Generate default keygen
-		conf.GenerateKey(repman.Logrus)
-		k, _ := conf.LoadEncrytionKey()
-		if k == nil {
-			repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
-		}
-		*repman.Conf = conf
+				}
 
+			}
+		}
 	}
+
+	// Generate default keygen
+	conf.GenerateKey(repman.Logrus)
+	k, _ := conf.LoadEncrytionKey()
+	if k == nil {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "No existing password encryption key in global section")
+	}
+	*repman.Conf = conf
+
 	//	backupvipersave := viper.GetViper()
 
 	//if clusters have been discovered
@@ -1704,6 +1788,14 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 			}
 		}
 
+		configKeys := repman.defaultConfigKeys()
+		if err := repman.applyViperOverrides(&clusterconf, envViperForScope(cluster), configKeys); err != nil {
+			repman.Logrus.WithError(err).Warn("Failed to apply cluster env overrides")
+		}
+		if err := repman.applyViperOverrides(&clusterconf, viper.GetViper(), repman.CommandLineFlag); err != nil {
+			repman.Logrus.WithError(err).Warn("Failed to apply command-line overrides")
+		}
+
 		//clusterconf.PrintConf()
 
 		//save the immuable map for the cluster
@@ -1716,7 +1808,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		//fmt.Printf("%+v\n", cf2.AllSettings())
 		repman.DynamicFlagMaps[cluster] = clustDynamicMap
 		//if dynamic config, load modified parameter from the saved config
-		if clusterconf.ConfRewrite {
+		if cf2 != nil && clusterconf.ConfRewrite {
 
 			cf3 := fistRead.Sub("saved-" + cluster)
 
