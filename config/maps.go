@@ -8,6 +8,24 @@ import (
 	"github.com/signal18/replication-manager/utils/version"
 )
 
+const EnvPrefix = "REPLICATION_MANAGER"
+
+// EnvScopePrefix builds a config env prefix for a scope.
+func EnvScopePrefix(scope string) string {
+	normalized := normalizeEnvScope(scope)
+	if normalized == "" {
+		return EnvPrefix
+	}
+	return EnvPrefix + "_" + normalized
+}
+
+func normalizeEnvScope(scope string) string {
+	normalized := strings.ToUpper(scope)
+	normalized = strings.ReplaceAll(normalized, "-", "_")
+	normalized = strings.ReplaceAll(normalized, ".", "_")
+	return normalized
+}
+
 type StringsMap struct {
 	*sync.Map
 }

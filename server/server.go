@@ -1346,7 +1346,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	//search for default section in config file and read
 	//setEnvPrefix is case insensitive
-	fistRead.SetEnvPrefix("DEFAULT")
+	fistRead.SetEnvPrefix(config.EnvScopePrefix("DEFAULT"))
 	err := fistRead.ReadInConfig()
 	if err == nil {
 		repman.Logrus.WithFields(log.Fields{
@@ -1415,7 +1415,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 				fistRead.SetConfigName(f.Name())
 				fistRead.SetConfigFile(conf.ClusterConfigPath + "/" + f.Name())
 				//	viper.Debug()
-				fistRead.AutomaticEnv()
 				fistRead.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 
 				err := fistRead.MergeInConfig()
@@ -1551,9 +1550,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		repman.Logrus.Warning("config.toml has no [default] configuration group and config group has not been specified")
 	} else {
 		//save all default section in conf
-		cf1.AutomaticEnv()
 		cf1.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
-		cf1.SetEnvPrefix("DEFAULT")
+		cf1.SetEnvPrefix(config.EnvScopePrefix("DEFAULT"))
+		cf1.AutomaticEnv()
 		repman.initAlias(cf1)
 		cf1.Unmarshal(&conf)
 
@@ -1688,8 +1687,9 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		if cf2 == nil {
 			repman.Logrus.WithField("group", cluster).Infof("Could not parse configuration group")
 		} else {
-			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+			cf2.SetEnvPrefix(config.EnvScopePrefix(cluster))
+			cf2.AutomaticEnv()
 			repman.initAlias(cf2)
 			cf2.Unmarshal(&clusterconf)
 			//fmt.Printf("saved conf :")
