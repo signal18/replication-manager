@@ -102,6 +102,112 @@ const isBooleanVariable = (row) => {
   return runtimeStr === 'ON' || runtimeStr === 'OFF'
 }
 
+// Helper function to parse size units (K, M, G, T) to bytes
+// Uses BigInt to handle values larger than Number.MAX_SAFE_INTEGER
+const parseSizeToBytes = (value) => {
+  if (value === null || value === undefined || value === '') return null
+  
+  const strValue = String(value).trim().toUpperCase()
+  
+  // Check if it's just a plain number
+  if (/^\d+$/.test(strValue)) {
+    try {
+      return BigInt(strValue)
+    } catch (e) {
+      return null
+    }
+  }
+  
+  // Match patterns like: 4G, 128M, 1024K, 2T, 4GB, 128MB, etc.
+  const match = strValue.match(/^(\d+(?:\.\d+)?)\s*([KMGT])B?$/i)
+  
+  if (!match) {
+    return null // Not a size value
+  }
+  
+  const [, numStr, unit] = match
+  const number = parseFloat(numStr)
+  
+  // Use BigInt for multipliers to handle large values
+  const multipliers = {
+    'K': 1024n,
+    'M': 1024n * 1024n,
+    'G': 1024n * 1024n * 1024n,
+    'T': 1024n * 1024n * 1024n * 1024n
+  }
+  
+  const multiplier = multipliers[unit.toUpperCase()]
+  if (!multiplier) return null
+  
+  // Handle decimal values by converting to integer first
+  const integerPart = Math.floor(number)
+  const decimalPart = number - integerPart
+  
+  try {
+    let result = BigInt(integerPart) * multiplier
+    
+    // Add decimal portion if present (e.g., 1.5G)
+    if (decimalPart > 0) {
+      result += BigInt(Math.floor(decimalPart * Number(multiplier)))
+    }
+    
+    return result
+  } catch (e) {
+    return null
+  }
+}
+
+// Helper function to check if two values are equal considering size units
+const areSizeValuesEqual = (val1, val2) => {
+  const bytes1 = parseSizeToBytes(val1)
+  const bytes2 = parseSizeToBytes(val2)
+  
+  // If either couldn't be parsed as size, fall back to string comparison
+  if (bytes1 === null || bytes2 === null) {
+    return String(val1) === String(val2)
+  }
+  
+  return bytes1 === bytes2
+}
+
+// Helper function to detect if a variable is likely a size-based variable
+const isSizeVariable = (variableName) => {
+  const sizePatterns = [
+    /_size$/i,
+    /_buffer$/i,
+    /_memory$/i,
+    /_cache$/i,
+    /_length$/i,
+    /_limit$/i,
+    /^max_/i,
+    /^min_/i,
+    /innodb_/i,
+    /buffer/i,
+    /cache/i
+  ]
+  
+  return sizePatterns.some(pattern => pattern.test(variableName))
+}
+
+// Helper function to check if values are equal (handles booleans, sizes, and regular values)
+const areValuesEqual = (val1, val2, row) => {
+  if (val1 === val2) return true
+  if (val1 == null || val2 == null) return val1 === val2
+  
+  // Check for boolean variables
+  if (isBooleanVariable(row)) {
+    return areBooleanValuesEqual(val1, val2)
+  }
+  
+  // Check for size variables
+  if (isSizeVariable(row.variableName)) {
+    return areSizeValuesEqual(val1, val2)
+  }
+  
+  // Default string comparison
+  return String(val1) === String(val2)
+}
+
 function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
@@ -238,15 +344,11 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
         cell: (info) => {
           const row = info.row.original
           const isBoolean = isBooleanVariable(row)
-          const hasDiff = isBoolean 
-            ? !areBooleanValuesEqual(row.cfgValue, row.value)
-            : row.cfgValue !== row.value
+          const hasDiff = !areValuesEqual(row.cfgValue, row.value, row)
           const hasPreserve = row.preservedValue != null
           const isPFSInstrument = row.variableName === 'performance_schema_instrument'
           const runtimeDiffersFromPreserved = hasPreserve && 
-            (isBoolean 
-              ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
-              : row.runtimeValue !== row.preservedValue) && 
+            !areValuesEqual(row.runtimeValue, row.preservedValue, row) && 
             !isPFSInstrument
           
           return (
@@ -380,9 +482,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           // Check if runtime differs from preserved value (not for PFS instrument)
           const hasPreserve = row.preservedValue != null
           const runtimeDiffersFromPreserved = hasPreserve && 
-            (isBoolean 
-              ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
-              : row.runtimeValue !== row.preservedValue)
+            !areValuesEqual(row.runtimeValue, row.preservedValue, row)
           
           return (
             <HStack spacing={2}>
@@ -437,19 +537,11 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
       })]: []),
       columnHelper.accessor((row) => {
         const hasPreserve = row.preservedValue != null
-        const isBoolean = isBooleanVariable(row)
-        const hasDiff = isBoolean 
-          ? !areBooleanValuesEqual(row.cfgValue, row.value)
-          : row.cfgValue !== row.value
-        const isPreserved = hasPreserve && 
-          (isBoolean 
-            ? areBooleanValuesEqual(row.preservedValue, row.value)
-            : row.preservedValue === row.value)
+        const hasDiff = !areValuesEqual(row.cfgValue, row.value, row)
+        const isPreserved = hasPreserve && areValuesEqual(row.preservedValue, row.value, row)
         const isPFSInstrument = row.variableName === 'performance_schema_instrument'
         const runtimeDiffersFromPreserved = hasPreserve && 
-          (isBoolean 
-            ? !areBooleanValuesEqual(row.runtimeValue, row.preservedValue)
-            : row.runtimeValue !== row.preservedValue) && 
+          !areValuesEqual(row.runtimeValue, row.preservedValue, row) && 
           !isPFSInstrument
         
         return (
