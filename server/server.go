@@ -285,7 +285,9 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	}
 	//flag.StringVar(&pid, "pidfile", "", "help message")
 	flag.StringVar(&configPath, "config", "", "help message")
-	flag.Parse()
+	if shouldParseFlags() {
+		flag.Parse()
+	}
 
 	if usr == "" && repman != nil {
 		usr = repman.OsUser.Username
@@ -1184,6 +1186,10 @@ func (repman *ReplicationManager) OverwriteParameterFlags(destViper *viper.Viper
 
 	}
 
+}
+
+func shouldParseFlags() bool {
+	return !strings.HasSuffix(os.Args[0], ".test")
 }
 
 func (repman *ReplicationManager) defaultConfigKeys() []string {
