@@ -585,9 +585,10 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
 
-	deltafile, err := os.OpenFile(deltapath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	deltafile, err := os.OpenFile(deltapath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", deltapath, err)
+		return err
 	}
 	defer deltafile.Close()
 
@@ -616,9 +617,10 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 	preservepath := filepath.Join(server.Datadir, "01_preserved.cnf")
 	agreedpath := filepath.Join(server.Datadir, "03_agreed.cnf")
 
-	agreedfile, err := os.OpenFile(agreedpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	agreedfile, err := os.OpenFile(agreedpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", agreedpath, err)
+		return err
 	}
 	defer agreedfile.Close()
 
@@ -626,9 +628,10 @@ func (server *ServerMonitor) WritePreservedVariables() error {
 		return err
 	}
 
-	preservefile, err := os.OpenFile(preservepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
+	preservefile, err := os.OpenFile(preservepath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", preservepath, err)
+		return err
 	}
 	defer preservefile.Close()
 
