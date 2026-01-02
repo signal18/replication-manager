@@ -2483,7 +2483,6 @@ func (repman *ReplicationManager) Run() error {
 	if repman.exitMsg != "" {
 		repman.Logrus.Println(repman.exitMsg)
 	}
-	fmt.Println("Cleanup before leaving")
 	if repman.CpuProfile != "" {
 		pprof.StopCPUProfile()
 	}
@@ -2683,8 +2682,6 @@ func (repman *ReplicationManager) resolveHostIp() string {
 
 func (repman *ReplicationManager) Stop() {
 
-	//termbox.Close()
-	fmt.Println("Prof profile into file: " + repman.MemProfile)
 	if repman.MemProfile != "" {
 		f, err := os.Create(repman.MemProfile)
 		if err != nil {
