@@ -11,6 +11,12 @@ import (
 )
 
 func (repman *ReplicationManager) InitMailer() error {
+	if repman.Conf.MailTo == "" || repman.Conf.MailFrom == "" || repman.Conf.MailSMTPAddr == "" {
+		err := fmt.Errorf("mailer config incomplete: mail-to, mail-from, and mail-smtp-addr are required")
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error initializing mailer: %v", err)
+		return err
+	}
+
 	var m *mailer.Mailer
 	var err error
 	m, err = mailer.NewMailer(repman.Conf.MailSMTPAddr, repman.Conf.MailFrom, repman.Conf.MailSMTPUser, repman.Conf.GetDecryptedValue("mail-smtp-password"), repman.Conf.MailSMTPTLSSkipVerify, repman.Conf.MailTimeout, repman.Conf.MailMaxPool)
@@ -26,6 +32,11 @@ func (repman *ReplicationManager) InitMailer() error {
 }
 
 func (repman *ReplicationManager) SendClustersInitMail() {
+	if repman.Conf.MailTo == "" || repman.Conf.MailFrom == "" || repman.Conf.MailSMTPAddr == "" {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping clusters init mail: missing mail-to, mail-from, or mail-smtp-addr")
+		return
+	}
+
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending clusters init mail")
 
 	if repman.Mailer == nil {
