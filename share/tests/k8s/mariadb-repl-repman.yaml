@@ -59,8 +59,6 @@ spec:
               value: "0.0.0.0"
             - name: REPLICATION_MANAGER_DEFAULT_HTTP_PORT
               value: "10001"
-            - name: REPLICATION_MANAGER_CLUSTER1_TITLE
-              value: "mariadb-repl"
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS
               value: "mariadb-repl-0.mariadb-repl,mariadb-repl-1.mariadb-repl"
             - name: REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_PREFERED_MASTER
