@@ -1656,6 +1656,9 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		strClusters = repman.DiscoverClusters(firstRead)
 		repman.Logrus.WithField("clusters", strClusters).Infof("Clusters discovered: %s", strClusters)
 	}
+	if strClusters == "" {
+		repman.Logrus.Fatal("No clusters discovered. Provide a config file with cluster sections, set REPLICATION_MANAGER_<CLUSTER>_* env vars, or use --cluster.")
+	}
 
 	cfgGroupIndex = 0
 	configKeys := repman.defaultConfigKeys()
@@ -1737,15 +1740,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	*repman.Conf = conf
 
 	//	backupvipersave := viper.GetViper()
-
-	//if clusters have been discovered
-	if strClusters == "" {
-
-		//add default to the clusterlist if no cluster discover
-		repman.Logrus.WithField("cluster", "default").Debug("No clusters discovered add default Cluster")
-		strClusters += "default"
-
-	}
 
 	//set cluster list
 	repman.ClusterList = strings.Split(strClusters, ",")
