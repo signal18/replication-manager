@@ -1543,9 +1543,6 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 	for _, clusterName := range repman.ImmutableClusterList {
 		clRead := firstRead.Sub(clusterName)
-		if clRead != nil {
-			repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
-		}
 		clOrch := conf.ProvOrchestrator
 		if clRead != nil {
 			repman.DeprecatedKeys[clusterName] = repman.GetUsedAliasKeys(clRead, true) //get deprecated keys used in the cluster config dir (/etc/replication-manager/cluster.d)
