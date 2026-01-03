@@ -37,8 +37,8 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/codegangsta/negroni"
-	jwt "github.com/golang-jwt/jwt"
-	"github.com/golang-jwt/jwt/request"
+	jwt "github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v5/request"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/signal18/replication-manager/cert"
