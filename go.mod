@@ -63,7 +63,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/liip/sheriff/v2 v2.0.1
 	github.com/magneticio/vamp-router v0.0.0-20151116102511-29379b621548
-	github.com/mattermost/mattermost/server/public v0.1.20
+	github.com/mattermost/mattermost/server/public v0.1.21
 	github.com/micro/go-micro v0.27.1
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/mjibson/go-dsp v0.0.0-20170104183934-49dba8372707
@@ -180,7 +180,7 @@ require (
 	github.com/mattermost/go-i18n v1.11.1-0.20211013152124-5c415071e404 // indirect
 	github.com/mattermost/ldap v0.0.0-20231116144001-0f480c025956 // indirect
 	github.com/mattermost/logr/v2 v2.0.22 // indirect
-	github.com/mattermost/mattermost/server/v8 v8.0.0-20251028000919-d3ed703dc833 // indirect
+	github.com/mattermost/mattermost/server/v8 v8.0.0-20251229192601-96f159c25115 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-ieproxy v0.0.1 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
