@@ -1,5 +1,4 @@
 [Default]
-verbose = true
 http-server = true
 http-bind-address = "0.0.0.0"
 monitoring-save-config = true
