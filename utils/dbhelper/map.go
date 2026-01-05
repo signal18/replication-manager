@@ -1,3 +1,7 @@
+// This file contains thread-safe concurrent map wrappers for binlog and query tracking.
+// It provides synchronized data structures for managing binary log metadata
+// and Performance Schema query statistics across multiple goroutines.
+
 package dbhelper
 
 import "sync"

@@ -1,3 +1,7 @@
+// This file contains split-brain arbitration functions and heartbeat table management.
+// It provides mechanisms for preventing split-brain scenarios in database clusters
+// through arbitration services and heartbeat monitoring.
+
 package dbhelper
 
 import "github.com/jmoiron/sqlx"
