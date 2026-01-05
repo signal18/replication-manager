@@ -209,27 +209,6 @@ encrypt_data() {
     echo "$encrypted"
 }
 
-# Function to escape strings for safe JSON insertion
-# Escapes backslashes, quotes, newlines, tabs, and other control characters
-escape_json_string() {
-    local str="$1"
-    # Escape backslashes first (must be first!)
-    str="${str//\\/\\\\}"
-    # Escape double quotes
-    str="${str//\"/\\\"}"
-    # Escape newlines
-    str="${str//$'\n'/\\n}"
-    # Escape carriage returns
-    str="${str//$'\r'/\\r}"
-    # Escape tabs
-    str="${str//$'\t'/\\t}"
-    # Escape form feeds
-    str="${str//$'\f'/\\f}"
-    # Escape backspace
-    str="${str//$'\b'/\\b}"
-    echo "$str"
-}
-
 ########################
 # HTTP Helper Functions #
 ########################
@@ -600,11 +579,9 @@ fetch_and_extract_config() {
     local json_body=$(extract_http_body "$response")
     
     send_lines_to_api "HTTP Status: $http_status" "print-defaults" "$LVL_DEBUG"
-    send_lines_to_api "Response body: $(escape_json_string "$json_body")" "print-defaults" "$LVL_DEBUG"
     
     if [[ "$http_status" != "200" ]]; then
         send_lines_to_api "ERROR: API returned status $http_status" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "Response: $(escape_json_string "$json_body")" "print-defaults" "$LVL_ERROR"
         return 1
     fi
     
@@ -615,7 +592,6 @@ fetch_and_extract_config() {
     
     if [[ -z "$sst_port" || -z "$sst_host" ]]; then
         send_lines_to_api "ERROR: Failed to parse SST port/host from API response" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "Response body: $(escape_json_string "$json_body")" "print-defaults" "$LVL_ERROR"
         return 1
     fi
     
