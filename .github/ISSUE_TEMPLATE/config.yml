@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://signal18.io/replication-manager/
+    about: Read the official documentation for setup and usage guides
+  - name: Community Support
+    url: https://github.com/signal18/replication-manager/discussions
+    about: Ask questions and discuss with the community
+  - name: Security Issue
+    url: https://github.com/signal18/replication-manager/security/advisories/new
+    about: Report security vulnerabilities privately

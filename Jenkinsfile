@@ -11,8 +11,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:2.3', '-f docker/Dockerfile .')
-                        Image.push()
+                        def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}", '-f docker/Dockerfile .')
                         Image.push('latest')
                         Image.push(env.TAG_NAME)
                     }
@@ -24,8 +23,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
-                        Image.push()
+                        def Image = docker.build("signal18/replication-manager:${env.TAG_NAME}-pro", '-f docker/Dockerfile.pro .')
                         Image.push(env.TAG_NAME+'-pro')
                     }
                 }
@@ -35,7 +33,7 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:2.3-pro', '-f docker/Dockerfile.pro .')
+                        def Image = docker.build('signal18/replication-manager:nightly', '-f docker/Dockerfile.pro .')
                         Image.push('nightly')
                     }
                 }
@@ -45,10 +43,11 @@ pipeline {
             steps {
                 script {
                     docker.withRegistry('https://index.docker.io/v1/', 'docker-hub') {
-                        def Image = docker.build('signal18/replication-manager:2.3-dev', '-f docker/Dockerfile.dev .')
-                        Image.push()
+                        def Image = docker.build('signal18/replication-manager:dev', '-f docker/Dockerfile.dev .')
                         Image.push('dev')
-                        Image.push(env.TAG_NAME+'-dev')
+                        if (env.TAG_NAME) {
+                            Image.push(env.TAG_NAME+'-dev')
+                        }
                     }
                 }
             }

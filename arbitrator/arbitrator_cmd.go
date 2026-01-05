@@ -15,9 +15,12 @@ package arbitrator
 import (
 	"fmt"
 
+	"github.com/signal18/replication-manager/server"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
+
+var withArbitration = "ON"
 
 var rootCmd = &cobra.Command{
 	Use:   "replication-manager",
@@ -52,7 +55,9 @@ func init() {
 	conf.FullVersion = FullVersion
 	conf.MemProfile = memprofile
 	conf.WithTarball = WithTarball
+	server.WithArbitration = withArbitration
 	rootCmd.PersistentFlags().StringVar(&conf.ConfigFile, "config", "", "Configuration file (default is config.toml)")
+	rootCmd.PersistentFlags().StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
 	rootCmd.Flags().StringVar(&conf.KeyPath, "keypath", "/etc/replication-manager/.replication-manager.key", "Encryption key file path")
 	rootCmd.PersistentFlags().BoolVar(&conf.Verbose, "verbose", false, "Print detailed execution info")
 	rootCmd.PersistentFlags().StringVar(&memprofile, "memprofile", "/tmp/repmgr.mprof", "Write a memory profile to a file readable by pprof")

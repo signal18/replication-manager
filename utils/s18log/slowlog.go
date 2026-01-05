@@ -64,6 +64,7 @@ var metricsRe = regexp.MustCompile(`(\w+): (\S+|\z)`)
 var adminRe = regexp.MustCompile(`command: (.+)`)
 var setRe = regexp.MustCompile(`^SET (?:last_insert_id|insert_id|timestamp)`)
 var useRe = regexp.MustCompile(`^(?i)use `)
+var tableHeaderRe = regexp.MustCompile(`^Time\s+Id\s+Command\s+Argument`)
 
 // var regexp.MustCompile(`\b(User@Host: \S+\[\w+\]+ @ (?:)(\w+)? \[\S*\])|(Id:.+)`)
 func NewSlowLog(sz int) SlowLog {
@@ -86,6 +87,11 @@ func (tl *SlowLog) Shift(e SlowMessage) {
 }
 
 func (tl *SlowLog) ParseLine(line string, sl *SlowMessage) {
+
+	// Skip table header lines from general query log format
+	if tableHeaderRe.MatchString(line) {
+		return
+	}
 
 	if !headerRe.MatchString(line) {
 		tl.parseQuery(line, sl)

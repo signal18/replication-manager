@@ -276,6 +276,19 @@ npm run build      # Builds to share/dashboard_react/dist/
 
 The server embeds the dashboard and serves it via HTTP.
 
+## Implementation Documentation
+
+Implementation-specific documentation created by Claude Code agents is stored in `doc/implementation/`. This directory mirrors the project structure to keep implementation docs organized alongside their corresponding code modules.
+
+**Structure**: `doc/implementation/{package_path}/{DOC_NAME}.md`
+
+**Examples**:
+- `doc/implementation/utils/dbhelper/MIGRATION_STATUS.md` - Migration tracking for dbhelper package
+- `doc/implementation/utils/dbhelper/SECURITY_AUDIT.md` - Security audit findings
+- `doc/implementation/utils/dbhelper/VENDOR_USAGE.md` - Third-party dependency analysis
+
+When creating new implementation documentation, place it under `doc/implementation/` following the package structure, not alongside the source code.
+
 ## Common Issues
 
 **CGO Dependencies**: Some builds require CGO (osc-cgo variant). Most builds use `CGO_ENABLED=0` for static binaries.

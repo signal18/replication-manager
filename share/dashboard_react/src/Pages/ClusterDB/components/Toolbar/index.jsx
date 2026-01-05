@@ -132,25 +132,32 @@ function Toolbar({ tab, dbId, selectedDBServer, clusterName, digestMode, toggleD
               {...(isEqualLongQueryTime(selectedDBServer?.longQueryTime, '1')
                 ? { className: styles.selectedtime }
                 : {})}>
-              10<sup>-1</sup>
+              1
             </RMButton>
             <RMButton
               onClick={() => openConfirmModal('longquery', 0.1)}
               {...(isEqualLongQueryTime(selectedDBServer?.longQueryTime, '0.1')
                 ? { className: styles.selectedtime }
                 : {})}>
-              10<sup>-2</sup>
+              10<sup>-1</sup>
             </RMButton>
             <RMButton
               onClick={() => openConfirmModal('longquery', 0.01)}
               {...(isEqualLongQueryTime(selectedDBServer?.longQueryTime, '0.01')
                 ? { className: styles.selectedtime }
                 : {})}>
-              10<sup>-3</sup>
+              10<sup>-2</sup>
             </RMButton>
             <RMButton
               onClick={() => openConfirmModal('longquery', 0.001)}
               {...(isEqualLongQueryTime(selectedDBServer?.longQueryTime, '0.001')
+                ? { className: styles.selectedtime }
+                : {})}>
+              10<sup>-3</sup>
+            </RMButton>
+            <RMButton
+              onClick={() => openConfirmModal('longquery', 0.0001)}
+              {...(isEqualLongQueryTime(selectedDBServer?.longQueryTime, '0.0001')
                 ? { className: styles.selectedtime }
                 : {})}>
               10<sup>-4</sup>

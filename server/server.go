@@ -10,7 +10,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"hash"
 	"hash/crc64"
@@ -276,16 +275,7 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 		//	initDeprecated() // not needed used alias in main
 	}
 	var usr string
-	var configPath string
-	//var pid string
-	if !isClient { // client should not use this
-		flag.StringVar(&usr, "user", "", "help message")
-	}
-	//flag.StringVar(&pid, "pidfile", "", "help message")
-	flag.StringVar(&configPath, "config", "", "help message")
-	flag.Parse()
-
-	if usr == "" && repman != nil {
+	if repman != nil && repman.OsUser != nil {
 		usr = repman.OsUser.Username
 	}
 	flags.StringVar(&conf.MonitoringSystemUser, "user", "", "OS User for running repman")
@@ -1185,14 +1175,16 @@ func (repman *ReplicationManager) initFS(conf config.Config) error {
 	//test y'a  un repertoire ./.replication-manager/share sinon on le créer
 	//repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Embeded run config dir : %s", conf.ConfDir)
 
-	if conf.ConfDirBackup == "" {
+	if conf.ConfDirBackup == "" && WithArbitration != "ON" {
 		repman.Logrus.Fatalf("Monitoring config backup directory not defined")
 	}
 
 	if _, err := os.Stat(conf.ConfDirExtra); os.IsNotExist(err) {
 		os.MkdirAll(conf.ConfDirExtra, os.ModePerm)
 		os.MkdirAll(conf.ConfDirExtra+"/cluster.d", os.ModePerm)
-		os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		if WithArbitration != "ON" && conf.ConfDirBackup != "" {
+			os.MkdirAll(conf.ConfDirBackup, os.ModePerm)
+		}
 	}
 
 	if conf.WithEmbed == "ON" {
@@ -1765,6 +1757,10 @@ func (repman *ReplicationManager) PushConfigToBackupDir() {
 	}()
 
 	if repman.Conf.WithEmbed == "ON" {
+		return
+	}
+
+	if WithArbitration == "ON" {
 		return
 	}
 
@@ -2666,10 +2662,13 @@ func (repman *ReplicationManager) InitServicePlans() error {
 			}
 		}
 	}
-	err = misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
+	warnings, err := misc.ConvertCSVtoJSON(repman.Conf.WorkingDir+"/serviceplan.csv", repman.Conf.WorkingDir+"/serviceplan.json", ",")
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "GetServicePlans ConvertCSVtoJSON %s", err)
 		return err
+	}
+	for _, warning := range warnings {
+		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "GetServicePlans %s", warning)
 	}
 
 	u := repman.GetExpectedUser()
