@@ -286,6 +286,10 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerStop)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/restart", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerRestart)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMaintenance)),
@@ -2314,6 +2318,68 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 				return
 			}
 			mycluster.StartDatabaseService(node)
+		} else {
+			http.Error(w, "Server Not Found", 500)
+			return
+		}
+	} else {
+		http.Error(w, "Cluster Not Found", 500)
+		return
+	}
+}
+
+// handlerMuxServerRestart handles the HTTP request to restart a server within a cluster.
+// @Summary Restart a server
+// @Description Restarts a specified server within a cluster, optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.
+// @Tags DatabaseActions
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server Name"
+// @Param node query string false "Node Name (default: server's agent, use * for all nodes)"
+// @Param rid query string false "Resource ID. Only 'container#jobs' is allowed. Empty restarts entire service."
+// @Success 200 {string} string "Server restarted successfully"
+// @Failure 400 {string} string "Invalid rid parameter"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Orchestrator not supported"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [get]
+func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+
+		if mycluster.GetOrchestrator() != "opensvc" {
+			http.Error(w, "Restart is only supported for OpenSVC orchestrator", 500)
+			return
+		}
+
+		node := mycluster.GetServerFromName(vars["serverName"])
+		if node != nil {
+			// Get optional node parameter from query string (defaults to server's agent)
+			nodeParam := r.URL.Query().Get("node")
+			if nodeParam == "" {
+				nodeParam = node.Agent
+			}
+
+			// Get optional rid parameter from query string (empty string means restart entire service)
+			ridParam := r.URL.Query().Get("rid")
+
+			// Validate rid parameter - only allow container#jobs
+			if ridParam != "" && ridParam != "container#jobs" {
+				http.Error(w, "Invalid rid parameter: only 'container#jobs' is allowed", 400)
+				return
+			}
+
+			err := mycluster.RestartDatabaseService(node, nodeParam, ridParam)
+			if err != nil {
+				http.Error(w, fmt.Sprintf("Failed to restart server: %s", err), 500)
+				return
+			}
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
@@ -5088,4 +5154,4 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.
 	json.NewEncoder(w).Encode(response)
 }
 
-// secretLoginHandler handles the HTTP request for secret login.
+// handlerMuxServerProvision handles the HTTP request to provision a server within a cluster.

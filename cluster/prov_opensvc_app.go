@@ -141,11 +141,12 @@ func (cluster *Cluster) OpenSVCStartAppService(app *App, node string) error {
 	return nil
 }
 
-func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string) error {
+func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string, rid string) error {
 	svc := cluster.OpenSVCConnect()
 	agent := app.GetAgent()
+
 	if strings.ToUpper(node) == "ALL" || node == "*" {
-		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*")
+		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), "*", rid)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
 			return err
@@ -154,7 +155,7 @@ func (cluster *Cluster) OpenSVCRestartAppService(app *App, node string) error {
 		if node != "" {
 			agent = node
 		}
-		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), agent)
+		err := svc.RestartServiceV2(cluster.Name, app.GetServiceName(), agent, rid)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart app:  %s ", err)
 			return err

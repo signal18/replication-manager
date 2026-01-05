@@ -934,15 +934,28 @@ export const stopDatabase = createAsyncThunk('cluster/stopDatabase', async ({ cl
   }
 })
 
-export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId, cfgAction }, thunkAPI) => {
+export const startDatabase = createAsyncThunk('cluster/startDatabase', async ({ clusterName, serverId }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.startDatabase(clusterName, serverId, cfgAction, baseURL)
+    const { data, status } = await clusterService.startDatabase(clusterName, serverId, baseURL)
     showSuccessBanner('Database has started!', status, thunkAPI)
     return { data, status }
   } catch (error) {
     console.log('error in startDatabase::', error)
     showErrorBanner('Starting database failed!', error, thunkAPI)
+    handleError(error, thunkAPI)
+  }
+})
+
+export const restartDatabase = createAsyncThunk('cluster/restartDatabase', async ({ clusterName, serverId, rid }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.restartDatabase(clusterName, serverId, rid, baseURL)
+    showSuccessBanner('Database has restarted!', status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    console.log('error in restartDatabase::', error)
+    showErrorBanner('Restarting database failed!', error, thunkAPI)
     handleError(error, thunkAPI)
   }
 })
@@ -2370,6 +2383,7 @@ export const clusterSlice = createSlice({
         logicalBackup.pending,
         stopDatabase.pending,
         startDatabase.pending,
+        restartDatabase.pending,
         provisionDatabase.pending,
         unprovisionDatabase.pending,
         runRemoteJobs.pending,
@@ -2443,6 +2457,7 @@ export const clusterSlice = createSlice({
         logicalBackup.fulfilled,
         stopDatabase.fulfilled,
         startDatabase.fulfilled,
+        restartDatabase.fulfilled,
         provisionDatabase.fulfilled,
         unprovisionDatabase.fulfilled,
         runRemoteJobs.fulfilled,
@@ -2517,6 +2532,7 @@ export const clusterSlice = createSlice({
         logicalBackup.rejected,
         stopDatabase.rejected,
         startDatabase.rejected,
+        restartDatabase.rejected,
         provisionDatabase.rejected,
         unprovisionDatabase.rejected,
         runRemoteJobs.rejected,

@@ -494,6 +494,21 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 	return err
 }
 
+func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node string, rid string) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting Database service %s", cluster.Name+"/svc/"+server.Name)
+	var err error
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
+	default:
+		return errors.New("Restart not supported for this orchestrator yet")
+	}
+	if err == nil {
+		server.DelRestartCookie()
+	}
+	return err
+}
+
 func (cluster *Cluster) StartAllNodes() error {
 
 	return nil
