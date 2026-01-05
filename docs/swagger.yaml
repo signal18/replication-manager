@@ -9106,6 +9106,66 @@ paths:
       summary: Get server port configuration
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-dummy-sender:
+    post:
+      description: Generates dummy configuration and sends it to the specified receiver
+        port on the client side.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      - description: Client receiver port to send config to
+        in: query
+        name: receiverPort
+        required: true
+        type: string
+      - description: 'Client receiver host (default: use request remote address)'
+        in: query
+        name: receiverHost
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Missing receiver port
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error generating/sending
+            config
+          schema:
+            type: string
+      summary: Generate and send dummy config to client receiver port
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen:
     get:
       description: Retrieves the configuration of a specified server port within a
@@ -11797,6 +11857,62 @@ paths:
           schema:
             type: string
       summary: Get server port configuration
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-dummy-sender:
+    post:
+      description: Generates dummy configuration and sends it to the specified receiver
+        port on the client side.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Client receiver port to send config to
+        in: query
+        name: receiverPort
+        required: true
+        type: string
+      - description: 'Client receiver host (default: use request remote address)'
+        in: query
+        name: receiverHost
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Missing receiver port
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error generating/sending
+            config
+          schema:
+            type: string
+      summary: Generate and send dummy config to client receiver port
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}:

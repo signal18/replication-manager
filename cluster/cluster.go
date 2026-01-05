@@ -740,6 +740,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
 						cluster.CheckWaitRunJobSSH()
+						cluster.CheckDummyConfigSendCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
@@ -753,7 +754,6 @@ func (cluster *Cluster) Run() {
 						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
 							cluster.CheckJobsVersion()
 							cluster.MonitorTableSchemaDiff()
-							cluster.CheckDummyConfigSendCookies()
 						} else {
 							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
 						}
