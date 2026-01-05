@@ -49,7 +49,7 @@ jobs:
             - Security concerns
             - Test coverage
 
-            Be concise.
+            When done, let the author know if you approve, request changes, or have general comments on the PR.
 
             Use the repository's CLAUDE.md for guidance on conventions or specifications.
 
