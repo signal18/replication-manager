@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/signal18/replication-manager/cluster"
 	log "github.com/sirupsen/logrus"
@@ -60,10 +61,10 @@ func RunConfigPrintJobs() error {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// Step 3: Start PrintDefaultsForFetch in a goroutine
+	// Step 3: Start PrintDefaultsForFetchPush in a goroutine (using new push-based mechanism)
 	go func() {
 		defer wg.Done()
-		err := PrintDefaultsForFetch(receiverResp, dummyLog)
+		err := PrintDefaultsForFetchPush(receiverResp, dummyLog)
 		if err != nil {
 			log.Printf("[dummy] Error: %v", err)
 		} else {
@@ -245,60 +246,120 @@ func PrintDefaultsForFetch(receiver *cluster.ConfigReceiverResponse, logFile str
 	return nil
 }
 
-// fetchAndExtractConfig fetches the configuration from the provided URL and extracts it to the specified directory.
-func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir string) error {
+// PrintDefaultsForFetchPush uses the new push-based mechanism where replication-manager sends the config via SST
+func PrintDefaultsForFetchPush(receiver *cluster.ConfigReceiverResponse, logFile string) error {
+	extractDir := "/bootstrap/dummy"
 
-	var bearer = "Bearer " + cliToken
-	var configURL string
-
-	// Construct the config URL
-	if cliServerID != "" {
-		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
-	} else {
-		if cliServerPort == "" {
-			cliServerPort = "3306"
-		}
-		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config", cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
-	}
-
-	req, err := http.NewRequest("GET", configURL, nil)
-	if err != nil {
-		return err
-	}
-	//	ctx, _ := context.WithTimeout(context.Background(), 600*time.Second)
-	req.Header.Set("Authorization", bearer)
-	resp, err := cliConn.Do(req)
-	if err != nil {
-		return fmt.Errorf("error fetching config from '%s': %w", configURL, err)
-	}
-	defer resp.Body.Close()
-
-	// Check for a successful response status code (200 OK)
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch config: HTTP %d %s", resp.StatusCode, resp.Status)
-	}
-
-	// Read the response body into a byte slice
-	configData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("error reading response body: %w", err)
-	}
-
-	// Remove the existing directory and create a new one
-	if err := os.RemoveAll(extractDir); err != nil {
-		return fmt.Errorf("failed to remove existing directory '%s': %w", extractDir, err)
-	}
-
+	// Ensure the extract directory exists
 	if err := os.MkdirAll(extractDir, 0755); err != nil {
 		return fmt.Errorf("failed to create directory '%s': %w", extractDir, err)
 	}
 
-	// Write the config tarball to a temporary file
-	configFile := filepath.Join(extractDir, "config.tar.gz")
-	if err := os.WriteFile(configFile, configData, 0644); err != nil {
-		return fmt.Errorf("failed to write config file '%s': %w", configFile, err)
+	// Step 1: Tell replication-manager to queue the config send and get SST port info
+	var bearer = "Bearer " + cliToken
+	var configURL string
+
+	if cliServerID != "" {
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config-dummy-sender",
+			cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
+	} else {
+		if cliServerPort == "" {
+			cliServerPort = "3306"
+		}
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config-dummy-sender",
+			cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
 	}
 
+	req, err := http.NewRequest("POST", configURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", bearer)
+
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		return fmt.Errorf("error requesting config send from '%s': %w", configURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to request config send: HTTP %d %s - %s", resp.StatusCode, resp.Status, string(bodyBytes))
+	}
+
+	// Parse the response to get SST port info
+	var apiResponse struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		SSTPort string `json:"sst_port"`
+		SSTHost string `json:"sst_host"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return fmt.Errorf("failed to decode API response: %w", err)
+	}
+
+	fmt.Printf("Config send queued (status: %s)\n", apiResponse.Status)
+	fmt.Printf("Config will be sent to %s:%s\n", apiResponse.SSTHost, apiResponse.SSTPort)
+
+	// Step 2: Now open listener on the SST port we received from the API
+	configFile := filepath.Join(extractDir, "config.tar.gz")
+
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", apiResponse.SSTPort))
+	if err != nil {
+		return fmt.Errorf("failed to listen on port %s: %w", apiResponse.SSTPort, err)
+	}
+
+	fmt.Printf("Listening for config on port %s (server's SST port)\n", apiResponse.SSTPort)
+
+	// Channel to signal completion or error
+	done := make(chan error, 1)
+
+	// Step 3: Start goroutine to accept connection and receive file
+	go func() {
+		defer listener.Close()
+
+		conn, err := listener.Accept()
+		if err != nil {
+			done <- fmt.Errorf("failed to accept connection: %w", err)
+			return
+		}
+		defer conn.Close()
+
+		// Set read timeout
+		conn.SetReadDeadline(time.Now().Add(10 * time.Minute))
+
+		file, err := os.Create(configFile)
+		if err != nil {
+			done <- fmt.Errorf("failed to create config file: %w", err)
+			return
+		}
+		defer file.Close()
+
+		// Copy data from connection to file
+		written, err := io.Copy(file, conn)
+		if err != nil {
+			done <- fmt.Errorf("failed to receive config data: %w", err)
+			return
+		}
+
+		fmt.Printf("Received %d bytes\n", written)
+		done <- nil
+	}()
+
+	// Step 4: Wait for the file to be received (with timeout)
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("error receiving config: %w", err)
+		}
+	case <-time.After(10 * time.Minute):
+		listener.Close()
+		return fmt.Errorf("timeout waiting for config file")
+	}
+
+	fmt.Println("Config file received successfully")
+
+	// Step 4: Extract the config tarball
 	cmd := exec.Command("tar", "xzvf", configFile, "-C", extractDir)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -311,6 +372,149 @@ func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir 
 		return fmt.Errorf("failed to set ownership for MySQL config: %w", err)
 	}
 
+	// Step 5: Create the dummy.cnf file
+	err = createDummyConfigFile(extractDir)
+	if err != nil {
+		return fmt.Errorf("failed to create dummy.cnf file: %w", err)
+	}
+
+	// Step 6: Run mariadbd with the dummy configuration file
+	err = SendMariaDBDefaults(filepath.Join(extractDir, "dummy.cnf"), receiver.MonitorAddress+":"+receiver.DummyConfigPort, logFile)
+	if err != nil {
+		return fmt.Errorf("error during dry run (dummy): %w", err)
+	}
+
+	fmt.Println("Dry run (dummy) completed successfully.")
+	return nil
+}
+
+// fetchAndExtractConfig fetches the configuration using the new cookie-based push mechanism
+// and extracts it to the specified directory.
+// This function now uses the same mechanism as PrintDefaultsForFetchPush but is kept for backward compatibility.
+func fetchAndExtractConfig(receiver *cluster.ConfigReceiverResponse, extractDir string) error {
+	var bearer = "Bearer " + cliToken
+	var configURL string
+
+	// Ensure the extract directory exists
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory '%s': %w", extractDir, err)
+	}
+
+	// Step 1: Tell replication-manager to queue the config send and get SST port info
+	if cliServerID != "" {
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/config-dummy-sender",
+			cliHost, cliPort, cliClusters[cliClusterIndex], cliServerID)
+	} else {
+		if cliServerPort == "" {
+			cliServerPort = "3306"
+		}
+		configURL = fmt.Sprintf("https://%s:%s/api/clusters/%s/servers/%s/%s/config-dummy-sender",
+			cliHost, cliPort, cliClusters[cliClusterIndex], cliServerHost, cliServerPort)
+	}
+
+	req, err := http.NewRequest("POST", configURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", bearer)
+
+	resp, err := cliConn.Do(req)
+	if err != nil {
+		return fmt.Errorf("error requesting config send from '%s': %w", configURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to request config send: HTTP %d %s - %s", resp.StatusCode, resp.Status, string(bodyBytes))
+	}
+
+	// Parse the response to get SST port info
+	var apiResponse struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		SSTPort string `json:"sst_port"`
+		SSTHost string `json:"sst_host"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResponse); err != nil {
+		return fmt.Errorf("failed to decode API response: %w", err)
+	}
+
+	fmt.Printf("Config send queued (status: %s)\n", apiResponse.Status)
+	fmt.Printf("Config will be sent to %s:%s\n", apiResponse.SSTHost, apiResponse.SSTPort)
+
+	// Step 2: Now open listener on the SST port we received from the API
+	configFile := filepath.Join(extractDir, "config.tar.gz")
+
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%s", apiResponse.SSTPort))
+	if err != nil {
+		return fmt.Errorf("failed to listen on port %s: %w", apiResponse.SSTPort, err)
+	}
+
+	fmt.Printf("Listening for config on port %s (server's SST port)\n", apiResponse.SSTPort)
+
+	// Channel to signal completion or error
+	done := make(chan error, 1)
+
+	// Step 3: Start goroutine to accept connection and receive file
+	go func() {
+		defer listener.Close()
+
+		conn, err := listener.Accept()
+		if err != nil {
+			done <- fmt.Errorf("failed to accept connection: %w", err)
+			return
+		}
+		defer conn.Close()
+
+		fmt.Println("Connection accepted, receiving config file...")
+
+		// Create the output file
+		outFile, err := os.Create(configFile)
+		if err != nil {
+			done <- fmt.Errorf("failed to create config file: %w", err)
+			return
+		}
+		defer outFile.Close()
+
+		// Copy the received data to file
+		written, err := io.Copy(outFile, conn)
+		if err != nil {
+			done <- fmt.Errorf("failed to receive config file: %w", err)
+			return
+		}
+
+		fmt.Printf("Received config file (%d bytes)\n", written)
+		done <- nil
+	}()
+
+	// Step 4: Wait for reception with timeout
+	select {
+	case err := <-done:
+		if err != nil {
+			return err
+		}
+	case <-time.After(5 * time.Minute):
+		listener.Close()
+		return fmt.Errorf("timeout waiting for config file (waited 5 minutes)")
+	}
+
+	// Step 5: Extract the received tarball
+	fmt.Println("Extracting config...")
+	cmd := exec.Command("tar", "xzvf", configFile, "-C", extractDir)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to extract config tarball: %w, stderr: %s", err, stderr.String())
+	}
+
+	// Step 6: Set ownership for MySQL configuration directory to mysql:mysql (UID 999, GID 999)
+	if err := os.Chown(filepath.Join(extractDir, "etc", "mysql"), 999, 999); err != nil {
+		// Log warning but don't fail if chown fails (might not have permissions)
+		fmt.Printf("Warning: failed to set ownership for MySQL config: %v\n", err)
+	}
+
+	fmt.Println("Config extracted successfully")
 	return nil
 }
 

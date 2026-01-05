@@ -903,7 +903,7 @@ func (cluster *Cluster) electFailoverCandidate(l []*ServerMonitor, forcingLog bo
 	} //end loop all slaves
 
 	if !HaveOneValidReader {
-		cluster.SetState("ERR00085", state.State{ErrType: config.LvlWarn, ErrDesc: fmt.Sprintf(clusterError["ERR00085"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00085", state.State{ErrType: config.LvlWarn, ErrDesc: clusterError["ERR00085"], ErrFrom: "CHECK"})
 	}
 
 	if !cluster.Conf.FailoverCheckDelayStat {

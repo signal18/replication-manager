@@ -878,6 +878,8 @@ definitions:
         type: boolean
       isReseeding:
         type: string
+      isRunningJobs:
+        type: boolean
       isSlave:
         type: boolean
       isVirtualMaster:
@@ -9104,6 +9106,66 @@ paths:
       summary: Get server port configuration
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-dummy-sender:
+    post:
+      description: Generates dummy configuration and sends it to the specified receiver
+        port on the client side.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        type: string
+      - description: Client receiver port to send config to
+        in: query
+        name: receiverPort
+        required: true
+        type: string
+      - description: 'Client receiver host (default: use request remote address)'
+        in: query
+        name: receiverHost
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Missing receiver port
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error generating/sending
+            config
+          schema:
+            type: string
+      summary: Generate and send dummy config to client receiver port
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen:
     get:
       description: Retrieves the configuration of a specified server port within a
@@ -9233,6 +9295,52 @@ paths:
           schema:
             type: string
       summary: Open receiver ports for configuration files on a server
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{dummy}:
+    get:
+      description: Retrieves the configuration of a specified server port within a
+        cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Server Port
+        in: path
+        name: serverPort
+        required: true
+        type: string
+      - description: Dummy Config
+        in: path
+        name: dummy
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Configuration file
+          schema:
+            type: file
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: File not found
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Get server port configuration
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/is-failed:
@@ -10693,7 +10801,7 @@ paths:
       - application/json
       responses:
         "200":
-          description: Jobs run successfully
+          description: Run jobs command issued
           schema:
             type: string
         "403":
@@ -10701,8 +10809,7 @@ paths:
           schema:
             type: string
         "500":
-          description: Cluster Not Found" or "Server Not Found" or "Error running
-            job
+          description: Cluster Not Found" or "Server Not Found
           schema:
             type: string
       summary: Run jobs on a server
@@ -11752,6 +11859,62 @@ paths:
       summary: Get server port configuration
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config-dummy-sender:
+    post:
+      description: Generates dummy configuration and sends it to the specified receiver
+        port on the client side.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With
+          Port)
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Client receiver port to send config to
+        in: query
+        name: receiverPort
+        required: true
+        type: string
+      - description: 'Client receiver host (default: use request remote address)'
+        in: query
+        name: receiverHost
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Status message
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Missing receiver port
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error generating/sending
+            config
+          schema:
+            type: string
+      summary: Generate and send dummy config to client receiver port
+      tags:
+      - Database
   /api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}:
     get:
       description: Preserves or removes the configuration path for a specified server
@@ -11841,6 +12004,47 @@ paths:
           schema:
             type: string
       summary: Open receiver ports for configuration files on a server
+      tags:
+      - Database
+  /api/clusters/{clusterName}/servers/{serverName}/config/{dummy}:
+    get:
+      description: Retrieves the configuration of a specified server port within a
+        cluster.
+      parameters:
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Config is a dummy file
+        in: path
+        name: dummy
+        type: string
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: Configuration file
+          schema:
+            type: file
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: File not found
+          schema:
+            type: string
+        "500":
+          description: No cluster" or "No server
+          schema:
+            type: string
+      summary: Get server port configuration
       tags:
       - Database
   /api/clusters/{clusterName}/servers/{serverName}/digest-statements-pfs:
@@ -12983,47 +13187,9 @@ paths:
         name: serverName
         required: true
         type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Variables retrieved successfully
-          schema:
-            additionalProperties: true
-            type: object
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Cluster Not Found" or "Server Not Found" or "Encoding error
-          schema:
-            type: string
-      summary: Get variables of a server
-      tags:
-      - Database
-  /api/clusters/{clusterName}/servers/{serverName}/variables/{diff}:
-    get:
-      description: Retrieves the variables of a specified server within a cluster.
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: Server Name
-        in: path
-        name: serverName
-        required: true
-        type: string
-      - description: Show differences
-        in: path
+      - default: "false"
+        description: Show differences (true/false)
+        in: query
         name: diff
         type: string
       produces:
@@ -13045,6 +13211,208 @@ paths:
       summary: Get variables of a server
       tags:
       - Database
+  /api/clusters/{clusterName}/servers/{serverName}/variables-accept:
+    post:
+      description: Marks a variable difference as "accepted" (use config value) on
+        a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Variable Name
+        in: query
+        name: variableName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable accepted successfully
+          schema:
+            type: string
+        "400":
+          description: Variable name required
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error accepting
+            variable
+          schema:
+            type: string
+      summary: Accept a variable difference on a server
+      tags:
+      - DatabaseConfig
+  /api/clusters/{clusterName}/servers/{serverName}/variables-clear:
+    post:
+      description: Removes preservation status from a variable on a specified server
+        within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Variable Name
+        in: query
+        name: variableName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable preservation cleared successfully
+          schema:
+            type: string
+        "400":
+          description: Variable name required
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error clearing
+            variable preservation
+          schema:
+            type: string
+      summary: Clear variable preservation status on a server
+      tags:
+      - DatabaseConfig
+  /api/clusters/{clusterName}/servers/{serverName}/variables-preserve:
+    post:
+      description: Marks a variable difference as "preserved" (keep deployed value)
+        on a specified server within a cluster.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Variable Name
+        in: query
+        name: variableName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable preserved successfully
+          schema:
+            type: string
+        "400":
+          description: Variable name required
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error preserving
+            variable
+          schema:
+            type: string
+      summary: Preserve a variable difference on a server
+      tags:
+      - DatabaseConfig
+  /api/clusters/{clusterName}/servers/{serverName}/variables-set-custom:
+    post:
+      description: Sets a custom preserved value for a variable on a specified server
+        within a cluster. This allows DBAs to manually override variable values like
+        in my.cnf.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Variable Name
+        in: query
+        name: variableName
+        required: true
+        type: string
+      - description: Custom Value
+        in: query
+        name: customValue
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable custom value set successfully
+          schema:
+            type: string
+        "400":
+          description: Variable name or custom value required
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error setting
+            custom variable value
+          schema:
+            type: string
+      summary: Set custom value for a variable on a server
+      tags:
+      - DatabaseConfig
   /api/clusters/{clusterName}/servers/{serverName}/vtables:
     get:
       description: Retrieves the virtual tables of a specified server within a cluster.

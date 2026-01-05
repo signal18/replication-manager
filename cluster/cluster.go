@@ -731,6 +731,7 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
+					cluster.SetRollingJobsUpgradeState()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -739,6 +740,8 @@ func (cluster *Cluster) Run() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
+						cluster.CheckWaitRunJobSSH()
+						cluster.CheckDummyConfigSendCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
@@ -2118,4 +2121,19 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 			cluster.Conf.Secrets[k] = secret
 		}
 	}
+}
+
+func (cluster *Cluster) RefreshDatabaseConfigs() error {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		err := srv.GetDatabaseConfig()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not refresh database config for %s: %s", srv.URL, err)
+		}
+	}
+
+	return nil
 }

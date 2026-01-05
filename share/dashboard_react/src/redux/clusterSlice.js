@@ -1257,10 +1257,10 @@ export const runRegressionTests = createAsyncThunk(
 
 export const getDatabaseService = createAsyncThunk(
   'cluster/getDatabaseService',
-  async ({ clusterName, serviceName, dbId }, thunkAPI) => {
+  async ({ clusterName, serviceName, dbId, queryParams = {} }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.getDatabaseService(clusterName, serviceName, dbId, baseURL)
+      const { data, status } = await clusterService.getDatabaseService(clusterName, serviceName, dbId, baseURL, queryParams)
       if (status === 200) {
         return { data, status }
       }
@@ -1279,31 +1279,39 @@ export const getDatabaseService = createAsyncThunk(
     }
   });
 
-export const getDatabaseVariables = createAsyncThunk(
-  'cluster/getDatabaseService',
-  async ({ clusterName, serviceName, dbId, diff }, thunkAPI) => {
+export const preserveVariable = createAsyncThunk(
+  'cluster/preserveVariable',
+  async ({ clusterName, dbId, variableName, action }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL)
-      return { data, status }
+      const { data, status } = await clusterService.preserveVariable(clusterName, dbId, variableName, action, baseURL)
+      if (status === 200) {
+        showSuccessBanner(`Variable ${variableName} ${action === 'preserve' ? 'preserved' : action === 'accept' ? 'accepted' : 'cleared'} successfully!`, status, thunkAPI)
+        return { data, status, dbId }
+      }
+
+      throw new Error(data)
     } catch (error) {
+      showErrorBanner(`Failed to ${action} variable ${variableName}!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
 )
 
-export const preserveVariable = createAsyncThunk(
-  'cluster/getDatabaseService',
-  async ({ clusterName, variableName, preserve }, thunkAPI) => {
+export const setCustomVariableValue = createAsyncThunk(
+  'cluster/setCustomVariableValue',
+  async ({ clusterName, dbId, variableName, customValue }, thunkAPI) => {
     try {
       const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-      const { data, status } = await clusterService.preserveVariable(clusterName, variableName, preserve, baseURL)
+      const { data, status } = await clusterService.setCustomVariableValue(clusterName, dbId, variableName, customValue, baseURL)
       if (status === 200) {
-        return { data, status }
+        showSuccessBanner(`Variable ${variableName} custom value set successfully!`, status, thunkAPI)
+        return { data, status, dbId }
       }
 
       throw new Error(data)
     } catch (error) {
+      showErrorBanner(`Failed to set custom value for variable ${variableName}!`, error, thunkAPI)
       handleError(error, thunkAPI)
     }
   }
@@ -2044,7 +2052,6 @@ export const clusterSlice = createSlice({
         getClusterApps.fulfilled,
         getClusterCertificates.fulfilled,
         getDatabaseService.fulfilled,
-        getDatabaseVariables.fulfilled,
         getTopProcess.fulfilled,
         getOpenSVCStats.fulfilled,
         getShardSchema.fulfilled,
@@ -2563,6 +2570,10 @@ export const clusterSlice = createSlice({
         }
       }
     )
+    builder.addCase(preserveVariable.fulfilled, (state, action) => {
+      // Refresh the variables after preserve/accept/clear action
+      // This will be handled by the component dispatching getDatabaseService again
+    })
   }
 })
 

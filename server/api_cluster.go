@@ -724,6 +724,10 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 			servers: make([]map[string]interface{}, 0),
 		}
 		for _, srv := range mycluster.GetServers() {
+			if srv == nil {
+				continue
+			}
+
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
 			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())

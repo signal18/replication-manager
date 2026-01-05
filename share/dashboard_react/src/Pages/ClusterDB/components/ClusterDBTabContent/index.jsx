@@ -16,13 +16,21 @@ import MetadataLocks from '../MetadataLocks'
 import ResponseTime from '../ResponseTime'
 import Errors from '../Errors'
 import ServerAudit from '../ServerAudit'
+import PFSInstruments from '../PFSInstruments'
 
-function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter }) {
   const [currentTab, setCurrentTab] = useState('')
 
   const {
-    cluster: { clusterMaster, clusterData }
+    cluster: { clusterMaster, clusterData, database }
   } = useSelector((state) => state)
+
+  // Get the performance_schema_instrument configuration value
+  const pfsConfigValue = database?.variables?.find(
+    v => v.variableName === 'performance_schema_instrument'
+  )?.runtimeValue || database?.variables?.find(
+    v => v.variableName === 'performance_schema_instrument'
+  )?.value || null
 
   useEffect(() => {
     setCurrentTab(tab)
@@ -79,13 +87,26 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
       ) : currentTab === 'status' ? (
         <Status clusterName={clusterName} dbId={dbId} />
       ) : currentTab === 'variables' ? (
-        <Variables clusterName={clusterName} dbId={dbId} toggleVariableMode={toggleVariableMode} variableMode={variableMode} />
+        <Variables 
+          clusterName={clusterName} 
+          dbId={dbId} 
+          toggleVariableMode={toggleVariableMode} 
+          variableMode={variableMode} 
+          onNavigateToPFSInstruments={onNavigateToPFSInstruments}
+          searchFilter={variablesSearchFilter}
+        />
       ) : currentTab === 'opensvc' ? (
         <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} />
       ) : currentTab === 'metadata' ? (
         <MetadataLocks clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
       ) : currentTab === 'resptime' ? (
         <ResponseTime clusterName={clusterName} dbId={dbId} selectedDBServer={selectedDBServer} />
+      ) : currentTab === 'pfsinstruments' ? (
+        <PFSInstruments 
+          selectedDBServer={selectedDBServer} 
+          pfsConfigValue={pfsConfigValue}
+          onNavigateToVariables={onNavigateToVariables}
+        />
       ) : null}
     </VStack>
   )

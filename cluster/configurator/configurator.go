@@ -517,7 +517,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve, preservepath bool) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve bool) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -602,27 +602,17 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
 
-	// Copy the default_path.cnf file
-	// If preservepath is true, we copy the backup file to the default path
-	var srcpath, destpath string
-	if preservepath {
-		srcpath = filepath.Join(Datadir, "default_path.cnf")
-		destpath = filepath.Join(Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
-
-		// Check if the source file exists before copying
-		if _, err := os.Stat(srcpath); err == nil {
-			misc.CopyFile(srcpath, destpath)
-		}
-	}
-
-	// If you set the path as preserved variable with value, it will override the default_path.cnf
 	if preserve {
-		srcpath := filepath.Join(Datadir, "99_preserved.cnf")
-		destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/99_preserved.cnf")
+		difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
 
-		// Check if the source file exists before copying
-		if _, err := os.Stat(srcpath); err == nil {
-			misc.CopyFile(srcpath, destpath)
+		for _, fname := range difflist {
+			srcpath := filepath.Join(Datadir, fname)
+			destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/", fname)
+
+			// Check if the source file exists before copying
+			if _, err := os.Stat(srcpath); err == nil {
+				misc.CopyFile(srcpath, destpath)
+			}
 		}
 	}
 

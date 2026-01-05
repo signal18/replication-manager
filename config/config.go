@@ -1031,7 +1031,7 @@ type MyDumperMetaData struct {
 	BinLogFileName string    `json:"log_filename" db:"log_filename"`
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
-	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+	EndTimestamp   time.Time `json:"end_timestamp" db:"end_timestamp"`
 }
 
 type ConfVersion struct {
@@ -1656,8 +1656,7 @@ func (conf *Config) Reveal(clusterName string, tmpDir string) {
 
 		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
 			decryptedValue := conf.GetDecryptedPassword(key, field.String())
-			line := fmt.Sprintf("Key: %s, Decrypted Value: %s\n", key, decryptedValue)
-			fmt.Fprintf(file, line)
+			fmt.Fprintf(file, "Key: %s, Decrypted Value: %s\n", key, decryptedValue)
 		}
 	}
 
@@ -3039,7 +3038,7 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 		dynRead.AddConfigPath(dirPath)
 		err := dynRead.ReadInConfig()
 		if err != nil {
-			fmt.Printf("Could not read in config : " + dirPath + "/overwrite.toml")
+			fmt.Printf("Could not read in config %s: %s", dirPath+"/overwrite.toml", err)
 		}
 
 		dynSub := dynRead.Sub("overwrite-" + name)
@@ -3686,7 +3685,7 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
 		}
 		return
 	}
@@ -3694,12 +3693,12 @@ func (conf *Config) CreateGitlabProjects() {
 	uid, err := githelper.GetGitLabUserId(acces_tok, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf(err.Error() + "\n")
+			log.Error(err.Error() + "\n")
 		}
 		return
 	} else if uid == 0 {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf("Invalid user Id \n")
+			log.Error("Invalid user Id \n")
 		}
 		return
 	}

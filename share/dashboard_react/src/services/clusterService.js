@@ -101,8 +101,8 @@ export const clusterService = {
 
   // Database service APIs
   getDatabaseService,
-  getDatabaseVariables,
   preserveVariable,
+  setCustomVariableValue,
   updateLongQueryTime,
   toggleDatabaseActions,
   checksumTable,
@@ -502,17 +502,30 @@ function stagingProxy(clusterName, proxyId, isStaging, baseURL) {
 //#endregion Proxy management APIs
 
 //#region Database service APIs
-function getDatabaseService(clusterName, serviceName, dbId, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}`)
+function getDatabaseService(clusterName, serviceName, dbId, baseURL, queryParams = {}) {
+  let path = `clusters/${clusterName}/servers/${dbId}/${serviceName}`
+  
+  // Build query string from queryParams object
+  const queryString = Object.keys(queryParams)
+    .filter(key => queryParams[key] !== undefined && queryParams[key] !== null && queryParams[key] !== '')
+    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
+    .join('&')
+  
+  if (queryString) {
+    path += `?${queryString}`
+    }
+  
+  return getApi(baseURL).get(path)
 }
 
-//#region Database service APIs
-function getDatabaseVariables(clusterName, serviceName, dbId, diff, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/${serviceName}/${diff}`)
+function preserveVariable(clusterName, dbId, variableName, action, baseURL) {
+  // action can be 'preserve', 'accept', or 'clear'
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${dbId}/variables-${action}?variableName=${variableName}`)
 }
 
-function preserveVariable(clusterName, variableName, preserve, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/settings/actions/preserve-variable/${variableName}/${preserve}`)
+function setCustomVariableValue(clusterName, dbId, variableName, customValue, baseURL) {
+  // Set a custom preserved value for a variable
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${dbId}/variables-set-custom?variableName=${encodeURIComponent(variableName)}&customValue=${encodeURIComponent(customValue)}`)
 }
 
 function updateLongQueryTime(clusterName, dbId, time, baseURL) {

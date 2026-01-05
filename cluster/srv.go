@@ -130,6 +130,7 @@ type ServerMonitor struct {
 	IsDelayed                   bool                       `json:"isDelayed"`
 	IsFull                      bool                       `json:"isFull"`
 	IsConfigGen                 bool                       `json:"isConfigGen"`
+	IsRunningJobs               bool                       `json:"isRunningJobs"`
 	Ignored                     bool                       `json:"ignored"`
 	IgnoredRO                   bool                       `json:"ignoredRO"`
 	Prefered                    bool                       `json:"prefered"`
@@ -221,6 +222,8 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
+	jobMutex                    sync.Mutex // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex // protects config generation operations
 }
 
 type ServerBackupMeta struct {
@@ -397,8 +400,13 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 	} else {
 		server.Conn, err = sqlx.Open("mysql", server.DSN)
 	}*/
-	server.SetConfigRefreshCookie()
+
+	// DB Configuration
 	server.CheckNeedConfigFetch()
+	server.SetConfigRefreshCookie()
+	server.ReadVariablesFromConfigs()
+
+	// Backup-related metadata
 	go server.FetchLastBackupMetadata()
 	return server, err
 }
