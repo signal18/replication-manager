@@ -2438,7 +2438,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	repman.currentCluster.SetCertificate(repman.OpenSVC)
 
 	if repman.currentCluster.Conf.SecretKey == nil {
-		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(repman.currentCluster.GetErrorList()["ERR00090"]), ErrFrom: "CLUSTER"})
+		repman.currentCluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: config.ClusterError["ERR00090"], ErrFrom: "CLUSTER"})
 	}
 
 	repman.AddLocalAdminUserACL(repman.currentCluster, false)

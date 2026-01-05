@@ -263,7 +263,7 @@ func (repman *ReplicationManager) httpserver() {
 	router.HandleFunc("/heartbeat", repman.handlerHeartbeat)
 
 	if repman.Conf.Verbose {
-		log.Printf("Starting HTTP server on " + repman.Conf.BindAddr + ":" + repman.Conf.HttpPort)
+		log.Printf("Starting HTTP server on %s:%s", repman.Conf.BindAddr, repman.Conf.HttpPort)
 	}
 
 	repman.IsHttpListenerReady = true
