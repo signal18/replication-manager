@@ -231,24 +231,6 @@ extract_http_body() {
     echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r'
 }
 
-# Extract body from HTTP response (binary-safe, reads from stdin)
-# This function reads from stdin and writes binary data directly to stdout
-extract_http_body_binary() {
-    # Read headers line by line until empty line, then output binary body
-    local line
-    while IFS= read -r line || [[ -n "$line" ]]; do
-        # Remove carriage return (Windows line endings)
-        line="${line%$'\r'}"
-        
-        # Empty line marks end of headers
-        if [[ -z "$line" ]]; then
-            # Now read and output the binary body without any processing
-            cat
-            break
-        fi
-    done
-}
-
 # Send HTTP/HTTPS request (consolidated)
 # Usage: send_http_request "METHOD" "host" "port" "endpoint" ["data"] ["accept_header"] ["auth_token"] ["timeout"]
 send_http_request() {
@@ -325,18 +307,6 @@ send_http_get_authenticated() {
     local token="$4"
     
     send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$token"
-}
-
-# Send authenticated HTTP POST request with Bearer token
-# Usage: send_http_post_authenticated "host" "port" "endpoint" "token" ["json_data"]
-send_http_post_authenticated() {
-    local host="$1"
-    local port="$2"
-    local endpoint="$3"
-    local token="$4"
-    local json_data="${5:-}"
-    
-    send_http_request "POST" "$host" "$port" "$endpoint" "$json_data" "application/json" "$token"
 }
 
 # Generic function to send encrypted data to API endpoint
@@ -485,28 +455,6 @@ check_task_needs() {
     fi
 }
 
-# Generic function to check API boolean response
-# Usage: check_api_boolean "host" "port" "/api/path" ["post_data"]
-# Returns: 0=true, 1=false, 2=error
-check_api_boolean() {
-    local api_host="$1"
-    local api_port="$2"
-    local endpoint="$3"
-    local post_data="${4:-}"
-    
-    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "$post_data")
-    local http_code=$(extract_http_code "$response")
-    local body=$(extract_http_body "$response" | tr -d '\n')
-    
-    if [[ "$http_code" == "200" && "$body" == "true" ]]; then
-        return 0
-    elif [[ "$http_code" == "500" && "$body" == "false" ]]; then
-        return 1
-    else
-        return 2
-    fi
-}
-
 ##################################
 # Print Defaults Functions       #
 ##################################
@@ -600,20 +548,20 @@ fetch_and_extract_config() {
     mkdir -p "$extract_dir"
     
     # Step 1: POST to queue the config send and get SST port info
-    local raw_response="$extract_dir/api_response.txt"
     local request_timeout=10  # API should respond quickly (just queues request)
     
     send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_INFO"
     
+    local response
     if [[ -n "$token" ]]; then
         send_lines_to_api "Using authenticated POST request with token" "print-defaults" "$LVL_DEBUG"
-        send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "$token" "$request_timeout" > "$raw_response" 2>"$LOG_DIR/config_request.err"
+        response=$(send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "$token" "$request_timeout" 2>"$LOG_DIR/config_request.err")
     else
         send_lines_to_api "Using non-authenticated POST request" "print-defaults" "$LVL_DEBUG"
-        send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "" "$request_timeout" > "$raw_response" 2>"$LOG_DIR/config_request.err"
+        response=$(send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "" "$request_timeout" 2>"$LOG_DIR/config_request.err")
     fi
     
-    if [[ ! -s "$raw_response" ]]; then
+    if [[ -z "$response" ]]; then
         send_lines_to_api "ERROR: No response received from API" "print-defaults" "$LVL_ERROR"
         send_lines_to_api "Connection: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_ERROR"
         
@@ -626,18 +574,18 @@ fetch_and_extract_config() {
         return 1
     fi
     
-    # Extract HTTP status
-    local http_status=$(head -n 1 "$raw_response" | grep -o "HTTP/[0-9.]* [0-9]*" | grep -o "[0-9]*$")
+    # Extract HTTP status and body
+    local http_status=$(extract_http_code "$response")
+    local json_body=$(extract_http_body "$response")
+    
     send_lines_to_api "HTTP Status: $http_status" "print-defaults" "$LVL_DEBUG"
+    send_lines_to_api "Response body: $json_body" "print-defaults" "$LVL_DEBUG"
     
     if [[ "$http_status" != "200" ]]; then
-        send_lines_to_api "ERROR: HTTP request failed with status $http_status" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "Response: $(cat "$raw_response")" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "ERROR: API returned status $http_status" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "Response: $json_body" "print-defaults" "$LVL_ERROR"
         return 1
     fi
-    
-    # Extract JSON body
-    local json_body=$(extract_http_body < "$raw_response")
     
     # Parse SST port and host from JSON response
     local sst_port=$(echo "$json_body" | grep -o '"sst_port":"[^"]*"' | cut -d'"' -f4)
