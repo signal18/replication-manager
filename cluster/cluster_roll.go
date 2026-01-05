@@ -234,25 +234,26 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on standalone %s ", s.URL)
 	}
 
-	if cluster.master == nil {
+	master := cluster.GetMaster()
+	if master == nil {
 		return nil
 	}
 
 	ts = time.Now()
-	cluster.master.SetWaitJobsUpgradeCookie()
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on master %s ", cluster.master.URL)
+	master.SetWaitJobsUpgradeCookie()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on master %s ", master.URL)
 
 	// Wait for the server to clear the cookie
-	for cluster.master.HasRollingJobsUpgradeCookie() {
+	for master.HasRollingJobsUpgradeCookie() {
 		if time.Since(ts) > 5*time.Minute {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on master %s ", cluster.master.URL)
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Timeout waiting for jobs upgrade on master %s ", master.URL)
 			return errors.New("Timeout waiting for jobs upgrade on master")
 		}
 
 		time.Sleep(2 * time.Second)
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on master %s ", cluster.master.URL)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on master %s ", master.URL)
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling jobs upgrade completed")
 
