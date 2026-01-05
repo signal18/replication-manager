@@ -2281,6 +2281,10 @@ func (cluster *Cluster) SetStandaloneAsStaging() *ServerMonitor {
 }
 
 func (cluster *Cluster) SetRollingJobsUpgradeState() {
+	if cluster.Conf.ProvOrchestrator != "opensvc" {
+		return
+	}
+
 	for _, s := range cluster.Servers {
 		s.SetRollingJobsUpgradeCookie()
 	}

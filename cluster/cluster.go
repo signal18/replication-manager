@@ -673,6 +673,8 @@ func (cluster *Cluster) Run() {
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
+	cluster.SetRollingJobsUpgradeState()
+
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
