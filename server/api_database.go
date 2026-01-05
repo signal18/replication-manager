@@ -5014,6 +5014,14 @@ func (repman *ReplicationManager) handlerMuxServerConfigDummySender(w http.Respo
 	repman.handlerMuxServersPortConfigDummySender(w, r)
 }
 
+// ConfigSendResponse represents the response when queuing a config send operation
+type ConfigSendResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	SSTPort string `json:"sst_port"`
+	SSTHost string `json:"sst_host"`
+}
+
 // handlerMuxServersPortConfigDummySender handles the HTTP request to generate dummy config and send it to the client's receiver port
 // @Summary Generate and send dummy config to client receiver port
 // @Description Generates dummy configuration and sends it to the specified receiver port on the client side.
@@ -5069,11 +5077,11 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.
 		"Queued dummy config send for server %s", node.URL)
 
 	// Return success response with SST port information
-	response := map[string]interface{}{
-		"status":   "queued",
-		"message":  fmt.Sprintf("Dummy config send queued for server %s", node.URL),
-		"sst_port": node.SSTPort,
-		"sst_host": node.Host,
+	response := ConfigSendResponse{
+		Status:  "queued",
+		Message: fmt.Sprintf("Dummy config send queued for server %s", node.URL),
+		SSTPort: node.SSTPort,
+		SSTHost: node.Host,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
