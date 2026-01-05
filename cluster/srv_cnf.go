@@ -250,15 +250,103 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 }
 
 func (server *ServerMonitor) GetDatabaseConfig() error {
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
 	return server.getDatabaseConfig(true)
 }
 
 func (server *ServerMonitor) GetDummyConfig() error {
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
 	return server.getDatabaseConfig(false)
+}
+
+// ProcessDummyConfigSendCookie checks if this server has a dummy config send cookie,
+// and if so, processes it by generating and sending the config file
+func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
+	cluster := server.ClusterGroup
+
+	if !server.HasWaitDummyConfigSendCookie() {
+		return nil
+	}
+
+	// Lock to prevent concurrent config generation AND protect the config.tar.gz file
+	// during the send operation. The lock will be held until the entire operation completes
+	// (including the wait and send) to prevent another goroutine from regenerating the
+	// config.tar.gz while it's being transmitted.
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Found dummy config send cookie for server %s", server.URL)
+
+	// Re-check cookie after acquiring lock (another goroutine might have processed it)
+	if !server.HasWaitDummyConfigSendCookie() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Cookie already processed by another goroutine for server %s", server.URL)
+		return nil
+	}
+
+	// Get the cookie modification time before deletion
+	cookieModTime, modTimeErr := server.GetWaitDummyConfigSendCookieModTime()
+	if modTimeErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to get cookie modtime for server %s: %s", server.URL, modTimeErr)
+		// Still try to proceed even if we can't get modtime
+		cookieModTime = time.Now().Add(-5 * time.Second) // Assume it's been at least 5 seconds
+	}
+
+	// Remove the cookie first to prevent re-processing
+	server.DelWaitDummyConfigSendCookie()
+
+	// Generate dummy config without double locking
+	err := server.getDatabaseConfig(false)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to generate dummy config for server %s: %s", server.URL, err)
+		return err
+	}
+
+	// Send the config file - still protected by the lock held above via defer
+	// This ensures no other goroutine can regenerate config.tar.gz during transmission
+	configFile := filepath.Join(server.Datadir, "config.tar.gz")
+	return server.sendDummyConfigWithWait(configFile, cookieModTime)
+}
+
+// sendDummyConfigWithWait sends the dummy config file after ensuring client listener is ready
+func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieModTime time.Time) error {
+	cluster := server.ClusterGroup
+
+	// Calculate time elapsed since cookie creation
+	elapsed := time.Since(cookieModTime)
+	minWaitTime := 2 * time.Second // Minimum wait to ensure client listener is ready
+
+	// If not enough time has passed, wait for the remaining duration
+	if elapsed < minWaitTime {
+		waitDuration := minWaitTime - elapsed
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Waiting %v before sending dummy config to ensure client listener is ready for server %s",
+			waitDuration, server.URL)
+		time.Sleep(waitDuration)
+	}
+
+	// Send the config file using SSTRunSender
+	// Uses the server's pre-defined Host and SSTPort
+	err := cluster.SSTRunSender(configFile, server)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to send dummy config for server %s: %s", server.URL, err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Successfully sent dummy config for server %s", server.URL)
+	}
+
+	return err
 }
 
 func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
 	cluster := server.ClusterGroup
+
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")

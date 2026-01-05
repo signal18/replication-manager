@@ -753,6 +753,7 @@ func (cluster *Cluster) Run() {
 						if cluster.StateMachine.GetHeartbeats()%10 == 0 {
 							cluster.CheckJobsVersion()
 							cluster.MonitorTableSchemaDiff()
+							cluster.CheckDummyConfigSendCookies()
 						} else {
 							cluster.StateMachine.PreserveState("WARN0147", "WARN0164")
 						}

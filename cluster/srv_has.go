@@ -10,9 +10,11 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -835,6 +837,38 @@ func (server *ServerMonitor) HasWaitJobsCheckCookie() bool {
 
 func (server *ServerMonitor) HasWaitJobsUpgradeCookie() bool {
 	return server.hasCookie("cookie_wait_jobs_upgrade")
+}
+
+func (server *ServerMonitor) HasWaitDummyConfigSendCookie() bool {
+	return server.hasCookie("cookie_wait_dummy_send")
+}
+
+func (server *ServerMonitor) GetWaitDummyConfigSendCookieModTime() (time.Time, error) {
+	cookiePath := server.Datadir + "/@cookie_wait_dummy_send"
+
+	fileInfo, err := os.Stat(cookiePath)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return fileInfo.ModTime(), nil
+}
+
+func (server *ServerMonitor) GetWaitDummyConfigSendAddress() (string, string, error) {
+	cookiePath := server.Datadir + "/@cookie_wait_dummy_send"
+
+	content, err := os.ReadFile(cookiePath)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Parse host:port
+	parts := strings.Split(string(content), ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid cookie content: %s", string(content))
+	}
+
+	return parts[0], parts[1], nil
 }
 
 func (server *ServerMonitor) HasRollingJobsUpgradeCookie() bool {

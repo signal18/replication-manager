@@ -3550,7 +3550,13 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 		return nil, err
 	}
 
-	return &ConfigReceiverResponse{MonitorAddress: cluster.Conf.MonitorAddress, DummyConfigPort: rcv_port, CurrentConfigPort: rcv_port_pid, CurrentPIDFile: pid_file, DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf")}, nil
+	return &ConfigReceiverResponse{
+		MonitorAddress:    cluster.Conf.MonitorAddress,
+		DummyConfigPort:   rcv_port,
+		CurrentConfigPort: rcv_port_pid,
+		CurrentPIDFile:    pid_file,
+		DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf"),
+	}, nil
 }
 
 func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {

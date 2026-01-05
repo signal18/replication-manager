@@ -1171,3 +1171,14 @@ func (cluster *Cluster) CheckNeedConfigFetch() {
 		srv.CheckNeedConfigFetch()
 	}
 }
+
+// CheckDummyConfigSendCookies checks all servers for dummy config send cookies and sends configs
+func (cluster *Cluster) CheckDummyConfigSendCookies() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		srv.ProcessDummyConfigSendCookie()
+	}
+}

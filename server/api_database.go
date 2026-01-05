@@ -130,6 +130,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-receiver", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
 	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-dummy-sender", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerConfigDummySender)),
+	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersConfigPathPreserve)),
 	))
@@ -144,6 +147,9 @@ func (repman *ReplicationManager) apiDatabaseUnprotectedHandler(router *mux.Rout
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-receiver", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigReceiver)),
+	))
+	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-dummy-sender", negroni.New(
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigDummySender)),
 	))
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-path-preserve/{preserve}", negroni.New(
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServersPortConfigPathPreserve)),
@@ -4988,3 +4994,90 @@ func (repman *ReplicationManager) handlerMuxServerVariableSetCustom(w http.Respo
 		return
 	}
 }
+
+// handlerMuxServerConfigDummySender handles the HTTP request to generate dummy config and send it to the client's receiver port
+// @Summary Generate and send dummy config to client receiver port
+// @Description Generates dummy configuration and sends it to the specified receiver port on the client side.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With Port)"
+// @Param receiverPort query string true "Client receiver port to send config to"
+// @Param receiverHost query string false "Client receiver host (default: use request remote address)"
+// @Success 200 {object} map[string]string "Status message"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Missing receiver port"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error generating/sending config"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/config-dummy-sender [post]
+func (repman *ReplicationManager) handlerMuxServerConfigDummySender(w http.ResponseWriter, r *http.Request) {
+	repman.handlerMuxServersPortConfigDummySender(w, r)
+}
+
+// handlerMuxServersPortConfigDummySender handles the HTTP request to generate dummy config and send it to the client's receiver port
+// @Summary Generate and send dummy config to client receiver port
+// @Description Generates dummy configuration and sends it to the specified receiver port on the client side.
+// @Tags Database
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param serverName path string true "Server ID <dbxxx / pxxxx> (Without Port) / Server Host (With Port)"
+// @Param serverPort path string false "Server Port"
+// @Param receiverPort query string true "Client receiver port to send config to"
+// @Param receiverHost query string false "Client receiver host (default: use request remote address)"
+// @Success 200 {object} map[string]string "Status message"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Missing receiver port"
+// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Error generating/sending config"
+// @Router /api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-dummy-sender [post]
+func (repman *ReplicationManager) handlerMuxServersPortConfigDummySender(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+
+	defer mycluster.LogPanicToFile("config-dummy-sender")
+
+	if mycluster.Conf.APISecureConfig {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+	}
+
+	// Get the server node
+	var node *cluster.ServerMonitor
+	if vars["serverPort"] == "" {
+		node = mycluster.GetServerFromName(vars["serverName"])
+	} else {
+		node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
+	}
+
+	if node == nil {
+		http.Error(w, "No server", 500)
+		return
+	}
+
+	// Set the cookie to queue the config send
+	// The monitor loop will pick this up and handle the actual send
+	node.SetWaitDummyConfigSendCookie()
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Queued dummy config send for server %s", node.URL)
+
+	// Return success response with SST port information
+	response := map[string]interface{}{
+		"status":   "queued",
+		"message":  fmt.Sprintf("Dummy config send queued for server %s", node.URL),
+		"sst_port": node.SSTPort,
+		"sst_host": node.Host,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// secretLoginHandler handles the HTTP request for secret login.

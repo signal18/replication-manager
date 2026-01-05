@@ -587,107 +587,115 @@ need_refresh_config() {
 
 # Fetch and extract configuration
 # Usage: fetch_and_extract_config "extract_dir" ["token"]
+# Uses cookie-based push mechanism for async config delivery via SST
 fetch_and_extract_config() {
     local extract_dir="$1"
     local token="${2:-}"
-    local config_url="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config/dummy"
+    local config_sender_url="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-dummy-sender"
     
-    send_lines_to_api "Fetching configuration from $config_url..." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Requesting config send via cookie-based push mechanism..." "print-defaults" "$LVL_INFO"
     
     # Remove existing directory and create new one
     rm -rf "$extract_dir"
     mkdir -p "$extract_dir"
     
-    # Download config tarball
-    local config_file="$extract_dir/config.tar.gz"
+    # Step 1: POST to queue the config send and get SST port info
+    local raw_response="$extract_dir/api_response.txt"
+    local request_timeout=10  # API should respond quickly (just queues request)
     
-    send_lines_to_api "Downloading configuration tarball to $config_file..." "print-defaults" "$LVL_DEBUG"
-    
-    # Save raw HTTP response for debugging
-    local raw_response="$extract_dir/raw_response.bin"
-    local download_timeout=120  # 2 minutes timeout for config download
-    
-    # Log connection details
-    send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT (timeout: ${download_timeout}s)" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_INFO"
     
     if [[ -n "$token" ]]; then
-        send_lines_to_api "Using authenticated request with token" "print-defaults" "$LVL_DEBUG"
-        # Get raw response with extended timeout
-        send_http_request "GET" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_url" "" "application/octet-stream" "$token" "$download_timeout" > "$raw_response" 2>"$LOG_DIR/config_download.err"
+        send_lines_to_api "Using authenticated POST request with token" "print-defaults" "$LVL_DEBUG"
+        send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "$token" "$request_timeout" > "$raw_response" 2>"$LOG_DIR/config_request.err"
     else
-        send_lines_to_api "Using non-authenticated request" "print-defaults" "$LVL_DEBUG"
-        # Get raw response with extended timeout
-        send_http_request "GET" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_url" "" "application/octet-stream" "" "$download_timeout" > "$raw_response" 2>"$LOG_DIR/config_download.err"
+        send_lines_to_api "Using non-authenticated POST request" "print-defaults" "$LVL_DEBUG"
+        send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "" "$request_timeout" > "$raw_response" 2>"$LOG_DIR/config_request.err"
     fi
-    
-    local response_size=$(stat -c%s "$raw_response" 2>/dev/null || echo 0)
-    send_lines_to_api "Response received: $response_size bytes" "print-defaults" "$LVL_DEBUG"
     
     if [[ ! -s "$raw_response" ]]; then
         send_lines_to_api "ERROR: No response received from API" "print-defaults" "$LVL_ERROR"
         send_lines_to_api "Connection: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_ERROR"
         
-        # Check if socat is available
-        if ! command -v socat >/dev/null 2>&1; then
-            send_lines_to_api "ERROR: 'socat' command not found - required for HTTP requests" "print-defaults" "$LVL_ERROR"
-        fi
-        
-        # Show stderr output if available
-        if [ -f "$LOG_DIR/config_download.err" ]; then
-            local err_content=$(cat "$LOG_DIR/config_download.err" 2>/dev/null)
+        if [ -f "$LOG_DIR/config_request.err" ]; then
+            local err_content=$(cat "$LOG_DIR/config_request.err" 2>/dev/null)
             if [[ -n "$err_content" ]]; then
                 send_lines_to_api "Error details: $err_content" "print-defaults" "$LVL_ERROR"
-            else
-                send_lines_to_api "No error details available (empty stderr)" "print-defaults" "$LVL_ERROR"
             fi
         fi
-        
-        # Test basic connectivity
-        if command -v nc >/dev/null 2>&1 || command -v netcat >/dev/null 2>&1; then
-            local nc_cmd="nc"
-            command -v nc >/dev/null 2>&1 || nc_cmd="netcat"
-            if timeout 5 $nc_cmd -zv "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" 2>&1 | grep -q "succeeded\|open"; then
-                send_lines_to_api "Port is reachable but no HTTP response received (possible timeout or protocol issue)" "print-defaults" "$LVL_ERROR"
-            else
-                send_lines_to_api "Cannot connect to port (network/firewall issue)" "print-defaults" "$LVL_ERROR"
-            fi
-        fi
-        
         return 1
     fi
     
-    # Extract HTTP status and headers
+    # Extract HTTP status
     local http_status=$(head -n 1 "$raw_response" | grep -o "HTTP/[0-9.]* [0-9]*" | grep -o "[0-9]*$")
     send_lines_to_api "HTTP Status: $http_status" "print-defaults" "$LVL_DEBUG"
     
-    # Check for HTTP errors
     if [[ "$http_status" != "200" ]]; then
         send_lines_to_api "ERROR: HTTP request failed with status $http_status" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "Response headers: $(head -n 20 "$raw_response")" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "Response: $(cat "$raw_response")" "print-defaults" "$LVL_ERROR"
         return 1
     fi
     
-    # Extract body from response
-    extract_http_body_binary < "$raw_response" > "$config_file"
+    # Extract JSON body
+    local json_body=$(extract_http_body < "$raw_response")
     
-    if [[ ! -s "$config_file" ]]; then
-        send_lines_to_api "ERROR: Body extraction resulted in empty file" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "Raw response size: $(stat -c%s "$raw_response" 2>/dev/null || echo 0) bytes" "print-defaults" "$LVL_ERROR"
-        send_lines_to_api "First 500 bytes of raw response:" "print-defaults" "$LVL_ERROR"
-        head -c 500 "$raw_response" | od -An -tx1 -w32 | head -n 5 | while read line; do
-            send_lines_to_api "  $line" "print-defaults" "$LVL_ERROR"
-        done
+    # Parse SST port and host from JSON response
+    local sst_port=$(echo "$json_body" | grep -o '"sst_port":"[^"]*"' | cut -d'"' -f4)
+    local sst_host=$(echo "$json_body" | grep -o '"sst_host":"[^"]*"' | cut -d'"' -f4)
+    local status=$(echo "$json_body" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    
+    if [[ -z "$sst_port" || -z "$sst_host" ]]; then
+        send_lines_to_api "ERROR: Failed to parse SST port/host from API response" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "Response body: $json_body" "print-defaults" "$LVL_ERROR"
         return 1
     fi
     
+    send_lines_to_api "Config send queued (status: $status)" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Config will be sent to $sst_host:$sst_port" "print-defaults" "$LVL_INFO"
+    
+    # Step 2: Open TCP listener on the SST port to receive the config
+    local config_file="$extract_dir/config.tar.gz"
+    local listener_timeout=300  # 5 minutes timeout for config delivery
+    
+    send_lines_to_api "Opening TCP listener on port $sst_port..." "print-defaults" "$LVL_INFO"
+    
+    # Use socat to listen and save received data to file
+    # Format: socat -u TCP-LISTEN:port,reuseaddr,fork OPEN:file,creat,trunc
+    if ! command -v socat >/dev/null 2>&1; then
+        send_lines_to_api "ERROR: 'socat' command not found - required for receiving config" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Start listener in background and capture PID
+    timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
+    local socat_pid=$!
+    
+    send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_INFO"
+    
+    # Wait for socat to complete or timeout
+    wait $socat_pid
+    local socat_exit=$?
+    
+    if [[ $socat_exit -eq 124 ]]; then
+        send_lines_to_api "ERROR: Timeout waiting for config delivery after ${listener_timeout}s" "print-defaults" "$LVL_ERROR"
+        return 1
+    elif [[ $socat_exit -ne 0 ]]; then
+        send_lines_to_api "ERROR: Listener failed with exit code $socat_exit" "print-defaults" "$LVL_ERROR"
+        if [ -f "$LOG_DIR/socat_listener.log" ]; then
+            send_lines_to_api "Listener log: $(cat "$LOG_DIR/socat_listener.log")" "print-defaults" "$LVL_ERROR"
+        fi
+        return 1
+    fi
+    
+    # Verify config file was received
     if [[ ! -s "$config_file" ]]; then
         local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
-        send_lines_to_api "ERROR: Downloaded config file is empty (size: $filesize bytes)" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "ERROR: Received config file is empty (size: $filesize bytes)" "print-defaults" "$LVL_ERROR"
         return 1
     fi
     
     local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
-    send_lines_to_api "Downloaded config file: $filesize bytes" "print-defaults" "$LVL_DEBUG"
+    send_lines_to_api "Received config file: $filesize bytes" "print-defaults" "$LVL_INFO"
     
     # Check file type before extraction
     local file_type=$(file -b "$config_file" 2>/dev/null || echo "unknown")
@@ -699,7 +707,7 @@ fetch_and_extract_config() {
     
     # Check if it looks like an HTTP error response
     if head -c 100 "$config_file" | grep -q "^HTTP\|^<html\|^{"; then
-        send_lines_to_api "ERROR: Downloaded file appears to be an HTTP error response, not a tarball" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "ERROR: Received file appears to be an HTTP error response, not a tarball" "print-defaults" "$LVL_ERROR"
         send_lines_to_api "First 200 bytes: $(head -c 200 "$config_file")" "print-defaults" "$LVL_ERROR"
         return 1
     fi

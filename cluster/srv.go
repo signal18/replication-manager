@@ -223,6 +223,7 @@ type ServerMonitor struct {
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
+	configGenMutex              sync.Mutex // protects config generation operations
 }
 
 type ServerBackupMeta struct {
