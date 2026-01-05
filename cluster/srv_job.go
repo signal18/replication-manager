@@ -3076,7 +3076,7 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop int) error {
+func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncompress bool, loop int) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -3104,7 +3104,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	if count > 0 {
 		server.JobsUpdateState(task, "processing", 1, 0)
 		go func() {
-			err := cluster.SSTRunSender(filename, server)
+			err := cluster.SSTRunSender(filename, server, uncompress)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, err.Error())
 				server.JobsUpdateState(task, err.Error(), 5, 0)
@@ -3114,7 +3114,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	} else {
 		if loop < 10 {
 			loop++
-			return server.WaitAndSendSST(task, filename, loop)
+			return server.WaitAndSendSST(task, filename, uncompress, loop)
 		}
 	}
 
@@ -3172,7 +3172,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
 
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, 0)
+		err := server.WaitAndSendSST(task, backupfile, true, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -3233,7 +3233,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending physical backup to flashback %s", server.URL)
 
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, 0)
+		err := server.WaitAndSendSST(task, backupfile, true, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -3653,7 +3653,7 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	cluster := server.ClusterGroup
 	defer cluster.LogPanicToFile("jobs-upgrade")
 
-	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
 		return err

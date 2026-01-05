@@ -332,7 +332,7 @@ func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieMo
 
 	// Send the config file using SSTRunSender
 	// Uses the server's pre-defined Host and SSTPort
-	err := cluster.SSTRunSender(configFile, server)
+	err := cluster.SSTRunSender(configFile, server, false)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
 			"Failed to send dummy config for server %s: %s", server.URL, err)

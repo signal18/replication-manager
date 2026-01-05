@@ -427,7 +427,7 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 	return sync_channel
 }
 
-func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) error {
+func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncompress bool) error {
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
@@ -443,7 +443,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) error
 	}
 	defer client.Close()
 
-	if strings.HasSuffix(backupfile, "gz") {
+	if strings.HasSuffix(backupfile, "gz") && uncompress {
 		err = cluster.SSTRunSendGzip(client, backupfile, sv)
 	} else {
 		err = cluster.SSTRunSendFile(client, backupfile, sv)
