@@ -191,6 +191,10 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	var ts time.Time
 
 	for _, s := range cluster.slaves {
+		if s == nil {
+			continue
+		}
+
 		ts = time.Now()
 		s.SetWaitJobsUpgradeCookie()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on %s ", s.URL)
@@ -209,6 +213,10 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	}
 
 	for _, s := range cluster.GetStandaloneServers() {
+		if s == nil {
+			continue
+		}
+
 		ts = time.Now()
 		s.SetWaitJobsUpgradeCookie()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Set jobs upgrade cookie on standalone %s ", s.URL)
@@ -224,6 +232,10 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Jobs upgrade completed on standalone %s ", s.URL)
+	}
+
+	if cluster.master == nil {
+		return nil
 	}
 
 	ts = time.Now()

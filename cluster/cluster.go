@@ -673,8 +673,6 @@ func (cluster *Cluster) Run() {
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
-	cluster.SetRollingJobsUpgradeState()
-
 	for cluster.exit == false {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
@@ -733,6 +731,7 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
+					cluster.SetRollingJobsUpgradeState()
 					cluster.runOnceAfterTopology = false
 				} else {
 
