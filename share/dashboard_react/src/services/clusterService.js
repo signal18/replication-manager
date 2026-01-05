@@ -429,7 +429,7 @@ function startDatabase(clusterName, serverId, baseURL) {
 
 function restartDatabase(clusterName, serverId, rid, baseURL) {
   const params = rid ? `?rid=${encodeURIComponent(rid)}` : ''
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/restart${params}`)
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/restart${params}`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {

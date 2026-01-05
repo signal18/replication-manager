@@ -10778,7 +10778,7 @@ paths:
       tags:
       - DatabaseReplication
   /api/clusters/{clusterName}/servers/{serverName}/actions/restart:
-    get:
+    post:
       description: Restarts a specified server within a cluster, optionally on a specific
         node and/or specific resource ID. Only OpenSVC orchestrator is supported.
         Only 'container#jobs' is allowed for rid parameter.

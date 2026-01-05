@@ -289,7 +289,7 @@ func (repman *ReplicationManager) apiDatabaseProtectedHandler(router *mux.Router
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/restart", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerRestart)),
-	))
+	)).Methods("POST")
 	router.Handle("/api/clusters/{clusterName}/servers/{serverName}/actions/maintenance", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxServerMaintenance)),
@@ -2342,7 +2342,7 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Failure 400 {string} string "Invalid rid parameter"
 // @Failure 403 {string} string "No valid ACL"
 // @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Orchestrator not supported"
-// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [get]
+// @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [post]
 func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	vars := mux.Vars(r)
