@@ -2286,6 +2286,9 @@ func (cluster *Cluster) SetRollingJobsUpgradeState() {
 	}
 
 	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
 		s.SetRollingJobsUpgradeCookie()
 	}
 
