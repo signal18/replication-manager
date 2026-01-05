@@ -61,17 +61,17 @@ func (cluster *Cluster) HasValidBackup() bool {
 	if logical {
 		cluster.StateMachine.DeleteState("WARN0111")
 	} else {
-		cluster.SetState("WARN0111", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0111"]), ErrFrom: "TOPO"})
+		cluster.SetState("WARN0111", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0111"], ErrFrom: "TOPO"})
 	}
 
 	if physical {
 		cluster.StateMachine.DeleteState("WARN0112")
 	} else {
-		cluster.SetState("WARN0112", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0112"]), ErrFrom: "TOPO"})
+		cluster.SetState("WARN0112", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0112"], ErrFrom: "TOPO"})
 	}
 
 	//	}
-	// cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
+	// cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0101"], ErrFrom: "TOPO"})
 	return false
 
 }

@@ -213,7 +213,7 @@ func (proxy *MariadbShardProxy) CertificatesReload() error {
 func (proxy *MariadbShardProxy) Refresh() error {
 	if proxy.ShardProxy == nil {
 		//proxy.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxy,config.LvlErr, "Sharding proxy refresh no database monitor yet initialize")
-		proxy.ClusterGroup.StateMachine.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(proxy.ClusterGroup.GetErrorList()["ERR00086"]), ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
+		proxy.ClusterGroup.StateMachine.AddState("ERR00086", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00086"], ErrFrom: "PROXY", ServerUrl: proxy.GetURL()})
 		return errors.New("Sharding proxy refresh no database monitor yet initialize")
 	}
 	wg := new(sync.WaitGroup)

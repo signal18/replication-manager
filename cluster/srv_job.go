@@ -1539,7 +1539,7 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 				defer server.SetInReseedBackup("")
 			}
 		case "xtrabackup", "mariabackup":
-			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0115"]), ErrFrom: "JOB", ServerUrl: server.URL})
+			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0115"], ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 	}
 

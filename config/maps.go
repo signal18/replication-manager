@@ -1125,7 +1125,7 @@ func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 
 	section := cfgFile.Section("mysqld")
 	for _, key := range section.Keys() {
-		varname := strings.ReplaceAll(strings.TrimSpace(strings.TrimPrefix(key.Name(), "loose_")), "-", "_")
+		varname := strings.TrimSpace(strings.TrimPrefix(strings.ReplaceAll(key.Name(), "-", "_"), "loose_"))
 		if slices.Contains(RepeatOptions, varname) {
 			values := key.ValueWithShadows()
 			for _, v := range values {
