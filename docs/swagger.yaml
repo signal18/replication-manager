@@ -13242,6 +13242,61 @@ paths:
       summary: Preserve a variable difference on a server
       tags:
       - DatabaseConfig
+  /api/clusters/{clusterName}/servers/{serverName}/variables-set-custom:
+    post:
+      description: Sets a custom preserved value for a variable on a specified server
+        within a cluster. This allows DBAs to manually override variable values like
+        in my.cnf.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: Variable Name
+        in: query
+        name: variableName
+        required: true
+        type: string
+      - description: Custom Value
+        in: query
+        name: customValue
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Variable custom value set successfully
+          schema:
+            type: string
+        "400":
+          description: Variable name or custom value required
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Error setting
+            custom variable value
+          schema:
+            type: string
+      summary: Set custom value for a variable on a server
+      tags:
+      - DatabaseConfig
   /api/clusters/{clusterName}/servers/{serverName}/vtables:
     get:
       description: Retrieves the virtual tables of a specified server within a cluster.
