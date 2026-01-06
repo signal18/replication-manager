@@ -118,7 +118,7 @@ var appACLRules = []ACLRule{
 	{"/settings/actions/save-to-template", nil, []string{config.GrantAppDeployment}},
 	{"/actions/start", nil, []string{config.GrantAppStart}},
 	{"/actions/stop", nil, []string{config.GrantAppStop}},
-	{"/actions/restart", nil, []string{config.GrantAppStop}},
+	{"/actions/restart", []string{config.GrantAppStop, config.GrantAppStart}, nil},
 	{"/settings/actions/", nil, []string{config.GrantAppConfig}},
 	{"/git/", nil, []string{config.GrantAppGit}},
 }
