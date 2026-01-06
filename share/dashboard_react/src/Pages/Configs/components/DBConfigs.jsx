@@ -13,6 +13,8 @@ import Gauge from '../../../components/Gauge'
 import RMIconButton from '../../../components/RMIconButton'
 import { HiRefresh } from 'react-icons/hi'
 import PreservedConfigs from './PreservedConfigs'
+import MySQLDefaultsEditor from '../../../components/MySQLDefaultsEditor'
+import PreservedVariablesEditor from '../../../components/PreservedVariablesEditor'
 import { convertSize } from '../../../utility/common'
 
 function DBConfigs({ selectedCluster, user }) {
@@ -423,6 +425,20 @@ function DBConfigs({ selectedCluster, user }) {
                   headerClassName={styles.accordionHeader}
                   panelClassName={styles.accordionBody}
                   body={<PreservedConfigs selectedCluster={selectedCluster} user={user}/>}
+                />
+            <AccordionComponent
+                  heading={'Cluster Preserved Variables CNF'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<PreservedVariablesEditor clusterName={selectedCluster?.name} user={user} />}
+                />
+            <AccordionComponent
+                  heading={'MySQL Default Variables'}
+                  className={styles.accordion}
+                  headerClassName={styles.accordionHeader}
+                  panelClassName={styles.accordionBody}
+                  body={<MySQLDefaultsEditor clusterName={selectedCluster?.name} user={user} />}
                 />
           </VStack>
         </HStack>

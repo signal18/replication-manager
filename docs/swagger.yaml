@@ -960,6 +960,14 @@ definitions:
         items:
           $ref: '#/definitions/dbhelper.SlaveStatus'
         type: array
+      restartNode:
+        description: RestartNode stores node parameter for restart cookie (owned by
+          cookie mechanism, single writer assumption)
+        type: string
+      restartRid:
+        description: RestartRid stores rid parameter for restart cookie (owned by
+          cookie mechanism, single writer assumption)
+        type: string
       semiSyncMasterStatus:
         type: boolean
       semiSyncSlaveStatus:
@@ -3787,6 +3795,16 @@ definitions:
       fields:
         $ref: '#/definitions/logrus.Fields'
       message:
+        type: string
+    type: object
+  server.MySQLDefaultsCnfRequest:
+    properties:
+      content:
+        type: string
+    type: object
+  server.PreservedVarsCnfRequest:
+    properties:
+      content:
         type: string
     type: object
   server.ReplicationManager:
@@ -10779,9 +10797,9 @@ paths:
       - DatabaseReplication
   /api/clusters/{clusterName}/servers/{serverName}/actions/restart:
     post:
-      description: Restarts a specified server within a cluster, optionally on a specific
-        node and/or specific resource ID. Only OpenSVC orchestrator is supported.
-        Only 'container#jobs' is allowed for rid parameter.
+      description: Restarts a specified server within a cluster (queues restart asynchronously),
+        optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator
+        is supported. Only 'container#jobs' is allowed for rid parameter.
       parameters:
       - default: Bearer <Add access token here>
         description: Insert your access token
@@ -10812,9 +10830,10 @@ paths:
       - application/json
       responses:
         "200":
-          description: Server restarted successfully
+          description: Restart queued successfully
           schema:
-            type: string
+            additionalProperties: true
+            type: object
         "400":
           description: Invalid rid parameter
           schema:
@@ -10823,9 +10842,12 @@ paths:
           description: No valid ACL
           schema:
             type: string
-        "500":
-          description: Cluster Not Found" or "Server Not Found" or "Orchestrator not
-            supported
+        "404":
+          description: Cluster Not Found or Server Not Found
+          schema:
+            type: string
+        "501":
+          description: Orchestrator not supported
           schema:
             type: string
       summary: Restart a server
@@ -14052,6 +14074,98 @@ paths:
       summary: Reset Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
+  /api/clusters/{clusterName}/settings/actions/save-mysql-defaults-cnf:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint saves the updated content to the mysql_defaults.cnf
+        file in the cluster's working directory
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: CNF file content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.MySQLDefaultsCnfRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully saved MySQL defaults CNF
+          schema:
+            type: string
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error saving file
+          schema:
+            type: string
+      summary: Save MySQL defaults CNF content
+      tags:
+      - ClusterSettings
+  /api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf:
+    post:
+      consumes:
+      - application/json
+      description: This endpoint saves the updated content to the preserved_variables.cnf
+        file in the cluster's working directory
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: CNF file content
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/server.PreservedVarsCnfRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Successfully saved preserved variables CNF
+          schema:
+            type: string
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Error saving file
+          schema:
+            type: string
+      summary: Save preserved variables CNF content
+      tags:
+      - ClusterSettings
   /api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue}:
     post:
       consumes:
@@ -14270,6 +14384,86 @@ paths:
           schema:
             type: string
       summary: Switch settings for a specific cluster
+      tags:
+      - ClusterSettings
+  /api/clusters/{clusterName}/settings/mysql-defaults-cnf:
+    get:
+      description: This endpoint retrieves the content of the mysql_defaults.cnf file
+        from the cluster's working directory
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: CNF file content in JSON format with 'content' key
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: File not found
+          schema:
+            type: string
+        "500":
+          description: Error reading file
+          schema:
+            type: string
+      summary: Get MySQL defaults CNF content
+      tags:
+      - ClusterSettings
+  /api/clusters/{clusterName}/settings/preserved-variables-cnf:
+    get:
+      description: This endpoint retrieves the content of the preserved_variables.cnf
+        file from the cluster's working directory
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: CNF file content in JSON format with 'content' key
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "404":
+          description: File not found
+          schema:
+            type: string
+        "500":
+          description: Error reading file
+          schema:
+            type: string
+      summary: Get preserved variables CNF content
       tags:
       - ClusterSettings
   /api/clusters/{clusterName}/shardclusters:

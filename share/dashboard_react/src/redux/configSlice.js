@@ -85,6 +85,50 @@ export const preserveConfigPath = createAsyncThunk('configs/preserveConfigPath',
   }
 })
 
+export const getMySQLDefaultsCnf = createAsyncThunk('configs/getMySQLDefaultsCnf', async ({ clusterName }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data } = await configService.getMySQLDefaultsCnf(clusterName, baseURL)
+    return data
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to load MySQL defaults configuration' })
+  }
+})
+
+export const saveMySQLDefaultsCnf = createAsyncThunk('configs/saveMySQLDefaultsCnf', async ({ clusterName, content }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await configService.saveMySQLDefaultsCnf(clusterName, content, baseURL)
+    showSuccessBanner(`MySQL defaults configuration saved successfully!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Saving MySQL defaults configuration failed!`, error, thunkAPI)
+    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to save MySQL defaults configuration' })
+  }
+})
+
+export const getPreservedVarsCnf = createAsyncThunk('configs/getPreservedVarsCnf', async (clusterName, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data } = await configService.getPreservedVarsCnf(clusterName, baseURL)
+    return data
+  } catch (error) {
+    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to load preserved variables configuration' })
+  }
+})
+
+export const savePreservedVarsCnf = createAsyncThunk('configs/savePreservedVarsCnf', async ({ clusterName, content }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await configService.savePreservedVarsCnf(clusterName, content, baseURL)
+    showSuccessBanner(`Preserved variables configuration saved successfully!`, status, thunkAPI)
+    return { data, status }
+  } catch (error) {
+    showErrorBanner(`Saving preserved variables configuration failed!`, error, thunkAPI)
+    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to save preserved variables configuration' })
+  }
+})
+
 const initialState = {}
 
 export const configsSlice = createSlice({

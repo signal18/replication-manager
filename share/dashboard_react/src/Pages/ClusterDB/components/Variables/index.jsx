@@ -13,6 +13,9 @@ import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, Tb
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import ComplexVariableModal from './ComplexVariableModal'
 import EditVariableModal from './EditVariableModal'
+import MySQLDefaultsEditor from '../../../../components/MySQLDefaultsEditor'
+import PreservedVariablesEditor from '../../../../components/PreservedVariablesEditor'
+import AccordionComponent from '../../../../components/AccordionComponent'
 
 const defaultState = {
   showCfg: true,
@@ -208,7 +211,7 @@ const areValuesEqual = (val1, val2, row) => {
   return String(val1) === String(val2)
 }
 
-function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter }) {
+function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
   const variables = useSelector((state) => state.cluster.database.variables)
@@ -772,6 +775,24 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
         <DataTable key="variables" data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
+      
+      {user?.grants['cluster-settings'] && (
+        <Box width="100%" mt={4}>
+          <AccordionComponent
+            heading={'Cluster Preserved Variables Configuration'}
+            className={styles.accordion}
+            body={<PreservedVariablesEditor clusterName={clusterName} user={user} />}
+          />
+          <Box mt={2}>
+            <AccordionComponent
+              heading={'MySQL Default Variables Configuration'}
+              className={styles.accordion}
+              body={<MySQLDefaultsEditor clusterName={clusterName} user={user} />}
+            />
+          </Box>
+        </Box>
+      )}
+      
       {isOpen && <ConfirmModal title={title} isOpen={isOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
       {complexVariableModal.isOpen && (
         <ComplexVariableModal 
