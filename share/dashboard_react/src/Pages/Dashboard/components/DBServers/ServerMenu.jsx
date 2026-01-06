@@ -33,9 +33,49 @@ import {
 } from '../../../../redux/clusterSlice'
 import { useState, useEffect, useCallback } from 'react'
 import { useHref } from 'react-router-dom'
-import { generateConfig, preserveConfigPath } from '../../../../redux/configSlice'
+import { generateConfig } from '../../../../redux/configSlice'
 
+// Constants
+const JOBS_CONTAINER_RID = 'container#jobs'
 
+/**
+ * ServerMenu - Context menu for database server operations
+ * 
+ * Provides a hierarchical menu of database operations organized by category (Maintenance, 
+ * Backup, Provision, DB Utils). All operations are permission-based and require user confirmation
+ * for destructive actions.
+ * 
+ * Configuration-Based Database Management:
+ * - Uses configuration files (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf) for database startup
+ * - 01_preserved.cnf: User-accepted differences (highest precedence)
+ * - 02_delta.cnf: Detected differences between deployed and config
+ * - 03_agreed.cnf: Variables that should match between systems
+ * 
+ * @param {Object} props - Component properties
+ * @param {string} props.clusterName - Name of the database cluster
+ * @param {string} props.clusterMasterId - ID of the master server in the cluster
+ * @param {string} props.backupPhysicalType - Physical backup type (e.g., 'xtrabackup', 'mariabackup')
+ * @param {string} props.backupLogicalType - Logical backup type (e.g., 'mysqldump', 'mydumper')
+ * @param {string} props.orchestrator - Orchestrator type (e.g., 'opensvc', 'kubernetes')
+ * @param {Object} props.row - Server data object
+ * @param {string} props.row.id - Server ID
+ * @param {string} props.row.host - Server hostname/IP
+ * @param {number} props.row.port - Server port
+ * @param {boolean} props.row.isSlave - Whether server is a slave
+ * @param {boolean} props.row.prefered - Whether server is marked as preferred for failover
+ * @param {boolean} props.row.ignored - Whether server is ignored for failover
+ * @param {Object} props.user - User object with permission grants
+ * @param {Object} props.user.grants - User permission grants object
+ * @param {boolean} props.isDesktop - Whether rendering on desktop (affects menu placement)
+ * @param {string} [props.from='tableView'] - Origin context ('tableView' or other)
+ * @param {Function} props.openCompareModal - Callback to open server comparison modal
+ * @param {string} [props.colorScheme] - Color scheme for the menu
+ * @param {string} [props.className] - Additional CSS classes
+ * @param {boolean} [props.showCompareWithOption=true] - Whether to show compare option
+ * @param {boolean} [props.showTerminal=false] - Whether to show terminal options
+ * 
+ * @returns {JSX.Element} ServerMenu component with context menu and confirmation modal
+ */
 function ServerMenu({
   clusterName,
   clusterMasterId,
@@ -146,7 +186,7 @@ function ServerMenu({
                     name: 'Set as Preferred',
                     onClick: () => {
                       openConfirmModal()
-                      setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
+                      setConfirmTitle(`Confirm set as preferred for ${serverName}?`)
                       setConfirmHandler(() => () => dispatch(setAsPreferred({ clusterName, serverId: row.id })))
                     }
                   },
@@ -154,7 +194,7 @@ function ServerMenu({
                     name: 'Set as Ignored',
                     onClick: () => {
                       openConfirmModal()
-                      setConfirmTitle(`Confirm set as unrated for ${serverName}?`)
+                      setConfirmTitle(`Confirm set as ignored for ${serverName}?`)
                       setConfirmHandler(() => () => dispatch(setAsIgnored({ clusterName, serverId: row.id })))
                     }
                   }
@@ -299,7 +339,7 @@ function ServerMenu({
                       onClick: () => {
                         openConfirmModal()
                         setConfirmTitle(`Confirm restart jobs container for ${serverName}?`)
-                        setConfirmHandler(() => () => dispatch(restartDatabase({ clusterName, serverId: row.id, rid: 'container#jobs' })))
+                        setConfirmHandler(() => () => dispatch(restartDatabase({ clusterName, serverId: row.id, rid: JOBS_CONTAINER_RID })))
                       }
                     }
                   ] : [])

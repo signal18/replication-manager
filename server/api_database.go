@@ -2336,7 +2336,7 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
 // @Param clusterName path string true "Cluster Name"
 // @Param serverName path string true "Server Name"
-// @Param node query string false "Node Name (default: server's agent, use * for all nodes)"
+// @Param node query string false "Node Agent (default: server's agent, use * for all nodes)"
 // @Param rid query string false "Resource ID. Only 'container#jobs' is allowed. Empty restarts entire service."
 // @Success 200 {string} string "Server restarted successfully"
 // @Failure 400 {string} string "Invalid rid parameter"
