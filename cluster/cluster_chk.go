@@ -1182,3 +1182,69 @@ func (cluster *Cluster) CheckDummyConfigSendCookies() {
 		srv.ProcessDummyConfigSendCookie()
 	}
 }
+
+// CheckRestartCookies checks all servers for restart cookies and processes them
+func (cluster *Cluster) CheckRestartCookies() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		if srv.HasRestartCookie() {
+			// Get the stored parameters
+			nodeParam := srv.RestartNode
+			ridParam := srv.RestartRid
+
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Processing restart cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
+			}
+			// Call the restart function with stored parameters
+			err := cluster.RestartDatabaseService(srv, nodeParam, ridParam)
+			if err != nil {
+				if cluster.Conf != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Failed to restart server %s: %s", srv.URL, err)
+				}
+				// Delete cookie even on error to avoid infinite retries
+				srv.DelRestartCookie()
+				// Clear stored parameters
+				srv.RestartNode = ""
+				srv.RestartRid = ""
+			}
+		}
+	}
+}
+
+// CleanupRestartCookies removes any lingering restart cookies and clears parameters at cluster startup
+// This prevents unwanted restarts from old cookies that may have been left from previous runs
+func (cluster *Cluster) CleanupRestartCookies() {
+	cleanedCount := 0
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		// Check if restart cookie exists
+		if srv.HasRestartCookie() {
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Cleaning up lingering restart cookie for server %s (node: %s, rid: %s)",
+					srv.URL, srv.RestartNode, srv.RestartRid)
+			}
+
+			// Delete the cookie
+			srv.DelRestartCookie()
+			cleanedCount++
+		}
+
+		// Clear any stored parameters (whether cookie existed or not)
+		srv.RestartNode = ""
+		srv.RestartRid = ""
+	}
+
+	if cleanedCount > 0 && cluster.Conf != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Cleaned up %d restart cookie(s) at cluster startup", cleanedCount)
+	}
+}

@@ -732,6 +732,8 @@ func (cluster *Cluster) Run() {
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
 					cluster.SetRollingJobsUpgradeState()
+					// Clean up any lingering restart cookies from previous runs
+					cluster.CleanupRestartCookies()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -742,6 +744,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshApps(wg)
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
+						cluster.CheckRestartCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {

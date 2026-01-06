@@ -64,6 +64,13 @@ var tests = []string{
 	"testConfigCookiePushTiming",
 	"testConfigCookiePushCookieDir",
 	"testConfigCookiePushNoConfigFetchCookie",
+	"testRestartCookieBasic",
+	"testRestartCookieLifecycle",
+	"testRestartCookieMultipleServers",
+	"testRestartCookieParameters",
+	"testRestartCookieCleanup",
+	"testRestartCookieTiming",
+	"testRestartCookieConcurrent",
 }
 
 const recoverTime = 8

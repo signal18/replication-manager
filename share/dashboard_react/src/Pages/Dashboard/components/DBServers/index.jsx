@@ -79,6 +79,7 @@ function DBServers({ selectedCluster, user }) {
               clusterMasterId={clusterMaster?.id}
               backupLogicalType={selectedCluster?.config?.backupLogicalType}
               backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
+              orchestrator={selectedCluster?.config?.provOrchestrator}
               row={row}
               user={user}
               isDesktop={isDesktop}
@@ -264,6 +265,7 @@ function DBServers({ selectedCluster, user }) {
           clusterName={selectedCluster?.name}
           backupLogicalType={selectedCluster?.config?.backupLogicalType}
           backupPhysicalType={selectedCluster?.config?.backupPhysicalType}
+          orchestrator={selectedCluster?.config?.provOrchestrator}
           user={user}
           showTableView={showTableView}
           openCompareModal={openCompareModal}

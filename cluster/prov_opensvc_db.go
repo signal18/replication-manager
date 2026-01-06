@@ -172,6 +172,32 @@ func (cluster *Cluster) OpenSVCStartDatabaseService(server *ServerMonitor) error
 	return nil
 }
 
+func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, node string, rid string) error {
+	svc := cluster.OpenSVCConnect()
+	agent := server.Agent
+	if node != "" {
+		agent = node
+	}
+
+	// Validate rid parameter using shared validation function
+	if err := validateRestartRid(rid); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database restart validation failed: %s", err)
+		return err
+	}
+
+	if cluster.Conf.ProvOpensvcUseCollectorAPI {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Restart with collector API not supported, use V2 API")
+		return errors.New("Restart with collector API not supported")
+	} else {
+		err := svc.RestartServiceV2(cluster.Name, server.ServiceName, agent, rid)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can not restart database:  %s ", err)
+			return err
+		}
+	}
+	return nil
+}
+
 func (cluster *Cluster) OpenSVCUnprovisionDatabaseService(server *ServerMonitor) {
 	opensvc := cluster.OpenSVCConnect()
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {

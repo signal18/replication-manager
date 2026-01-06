@@ -10777,6 +10777,60 @@ paths:
       summary: Reset all slaves on a server
       tags:
       - DatabaseReplication
+  /api/clusters/{clusterName}/servers/{serverName}/actions/restart:
+    post:
+      description: Restarts a specified server within a cluster, optionally on a specific
+        node and/or specific resource ID. Only OpenSVC orchestrator is supported.
+        Only 'container#jobs' is allowed for rid parameter.
+      parameters:
+      - default: Bearer <Add access token here>
+        description: Insert your access token
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      - description: Cluster Name
+        in: path
+        name: clusterName
+        required: true
+        type: string
+      - description: Server Name
+        in: path
+        name: serverName
+        required: true
+        type: string
+      - description: 'Node Agent (default: server''s agent, use * for all nodes)'
+        in: query
+        name: node
+        type: string
+      - description: Resource ID. Only 'container#jobs' is allowed. Empty restarts
+          entire service.
+        in: query
+        name: rid
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Server restarted successfully
+          schema:
+            type: string
+        "400":
+          description: Invalid rid parameter
+          schema:
+            type: string
+        "403":
+          description: No valid ACL
+          schema:
+            type: string
+        "500":
+          description: Cluster Not Found" or "Server Not Found" or "Orchestrator not
+            supported
+          schema:
+            type: string
+      summary: Restart a server
+      tags:
+      - DatabaseActions
   /api/clusters/{clusterName}/servers/{serverName}/actions/run-jobs:
     get:
       description: Runs jobs on a specified server within a cluster.

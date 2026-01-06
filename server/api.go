@@ -1271,7 +1271,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -1774,7 +1774,7 @@ func (repman *ReplicationManager) DynamicPeerHandler(w http.ResponseWriter, r *h
 		uinfomap, err := repman.GetJWTClaims(r)
 		if err != nil {
 			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+			fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 			return
 		}
 

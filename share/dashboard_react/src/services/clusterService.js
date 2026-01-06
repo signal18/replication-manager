@@ -78,6 +78,7 @@ export const clusterService = {
   logicalBackup,
   stopDatabase,
   startDatabase,
+  restartDatabase,
   provisionDatabase,
   unprovisionDatabase,
   runRemoteJobs,
@@ -422,8 +423,13 @@ function stopDatabase(clusterName, serverId, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/stop`)
 }
 
-function startDatabase(clusterName, serverId, cfgAction, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start/${cfgAction}`)
+function startDatabase(clusterName, serverId, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/servers/${serverId}/actions/start`)
+}
+
+function restartDatabase(clusterName, serverId, rid, baseURL) {
+  const params = rid ? `?rid=${encodeURIComponent(rid)}` : ''
+  return getApi(baseURL).post(`clusters/${clusterName}/servers/${serverId}/actions/restart${params}`)
 }
 
 function provisionDatabase(clusterName, serverId, baseURL) {

@@ -8486,6 +8486,80 @@
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/restart": {
+            "post": {
+                "description": "Restarts a specified server within a cluster, optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Restart a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node Agent (default: server's agent, use * for all nodes)",
+                        "name": "node",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resource ID. Only 'container#jobs' is allowed. Empty restarts entire service.",
+                        "name": "rid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Server restarted successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid rid parameter",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Orchestrator not supported",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/run-jobs": {
             "get": {
                 "description": "Runs jobs on a specified server within a cluster.",

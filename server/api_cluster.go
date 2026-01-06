@@ -5954,7 +5954,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6077,7 +6077,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6142,7 +6142,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6408,7 +6408,7 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6472,7 +6472,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6545,7 +6545,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6679,7 +6679,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6761,7 +6761,7 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -7269,7 +7269,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 		}
 
 		if mycluster.LogSlack.IsHookActive(hooktype) {
-			mycluster.LogSlack.WithFields(post.Fields).Warnf(post.Message)
+			mycluster.LogSlack.WithFields(post.Fields).Warn(post.Message)
 		} else {
 			http.Error(w, "No slack hook", 500)
 			return
