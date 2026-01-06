@@ -2330,7 +2330,7 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 
 // handlerMuxServerRestart handles the HTTP request to restart a server within a cluster.
 // @Summary Restart a server
-// @Description Restarts a specified server within a cluster, optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.
+// @Description Restarts a specified server within a cluster (queues restart asynchronously), optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.
 // @Tags DatabaseActions
 // @Produce json
 // @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
@@ -2338,62 +2338,79 @@ func (repman *ReplicationManager) handlerMuxServerStart(w http.ResponseWriter, r
 // @Param serverName path string true "Server Name"
 // @Param node query string false "Node Agent (default: server's agent, use * for all nodes)"
 // @Param rid query string false "Resource ID. Only 'container#jobs' is allowed. Empty restarts entire service."
-// @Success 200 {string} string "Server restarted successfully"
+// @Success 200 {object} map[string]interface{} "Restart queued successfully"
 // @Failure 400 {string} string "Invalid rid parameter"
 // @Failure 403 {string} string "No valid ACL"
-// @Failure 500 {string} string "Cluster Not Found" or "Server Not Found" or "Orchestrator not supported"
+// @Failure 404 {string} string "Cluster Not Found or Server Not Found"
+// @Failure 501 {string} string "Orchestrator not supported"
 // @Router /api/clusters/{clusterName}/servers/{serverName}/actions/restart [post]
 func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-
-		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Restart is only supported for OpenSVC orchestrator", 500)
-			return
-		}
-
-		node := mycluster.GetServerFromName(vars["serverName"])
-		if node != nil {
-			// Get optional node parameter from query string (defaults to server's agent)
-			nodeParam := r.URL.Query().Get("node")
-			if nodeParam == "" {
-				nodeParam = node.Agent
-			}
-
-			// Get optional rid parameter from query string (empty string means restart entire service)
-			ridParam := r.URL.Query().Get("rid")
-
-			// Validate rid parameter - only allow container#jobs
-			if ridParam != "" && ridParam != "container#jobs" {
-				http.Error(w, "Invalid rid parameter: only 'container#jobs' is allowed", 400)
-				return
-			}
-
-			// Store parameters and set restart cookie
-			node.RestartNode = nodeParam
-			node.RestartRid = ridParam
-			err := node.SetRestartCookie()
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to set restart cookie: %s", err), 500)
-				return
-			}
-
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
-				"Restart queued for server %s (node: %s, rid: %s)", node.URL, nodeParam, ridParam)
-		} else {
-			http.Error(w, "Server Not Found", 500)
-			return
-		}
-	} else {
-		http.Error(w, "Cluster Not Found", 500)
+	if mycluster == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Cluster Not Found"})
 		return
 	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]string{"error": "No valid ACL"})
+		return
+	}
+
+	if mycluster.GetOrchestrator() != "opensvc" {
+		w.WriteHeader(http.StatusNotImplemented)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Restart is only supported for OpenSVC orchestrator"})
+		return
+	}
+
+	node := mycluster.GetServerFromName(vars["serverName"])
+	if node == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Server Not Found"})
+		return
+	}
+
+	// Get optional node parameter from query string (defaults to server's agent)
+	nodeParam := r.URL.Query().Get("node")
+	if nodeParam == "" {
+		nodeParam = node.Agent
+	}
+
+	// Get optional rid parameter from query string (empty string means restart entire service)
+	ridParam := r.URL.Query().Get("rid")
+
+	// Validate rid parameter - only allow container#jobs
+	if ridParam != "" && ridParam != cluster.RestartRidJobsContainer {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Invalid rid parameter: only '%s' is allowed", cluster.RestartRidJobsContainer)})
+		return
+	}
+
+	// Store parameters and set restart cookie
+	node.RestartNode = nodeParam
+	node.RestartRid = ridParam
+	err := node.SetRestartCookie()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Failed to set restart cookie: %s", err)})
+		return
+	}
+
+	mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Restart queued for server %s (node: %s, rid: %s)", node.URL, nodeParam, ridParam)
+
+	// Return success response
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Restart queued successfully",
+		"server":  node.Name,
+		"node":    nodeParam,
+		"rid":     ridParam,
+	})
 }
 
 // handlerMuxServerProvision handles the HTTP request to provision a server within a cluster.

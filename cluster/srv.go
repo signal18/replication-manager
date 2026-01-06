@@ -222,8 +222,8 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
-	RestartNode                 string     // stores node parameter for restart cookie
-	RestartRid                  string     // stores rid parameter for restart cookie
+	RestartNode                 string     // RestartNode stores node parameter for restart cookie (owned by cookie mechanism, single writer assumption)
+	RestartRid                  string     // RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
 	configGenMutex              sync.Mutex // protects config generation operations
 }

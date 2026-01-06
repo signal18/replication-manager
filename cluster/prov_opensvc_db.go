@@ -179,10 +179,10 @@ func (cluster *Cluster) OpenSVCRestartDatabaseService(server *ServerMonitor, nod
 		agent = node
 	}
 
-	// Validate rid parameter - only allow container#jobs
-	if rid != "" && rid != "container#jobs" {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Invalid rid '%s'. Only 'container#jobs' is allowed for database restart", rid)
-		return fmt.Errorf("invalid rid '%s': only 'container#jobs' is allowed for database restart", rid)
+	// Validate rid parameter using shared validation function
+	if err := validateRestartRid(rid); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Database restart validation failed: %s", err)
+		return err
 	}
 
 	if cluster.Conf.ProvOpensvcUseCollectorAPI {

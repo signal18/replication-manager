@@ -18,6 +18,20 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+// Constants for restart RID validation
+const (
+	RestartRidJobsContainer = "container#jobs"
+)
+
+// validateRestartRid validates the resource ID parameter for restart operations
+// Only container#jobs is allowed for targeted restarts
+func validateRestartRid(rid string) error {
+	if rid != "" && rid != RestartRidJobsContainer {
+		return fmt.Errorf("invalid rid '%s': only '%s' is allowed for restart", rid, RestartRidJobsContainer)
+	}
+	return nil
+}
+
 // Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
 	var err error
@@ -505,6 +519,9 @@ func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node strin
 	}
 	if err == nil {
 		server.DelRestartCookie()
+		// Clear stored parameters
+		server.RestartNode = ""
+		server.RestartRid = ""
 	}
 	return err
 }

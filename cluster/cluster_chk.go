@@ -1199,7 +1199,6 @@ func (cluster *Cluster) CheckRestartCookies() {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
 					"Processing restart cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
 			}
-
 			// Call the restart function with stored parameters
 			err := cluster.RestartDatabaseService(srv, nodeParam, ridParam)
 			if err != nil {
@@ -1213,7 +1212,6 @@ func (cluster *Cluster) CheckRestartCookies() {
 				srv.RestartNode = ""
 				srv.RestartRid = ""
 			}
-			// Note: RestartDatabaseService already deletes the cookie on success
 		}
 	}
 }
