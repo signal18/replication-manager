@@ -10799,7 +10799,7 @@ paths:
         name: serverName
         required: true
         type: string
-      - description: 'Node Name (default: server''s agent, use * for all nodes)'
+      - description: 'Node Agent (default: server''s agent, use * for all nodes)'
         in: query
         name: node
         type: string

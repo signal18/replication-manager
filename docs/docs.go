@@ -8532,7 +8532,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Node Name (default: server's agent, use * for all nodes)",
+                        "description": "Node Agent (default: server's agent, use * for all nodes)",
                         "name": "node",
                         "in": "query"
                     },
