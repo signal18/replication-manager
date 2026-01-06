@@ -469,6 +469,14 @@ func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 	server.NeedRefreshJobs = value
 }
 
+func (server *ServerMonitor) SetRestartNode(value string) {
+	server.RestartNode = value
+}
+
+func (server *ServerMonitor) SetRestartRid(value string) {
+	server.RestartRid = value
+}
+
 func (server *ServerMonitor) SetPointInTimeMeta(value backupmgr.PointInTimeMeta) {
 	server.PointInTimeMeta = value
 }

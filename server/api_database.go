@@ -2375,11 +2375,17 @@ func (repman *ReplicationManager) handlerMuxServerRestart(w http.ResponseWriter,
 				return
 			}
 
-			err := mycluster.RestartDatabaseService(node, nodeParam, ridParam)
+			// Store parameters and set restart cookie
+			node.RestartNode = nodeParam
+			node.RestartRid = ridParam
+			err := node.SetRestartCookie()
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Failed to restart server: %s", err), 500)
+				http.Error(w, fmt.Sprintf("Failed to set restart cookie: %s", err), 500)
 				return
 			}
+
+			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Restart queued for server %s (node: %s, rid: %s)", node.URL, nodeParam, ridParam)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return
