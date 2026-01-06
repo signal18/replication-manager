@@ -720,12 +720,15 @@ var RepeatOptions = []string{
 }
 
 type VariableState struct {
-	VariableName string        `json:"variableName"`
-	RuntimeName  string        `json:"runtimeName"`
-	Config       VariableValue `json:"cfgValue"`
-	Deployed     VariableValue `json:"value"`
-	Runtime      VariableValue `json:"runtimeValue"`
-	Preserved    VariableValue `json:"preservedValue"`
+	VariableName          string        `json:"variableName"`
+	RuntimeName           string        `json:"runtimeName"`
+	Config                VariableValue `json:"cfgValue"`
+	Deployed              VariableValue `json:"value"`
+	Runtime               VariableValue `json:"runtimeValue"`
+	Preserved             VariableValue `json:"preservedValue"`
+	PreservedSource       string        `json:"preservedSource,omitempty"`       // "server-specific", "cluster-level", or empty
+	PreservedPriority     int           `json:"preservedPriority,omitempty"`     // 1=server-specific, 2=cluster-level, 3=none/excluded
+	IsExcludedFromCluster bool          `json:"isExcludedFromCluster,omitempty"` // true if server is excluded from cluster-level preserved var
 }
 
 type LastConfigUpdate struct {

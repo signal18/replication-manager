@@ -85,29 +85,7 @@ export const preserveConfigPath = createAsyncThunk('configs/preserveConfigPath',
   }
 })
 
-export const getMySQLDefaultsCnf = createAsyncThunk('configs/getMySQLDefaultsCnf', async ({ clusterName }, thunkAPI) => {
-  try {
-    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data } = await configService.getMySQLDefaultsCnf(clusterName, baseURL)
-    return data
-  } catch (error) {
-    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to load MySQL defaults configuration' })
-  }
-})
-
-export const saveMySQLDefaultsCnf = createAsyncThunk('configs/saveMySQLDefaultsCnf', async ({ clusterName, content }, thunkAPI) => {
-  try {
-    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await configService.saveMySQLDefaultsCnf(clusterName, content, baseURL)
-    showSuccessBanner(`MySQL defaults configuration saved successfully!`, status, thunkAPI)
-    return { data, status }
-  } catch (error) {
-    showErrorBanner(`Saving MySQL defaults configuration failed!`, error, thunkAPI)
-    return thunkAPI.rejectWithValue(error.response?.data || { message: 'Failed to save MySQL defaults configuration' })
-  }
-})
-
-export const getPreservedVarsCnf = createAsyncThunk('configs/getPreservedVarsCnf', async (clusterName, thunkAPI) => {
+export const getPreservedVarsCnf = createAsyncThunk('configs/getPreservedVarsCnf', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data } = await configService.getPreservedVarsCnf(clusterName, baseURL)

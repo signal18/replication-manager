@@ -258,14 +258,11 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
-	// Per-cluster MySQL defaults (each cluster can have its own defaults file)
-	mysqlDefaultValues       map[string]string `json:"-"`
-	mysqlDefaultValuesLoaded bool              `json:"-"`
-	mysqlDefaultsMutex       sync.RWMutex      `json:"-"`
 	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
-	preservedVars       map[string]string `json:"-"`
-	preservedVarsLoaded bool              `json:"-"`
-	preservedVarsMutex  sync.RWMutex      `json:"-"`
+	preservedVars               map[string]string          `json:"-"`
+	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
+	preservedVarsLoaded         bool                       `json:"-"`
+	preservedVarsMutex          sync.RWMutex               `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -559,12 +556,9 @@ func (cluster *Cluster) InitFromConf() {
 
 	cluster.LoadAppConfigs()
 
-	// Initialize MySQL defaults before server initialization
-	// This ensures defaults are available during server configuration generation
-	if err := cluster.initMySQLDefaults(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-			"Failed to pre-initialize MySQL defaults: %v (will retry on demand)", err)
-	}
+	// Configurator generates base configuration from tags, which is overridden by:
+	// 1. Cluster-wide preserved variables
+	// 2. Server-specific preserved variables
 
 	// Initialize preserved variables before server initialization
 	// This replaces the old ProvDBConfigPreserveVars mechanism

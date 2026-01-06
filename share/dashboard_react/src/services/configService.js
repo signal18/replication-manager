@@ -8,8 +8,6 @@ export const configService = {
   generateConfig,
   generateAllConfigs,
   preserveConfigPath,
-  getMySQLDefaultsCnf,
-  saveMySQLDefaultsCnf,
   getPreservedVarsCnf,
   savePreservedVarsCnf,
 }
@@ -40,14 +38,6 @@ function generateAllConfigs(clusterName, type, baseURL) {
 
 function preserveConfigPath(clusterName, dbId, preserve, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/config-path-preserve/${preserve}`)
-}
-
-function getMySQLDefaultsCnf(clusterName, baseURL) {
-  return getApi(baseURL).get(`clusters/${clusterName}/settings/mysql-defaults-cnf`)
-}
-
-function saveMySQLDefaultsCnf(clusterName, content, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/save-mysql-defaults-cnf`, { content })
 }
 
 function getPreservedVarsCnf(clusterName, baseURL) {

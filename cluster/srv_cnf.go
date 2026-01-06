@@ -632,12 +632,47 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 	// PRIORITY 1: Load server-specific 01_preserved.cnf (highest priority)
 	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "01_preserved.cnf"), "preserved")
 
+	// Mark all loaded variables as server-specific (Priority 1)
+	server.VariablesMap.Range(func(k, v any) bool {
+		if varState, ok := v.(*config.VariableState); ok {
+			if varState.Preserved != nil {
+				varState.PreservedSource = "server-specific"
+				varState.PreservedPriority = 1
+				varState.IsExcludedFromCluster = false
+			}
+		}
+		return true
+	})
+
 	// PRIORITY 2: Load cluster-level preserved variables (can be overridden by server-specific)
 	// This replaces the old ProvDBConfigPreserveVars mechanism
 	cluster.preservedVarsMutex.RLock()
 	for varName, value := range cluster.preservedVars {
+		// Check if this server is excluded from this cluster-level preserved variable
+		if excludeMap, hasExclusions := cluster.preservedVarsExcludeServers[varName]; hasExclusions {
+			if excludeMap[server.Id] {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+					"Server %s is excluded from cluster-level preserved variable %s", server.URL, varName)
+
+				// Mark this variable as excluded even if it has server-specific value
+				if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+					v.IsExcludedFromCluster = true
+				}
+
+				continue
+			}
+		}
+
 		// Only apply if not already set by server-specific 01_preserved.cnf
-		if _, exists := server.VariablesMap.CheckAndGet(varName); !exists {
+		if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+			// Server-specific value exists, but mark that cluster-level is available
+			if v.PreservedSource == "" {
+				// This shouldn't happen, but handle it
+				v.PreservedSource = "server-specific"
+				v.PreservedPriority = 1
+			}
+		} else {
+			// No server-specific value, use cluster-level
 			isMap := strings.Contains(value, "=")
 
 			v := new(config.VariableState)
@@ -650,6 +685,11 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 			if value != "" {
 				v.SetPreservedValue(value)
 			}
+
+			// Set metadata for cluster-level (Priority 2)
+			v.PreservedSource = "cluster-level"
+			v.PreservedPriority = 2
+			v.IsExcludedFromCluster = false
 
 			server.VariablesMap.Store(varName, v)
 
@@ -825,23 +865,30 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 			continue
 		}
 
-		// LAYER 5: MYSQL DEFAULT FALLBACK
-		// Last resort when server failed and no deployed/runtime values exist
-		// Uses values from embedded mysql_defaults.cnf or custom file if provided
-		if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
-			defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
-			if defaultValue != "" {
-				sv := config.SingleValue(defaultValue)
-				v.Deployed = &sv
-				content.WriteString(v.PrintDeployedDelta() + "\n")
-				v.Deployed = nil // Reset to avoid persisting the change
+		// LAYER 5: MYSQL DEFAULT FALLBACK - REMOVED
+		// This layer has been removed because Configurator generates a base CNF from tags.
+		// Configuration priority is now:
+		//   1. Server-specific preserved variables (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf)
+		//   2. Cluster-wide preserved variables
+		//   3. Configurator settings (tags, templates, dynamic configs)
+		//   4. Runtime/deployed values
+		// No need for mysql_defaults.cnf as configurator provides the base configuration.
+		/*
+			if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
+				defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
+				if defaultValue != "" {
+					sv := config.SingleValue(defaultValue)
+					v.Deployed = &sv
+					content.WriteString(v.PrintDeployedDelta() + "\n")
+					v.Deployed = nil // Reset to avoid persisting the change
 
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
-					"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
-					v.VariableName, defaultValue)
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
+						v.VariableName, defaultValue)
+				}
+				continue
 			}
-			continue
-		}
+		*/
 
 		// Normal case: deployed value exists
 		content.WriteString(v.PrintDeployedDelta() + "\n")

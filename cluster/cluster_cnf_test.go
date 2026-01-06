@@ -1,7 +1,5 @@
 // replication-manager - Replication Manager Monitoring and CLI for MariaDB and MySQL
 // Copyright 2017 Signal 18 Cloud SAS
-// Authors: Guillaume Lefranc <guillaume@signal18.io>
-//          Stephane Varoqui  <stephane@signal18.io>
 // This source code is licensed under the GNU General Public License, version 3.
 
 package cluster
@@ -9,429 +7,410 @@ package cluster
 import (
 	"os"
 	"path/filepath"
-	"sync"
+	"strings"
 	"testing"
-	"time"
 
 	"github.com/signal18/replication-manager/config"
 )
 
-// TestMySQLDefaultsNoDeadlock tests for potential deadlocks in concurrent operations
-func TestMySQLDefaultsNoDeadlock(t *testing.T) {
-	// Create a temporary directory for testing
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Create a mock cluster
-	cluster := &Cluster{
-		Name: "test-cluster",
-		Conf: &config.Config{
-			WorkingDir: tempDir,
-			Verbose:    false,
+func TestLoadPreservedVarsFromCNF(t *testing.T) {
+	tests := []struct {
+		name               string
+		content            string
+		expectedVars       map[string]string
+		expectedExclusions map[string]map[string]bool
+		description        string
+	}{
+		{
+			name: "Basic variables without exclusions",
+			content: `[mysqld]
+max_connections = 500
+innodb_buffer_pool_size = 2G`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS":         "500",
+				"INNODB_BUFFER_POOL_SIZE": "2G",
+			},
+			expectedExclusions: map[string]map[string]bool{},
+			description:        "Should parse basic variables",
 		},
-		mysqlDefaultValues:       make(map[string]string),
-		mysqlDefaultValuesLoaded: false,
+		{
+			name: "Variables with single server exclusion",
+			content: `[mysqld]
+max_connections = 500
+max_connections.exclude = db1234567890`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS": "500",
+			},
+			expectedExclusions: map[string]map[string]bool{
+				"MAX_CONNECTIONS": {
+					"db1234567890": true,
+				},
+			},
+			description: "Should parse single exclusion",
+		},
+		{
+			name: "Variables with multiple server exclusions",
+			content: `[mysqld]
+max_connections = 1000
+max_connections.exclude = db1234567890,db9876543210,db5555555555`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS": "1000",
+			},
+			expectedExclusions: map[string]map[string]bool{
+				"MAX_CONNECTIONS": {
+					"db1234567890": true,
+					"db9876543210": true,
+					"db5555555555": true,
+				},
+			},
+			description: "Should parse multiple exclusions",
+		},
+		{
+			name: "Multiple variables with mixed exclusions",
+			content: `[mysqld]
+max_connections = 500
+max_connections.exclude = db1111111111
+
+innodb_buffer_pool_size = 2G
+innodb_buffer_pool_size.exclude = db2222222222,db3333333333
+
+read_only = 0`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS":         "500",
+				"INNODB_BUFFER_POOL_SIZE": "2G",
+				"READ_ONLY":               "0",
+			},
+			expectedExclusions: map[string]map[string]bool{
+				"MAX_CONNECTIONS": {
+					"db1111111111": true,
+				},
+				"INNODB_BUFFER_POOL_SIZE": {
+					"db2222222222": true,
+					"db3333333333": true,
+				},
+			},
+			description: "Should parse multiple variables with different exclusions",
+		},
+		{
+			name: "Empty value preservation",
+			content: `[mysqld]
+datadir = 
+max_connections = 500`,
+			expectedVars: map[string]string{
+				"DATADIR":         "",
+				"MAX_CONNECTIONS": "500",
+			},
+			expectedExclusions: map[string]map[string]bool{},
+			description:        "Should preserve empty values",
+		},
+		{
+			name: "Variable names with dashes",
+			content: `[mysqld]
+max-connections = 500
+innodb-buffer-pool-size = 2G`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS":         "500",
+				"INNODB_BUFFER_POOL_SIZE": "2G",
+			},
+			expectedExclusions: map[string]map[string]bool{},
+			description:        "Should normalize dashes to underscores",
+		},
+		{
+			name: "Comments and empty lines",
+			content: `# This is a comment
+[mysqld]
+# Another comment
+max_connections = 500
+
+# Empty line above
+innodb_buffer_pool_size = 2G`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS":         "500",
+				"INNODB_BUFFER_POOL_SIZE": "2G",
+			},
+			expectedExclusions: map[string]map[string]bool{},
+			description:        "Should ignore comments and empty lines",
+		},
+		{
+			name: "Exclusions with spaces in comma-separated list",
+			content: `[mysqld]
+max_connections = 500
+max_connections.exclude = db1111111111, db2222222222 , db3333333333`,
+			expectedVars: map[string]string{
+				"MAX_CONNECTIONS": "500",
+			},
+			expectedExclusions: map[string]map[string]bool{
+				"MAX_CONNECTIONS": {
+					"db1111111111": true,
+					"db2222222222": true,
+					"db3333333333": true,
+				},
+			},
+			description: "Should handle spaces in exclusion lists",
+		},
 	}
 
-	// Test 1: Concurrent reads should not deadlock
-	t.Run("ConcurrentReads", func(t *testing.T) {
-		done := make(chan bool, 10)
-		timeout := time.After(5 * time.Second)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vars, exclusions := loadPreservedVarsFromCNF(tt.content)
 
-		for i := 0; i < 10; i++ {
-			go func() {
-				_, _ = cluster.GetMySQLDefaultsCnfContent()
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 10; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in concurrent reads")
+			// Check variables
+			if len(vars) != len(tt.expectedVars) {
+				t.Errorf("%s: Expected %d variables, got %d", tt.description, len(tt.expectedVars), len(vars))
 			}
-		}
-	})
 
-	// Test 2: Concurrent writes should not deadlock
-	t.Run("ConcurrentWrites", func(t *testing.T) {
-		done := make(chan bool, 5)
-		timeout := time.After(5 * time.Second)
-
-		for i := 0; i < 5; i++ {
-			go func(idx int) {
-				content := "# Test content\n[mysqld]\nmax_connections = 100\n"
-				_ = cluster.WriteMySQLDefaultsCnfContent(content)
-				done <- true
-			}(i)
-		}
-
-		for i := 0; i < 5; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in concurrent writes")
+			for key, expectedValue := range tt.expectedVars {
+				if value, ok := vars[key]; !ok {
+					t.Errorf("%s: Variable %s not found", tt.description, key)
+				} else if value != expectedValue {
+					t.Errorf("%s: Variable %s = %s, expected %s", tt.description, key, value, expectedValue)
+				}
 			}
-		}
-	})
 
-	// Test 3: Mixed reads and writes should not deadlock
-	t.Run("MixedReadWrite", func(t *testing.T) {
-		done := make(chan bool, 20)
-		timeout := time.After(5 * time.Second)
-
-		// Start 10 readers
-		for i := 0; i < 10; i++ {
-			go func() {
-				_, _ = cluster.GetMySQLDefaultsCnfContent()
-				done <- true
-			}()
-		}
-
-		// Start 10 writers
-		for i := 0; i < 10; i++ {
-			go func() {
-				content := "# Test content\n[mysqld]\nmax_connections = 100\n"
-				_ = cluster.WriteMySQLDefaultsCnfContent(content)
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 20; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in mixed read/write operations")
+			// Check exclusions
+			if len(exclusions) != len(tt.expectedExclusions) {
+				t.Errorf("%s: Expected %d exclusion entries, got %d", tt.description, len(tt.expectedExclusions), len(exclusions))
 			}
-		}
-	})
 
-	// Test 4: GetInfo and Reload operations should not deadlock
-	t.Run("InfoAndReload", func(t *testing.T) {
-		done := make(chan bool, 20)
-		timeout := time.After(5 * time.Second)
-
-		for i := 0; i < 10; i++ {
-			go func() {
-				_ = cluster.GetMySQLDefaultsInfo()
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 10; i++ {
-			go func() {
-				_ = cluster.ReloadMySQLDefaults()
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 20; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in GetInfo/Reload operations")
+			for varName, expectedServers := range tt.expectedExclusions {
+				if servers, ok := exclusions[varName]; !ok {
+					t.Errorf("%s: Exclusion for variable %s not found", tt.description, varName)
+				} else {
+					if len(servers) != len(expectedServers) {
+						t.Errorf("%s: Variable %s: Expected %d excluded servers, got %d", tt.description, varName, len(expectedServers), len(servers))
+					}
+					for serverID := range expectedServers {
+						if !servers[serverID] {
+							t.Errorf("%s: Variable %s: Server %s not in exclusion list", tt.description, varName, serverID)
+						}
+					}
+				}
 			}
-		}
-	})
-
-	// Test 5: SaveMySQLDefaults should not deadlock
-	t.Run("SaveDefaults", func(t *testing.T) {
-		// Initialize defaults first
-		_ = cluster.initMySQLDefaults()
-
-		done := make(chan bool, 5)
-		timeout := time.After(5 * time.Second)
-
-		for i := 0; i < 5; i++ {
-			go func() {
-				_ = cluster.SaveMySQLDefaults()
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 5; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in SaveMySQLDefaults")
-			}
-		}
-	})
-
-	// Test 6: All operations together (stress test)
-	t.Run("StressTest", func(t *testing.T) {
-		var wg sync.WaitGroup
-		timeout := time.After(10 * time.Second)
-		done := make(chan bool)
-
-		operations := []func(){
-			func() { _, _ = cluster.GetMySQLDefaultsCnfContent() },
-			func() { _ = cluster.WriteMySQLDefaultsCnfContent("# Test\n[mysqld]\nmax_connections = 100\n") },
-			func() { _ = cluster.GetMySQLDefaultsInfo() },
-			func() { _ = cluster.ReloadMySQLDefaults() },
-			func() { _ = cluster.SaveMySQLDefaults() },
-			func() { _ = cluster.getMySQLDefaultForVar("max_connections") },
-		}
-
-		// Run 30 random operations concurrently
-		wg.Add(30)
-		for i := 0; i < 30; i++ {
-			go func(idx int) {
-				defer wg.Done()
-				op := operations[idx%len(operations)]
-				op()
-			}(i)
-		}
-
-		go func() {
-			wg.Wait()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// Success
-		case <-timeout:
-			t.Fatal("Deadlock detected in stress test")
-		}
-	})
+		})
+	}
 }
 
-// TestReloadMySQLDefaultsUnsafe tests the specific deadlock scenario in reloadMySQLDefaultsUnsafe
-func TestReloadMySQLDefaultsUnsafe(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-unsafe-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
+func TestIsServerExcludedFromPreservedVar(t *testing.T) {
+	// Create a mock cluster with exclusions
 	cluster := &Cluster{
-		Name: "test-cluster",
-		Conf: &config.Config{
-			WorkingDir: tempDir,
-			Verbose:    false,
+		preservedVars: map[string]string{
+			"MAX_CONNECTIONS": "500",
+			"READ_ONLY":       "0",
 		},
-		mysqlDefaultValues:       make(map[string]string),
-		mysqlDefaultValuesLoaded: false,
-	}
-
-	// Test the specific scenario where reloadMySQLDefaultsUnsafe
-	// temporarily releases RLock to call SaveMySQLDefaults (which takes RLock)
-	t.Run("UnlockRelockScenario", func(t *testing.T) {
-		timeout := time.After(5 * time.Second)
-		done := make(chan bool)
-
-		go func() {
-			// This should trigger the unlock/relock path in reloadMySQLDefaultsUnsafe
-			// when the file doesn't exist initially
-			_ = cluster.ReloadMySQLDefaults()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// Success
-		case <-timeout:
-			t.Fatal("Deadlock detected in unlock/relock scenario")
-		}
-	})
-}
-
-// TestGetMySQLDefaultsCnfContentAutoCreate tests auto-creation deadlock scenario
-func TestGetMySQLDefaultsCnfContentAutoCreate(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-autocreate-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	cluster := &Cluster{
-		Name: "test-cluster",
-		Conf: &config.Config{
-			WorkingDir: tempDir,
-			Verbose:    false,
+		preservedVarsExcludeServers: map[string]map[string]bool{
+			"MAX_CONNECTIONS": {
+				"db1234567890": true,
+				"db9876543210": true,
+			},
+			"READ_ONLY": {
+				"db5555555555": true,
+			},
 		},
-		mysqlDefaultValues:       make(map[string]string),
-		mysqlDefaultValuesLoaded: false,
 	}
 
-	// Test concurrent auto-creation from embedded defaults
-	t.Run("ConcurrentAutoCreate", func(t *testing.T) {
-		done := make(chan bool, 5)
-		timeout := time.After(5 * time.Second)
+	tests := []struct {
+		varName     string
+		serverID    string
+		expected    bool
+		description string
+	}{
+		{
+			varName:     "MAX_CONNECTIONS",
+			serverID:    "db1234567890",
+			expected:    true,
+			description: "Should be excluded",
+		},
+		{
+			varName:     "MAX_CONNECTIONS",
+			serverID:    "db9876543210",
+			expected:    true,
+			description: "Should be excluded",
+		},
+		{
+			varName:     "MAX_CONNECTIONS",
+			serverID:    "db1111111111",
+			expected:    false,
+			description: "Should not be excluded",
+		},
+		{
+			varName:     "READ_ONLY",
+			serverID:    "db5555555555",
+			expected:    true,
+			description: "Should be excluded",
+		},
+		{
+			varName:     "READ_ONLY",
+			serverID:    "db1234567890",
+			expected:    false,
+			description: "Should not be excluded (different variable)",
+		},
+		{
+			varName:     "INNODB_BUFFER_POOL_SIZE",
+			serverID:    "db1234567890",
+			expected:    false,
+			description: "Should not be excluded (no exclusions defined)",
+		},
+	}
 
-		// Multiple goroutines try to read non-existent file at the same time
-		// This triggers auto-creation from embedded defaults
-		for i := 0; i < 5; i++ {
-			go func() {
-				_, _ = cluster.GetMySQLDefaultsCnfContent()
-				done <- true
-			}()
-		}
-
-		for i := 0; i < 5; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in concurrent auto-create")
+	for _, tt := range tests {
+		t.Run(tt.description, func(t *testing.T) {
+			result := cluster.IsServerExcludedFromPreservedVar(tt.varName, tt.serverID)
+			if result != tt.expected {
+				t.Errorf("%s: Expected %v, got %v for variable %s and server %s",
+					tt.description, tt.expected, result, tt.varName, tt.serverID)
 			}
-		}
-	})
+		})
+	}
 }
 
-// TestSaveMySQLDefaultsWithRLock tests SaveMySQLDefaults which uses RLock
-func TestSaveMySQLDefaultsWithRLock(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-rlock-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+func TestGetPreservedVarsPath(t *testing.T) {
+	cluster := &Cluster{
+		Conf: &config.Config{
+			WorkingDir: "/tmp/test",
+		},
+		Name: "test_cluster",
 	}
-	defer os.RemoveAll(tempDir)
+
+	expected := "/tmp/test/test_cluster/preserved_variables.cnf"
+	result := cluster.GetPreservedVarsPath()
+
+	if result != expected {
+		t.Errorf("Expected path %s, got %s", expected, result)
+	}
+}
+
+func TestPreservedVarsFileOperations(t *testing.T) {
+	// Create temporary directory
+	tempDir := t.TempDir()
 
 	cluster := &Cluster{
-		Name: "test-cluster",
 		Conf: &config.Config{
 			WorkingDir: tempDir,
 			Verbose:    false,
 		},
-		mysqlDefaultValues: map[string]string{
-			"MAX_CONNECTIONS": "100",
+		Name: "test_cluster",
+		preservedVars: map[string]string{
+			"MAX_CONNECTIONS":         "500",
+			"INNODB_BUFFER_POOL_SIZE": "2G",
 		},
-		mysqlDefaultValuesLoaded: true,
+		preservedVarsExcludeServers: map[string]map[string]bool{
+			"MAX_CONNECTIONS": {
+				"db1234567890": true,
+				"db9876543210": true,
+			},
+		},
+		preservedVarsLoaded: true,
 	}
 
-	// Test that SaveMySQLDefaults (RLock) doesn't deadlock with other operations
-	t.Run("SaveWithConcurrentReads", func(t *testing.T) {
-		done := make(chan bool, 10)
-		timeout := time.After(5 * time.Second)
+	// Create cluster directory
+	clusterDir := filepath.Join(tempDir, "test_cluster")
+	err := os.MkdirAll(clusterDir, 0755)
+	if err != nil {
+		t.Fatalf("Failed to create cluster directory: %v", err)
+	}
 
-		// 5 Save operations (RLock)
-		for i := 0; i < 5; i++ {
-			go func() {
-				_ = cluster.SaveMySQLDefaults()
-				done <- true
-			}()
-		}
+	// Test SavePreservedVars
+	err = cluster.SavePreservedVars()
+	if err != nil {
+		t.Errorf("SavePreservedVars failed: %v", err)
+	}
 
-		// 5 GetInfo operations (RLock)
-		for i := 0; i < 5; i++ {
-			go func() {
-				_ = cluster.GetMySQLDefaultsInfo()
-				done <- true
-			}()
-		}
+	// Check if file was created
+	filePath := cluster.GetPreservedVarsPath()
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		t.Errorf("Preserved variables file was not created at %s", filePath)
+	}
 
-		for i := 0; i < 10; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected with SaveMySQLDefaults and concurrent reads")
-			}
-		}
-	})
+	// Test GetPreservedVarsCnfContent
+	content, err := cluster.GetPreservedVarsCnfContent()
+	if err != nil {
+		t.Errorf("GetPreservedVarsCnfContent failed: %v", err)
+	}
+
+	// Verify content
+	if !strings.Contains(content, "max-connections = 500") {
+		t.Errorf("Content does not contain expected variable")
+	}
+	if !strings.Contains(content, "max-connections.exclude = db1234567890,db9876543210") {
+		t.Errorf("Content does not contain expected exclusions")
+	}
+	if !strings.Contains(content, "innodb-buffer-pool-size = 2G") {
+		t.Errorf("Content does not contain expected variable")
+	}
+
+	// Test ReloadPreservedVars
+	err = cluster.ReloadPreservedVars()
+	if err != nil {
+		t.Errorf("ReloadPreservedVars failed: %v", err)
+	}
+
+	// Verify reloaded data
+	if cluster.preservedVars["MAX_CONNECTIONS"] != "500" {
+		t.Errorf("Variable not reloaded correctly")
+	}
+	if !cluster.preservedVarsExcludeServers["MAX_CONNECTIONS"]["db1234567890"] {
+		t.Errorf("Exclusions not reloaded correctly")
+	}
 }
 
-// TestMutexOperationOrder tests the order of mutex operations
-func TestMutexOperationOrder(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-order-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
+func TestAddRemovePreservedVarExclusion(t *testing.T) {
 	cluster := &Cluster{
-		Name: "test-cluster",
 		Conf: &config.Config{
-			WorkingDir: tempDir,
-			Verbose:    false,
+			Verbose: false,
 		},
-		mysqlDefaultValues:       make(map[string]string),
-		mysqlDefaultValuesLoaded: false,
+		preservedVars:               make(map[string]string),
+		preservedVarsExcludeServers: make(map[string]map[string]bool),
+		preservedVarsLoaded:         true,
 	}
 
-	// Create the file first to avoid auto-creation path
-	defaultsPath := cluster.GetMySQLDefaultsPath()
-	_ = os.MkdirAll(filepath.Dir(defaultsPath), 0755)
-	_ = os.WriteFile(defaultsPath, []byte("# Test\n[mysqld]\nmax_connections = 100\n"), 0644)
-
-	t.Run("OperationSequence", func(t *testing.T) {
-		timeout := time.After(5 * time.Second)
-		done := make(chan bool)
-
-		go func() {
-			// Sequence that might cause deadlock:
-			// 1. GetMySQLDefaultsCnfContent (no lock, but reads file)
-			// 2. WriteMySQLDefaultsCnfContent (writes file, calls ReloadMySQLDefaults with Lock)
-			// 3. GetMySQLDefaultsInfo (RLock)
-			// 4. SaveMySQLDefaults (RLock)
-			// 5. ReloadMySQLDefaults (Lock)
-
-			_, _ = cluster.GetMySQLDefaultsCnfContent()
-			_ = cluster.WriteMySQLDefaultsCnfContent("# Test\n[mysqld]\nmax_connections = 200\n")
-			_ = cluster.GetMySQLDefaultsInfo()
-			_ = cluster.SaveMySQLDefaults()
-			_ = cluster.ReloadMySQLDefaults()
-
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// Success
-		case <-timeout:
-			t.Fatal("Deadlock detected in operation sequence")
-		}
-	})
-}
-
-// TestWriteThenReadRace tests the race between write and subsequent read
-func TestWriteThenReadRace(t *testing.T) {
-	tempDir, err := os.MkdirTemp("", "mysql-defaults-race-test-*")
+	// Test adding exclusion for non-existent variable
+	err := cluster.AddPreservedVarExclusion("MAX_CONNECTIONS", "db1234567890")
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
-	cluster := &Cluster{
-		Name: "test-cluster",
-		Conf: &config.Config{
-			WorkingDir: tempDir,
-			Verbose:    false,
-		},
-		mysqlDefaultValues:       make(map[string]string),
-		mysqlDefaultValuesLoaded: false,
+		t.Errorf("AddPreservedVarExclusion failed: %v", err)
 	}
 
-	t.Run("WriteReadRace", func(t *testing.T) {
-		timeout := time.After(5 * time.Second)
-		done := make(chan bool, 10)
+	// Verify exclusion was added
+	if !cluster.IsServerExcludedFromPreservedVar("MAX_CONNECTIONS", "db1234567890") {
+		t.Errorf("Exclusion was not added correctly")
+	}
 
-		for i := 0; i < 10; i++ {
-			go func(idx int) {
-				// Write then immediately read
-				_ = cluster.WriteMySQLDefaultsCnfContent("# Test\n[mysqld]\nmax_connections = 100\n")
-				_, _ = cluster.GetMySQLDefaultsCnfContent()
-				done <- true
-			}(i)
-		}
+	// Add another exclusion for the same variable
+	err = cluster.AddPreservedVarExclusion("MAX_CONNECTIONS", "db9876543210")
+	if err != nil {
+		t.Errorf("AddPreservedVarExclusion failed: %v", err)
+	}
 
-		for i := 0; i < 10; i++ {
-			select {
-			case <-done:
-				// Success
-			case <-timeout:
-				t.Fatal("Deadlock detected in write-then-read race")
-			}
+	// Verify both exclusions exist
+	if len(cluster.preservedVarsExcludeServers["MAX_CONNECTIONS"]) != 2 {
+		t.Errorf("Expected 2 exclusions, got %d", len(cluster.preservedVarsExcludeServers["MAX_CONNECTIONS"]))
+	}
+
+	// Test removing exclusion
+	err = cluster.RemovePreservedVarExclusion("MAX_CONNECTIONS", "db1234567890")
+	if err != nil {
+		t.Errorf("RemovePreservedVarExclusion failed: %v", err)
+	}
+
+	// Verify exclusion was removed
+	if cluster.IsServerExcludedFromPreservedVar("MAX_CONNECTIONS", "db1234567890") {
+		t.Errorf("Exclusion was not removed correctly")
+	}
+
+	// Verify other exclusion still exists
+	if !cluster.IsServerExcludedFromPreservedVar("MAX_CONNECTIONS", "db9876543210") {
+		t.Errorf("Other exclusion should still exist")
+	}
+
+	// Remove last exclusion
+	err = cluster.RemovePreservedVarExclusion("MAX_CONNECTIONS", "db9876543210")
+	if err != nil {
+		t.Errorf("RemovePreservedVarExclusion failed: %v", err)
+	}
+
+	// Verify map is cleaned up
+	if _, exists := cluster.preservedVarsExcludeServers["MAX_CONNECTIONS"]; exists {
+		if len(cluster.preservedVarsExcludeServers["MAX_CONNECTIONS"]) > 0 {
+			t.Errorf("Exclusion map should be empty")
 		}
-	})
+	}
 }
