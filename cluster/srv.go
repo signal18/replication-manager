@@ -825,6 +825,28 @@ func (server *ServerMonitor) Refresh() error {
 			return nil
 		}
 
+		// Check if deployed config file was reloaded externally
+		// If so, re-read preserved variables to sync with any changes
+		if server.VariablesMap.HasDeployedChanged() {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+				"Deployed config changed for %s, reloading preserved variables", server.URL)
+
+			if err := server.ReadPreservedVariables(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Failed to reload preserved variables for %s: %s", server.URL, err)
+			}
+
+			// Refresh delta variables file whenever runtime values are updated
+			// This ensures 02_delta.cnf stays in sync with current deployed state
+			if err := server.WriteDeltaVariables(); err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+					"Failed to refresh delta variables for %s: %s", server.URL, err)
+			}
+
+			// Clear the flag after processing
+			server.VariablesMap.ClearDeployedChanged()
+		}
+
 		if server.IsNeedPathCheck {
 			server.CheckDBConfigPath()
 		}

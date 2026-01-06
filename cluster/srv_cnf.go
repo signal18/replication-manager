@@ -673,25 +673,20 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 			}
 		} else {
 			// No server-specific value, use cluster-level
-			isMap := strings.Contains(value, "=")
+			// Use NewVariableState to create with proper lowercase key
+			v := config.NewVariableState(varName)
 
-			v := new(config.VariableState)
-			if isMap {
-				v.Preserved = make(config.MapValue)
-			} else {
-				v.Preserved = new(config.SingleValue)
-			}
-
-			if value != "" {
-				v.SetPreservedValue(value)
-			}
+			// Always set preserved value, even if empty
+			// Empty value means "preserve whatever is currently deployed"
+			v.SetPreservedValue(value)
 
 			// Set metadata for cluster-level (Priority 2)
 			v.PreservedSource = "cluster-level"
 			v.PreservedPriority = 2
 			v.IsExcludedFromCluster = false
 
-			server.VariablesMap.Store(varName, v)
+			// Use Set() instead of Store() to ensure lowercase key normalization
+			server.VariablesMap.Set(varName, v)
 
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 				"Applied cluster-level preserved variable %s=%s to server %s", varName, value, server.URL)

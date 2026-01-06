@@ -874,11 +874,16 @@ func (vs VariableState) MarshalJSON() ([]byte, error) {
 
 type VariablesMap struct {
 	*sync.Map
+	deployedChanged bool       // Flag to track if deployed values have changed
+	changeMutex     sync.Mutex // Mutex to protect the flag
 }
 
 func NewVariablesMap() *VariablesMap {
 	s := new(sync.Map)
-	m := &VariablesMap{Map: s}
+	m := &VariablesMap{
+		Map:             s,
+		deployedChanged: false,
+	}
 	return m
 }
 
@@ -1073,6 +1078,27 @@ func (m *VariablesMap) SetPreservedValues(strmap map[string]string) {
 	}
 }
 
+// HasDeployedChanged returns true if deployed values have changed since last check
+func (m *VariablesMap) HasDeployedChanged() bool {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	return m.deployedChanged
+}
+
+// MarkDeployedChanged marks that deployed values have changed
+func (m *VariablesMap) MarkDeployedChanged() {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	m.deployedChanged = true
+}
+
+// ClearDeployedChanged clears the deployed changed flag
+func (m *VariablesMap) ClearDeployedChanged() {
+	m.changeMutex.Lock()
+	defer m.changeMutex.Unlock()
+	m.deployedChanged = false
+}
+
 func (m *VariablesMap) ToNormalDeployedMap() map[string]string {
 	result := make(map[string]string)
 	m.Range(func(k, v any) bool {
@@ -1149,6 +1175,11 @@ func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 				m.SetPreservedValue(varname, key.Value())
 			}
 		}
+	}
+
+	// Mark deployed values as changed if this was a deployed config load
+	if cnftype == "deployed" {
+		m.MarkDeployedChanged()
 	}
 
 	return nil
