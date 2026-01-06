@@ -14967,73 +14967,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/settings/actions/save-mysql-defaults-cnf": {
-            "post": {
-                "description": "This endpoint saves the updated content to the mysql_defaults.cnf file in the cluster's working directory",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterSettings"
-                ],
-                "summary": "Save MySQL defaults CNF content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "CNF file content",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/server.MySQLDefaultsCnfRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "Successfully saved MySQL defaults CNF",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "400": {
-                        "description": "Invalid request body",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error saving file",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
         "/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf": {
             "post": {
                 "description": "This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory",
@@ -15418,64 +15351,6 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/clusters/{clusterName}/settings/mysql-defaults-cnf": {
-            "get": {
-                "description": "This endpoint retrieves the content of the mysql_defaults.cnf file from the cluster's working directory",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "ClusterSettings"
-                ],
-                "summary": "Get MySQL defaults CNF content",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "default": "Bearer \u003cAdd access token here\u003e",
-                        "description": "Insert your access token",
-                        "name": "Authorization",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Cluster Name",
-                        "name": "clusterName",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "CNF file content in JSON format with 'content' key",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "No valid ACL",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "404": {
-                        "description": "File not found",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Error reading file",
                         "schema": {
                             "type": "string"
                         }
@@ -24707,14 +24582,6 @@ const docTemplate = `{
                     "$ref": "#/definitions/logrus.Fields"
                 },
                 "message": {
-                    "type": "string"
-                }
-            }
-        },
-        "server.MySQLDefaultsCnfRequest": {
-            "type": "object",
-            "properties": {
-                "content": {
                     "type": "string"
                 }
             }

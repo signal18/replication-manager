@@ -3797,11 +3797,6 @@ definitions:
       message:
         type: string
     type: object
-  server.MySQLDefaultsCnfRequest:
-    properties:
-      content:
-        type: string
-    type: object
   server.PreservedVarsCnfRequest:
     properties:
       content:
@@ -14074,52 +14069,6 @@ paths:
       summary: Reset Graphite filter list for a specific cluster
       tags:
       - ClusterGraphite
-  /api/clusters/{clusterName}/settings/actions/save-mysql-defaults-cnf:
-    post:
-      consumes:
-      - application/json
-      description: This endpoint saves the updated content to the mysql_defaults.cnf
-        file in the cluster's working directory
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      - description: CNF file content
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/server.MySQLDefaultsCnfRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Successfully saved MySQL defaults CNF
-          schema:
-            type: string
-        "400":
-          description: Invalid request body
-          schema:
-            type: string
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "500":
-          description: Error saving file
-          schema:
-            type: string
-      summary: Save MySQL defaults CNF content
-      tags:
-      - ClusterSettings
   /api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf:
     post:
       consumes:
@@ -14384,46 +14333,6 @@ paths:
           schema:
             type: string
       summary: Switch settings for a specific cluster
-      tags:
-      - ClusterSettings
-  /api/clusters/{clusterName}/settings/mysql-defaults-cnf:
-    get:
-      description: This endpoint retrieves the content of the mysql_defaults.cnf file
-        from the cluster's working directory
-      parameters:
-      - default: Bearer <Add access token here>
-        description: Insert your access token
-        in: header
-        name: Authorization
-        required: true
-        type: string
-      - description: Cluster Name
-        in: path
-        name: clusterName
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: CNF file content in JSON format with 'content' key
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: No valid ACL
-          schema:
-            type: string
-        "404":
-          description: File not found
-          schema:
-            type: string
-        "500":
-          description: Error reading file
-          schema:
-            type: string
-      summary: Get MySQL defaults CNF content
       tags:
       - ClusterSettings
   /api/clusters/{clusterName}/settings/preserved-variables-cnf:
