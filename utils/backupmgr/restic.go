@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	sharedlog "github.com/signal18/replication-manager/utils/s18log/shared"
@@ -124,6 +125,10 @@ type ResticManager struct {
 	HasLocks       bool
 	taskID         int
 	CurrentID      int
+	mountMutex     *sync.Mutex
+	mountCmd       *exec.Cmd
+	mountPath      string
+	mountDone      chan error
 }
 
 // NewResticRepo initializes the repository manager
@@ -135,6 +140,7 @@ func NewResticRepo(binaryPath string, msgChan chan sharedlog.Message, logmodule 
 		LogModule:   logmodule,
 		TaskQueue:   make([]*ResticTask, 0),
 		Mutex:       &sync.Mutex{},
+		mountMutex:  &sync.Mutex{},
 		TaskErrors:  make(map[TaskType]error),
 		errorMutex:  &sync.Mutex{},
 		ResultChan:  make(chan ResticResult, 10),
@@ -194,7 +200,7 @@ func (repo *ResticManager) PauseWorkerOnDisk() {
 	defer repo.Mutex.Unlock()
 	repo.isPaused = true
 	repo.isPausedByDisk = true
-	repo.Print(logrus.WarnLevel, "Pausing Restic worker due to low disk space")
+	repo.Printf(logrus.WarnLevel, "Pausing Restic worker due to low disk space")
 }
 
 func (repo *ResticManager) HasAnyError() bool {
@@ -302,15 +308,19 @@ func (repo *ResticManager) GetCanFetch() bool {
 	return repo.CanFetch
 }
 
-func (repo *ResticManager) Print(level logrus.Level, message string, args ...interface{}) {
+func (repo *ResticManager) Print(level logrus.Level, message string) {
 	if repo.MessageChan != nil {
 		repo.MessageChan <- sharedlog.Message{
 			Module:    repo.LogModule,
 			Level:     sharedlog.FromLogrusLevel(uint32(level)),
-			Text:      fmt.Sprintf(message, args...),
+			Text:      message,
 			Timestamp: fmt.Sprint(time.Now().Format("2006/01/02 15:04:05")),
 		}
 	}
+}
+
+func (repo *ResticManager) Printf(level logrus.Level, format string, args ...interface{}) {
+	repo.Print(level, fmt.Sprintf(format, args...))
 }
 
 func (repo *ResticManager) worker() {
@@ -356,7 +366,7 @@ func (repo *ResticManager) worker() {
 			loglevel = logrus.DebugLevel
 		}
 
-		repo.Print(loglevel, "Worker processing task ID: %d", task.ID)
+		repo.Printf(loglevel, "Worker processing task ID: %d", task.ID)
 
 		var result ResticResult
 		switch task.Type {
@@ -376,7 +386,7 @@ func (repo *ResticManager) worker() {
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, Error: err}
 		default:
-			repo.Print(logrus.WarnLevel, "Unknown task type: %d", task.Type)
+			repo.Printf(logrus.WarnLevel, "Unknown task type: %d", task.Type)
 			continue
 		}
 
@@ -384,7 +394,7 @@ func (repo *ResticManager) worker() {
 			repo.SetError(task.Type, result.Error)
 		}
 
-		repo.Print(loglevel, "Worker finished task ID: %d", task.ID)
+		repo.Printf(loglevel, "Worker finished task ID: %d", task.ID)
 	}
 }
 
@@ -401,7 +411,7 @@ func (repo *ResticManager) appendTask(task *ResticTask) {
 
 	// Log the addition of the tasks with ID
 	if task.ID != 0 {
-		repo.Print(logrus.InfoLevel, "Added %s task to the queue, ID: %d", GetTaskName(task.Type), task.ID)
+		repo.Printf(logrus.InfoLevel, "Added %s task to the queue, ID: %d", GetTaskName(task.Type), task.ID)
 	}
 
 	// Notify the worker that a new task is available if not paused
@@ -429,6 +439,301 @@ func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) e
 		repo.appendPurgeTask(opt)
 	}
 	return nil
+}
+
+func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths []string) error {
+	if snapshotID == "" {
+		return fmt.Errorf("snapshot ID is empty")
+	}
+	if targetDir == "" {
+		return fmt.Errorf("target dir is empty")
+	}
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create target dir: %w", err)
+	}
+
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.RestoreSnapshot(snapshotID, targetDir, paths)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		return err
+	}
+
+	if err := repo.CheckResticLocks(); err != nil {
+		return err
+	}
+
+	args := []string{"restore", snapshotID, "--target", targetDir}
+	for _, path := range paths {
+		if path != "" {
+			args = append(args, "--path", path)
+		}
+	}
+
+	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
+	if err != nil {
+		return fmt.Errorf("failed to restore snapshot: %v, stderr: %s", err, stderr)
+	}
+
+	return nil
+}
+
+func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.Writer) error {
+	if snapshotID == "" {
+		return fmt.Errorf("snapshot ID is empty")
+	}
+	if filePath == "" {
+		return fmt.Errorf("file path is empty")
+	}
+	if writer == nil {
+		return fmt.Errorf("output writer is nil")
+	}
+
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.DumpSnapshot(snapshotID, filePath, writer)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		return err
+	}
+
+	args := []string{"dump", snapshotID, filePath}
+	cmd := exec.Command(repo.BinaryPath, args...)
+	cmd.Env = append(os.Environ(), repo.Env...)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("error starting command: %w", err)
+	}
+
+	var stderrBuf bytes.Buffer
+	copyErrCh := make(chan error, 1)
+	stderrErrCh := make(chan error, 1)
+
+	go func() {
+		_, copyErr := io.Copy(writer, stdoutPipe)
+		copyErrCh <- copyErr
+	}()
+
+	go func() {
+		_, stderrErr := io.Copy(&stderrBuf, stderrPipe)
+		stderrErrCh <- stderrErr
+	}()
+
+	copyErr := <-copyErrCh
+	stderrErr := <-stderrErrCh
+
+	if stderrErr != nil {
+		return fmt.Errorf("failed to read stderr: %w", stderrErr)
+	}
+	if copyErr != nil {
+		return fmt.Errorf("failed to stream output: %w", copyErr)
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("command execution failed: %w, stderr: %s", err, stderrBuf.Bytes())
+	}
+
+	repo.Printf(logrus.InfoLevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+	return nil
+}
+
+func (repo *ResticManager) MountRepo(targetDir string) error {
+	if targetDir == "" {
+		return fmt.Errorf("mount target is empty")
+	}
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return fmt.Errorf("failed to create mount dir: %w", err)
+	}
+
+	repo.mountMutex.Lock()
+	if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+		repo.mountMutex.Unlock()
+		return fmt.Errorf("restic mount already running at %s", repo.mountPath)
+	}
+	repo.mountMutex.Unlock()
+
+	args := []string{"mount", targetDir}
+	cmd := exec.Command(repo.BinaryPath, args...)
+	cmd.Env = append(os.Environ(), repo.Env...)
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	repo.Printf(logrus.InfoLevel, "Starting command: %s %v", repo.BinaryPath, args)
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("error starting command: %w", err)
+	}
+
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+
+	repo.mountMutex.Lock()
+	repo.mountCmd = cmd
+	repo.mountPath = targetDir
+	repo.mountDone = make(chan error, 1)
+	done := repo.mountDone
+	repo.mountMutex.Unlock()
+
+	go repo.streamMountOutput(stdoutPipe, "[OUT] ", &stdoutBuf)
+	go repo.streamMountOutput(stderrPipe, "[ERR] ", &stderrBuf)
+
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			repo.Printf(logrus.ErrorLevel, "Restic mount exited: %v", err)
+		}
+		repo.mountMutex.Lock()
+		repo.mountCmd = nil
+		repo.mountPath = ""
+		if repo.mountDone != nil {
+			select {
+			case repo.mountDone <- err:
+			default:
+			}
+			close(repo.mountDone)
+			repo.mountDone = nil
+		}
+		repo.mountMutex.Unlock()
+	}()
+
+	// Wait a bit for mount to be ready or fail early
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	timeout := time.After(5 * time.Second)
+
+	for {
+		select {
+		case err := <-done:
+			// Mount process exited prematurely
+			var exitCode int
+			msg := strings.TrimSpace(stderrBuf.String())
+			if exitErr, ok := err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			}
+			if strings.Contains(msg, "fuse") {
+				lines := strings.Split(msg, "\n")
+				return fmt.Errorf("restic mount failed (fuse): exit=%d, err=%s", exitCode, lines[0])
+			}
+
+			return fmt.Errorf("restic mount failed: exit=%d, err=%w", exitCode, err)
+
+		case <-ticker.C:
+			// Check if mount point is ready
+			if isMountReady(targetDir) {
+				repo.Printf(logrus.InfoLevel, "Restic mount started at %s", targetDir)
+				return nil
+			}
+
+		case <-timeout:
+			// Timeout waiting for mount to be ready
+			repo.mountMutex.Lock()
+			if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+				_ = repo.mountCmd.Process.Kill()
+			}
+			repo.mountMutex.Unlock()
+			msg := strings.TrimSpace(stderrBuf.String())
+			if msg == "" {
+				msg = "mount timeout"
+			}
+			return fmt.Errorf("restic mount timeout: %s", msg)
+		}
+	}
+}
+
+func isMountReady(mountPath string) bool {
+	// Check if mount point is accessible
+	entries, err := os.ReadDir(mountPath)
+	if err != nil {
+		return false
+	}
+	// Restic mount typically shows snapshot directories
+	return len(entries) > 0
+}
+
+func (repo *ResticManager) UnmountRepo() error {
+	repo.mountMutex.Lock()
+	cmd := repo.mountCmd
+	done := repo.mountDone
+	mountPath := repo.mountPath
+	repo.mountMutex.Unlock()
+
+	if cmd == nil || cmd.Process == nil {
+		return fmt.Errorf("no restic mount is running")
+	}
+
+	if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
+		return fmt.Errorf("failed to stop restic mount: %w", err)
+	}
+
+	if done == nil {
+		return nil
+	}
+
+	select {
+	case err, ok := <-done:
+		if !ok {
+			// Channel was closed, mount already stopped
+			repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
+			return nil
+		}
+		if err != nil {
+			repo.Printf(logrus.ErrorLevel, "Restic mount exited with error: %v", err)
+			return fmt.Errorf("restic mount exited with error: %w", err)
+		}
+	case <-time.After(10 * time.Second):
+		repo.mountMutex.Lock()
+		if repo.mountCmd != nil && repo.mountCmd.Process != nil {
+			_ = repo.mountCmd.Process.Kill()
+		}
+		repo.mountMutex.Unlock()
+		return fmt.Errorf("restic mount shutdown timeout")
+	}
+
+	repo.Printf(logrus.InfoLevel, "Restic mount stopped at %s", mountPath)
+	return nil
+}
+
+func (repo *ResticManager) streamMountOutput(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer) {
+	scanner := bufio.NewScanner(pipe)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if buffer != nil {
+			buffer.WriteString(line + "\n")
+		}
+		repo.Printf(logrus.DebugLevel, "%s: %s", prefix, line)
+	}
+	if err := scanner.Err(); err != nil {
+		repo.Printf(logrus.ErrorLevel, prefix+"Error reading output: %v", err)
+	}
 }
 
 func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
@@ -564,7 +869,7 @@ func (repo *ResticManager) CancelTask(taskId int) {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 
-	repo.Print(logrus.InfoLevel, "Cancelling restic task ID: %d", taskId)
+	repo.Printf(logrus.InfoLevel, "Cancelling restic task ID: %d", taskId)
 
 	var taskToCancel *ResticTask
 	for _, task := range repo.TaskQueue {
@@ -576,9 +881,9 @@ func (repo *ResticManager) CancelTask(taskId int) {
 
 	if taskToCancel != nil {
 		repo.TaskQueue = append(repo.TaskQueue[:taskToCancel.ID], repo.TaskQueue[taskToCancel.ID+1:]...)
-		repo.Print(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
+		repo.Printf(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
 	} else {
-		repo.Print(logrus.WarnLevel, "Restic task ID not found: %d", taskId)
+		repo.Printf(logrus.WarnLevel, "Restic task ID not found: %d", taskId)
 	}
 }
 
@@ -586,7 +891,7 @@ func (repo *ResticManager) ClearQueue() {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 
-	repo.Print(logrus.InfoLevel, "Emptying task queue...")
+	repo.Printf(logrus.InfoLevel, "Emptying task queue...")
 
 	tasklist := []string{}
 	for _, task := range repo.TaskQueue {
@@ -594,12 +899,12 @@ func (repo *ResticManager) ClearQueue() {
 	}
 
 	if len(tasklist) > 0 {
-		repo.Print(logrus.InfoLevel, "Clearing tasks: %s", strings.Join(tasklist, "; "))
+		repo.Printf(logrus.InfoLevel, "Clearing tasks: %s", strings.Join(tasklist, "; "))
 	}
 
 	repo.TaskQueue = repo.TaskQueue[:0]
 
-	repo.Print(logrus.InfoLevel, "Task queue emptied.")
+	repo.Printf(logrus.InfoLevel, "Task queue emptied.")
 }
 
 func (repo *ResticManager) ShutdownWorker() {
@@ -670,7 +975,7 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 		return nil, nil, fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
-	repo.Print(loglevel, "Starting command: %s %v", repo.BinaryPath, args)
+	repo.Printf(loglevel, "Starting command: %s %v", repo.BinaryPath, args)
 
 	// Start the command execution
 	if err := cmd.Start(); err != nil {
@@ -694,7 +999,7 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			repo.Print(logrus.ErrorLevel, prefix+"Error reading output:", err)
+			repo.Printf(logrus.ErrorLevel, prefix+"Error reading output:", err)
 		}
 	}
 
@@ -710,7 +1015,7 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 		return stdoutBuf.Bytes(), stderrBuf.Bytes(), fmt.Errorf("command execution failed: %w", err)
 	}
 
-	repo.Print(loglevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
+	repo.Printf(loglevel, "Command completed successfully: %s %v", repo.BinaryPath, args)
 
 	// Return captured stdout and stderr if needed
 	if captureOutput {
@@ -911,7 +1216,7 @@ func GetKeepN(keepLast int, keepHourly int, keepDaily int, keepWeekly int, keepM
 }
 
 func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
-	repo.Print(logrus.InfoLevel, "Purging single snapshot ID: %s", snapshotID)
+	repo.Printf(logrus.InfoLevel, "Purging single snapshot ID: %s", snapshotID)
 
 	args := []string{"forget", "--prune", snapshotID}
 
@@ -926,7 +1231,7 @@ func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
 }
 
 func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
-	repo.Print(logrus.InfoLevel, "Purging snapshots with policy: %+v", opt)
+	repo.Printf(logrus.InfoLevel, "Purging snapshots with policy: %+v", opt)
 
 	args := []string{"forget", "--prune"}
 
@@ -1045,7 +1350,7 @@ func (repo *ResticManager) CheckResticLocks() error {
 		if haslock {
 			return err
 		} else {
-			repo.Print(logrus.InfoLevel, "Repository locks have been cleared")
+			repo.Printf(logrus.InfoLevel, "Repository locks have been cleared")
 		}
 	}
 
