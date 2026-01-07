@@ -3,16 +3,23 @@
 ## Visual Indicators
 
 ### Table View
-| State | Indicator | Meaning |
-|-------|-----------|---------|
-| Synced | 🟢 Green checkmark | Config matches deployed |
-| Diff | 🟠 Orange alert icon | Differences exist |
+| State | Indicator | Meaning | Action |
+|-------|-----------|---------|--------|
+| Synced | 🟢 Green checkmark | Config matches deployed | None needed |
+| Diff | 🟠 Orange alert icon | Differences exist | **Click to view Variables tab** |
 
 ### Grid View
-| State | Indicator | Meaning |
-|-------|-----------|---------|
-| Synced | (none) | Config matches - clean UI |
-| Diff | 🟠 "Config Diff" tag | Differences exist |
+| State | Indicator | Meaning | Action |
+|-------|-----------|---------|--------|
+| Synced | (none) | Config matches - clean UI | None needed |
+| Diff | 🟠 "Config Diff" tag | Differences exist | **Click to view Variables tab** |
+
+## User Workflow
+
+1. **Detect**: See orange indicator in Dashboard
+2. **Click**: Click the icon/tag to navigate
+3. **Investigate**: Variables tab opens automatically
+4. **Resolve**: Preserve, accept, or fix the difference
 
 ## Quick Actions
 
@@ -69,8 +76,9 @@ diff -u /path/to/generated.cnf /path/to/deployed.cnf
 ## Test Files
 
 - `cluster/srv_config_diff_test.go` - Backend tests
-- `DBServers/__tests__/DBServers.configdiff.test.jsx` - Table tests
-- `DBServerGrid/__tests__/DBServerGrid.configdiff.test.jsx` - Grid tests
+- `DBServers/__tests__/DBServers.configdiff.test.jsx` - Table tests (with clickability)
+- `DBServerGrid/__tests__/DBServerGrid.configdiff.test.jsx` - Grid tests (with clickability)
+- `ClusterDB/__tests__/ClusterDB.autoopen.test.jsx` - Auto-open Variables tab tests
 
 ## Related Commands
 

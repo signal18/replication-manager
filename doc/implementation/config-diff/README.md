@@ -36,11 +36,18 @@ The Config Diff Indicator feature provides DBAs with immediate visual feedback w
 - "Cfg Diff" column with status for each server
 - 🟢 Green checkmark when configurations match
 - 🟠 Orange alert icon when differences exist
+- **Clickable**: Click the orange alert icon to navigate directly to the Variables tab
 
 **Grid View:**
 - Orange "Config Diff" tag pill next to server status
 - Only displayed when differences exist
 - Maintains clean UI when everything is synced
+- **Clickable**: Click the tag to navigate directly to the Variables tab
+
+**Navigation:**
+- Clicking any config diff indicator automatically opens the server's Variables tab
+- Seamless user experience from detection to investigation
+- No manual navigation required
 
 ---
 
@@ -111,8 +118,10 @@ server.HasConfigDiff = server.VariablesMap.HasDifferences()
 columnHelper.accessor((row) => {
   if (row.hasConfigDiff) {
     return (
-      <Tooltip label="Config differences detected between deployed and generated configuration. Check Variables tab.">
-        <span><TbAlertCircle color="orange" size={20} /></span>
+      <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab.">
+        <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`} state={{ openTab: 'Variables' }}>
+          <TbAlertCircle color="orange" size={20} style={{ cursor: 'pointer' }} />
+        </Link>
       </Tooltip>
     )
   }
@@ -131,8 +140,8 @@ columnHelper.accessor((row) => {
 **Implementation:**
 ```jsx
 {rowData.hasConfigDiff && (
-  <Tooltip label="Config differences detected...">
-    <span>
+  <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab.">
+    <Link to={`/clusters/${clusterName}/${rowData?.id}`} state={{ openTab: 'Variables' }}>
       <TagPill 
         colorScheme='orange' 
         text={
@@ -140,11 +149,35 @@ columnHelper.accessor((row) => {
             <TbAlertCircle />
             <span>Config Diff</span>
           </HStack>
-        } 
+        }
+        style={{ cursor: 'pointer' }}
       />
-    </span>
+    </Link>
   </Tooltip>
 )}
+```
+
+#### 3. Auto-Open Variables Tab
+**Location**: `share/dashboard_react/src/Pages/ClusterDB/index.jsx`
+
+**Implementation:**
+```jsx
+const location = useLocation()
+
+// Handle automatic tab opening from navigation state
+useEffect(() => {
+  if (location.state?.openTab && tabs.current.length > 0) {
+    const tabIndex = tabs.current.findIndex(tab => 
+      typeof tab === 'string' && tab === location.state.openTab
+    )
+    if (tabIndex !== -1) {
+      selectedTabRef.current = tabIndex
+      setSelectedTab(tabIndex)
+    }
+    // Clear the state to prevent reopening on refresh
+    navigate(location.pathname, { replace: true, state: {} })
+  }
+}, [location.state, tabs.current, navigate, location.pathname])
 ```
 
 ### Data Flow
@@ -177,8 +210,23 @@ columnHelper.accessor((row) => {
                              ↓
 ┌─────────────────────────────────────────────────────────────┐
 │  5. React Components Render Indicators                      │
-│     - Table: Cfg Diff column with icon                      │
-│     - Grid: Orange tag pill                                 │
+│     - Table: Cfg Diff column with clickable icon            │
+│     - Grid: Orange clickable tag pill                       │
+└─────────────────────────────────────────────────────────────┘
+                             ↓
+┌─────────────────────────────────────────────────────────────┐
+│  6. User Interaction (NEW)                                  │
+│     - Click on config diff icon/tag                         │
+│     - Navigate to /clusters/{cluster}/{serverId}            │
+│     - Pass state: { openTab: 'Variables' }                  │
+└─────────────────────────────────────────────────────────────┘
+                             ↓
+┌─────────────────────────────────────────────────────────────┐
+│  7. ClusterDB Auto-Open (NEW)                               │
+│     - Detect location.state.openTab                         │
+│     - Find Variables tab index                              │
+│     - Automatically switch to Variables tab                 │
+│     - Clear navigation state                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -191,8 +239,9 @@ columnHelper.accessor((row) => {
 | Component | Test File | Tests | Status |
 |-----------|-----------|-------|--------|
 | Backend | `cluster/srv_config_diff_test.go` | 9 functions, 20+ cases | ✅ All Pass |
-| Frontend Table | `DBServers/__tests__/DBServers.configdiff.test.jsx` | 15+ cases | ✅ Ready |
-| Frontend Grid | `DBServerGrid/__tests__/DBServerGrid.configdiff.test.jsx` | 15+ cases | ✅ Ready |
+| Frontend Table | `DBServers/__tests__/DBServers.configdiff.test.jsx` | 20+ cases (including clickability) | ✅ Ready |
+| Frontend Grid | `DBServerGrid/__tests__/DBServerGrid.configdiff.test.jsx` | 20+ cases (including clickability) | ✅ Ready |
+| Auto-Open Tab | `ClusterDB/__tests__/ClusterDB.autoopen.test.jsx` | 7 cases | ✅ Ready |
 
 ### Running Tests
 

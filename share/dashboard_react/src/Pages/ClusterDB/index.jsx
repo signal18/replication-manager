@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import PageContainer from '../PageContainer'
 import styles from './styles.module.scss'
 import TabItems from '../../components/TabItems'
@@ -14,6 +14,7 @@ function ClusterDB(props) {
   const params = useParams()
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const location = useLocation()
   const selectedTabRef = useRef(1)
   const digestModeRef = useRef('pfs')
   const variableModeRef = useRef('diff')
@@ -98,6 +99,21 @@ function ClusterDB(props) {
       }
     }
   }, [dbId, loggedUser, clusterData])
+
+  // Handle automatic tab opening from navigation state (e.g., from config diff icon)
+  useEffect(() => {
+    if (location.state?.openTab && tabs.current.length > 0) {
+      const tabIndex = tabs.current.findIndex(tab => 
+        typeof tab === 'string' && tab === location.state.openTab
+      )
+      if (tabIndex !== -1) {
+        selectedTabRef.current = tabIndex
+        setSelectedTab(tabIndex)
+      }
+      // Clear the state to prevent reopening on refresh
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state, tabs.current, navigate, location.pathname])
 
   const callServices = () => {
     dispatch(getClusterServers({ clusterName }))

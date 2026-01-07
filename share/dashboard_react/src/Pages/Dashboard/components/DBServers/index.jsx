@@ -248,8 +248,10 @@ function DBServers({ selectedCluster, user }) {
       columnHelper.accessor((row) => {
         if (row.hasConfigDiff) {
           return (
-            <Tooltip label="Config differences detected between deployed and generated configuration. Check Variables tab." placement="top">
-              <span><TbAlertCircle color="orange" size={20} /></span>
+            <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab." placement="top">
+              <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`} state={{ openTab: 'Variables' }}>
+                <TbAlertCircle color="orange" size={20} style={{ cursor: 'pointer' }} />
+              </Link>
             </Tooltip>
           )
         }

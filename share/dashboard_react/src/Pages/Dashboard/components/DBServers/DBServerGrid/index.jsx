@@ -180,10 +180,10 @@ function DBServerGrid({
                 <Flex gap='1' wrap='wrap' p='2'>
                   <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} isBlinking={true} />
                   {rowData.hasConfigDiff && (
-                    <Tooltip label="Config differences detected between deployed and generated configuration. Check Variables tab." placement="top">
-                      <span>
-                        <TagPill colorScheme='orange' text={<HStack spacing={1}><TbAlertCircle /><span>Config Diff</span></HStack>} />
-                      </span>
+                    <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab." placement="top">
+                      <Link to={`/clusters/${clusterName}/${rowData?.id}`} state={{ openTab: 'Variables' }}>
+                        <TagPill colorScheme='orange' text={<HStack spacing={1}><TbAlertCircle /><span>Config Diff</span></HStack>} style={{ cursor: 'pointer' }} />
+                      </Link>
                     </Tooltip>
                   )}
                   {replicationTags
