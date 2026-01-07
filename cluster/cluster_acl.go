@@ -309,258 +309,33 @@ var dbloglist = []string{
 }
 
 func (cluster *Cluster) IsURLPassDatabasesACL(strUser string, URL string) bool {
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/actions/run-jobs") {
-			return true
-		}
+	// Check against rule-based ACL system with improved logging
+	if cluster.matchACLRules(strUser, URL, databaseACLRules) {
+		return true
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProvDBProvision] {
-		if strings.Contains(URL, "/actions/provision") {
-			return true
-		}
-		if strings.Contains(URL, "/service-opensvc") {
-			return true
-		}
+
+	// Check database log access
+	if cluster.checkDBLogAccess(strUser, URL) {
+		return true
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProvDBUnprovision] {
-		if strings.Contains(URL, "/actions/unprovision") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBStart] {
-		if strings.Contains(URL, "/actions/start") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/restart") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBStop] {
-		if strings.Contains(URL, "/actions/stop") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
-		if strings.Contains(URL, "/actions/switchover") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
-		if strings.Contains(URL, "/actions/set-prefered") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/set-unrated") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/set-ignored") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBKill] {
-		if strings.Contains(URL, "/actions/kill") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBOptimize] {
-		if strings.Contains(URL, "/actions/analyze-pfs") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBAnalyse] {
-		if strings.Contains(URL, "/actions/analyze-pfs") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/analyze-slowlog") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/reset-pfs-queries") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBReplication] {
-		if strings.Contains(URL, "/all-slaves-status") {
-			return true
-		}
-		if strings.Contains(URL, "/master-status") {
-			return true
-		}
-		if strings.Contains(URL, "actions/start-slave") {
-			return true
-		}
-		if strings.Contains(URL, "actions/stop-slave") {
-			return true
-		}
-		if strings.Contains(URL, "actions/skip-replication-event") {
-			return true
-		}
-		if strings.Contains(URL, "actions/reset-master") {
-			return true
-		}
-		if strings.Contains(URL, "actions/reset-slave-all") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBBackup] {
-		if strings.Contains(URL, "/actions/backup-logical") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/backup-error-log") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/backup-physical") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/backup-slowquery-log") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/flush-logs") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBRestore] {
-		if strings.Contains(URL, "/actions/reseed/") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/pitr") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/reseed-cancel") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/actions/job-cancel/") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/reseed-cancel") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBReadOnly] {
-		if strings.Contains(URL, "actions/toggle-read-only") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
-		if strings.Contains(URL, "/config") {
-			return true
-		}
-		if strings.Contains(URL, "/config-gen") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBLogs] {
-		for _, path := range dbloglist {
-			if strings.Contains(URL, path) {
-				return true
-			}
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBCapture] {
-		if strings.Contains(URL, "/actions/toggle-slow-query-capture") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBMaintenance] {
-		if strings.Contains(URL, "/actions/optimize") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/maintenance") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/set-maintenance") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/del-maintenance") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/wait-innodb-purge") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/jobs-upgrade") {
-			return true
-		}
-	}
-	/*	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigCreate] {
-			if strings.Contains(URL, "/kill") {
-				return true
-			}
-		}
-		if cluster.APIUsers[strUser].Grants[config.GrantDBConfigGet] {
-			if strings.Contains(URL, "/kill") {
-				return true
-			}
-		}
-		if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
-			if strings.Contains(URL, "/kill") {
-				return true
-			}
-		}*/
-	if cluster.APIUsers[strUser].Grants[config.GrantDBShowVariables] {
-		if strings.Contains(URL, "/variables") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBShowSchema] {
-		if strings.Contains(URL, "/tables") {
-			return true
-		}
-		if strings.Contains(URL, "/vtables") {
-			return true
-		}
-		if strings.Contains(URL, "/tables") {
-			return true
-		}
-		if strings.Contains(URL, "/schemas") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBShowStatus] {
-		if strings.Contains(URL, "/status") {
-			return true
-		}
-		if strings.Contains(URL, "/status-delta") {
-			return true
-		}
-	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s ", strUser, URL)
+
+	// Final fallback log (only if no rules matched)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL check failed for user %s : %s (no matching database rules)", strUser, URL)
 	return false
 }
 
 func (cluster *Cluster) IsURLPassProxiesACL(strUser string, URL string) bool {
-
-	if cluster.APIUsers[strUser].Grants[config.GrantProvProxyProvision] {
-		if strings.Contains(URL, "/actions/provision") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProvProxyUnprovision] {
-		if strings.Contains(URL, "/actions/unprovision") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProxyStart] {
-		if strings.Contains(URL, "/actions/start") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProxyStop] {
-		if strings.Contains(URL, "/actions/stop") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterStaging] {
-		if strings.Contains(URL, "/actions/staging") {
-			return true
-		}
+	// Check against rule-based ACL system with improved logging
+	if cluster.matchACLRules(strUser, URL, proxyACLRules) {
+		return true
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL proxy check failed for user %s : %s ", strUser, URL)
-
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL proxy check failed for user %s : %s (no matching proxy rules)", strUser, URL)
 	return false
 }
 
 func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool) bool {
+	// Public endpoints - no authentication required
 	switch URL {
 	case "/api/login":
 		return true
@@ -586,34 +361,22 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		return true
 	}
 
-	// Terminal ACL
+	// Terminal ACL - special handling
 	if strings.HasPrefix(URL, "/api/terminal") {
-		if URL == "/api/terminal/connect" || URL == "/api/terminal/list" {
-			return cluster.APIUsers[strUser].Grants[config.GrantTerminalGlobal]
-		}
-
-		if strings.Contains(URL, "clusters/"+cluster.Name+"/servers") {
-			return cluster.APIUsers[strUser].Grants[config.GrantTerminalDatabase]
-		}
-
-		if strings.Contains(URL, "clusters/"+cluster.Name+"/proxies") {
-			return cluster.APIUsers[strUser].Grants[config.GrantTerminalProxy]
+		if cluster.matchACLRules(strUser, URL, terminalACLRules) {
+			return true
 		}
 	}
 
-	if strings.Contains(URL, "/api/clusters/settings/actions/switch") {
-		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
-	}
-	if strings.Contains(URL, "/api/clusters/settings/actions/set") {
-		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
-	}
-	if strings.Contains(URL, "/api/clusters/settings/actions/clear") {
-		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
-	}
-	if strings.Contains(URL, "/api/clusters/settings/actions/reload-clusters-plans") {
-		return cluster.APIUsers[strUser].Grants[config.GrantGlobalSettings]
+	// Check GLOBAL settings FIRST (before specific cluster routing)
+	// Global settings URLs: /api/clusters/settings/... (not cluster-specific)
+	// These require GrantGlobalSettings and should NOT fall through to cluster rules
+	if strings.HasPrefix(URL, "/api/clusters/settings") {
+		return cluster.matchACLRules(strUser, URL, globalSettingsACLRules)
 	}
 
+	// Route to specialized ACL checks for SPECIFIC clusters
+	// These URLs contain the cluster name: /api/clusters/{name}/...
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/servers") {
 		return cluster.IsURLPassDatabasesACL(strUser, URL)
 	}
@@ -623,361 +386,16 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/apps") {
 		return cluster.IsURLPassAppsACL(strUser, URL)
 	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterSharding] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/monitor-schemas") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/schema") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/shardclusters") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/jobs") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/top") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowBackups] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/backups") {
-			return true
-		}
 
-		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/restic/snapshots") {
-			return true
-		}
-		if strings.HasSuffix(strings.TrimSuffix(URL, "/"), "/api/clusters/"+cluster.Name+"/restic/stats") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterProcess] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/restic") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowRoutes] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/queryrules") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterShowCertificates] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/certificates") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesReload] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-reload") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterCertificatesRotate] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/certificates-rotate") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterResetSLA] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-sla") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreateMonitor] || cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/addserver") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterDropMonitor] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/dropserver") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterSwitchover] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/switchover") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterAlert] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/send-email") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/send-alert") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterTraffic] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/stop-traffic") {
-			return true
-
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/start-traffic") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBBackup] {
-		if strings.Contains(URL, "/actions/master-logical-backup") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/master-physical-backup") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterBench] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/sysbench") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterTest] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/sysbench") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/tests/") {
-			return true
-		}
-
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterFailover] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/failover") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterReplication] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/replication/bootstrap") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/replication/cleanup") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterRolling] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/optimize") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rolling") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-restart") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/cancel-rolling-reprov") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/jobs-upgrade") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterRotatePasswords] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/rotate-passwords") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantDBConfigFlag] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-db-tag") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/add-db-tag") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/apply-dynamic-config") {
-			return true
-		}
-
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProxyConfigFlag] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/drop-proxy-tag") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/add-proxy-tag") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/generate-configs") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/preserve-variable") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterSettings] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/mysql-defaults-cnf") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/save-mysql-defaults-cnf") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/preserved-variables-cnf") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/save-preserved-variables-cnf") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/switch") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/set") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/clear") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/discover") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/reset-failover-control") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterChecksum] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/checksum-all-tables") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterAnalyze] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/analyze-all-tables") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantProvCluster] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/provision") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/actions/add") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/opensvc-gateway") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterStaging] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-refresh") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-reload-script") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/actions/staging-reseed-from-parent") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantProvClusterUnprovision] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/services/actions/unprovision") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterCreate] {
-		if strings.Contains(URL, "/api/clusters/actions/add") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterDelete] {
-		if strings.Contains(URL, "/api/clusters/actions/delete") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/actions/rename") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterConfigGraphs] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/set-graphite-filterlist") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload-graphite-filterlist") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reset-graphite-filterlist") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantGrantShow] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/users/send-credentials") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantGrantAdd] {
-		if strings.Contains(URL, "/api/monitor/actions/adduser/") {
-			return true
-		}
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/users/add") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantGrantModify] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/users/update") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantGrantDrop] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/users/drop") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantExternalRole] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/subscribe") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/accept") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantSalesValidate] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/accept-subscription") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/quote") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantSalesRefuse] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/refuse-subscription") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/refuse") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/unsubscribe") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantSalesUnsubscribe] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/sales/end-subscription") {
-			return true
-		}
-
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/ext-role/end") {
-			return true
-		}
-	}
-
-	if cluster.APIUsers[strUser].Grants[config.GrantClusterDocker] || cluster.APIUsers[strUser].Grants[config.GrantAppDocker] {
-		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/docker") {
+	// Check general cluster-level rules
+	// Apply cluster rules if:
+	// 1. URL contains this cluster's name: /api/clusters/{name}/... (cluster-specific)
+	// 2. URL is /api/clusters/actions/... (global cluster operations like add/delete)
+	// 3. URL doesn't start with /api/clusters/ at all (other endpoints)
+	if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/") ||
+		(strings.HasPrefix(URL, "/api/clusters/") && !strings.Contains(URL, "/settings")) ||
+		!strings.HasPrefix(URL, "/api/clusters/") {
+		if cluster.matchACLRules(strUser, URL, clusterACLRules) {
 			return true
 		}
 	}
@@ -990,68 +408,11 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 }
 
 func (cluster *Cluster) IsURLPassAppsACL(strUser string, URL string) bool {
-	if cluster.APIUsers[strUser].Grants[config.GrantProvAppProvision] {
-		if strings.Contains(URL, "/actions/provision") {
-			return true
-		}
-		if strings.Contains(URL, "/service-opensvc") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantProvAppUnprovision] {
-		if strings.Contains(URL, "/actions/unprovision") {
-			return true
-		}
-		if strings.Contains(URL, "/actions/drop") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantAppDeployment] {
-		if strings.Contains(URL, "/deployment/") {
-			return true
-		}
-		if strings.Contains(URL, "/storages/") {
-			return true
-		}
-		if strings.Contains(URL, "/substitution") {
-			return true
-		}
-		if strings.Contains(URL, "/resolve-template") {
-			return true
-		}
-		if strings.Contains(URL, "/settings/actions/reset-from-template") {
-			return true
-		}
-		if strings.Contains(URL, "/settings/actions/save-to-template") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantAppStart] {
-		if strings.Contains(URL, "/actions/start") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantAppStop] {
-		if strings.Contains(URL, "/actions/stop") {
-			return true
-		}
-
-		if strings.Contains(URL, "/actions/restart") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantAppConfig] {
-		if strings.Contains(URL, "/settings/actions/") {
-			return true
-		}
-	}
-	if cluster.APIUsers[strUser].Grants[config.GrantAppGit] {
-		if strings.Contains(URL, "/git/") {
-			return true
-		}
+	// Check against rule-based ACL system with improved logging
+	if cluster.matchACLRules(strUser, URL, appACLRules) {
+		return true
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app check failed for user %s : %s ", strUser, URL)
-
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "ACL app check failed for user %s : %s (no matching app rules)", strUser, URL)
 	return false
 }
