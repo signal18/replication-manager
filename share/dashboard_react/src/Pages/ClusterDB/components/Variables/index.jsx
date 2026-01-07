@@ -742,7 +742,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
               </>
             )}
             {!hasDiff && !hasPreserve && (
-              <Text fontSize="xs" color="gray.500">No diff</Text>
+              <HStack spacing={1}>
+                <TbCheck color="green" size={16} />
+                <Text fontSize="xs" color="green.600" fontWeight="medium">Synced</Text>
+              </HStack>
             )}
             <RMIconButton 
               tooltip="Edit/Override variable value (set custom value)" 
