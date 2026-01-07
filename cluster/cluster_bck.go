@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -255,6 +256,54 @@ func (cluster *Cluster) ResticUnlockRepo() {
 
 	cluster.ResticManager.AddUnlockTask()
 
+}
+
+func (cluster *Cluster) ResticRestoreSnapshot(snapshotID, targetDir string, paths []string) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.RestoreSnapshot(snapshotID, targetDir, paths)
+}
+
+func (cluster *Cluster) ResticDumpSnapshot(snapshotID, filePath string, writer io.Writer) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.DumpSnapshot(snapshotID, filePath, writer)
+}
+
+func (cluster *Cluster) ResticMountRepo(targetDir string) error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.MountRepo(targetDir)
+}
+
+func (cluster *Cluster) ResticUnmountRepo() error {
+	if !cluster.Conf.BackupRestic {
+		return fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.UnmountRepo()
 }
 
 func (cluster *Cluster) ResticGetQueue() ([]*backupmgr.ResticTask, error) {
