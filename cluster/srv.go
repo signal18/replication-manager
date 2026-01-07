@@ -222,6 +222,7 @@ type ServerMonitor struct {
 	LastBackupMeta              ServerBackupMeta        `json:"lastBackupMeta"`
 	IsNeedPathCheck             bool
 	HasConfigPathChanged        bool
+	HasConfigDiff               bool       `json:"hasConfigDiff"` // Indicates if there are differences between deployed and generated config
 	RestartNode                 string     // RestartNode stores node parameter for restart cookie (owned by cookie mechanism, single writer assumption)
 	RestartRid                  string     // RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)
 	jobMutex                    sync.Mutex // protects IsRunningJobs flag
@@ -824,6 +825,9 @@ func (server *ServerMonitor) Refresh() error {
 		if err != nil {
 			return nil
 		}
+
+		// Update HasConfigDiff flag to indicate if there are differences between deployed and generated config
+		server.HasConfigDiff = server.VariablesMap.HasDifferences()
 
 		// Check if deployed config file was reloaded externally
 		// If so, re-read preserved variables to sync with any changes

@@ -1141,6 +1141,20 @@ func (m *VariablesMap) GetVariables(diff bool) []VariableState {
 	return result
 }
 
+// HasDifferences returns true if there are any differences between config and deployed values
+func (m *VariablesMap) HasDifferences() bool {
+	hasDiff := false
+	m.Range(func(k, v any) bool {
+		val := v.(*VariableState)
+		if !val.IsEqual() {
+			hasDiff = true
+			return false // stop iteration
+		}
+		return true // continue iteration
+	})
+	return hasDiff
+}
+
 func (m *VariablesMap) LoadFromConfigFile(path string, cnftype string) error {
 	if cnftype != "config" && cnftype != "deployed" && cnftype != "preserved" {
 		return fmt.Errorf("invalid config type: %s", cnftype)

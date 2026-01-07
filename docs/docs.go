@@ -20031,6 +20031,10 @@ const docTemplate = `{
                 "gtidExecuted": {
                     "type": "string"
                 },
+                "hasConfigDiff": {
+                    "description": "Indicates if there are differences between deployed and generated config",
+                    "type": "boolean"
+                },
                 "hasConfigPathChanged": {
                     "type": "boolean"
                 },
