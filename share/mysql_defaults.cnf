@@ -1,0 +1,104 @@
+# MySQL/MariaDB Default Values for Replication Manager
+# 
+# This file provides default values for critical MySQL/MariaDB variables
+# that are used as a last-resort fallback when:
+# 1. A server is in failed state
+# 2. No deployed configuration exists
+# 3. No runtime value can be retrieved
+#
+# Users can provide a custom defaults file using the config option:
+# prov-db-default-cnf-path = "/path/to/custom/defaults.cnf"
+#
+# Format: variable_name = value
+# Lines starting with # are comments
+# Section headers [mysql], [mariadb], [mysqld] are supported but optional
+#
+# These defaults are based on MySQL 8.0 and MariaDB 10.6+ common defaults
+
+[mysqld]
+
+# Connection Settings
+max_connections = 151
+
+# InnoDB Settings
+innodb_buffer_pool_size = 134217728
+
+# Replication Settings
+binlog_format = ROW
+log_bin = mysql-bin
+log_slave_updates = ON
+gtid_mode = ON
+enforce_gtid_consistency = ON
+server_id = 1
+
+# Logging
+log_error = error.log
+slow_query_log = OFF
+slow_query_log_file = slow.log
+long_query_time = 10
+
+# Character Sets
+character_set_server = utf8mb4
+collation_server = utf8mb4_general_ci
+
+# Performance Schema
+performance_schema = ON
+
+# Binary Log
+max_binlog_size = 1073741824
+binlog_expire_logs_seconds = 2592000
+sync_binlog = 1
+
+# Transaction Settings
+transaction_isolation = REPEATABLE-READ
+
+# Timeouts
+wait_timeout = 28800
+interactive_timeout = 28800
+
+# Table Settings
+table_open_cache = 4000
+table_definition_cache = 2000
+
+# Thread Settings
+thread_cache_size = 9
+
+# Query Cache (MariaDB only, disabled by default in MySQL 8.0+)
+query_cache_size = 0
+query_cache_type = OFF
+
+# Temp Tables
+tmp_table_size = 16777216
+max_heap_table_size = 16777216
+
+# Sort and Join
+sort_buffer_size = 262144
+join_buffer_size = 262144
+read_buffer_size = 131072
+read_rnd_buffer_size = 262144
+
+# File Limits
+open_files_limit = 5000
+
+# Network
+max_allowed_packet = 67108864
+net_buffer_length = 16384
+
+# Relay Log
+relay_log = relay-bin
+relay_log_recovery = ON
+
+# Slave Settings
+slave_parallel_workers = 0
+slave_parallel_type = DATABASE
+
+# MariaDB-specific settings
+[mariadb]
+# These only apply if using MariaDB
+# log_bin_compress = OFF
+# wsrep_on = OFF
+
+# MySQL-specific settings
+[mysql]
+# These only apply if using MySQL
+# mysqlx_port = 33060

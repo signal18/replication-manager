@@ -270,6 +270,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropTag)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetPreservedVarsCnf)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSavePreservedVarsCnf)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddProxyTag)),
@@ -7898,4 +7906,105 @@ func (repman *ReplicationManager) handlerMuxClusterCheckJobLogLevel(w http.Respo
 	} else {
 		http.Error(w, "No cluster", 500)
 	}
+}
+
+// handlerMuxGetPreservedVarsCnf retrieves the content of the preserved variables CNF file
+// @Summary Get preserved variables CNF content
+// @Description This endpoint retrieves the content of the preserved_variables.cnf file from the cluster's working directory
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} map[string]string "CNF file content in JSON format with 'content' key"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "File not found"
+// @Failure 500 {string} string "Error reading file"
+// @Router /api/clusters/{clusterName}/settings/preserved-variables-cnf [get]
+func (repman *ReplicationManager) handlerMuxGetPreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Read the preserved variables CNF content using cluster method
+	content, err := mycluster.GetPreservedVarsCnfContent()
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("Error reading preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JSON response with content
+	response := map[string]string{
+		"content": content,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// PreservedVarsCnfRequest represents the request body for saving preserved variables CNF
+type PreservedVarsCnfRequest struct {
+	Content string `json:"content"`
+}
+
+// handlerMuxSavePreservedVarsCnf saves the updated content to the preserved variables CNF file
+// @Summary Save preserved variables CNF content
+// @Description This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory
+// @Tags ClusterSettings
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body PreservedVarsCnfRequest true "CNF file content"
+// @Success 200 {string} string "Successfully saved preserved variables CNF"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 500 {string} string "Error saving file"
+// @Router /api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf [post]
+func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Decode the request body
+	var req PreservedVarsCnfRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Write the content using cluster method
+	err = mycluster.WritePreservedVarsCnfContent(req.Content)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error saving preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
 }

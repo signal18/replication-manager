@@ -629,42 +629,197 @@ func (server *ServerMonitor) ReadPreservedVariables() error {
 		server.VariablesMap = config.NewVariablesMap()
 	}
 
+	// PRIORITY 1: Load server-specific 01_preserved.cnf (highest priority)
 	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "01_preserved.cnf"), "preserved")
 
-	// Read the preserved variables from config
-	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
-	for _, opt := range list {
-		opt = strings.TrimSpace(opt)
-		if opt == "" {
-			continue
-		}
-
-		value := ""
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 2 {
-			opt = parts[0]
-			value = parts[1]
-		}
-
-		isMap := strings.Contains(value, "=")
-
-		key := strings.ToUpper(opt)
-		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-			v.SetPreservedValue(value)
-		} else if value != "" {
-			v = new(config.VariableState)
-			if isMap {
-				v.Preserved = make(config.MapValue)
-			} else {
-				v.Preserved = new(config.SingleValue)
+	// Mark all loaded variables as server-specific (Priority 1)
+	server.VariablesMap.Range(func(k, v any) bool {
+		if varState, ok := v.(*config.VariableState); ok {
+			if varState.Preserved != nil {
+				varState.PreservedSource = "server-specific"
+				varState.PreservedPriority = 1
+				varState.IsExcludedFromCluster = false
 			}
+		}
+		return true
+	})
+
+	// PRIORITY 2: Load cluster-level preserved variables (can be overridden by server-specific)
+	// This replaces the old ProvDBConfigPreserveVars mechanism
+	cluster.preservedVarsMutex.RLock()
+	for varName, value := range cluster.preservedVars {
+		// Check if this server is excluded from this cluster-level preserved variable
+		if excludeMap, hasExclusions := cluster.preservedVarsExcludeServers[varName]; hasExclusions {
+			if excludeMap[server.Id] {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+					"Server %s is excluded from cluster-level preserved variable %s", server.URL, varName)
+
+				// Mark this variable as excluded even if it has server-specific value
+				if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+					v.IsExcludedFromCluster = true
+				}
+
+				continue
+			}
+		}
+
+		// Only apply if not already set by server-specific 01_preserved.cnf
+		if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+			// Server-specific value exists, but mark that cluster-level is available
+			if v.PreservedSource == "" {
+				// This shouldn't happen, but handle it
+				v.PreservedSource = "server-specific"
+				v.PreservedPriority = 1
+			}
+		} else {
+			// No server-specific value, use cluster-level
+			// Use NewVariableState to create with proper lowercase key
+			v := config.NewVariableState(varName)
+
+			// Always set preserved value, even if empty
+			// Empty value means "preserve whatever is currently deployed"
 			v.SetPreservedValue(value)
 
-			server.VariablesMap.Store(key, v)
+			// Set metadata for cluster-level (Priority 2)
+			v.PreservedSource = "cluster-level"
+			v.PreservedPriority = 2
+			v.IsExcludedFromCluster = false
+
+			// Use Set() instead of Store() to ensure lowercase key normalization
+			server.VariablesMap.Set(varName, v)
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Applied cluster-level preserved variable %s=%s to server %s", varName, value, server.URL)
+		}
+	}
+	cluster.preservedVarsMutex.RUnlock()
+
+	// LEGACY SUPPORT: Still honor ProvDBConfigPreserveVars for backward compatibility
+	// This will be deprecated in future versions
+	if cluster.Conf.ProvDBConfigPreserveVars != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"ProvDBConfigPreserveVars is deprecated. Please migrate to cluster-level preserved_variables.cnf")
+
+		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+		for _, opt := range list {
+			opt = strings.TrimSpace(opt)
+			if opt == "" {
+				continue
+			}
+
+			value := ""
+			parts := strings.SplitN(opt, "=", 2)
+			if len(parts) == 2 {
+				opt = parts[0]
+				value = parts[1]
+			}
+
+			isMap := strings.Contains(value, "=")
+
+			key := strings.ToUpper(opt)
+			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+				v.SetPreservedValue(value)
+			} else if value != "" {
+				v = new(config.VariableState)
+				if isMap {
+					v.Preserved = make(config.MapValue)
+				} else {
+					v.Preserved = new(config.SingleValue)
+				}
+				v.SetPreservedValue(value)
+
+				server.VariablesMap.Store(key, v)
+			}
 		}
 	}
 
 	return nil
+}
+
+// Read-only variables that should never be written to config files
+var readOnlyVariables = []string{
+	"VERSION",
+	"VERSION_COMMENT",
+	"VERSION_COMPILE_MACHINE",
+	"VERSION_COMPILE_OS",
+	"HOSTNAME",
+	"SERVER_UUID",
+	"BASEDIR",
+	"LOG_BIN_BASENAME",
+	"LOG_BIN_INDEX",
+	"RELAY_LOG_BASENAME",
+	"RELAY_LOG_INDEX",
+	"DATADIR", // Paths should not be changed via runtime fallback
+}
+
+// Variables safe for runtime fallback (whitelist)
+var safeRuntimeFallbackVariables = []string{
+	"INNODB_BUFFER_POOL_SIZE",
+	"MAX_CONNECTIONS",
+	"INNODB_LOG_FILE_SIZE",
+	"INNODB_FLUSH_LOG_AT_TRX_COMMIT",
+	"SYNC_BINLOG",
+	"BINLOG_FORMAT",
+	"SLOW_QUERY_LOG",
+	"SLOW_QUERY_LOG_FILE",
+	"LONG_QUERY_TIME",
+	"LOG_QUERIES_NOT_USING_INDEXES",
+	"GENERAL_LOG",
+	"GENERAL_LOG_FILE",
+	"LOG_ERROR",
+	"LOG_WARNINGS",
+	"EXPIRE_LOGS_DAYS",
+	"BINLOG_EXPIRE_LOGS_SECONDS",
+	"MAX_ALLOWED_PACKET",
+	"MAX_BINLOG_SIZE",
+	"MAX_RELAY_LOG_SIZE",
+	"RELAY_LOG_SPACE_LIMIT",
+	"INNODB_IO_CAPACITY",
+	"INNODB_IO_CAPACITY_MAX",
+	"INNODB_FLUSH_METHOD",
+	"INNODB_FILE_PER_TABLE",
+	"INNODB_BUFFER_POOL_INSTANCES",
+	"INNODB_LOG_BUFFER_SIZE",
+	"INNODB_WRITE_IO_THREADS",
+	"INNODB_READ_IO_THREADS",
+	"INNODB_PURGE_THREADS",
+	"INNODB_PAGE_CLEANERS",
+	"TABLE_OPEN_CACHE",
+	"TABLE_DEFINITION_CACHE",
+	"OPEN_FILES_LIMIT",
+	"THREAD_CACHE_SIZE",
+	"QUERY_CACHE_SIZE",
+	"QUERY_CACHE_TYPE",
+	"TMP_TABLE_SIZE",
+	"MAX_HEAP_TABLE_SIZE",
+	"JOIN_BUFFER_SIZE",
+	"SORT_BUFFER_SIZE",
+	"READ_BUFFER_SIZE",
+	"READ_RND_BUFFER_SIZE",
+	"BINLOG_CACHE_SIZE",
+	"BINLOG_STMT_CACHE_SIZE",
+}
+
+// isReadOnlyVariable checks if a variable is read-only and should never be changed
+func isReadOnlyVariable(varName string) bool {
+	upperName := strings.ToUpper(varName)
+	for _, readOnly := range readOnlyVariables {
+		if upperName == readOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// isSafeForRuntimeFallback checks if a variable is whitelisted for runtime fallback
+func isSafeForRuntimeFallback(varName string) bool {
+	upperName := strings.ToUpper(varName)
+	for _, safe := range safeRuntimeFallbackVariables {
+		if upperName == safe {
+			return true
+		}
+	}
+	return false
 }
 
 func (server *ServerMonitor) WriteDeltaVariables() error {
@@ -682,6 +837,55 @@ func (server *ServerMonitor) WriteDeltaVariables() error {
 		if v.Preserved != nil {
 			continue
 		}
+
+		// 4-LAYER SAFETY FRAMEWORK FOR RUNTIME FALLBACK
+		// Only use runtime value if deployed is nil and all safety checks pass
+		if v.Deployed == nil && v.Runtime != nil {
+			runtimeStr := v.Runtime.String()
+
+			// Layer 1: Empty value check - never write empty values
+			// Layer 2: Read-only check - never write read-only variables
+			// Layer 3: Whitelist check - only write whitelisted variables
+			// Layer 4: Server status check - only if server is running (not failed)
+			if runtimeStr != "" &&
+				!isReadOnlyVariable(v.VariableName) &&
+				isSafeForRuntimeFallback(v.VariableName) &&
+				!server.IsFailed() {
+				// Safe to use runtime value as fallback
+				v.Deployed = v.Runtime
+				content.WriteString(v.PrintDeployedDelta() + "\n")
+				v.Deployed = nil // Reset to avoid persisting the change
+			}
+			// If any check fails, skip this variable (don't write it)
+			continue
+		}
+
+		// LAYER 5: MYSQL DEFAULT FALLBACK - REMOVED
+		// This layer has been removed because Configurator generates a base CNF from tags.
+		// Configuration priority is now:
+		//   1. Server-specific preserved variables (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf)
+		//   2. Cluster-wide preserved variables
+		//   3. Configurator settings (tags, templates, dynamic configs)
+		//   4. Runtime/deployed values
+		// No need for mysql_defaults.cnf as configurator provides the base configuration.
+		/*
+			if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
+				defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
+				if defaultValue != "" {
+					sv := config.SingleValue(defaultValue)
+					v.Deployed = &sv
+					content.WriteString(v.PrintDeployedDelta() + "\n")
+					v.Deployed = nil // Reset to avoid persisting the change
+
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
+						v.VariableName, defaultValue)
+				}
+				continue
+			}
+		*/
+
+		// Normal case: deployed value exists
 		content.WriteString(v.PrintDeployedDelta() + "\n")
 	}
 

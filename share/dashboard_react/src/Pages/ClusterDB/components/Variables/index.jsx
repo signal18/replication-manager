@@ -1,4 +1,4 @@
-import { Box, Checkbox, Flex, HStack, Input, Text, VStack, Button, Alert, AlertIcon, AlertTitle, AlertDescription, CloseButton } from '@chakra-ui/react'
+import { Box, Checkbox, Flex, HStack, Input, Text, VStack, Button, Alert, AlertIcon, AlertTitle, AlertDescription, CloseButton, Tooltip, Badge } from '@chakra-ui/react'
 import React, { useEffect, useMemo, useState, useRef, useReducer } from 'react'
 
 import styles from '../../styles.module.scss'
@@ -9,10 +9,13 @@ import { DataTable } from '../../../../components/DataTable'
 import { isEqual } from 'lodash'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
 import RMIconButton from '../../../../components/RMIconButton'
-import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, TbEdit, TbInfoCircle } from 'react-icons/tb'
+import { TbShield, TbTrash, TbCheck, TbAlertCircle, TbZoomIn, TbExternalLink, TbEdit, TbInfoCircle, TbShieldCheck, TbShieldOff } from 'react-icons/tb'
 import ConfirmModal from '../../../../components/Modals/ConfirmModal'
 import ComplexVariableModal from './ComplexVariableModal'
 import EditVariableModal from './EditVariableModal'
+
+import PreservedVariablesEditor from '../../../../components/PreservedVariablesEditor'
+import AccordionComponent from '../../../../components/AccordionComponent'
 
 const defaultState = {
   showCfg: true,
@@ -208,7 +211,7 @@ const areValuesEqual = (val1, val2, row) => {
   return String(val1) === String(val2)
 }
 
-function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter }) {
+function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
   const variables = useSelector((state) => state.cluster.database.variables)
@@ -354,11 +357,51 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             !areValuesEqual(row.runtimeValue, row.preservedValue, row) && 
             !isPFSInstrument
           
+          // Preservation metadata
+          const preservedSource = row.preservedSource // "server-specific" or "cluster-level"
+          const preservedPriority = row.preservedPriority // 1, 2, or 3
+          const isExcludedFromCluster = row.isExcludedFromCluster // true if excluded
+          
+          // Priority badges
+          const getPriorityBadge = () => {
+            if (!hasPreserve) return null
+            
+            if (preservedPriority === 1) {
+              return (
+                <Tooltip label="Priority 1: Server-specific override (01_preserved.cnf)" placement="top">
+                  <Badge colorScheme="purple" fontSize="xs" px={1}>P1</Badge>
+                </Tooltip>
+              )
+            } else if (preservedPriority === 2) {
+              return (
+                <Tooltip label="Priority 2: Cluster-level default (preserved_variables.cnf)" placement="top">
+                  <Badge colorScheme="blue" fontSize="xs" px={1}>P2</Badge>
+                </Tooltip>
+              )
+            }
+            return null
+          }
+          
           return (
             <HStack spacing={2}>
               {runtimeDiffersFromPreserved && <TbAlertCircle color="red" title="Runtime changed manually!" />}
               {hasDiff && !runtimeDiffersFromPreserved && <TbAlertCircle color="orange" title="Has difference" />}
-              {hasPreserve && <TbShield color="blue" title="Preservation set" />}
+              {hasPreserve && preservedPriority === 1 && (
+                <Tooltip label="Server-specific preservation (Priority 1)" placement="top">
+                  <span><TbShieldCheck color="purple" /></span>
+                </Tooltip>
+              )}
+              {hasPreserve && preservedPriority === 2 && (
+                <Tooltip label="Cluster-level preservation (Priority 2)" placement="top">
+                  <span><TbShield color="blue" /></span>
+                </Tooltip>
+              )}
+              {isExcludedFromCluster && (
+                <Tooltip label="Server excluded from cluster-level preservation" placement="top">
+                  <span><TbShieldOff color="gray" /></span>
+                </Tooltip>
+              )}
+              {getPriorityBadge()}
               <Text>{info.getValue()}</Text>
             </HStack>
           )
@@ -459,6 +502,71 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           )
         }
       })]:[]),
+      ...(showPreserve ? [columnHelper.accessor((row) => row.preservedValue, {
+        header: 'Preserve',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
+        cell: (info) => {
+          const fullString = info.getValue()
+          const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
+          
+          // Preservation metadata
+          const preservedSource = row.preservedSource
+          const preservedPriority = row.preservedPriority
+          const isExcludedFromCluster = row.isExcludedFromCluster
+          
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
+          // Build source info
+          let sourceInfo = ''
+          if (fullString) {
+            if (preservedPriority === 1) {
+              sourceInfo = '📋 Server-specific (Priority 1)'
+            } else if (preservedPriority === 2) {
+              sourceInfo = '🌐 Cluster-level (Priority 2)'
+            }
+          }
+          
+          return (
+            <VStack align="flex-start" spacing={0}>
+              <HStack spacing={1}>
+                {preservedPriority === 1 && (
+                  <Tooltip label="Server-specific preservation (Priority 1 - Highest)" placement="top">
+                    <Badge colorScheme="purple" fontSize="xs">Server</Badge>
+                  </Tooltip>
+                )}
+                {preservedPriority === 2 && (
+                  <Tooltip label="Cluster-level preservation (Priority 2)" placement="top">
+                    <Badge colorScheme="blue" fontSize="xs">Cluster</Badge>
+                  </Tooltip>
+                )}
+                <Text 
+                  title={fullLength > TRUNCATE_LENGTH ? `${sourceInfo}\n\nValue: ${fullString}` : sourceInfo}
+                  whiteSpace="normal" 
+                  wordBreak="break-word"
+                  fontWeight={isBoolean ? 'bold' : 'normal'}
+                >
+                  {truncatedString}
+                </Text>
+              </HStack>
+              {isExcludedFromCluster && preservedPriority === 1 && (
+                <Tooltip label="This server has a server-specific override but is excluded from cluster-level preservation" placement="top">
+                  <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                    (cluster excluded)
+                  </Text>
+                </Tooltip>
+              )}
+            </VStack>
+          )
+        }
+      })]: []),
       ...(showRuntime ? [columnHelper.accessor((row) => row.runtimeValue, {
         header: 'Runtime',
         size: 100,
@@ -522,35 +630,6 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                 {truncatedString}
               </Text>
             </HStack>
-          )
-        }
-      })]: []),
-      ...(showPreserve ? [columnHelper.accessor((row) => row.preservedValue, {
-        header: 'Preserve',
-        size: 100,
-        maxSize: 200,
-        minSize: 100,
-        cell: (info) => {
-          const fullString = info.getValue()
-          const fullLength = fullString?.length
-          const row = info.row.original
-          
-          // Check if this is a boolean variable
-          const isBoolean = isBooleanVariable(row)
-          
-          // Truncate for display and add space after commas for better wrapping
-          const displayString = fullString?.replace(/,/g, ', ')
-          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
-          
-          return (
-            <Text 
-              title={fullLength > TRUNCATE_LENGTH ? fullString : undefined}
-              whiteSpace="normal" 
-              wordBreak="break-word"
-              fontWeight={isBoolean ? 'bold' : 'normal'}
-            >
-              {truncatedString}
-            </Text>
           )
         }
       })]: []),
@@ -663,7 +742,10 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
               </>
             )}
             {!hasDiff && !hasPreserve && (
-              <Text fontSize="xs" color="gray.500">No diff</Text>
+              <HStack spacing={1}>
+                <TbCheck color="green" size={16} />
+                <Text fontSize="xs" color="green.600" fontWeight="medium">Synced</Text>
+              </HStack>
             )}
             <RMIconButton 
               tooltip="Edit/Override variable value (set custom value)" 
@@ -700,6 +782,24 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           <Box flex="1">
             <AlertTitle fontSize="sm" fontWeight="bold">Important Note for DBAs</AlertTitle>
             <AlertDescription fontSize="xs">
+              <strong>Three-Tier Preserved Variables System:</strong>
+              <br />
+              • <strong>Priority 1 (Server-specific)</strong>: Variables in server's <code>01_preserved.cnf</code> - highest priority, shown with purple badge
+              <br />
+              • <strong>Priority 2 (Cluster-level)</strong>: Variables in cluster's <code>preserved_variables.cnf</code> - applies to all servers unless excluded, shown with blue badge
+              <br />
+              • <strong>Priority 3 (Excluded/None)</strong>: Servers can be excluded from cluster-level variables using <code>.exclude</code> suffix
+              <br />
+              <br />
+              <strong>Icons Legend:</strong>
+              <br />
+              • <TbShieldCheck style={{display: 'inline', verticalAlign: 'middle'}} color="purple" /> Server-specific preservation (Priority 1)
+              <br />
+              • <TbShield style={{display: 'inline', verticalAlign: 'middle'}} color="blue" /> Cluster-level preservation (Priority 2)
+              <br />
+              • <TbShieldOff style={{display: 'inline', verticalAlign: 'middle'}} color="gray" /> Excluded from cluster-level
+              <br />
+              <br />
               If deployed values don't match configurator values after applying changes, please check the database nodes for:
               <br />
               • Custom configuration files in <strong>custom.d/</strong> or <strong>conf.d/</strong> directories
@@ -772,6 +872,17 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
       <Box className={`${styles.tableContainer} ${styles.variableContainer}`} overflow={'auto'}>
         <DataTable key="variables" data={variablesData} columns={columns} className={styles.table} enablePagination={true} />
       </Box>
+      
+      {user?.grants['cluster-settings'] && (
+        <Box width="100%" mt={4}>
+          <AccordionComponent
+            heading={'Cluster Preserved Variables Configuration'}
+            className={styles.accordion}
+            body={<PreservedVariablesEditor clusterName={clusterName} user={user} />}
+          />
+        </Box>
+      )}
+      
       {isOpen && <ConfirmModal title={title} isOpen={isOpen} onConfirmClick={handleConfirm} closeModal={closeConfirmModal} />}
       {complexVariableModal.isOpen && (
         <ComplexVariableModal 

@@ -198,6 +198,12 @@ var clusterACLRules = []ACLRule{
 	{"/settings/actions/discover", nil, []string{config.GrantClusterSettings}},
 	{"/actions/reset-failover-control", nil, []string{config.GrantClusterSettings}},
 
+	// Config Management - MySQL Defaults and Preserved Variables (from origin/develop)
+	{"/settings/mysql-defaults-cnf", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/save-mysql-defaults-cnf", nil, []string{config.GrantClusterSettings}},
+	{"/settings/preserved-variables-cnf", nil, []string{config.GrantClusterSettings}},
+	{"/settings/actions/save-preserved-variables-cnf", nil, []string{config.GrantClusterSettings}},
+
 	// Maintenance
 	{"/actions/checksum-all-tables", nil, []string{config.GrantClusterChecksum}},
 	{"/actions/analyze-all-tables", nil, []string{config.GrantClusterAnalyze}},
