@@ -502,6 +502,71 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
           )
         }
       })]:[]),
+      ...(showPreserve ? [columnHelper.accessor((row) => row.preservedValue, {
+        header: 'Preserve',
+        size: 100,
+        maxSize: 200,
+        minSize: 100,
+        cell: (info) => {
+          const fullString = info.getValue()
+          const fullLength = fullString?.length
+          const row = info.row.original
+          
+          // Check if this is a boolean variable
+          const isBoolean = isBooleanVariable(row)
+          
+          // Preservation metadata
+          const preservedSource = row.preservedSource
+          const preservedPriority = row.preservedPriority
+          const isExcludedFromCluster = row.isExcludedFromCluster
+          
+          // Truncate for display and add space after commas for better wrapping
+          const displayString = fullString?.replace(/,/g, ', ')
+          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
+          
+          // Build source info
+          let sourceInfo = ''
+          if (fullString) {
+            if (preservedPriority === 1) {
+              sourceInfo = '📋 Server-specific (Priority 1)'
+            } else if (preservedPriority === 2) {
+              sourceInfo = '🌐 Cluster-level (Priority 2)'
+            }
+          }
+          
+          return (
+            <VStack align="flex-start" spacing={0}>
+              <HStack spacing={1}>
+                {preservedPriority === 1 && (
+                  <Tooltip label="Server-specific preservation (Priority 1 - Highest)" placement="top">
+                    <Badge colorScheme="purple" fontSize="xs">Server</Badge>
+                  </Tooltip>
+                )}
+                {preservedPriority === 2 && (
+                  <Tooltip label="Cluster-level preservation (Priority 2)" placement="top">
+                    <Badge colorScheme="blue" fontSize="xs">Cluster</Badge>
+                  </Tooltip>
+                )}
+                <Text 
+                  title={fullLength > TRUNCATE_LENGTH ? `${sourceInfo}\n\nValue: ${fullString}` : sourceInfo}
+                  whiteSpace="normal" 
+                  wordBreak="break-word"
+                  fontWeight={isBoolean ? 'bold' : 'normal'}
+                >
+                  {truncatedString}
+                </Text>
+              </HStack>
+              {isExcludedFromCluster && preservedPriority === 1 && (
+                <Tooltip label="This server has a server-specific override but is excluded from cluster-level preservation" placement="top">
+                  <Text fontSize="xs" color="gray.500" fontStyle="italic">
+                    (cluster excluded)
+                  </Text>
+                </Tooltip>
+              )}
+            </VStack>
+          )
+        }
+      })]: []),
       ...(showRuntime ? [columnHelper.accessor((row) => row.runtimeValue, {
         header: 'Runtime',
         size: 100,
@@ -565,71 +630,6 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                 {truncatedString}
               </Text>
             </HStack>
-          )
-        }
-      })]: []),
-      ...(showPreserve ? [columnHelper.accessor((row) => row.preservedValue, {
-        header: 'Preserve',
-        size: 100,
-        maxSize: 200,
-        minSize: 100,
-        cell: (info) => {
-          const fullString = info.getValue()
-          const fullLength = fullString?.length
-          const row = info.row.original
-          
-          // Check if this is a boolean variable
-          const isBoolean = isBooleanVariable(row)
-          
-          // Preservation metadata
-          const preservedSource = row.preservedSource
-          const preservedPriority = row.preservedPriority
-          const isExcludedFromCluster = row.isExcludedFromCluster
-          
-          // Truncate for display and add space after commas for better wrapping
-          const displayString = fullString?.replace(/,/g, ', ')
-          const truncatedString = fullLength > TRUNCATE_LENGTH ? displayString.substring(0, TRUNCATE_LENGTH) + '...' : displayString
-          
-          // Build source info
-          let sourceInfo = ''
-          if (fullString) {
-            if (preservedPriority === 1) {
-              sourceInfo = '📋 Server-specific (Priority 1)'
-            } else if (preservedPriority === 2) {
-              sourceInfo = '🌐 Cluster-level (Priority 2)'
-            }
-          }
-          
-          return (
-            <VStack align="flex-start" spacing={0}>
-              <HStack spacing={1}>
-                {preservedPriority === 1 && (
-                  <Tooltip label="Server-specific preservation (Priority 1 - Highest)" placement="top">
-                    <Badge colorScheme="purple" fontSize="xs">Server</Badge>
-                  </Tooltip>
-                )}
-                {preservedPriority === 2 && (
-                  <Tooltip label="Cluster-level preservation (Priority 2)" placement="top">
-                    <Badge colorScheme="blue" fontSize="xs">Cluster</Badge>
-                  </Tooltip>
-                )}
-                <Text 
-                  title={fullLength > TRUNCATE_LENGTH ? `${sourceInfo}\n\nValue: ${fullString}` : sourceInfo}
-                  whiteSpace="normal" 
-                  wordBreak="break-word"
-                  fontWeight={isBoolean ? 'bold' : 'normal'}
-                >
-                  {truncatedString}
-                </Text>
-              </HStack>
-              {isExcludedFromCluster && preservedPriority === 1 && (
-                <Tooltip label="This server has a server-specific override but is excluded from cluster-level preservation" placement="top">
-                  <Text fontSize="xs" color="gray.500" fontStyle="italic">
-                    (cluster excluded)
-                  </Text>
-                </Tooltip>
-              )}
-            </VStack>
           )
         }
       })]: []),
