@@ -805,6 +805,18 @@ func (cluster *Cluster) IsURLPassACL(strUser string, URL string, errorPrint bool
 		}
 	}
 	if cluster.APIUsers[strUser].Grants[config.GrantClusterSettings] {
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/mysql-defaults-cnf") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/save-mysql-defaults-cnf") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/preserved-variables-cnf") {
+			return true
+		}
+		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/save-preserved-variables-cnf") {
+			return true
+		}
 		if strings.Contains(URL, "/api/clusters/"+cluster.Name+"/settings/actions/reload") {
 			return true
 		}

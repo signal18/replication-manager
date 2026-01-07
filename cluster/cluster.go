@@ -258,6 +258,11 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
+	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
+	preservedVars               map[string]string          `json:"-"`
+	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
+	preservedVarsLoaded         bool                       `json:"-"`
+	preservedVarsMutex          sync.RWMutex               `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -550,6 +555,17 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SqlGeneralLog.AddHook(hookgen)
 
 	cluster.LoadAppConfigs()
+
+	// Configurator generates base configuration from tags, which is overridden by:
+	// 1. Cluster-wide preserved variables
+	// 2. Server-specific preserved variables
+
+	// Initialize preserved variables before server initialization
+	// This replaces the old ProvDBConfigPreserveVars mechanism
+	if err := cluster.initPreservedVars(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to pre-initialize preserved variables: %v (will retry on demand)", err)
+	}
 
 	err = cluster.newServerList()
 	if err != nil {

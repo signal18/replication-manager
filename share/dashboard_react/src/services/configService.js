@@ -8,6 +8,8 @@ export const configService = {
   generateConfig,
   generateAllConfigs,
   preserveConfigPath,
+  getPreservedVarsCnf,
+  savePreservedVarsCnf,
 }
 
 function addDBTag(clusterName, tag, baseURL) {
@@ -36,4 +38,12 @@ function generateAllConfigs(clusterName, type, baseURL) {
 
 function preserveConfigPath(clusterName, dbId, preserve, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/servers/${dbId}/config-path-preserve/${preserve}`)
+}
+
+function getPreservedVarsCnf(clusterName, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/settings/preserved-variables-cnf`)
+}
+
+function savePreservedVarsCnf(clusterName, content, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/settings/actions/save-preserved-variables-cnf`, { content })
 }

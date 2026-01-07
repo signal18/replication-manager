@@ -8499,7 +8499,7 @@ const docTemplate = `{
         },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/restart": {
             "post": {
-                "description": "Restarts a specified server within a cluster, optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.",
+                "description": "Restarts a specified server within a cluster (queues restart asynchronously), optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.",
                 "produces": [
                     "application/json"
                 ],
@@ -8545,9 +8545,10 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Server restarted successfully",
+                        "description": "Restart queued successfully",
                         "schema": {
-                            "type": "string"
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "400": {
@@ -8562,8 +8563,14 @@ const docTemplate = `{
                             "type": "string"
                         }
                     },
-                    "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Orchestrator not supported",
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "501": {
+                        "description": "Orchestrator not supported",
                         "schema": {
                             "type": "string"
                         }
@@ -14960,6 +14967,73 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf": {
+            "post": {
+                "description": "This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Save preserved variables CNF content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CNF file content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.PreservedVarsCnfRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully saved preserved variables CNF",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error saving file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue}": {
             "post": {
                 "description": "This endpoint sets the cron jobs for the specified cluster.",
@@ -15277,6 +15351,64 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/preserved-variables-cnf": {
+            "get": {
+                "description": "This endpoint retrieves the content of the preserved_variables.cnf file from the cluster's working directory",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Get preserved variables CNF content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CNF file content in JSON format with 'content' key",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error reading file",
                         "schema": {
                             "type": "string"
                         }
@@ -19899,6 +20031,10 @@ const docTemplate = `{
                 "gtidExecuted": {
                     "type": "string"
                 },
+                "hasConfigDiff": {
+                    "description": "Indicates if there are differences between deployed and generated config",
+                    "type": "boolean"
+                },
                 "hasConfigPathChanged": {
                     "type": "boolean"
                 },
@@ -20199,6 +20335,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dbhelper.SlaveStatus"
                     }
+                },
+                "restartNode": {
+                    "description": "RestartNode stores node parameter for restart cookie (owned by cookie mechanism, single writer assumption)",
+                    "type": "string"
+                },
+                "restartRid": {
+                    "description": "RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)",
+                    "type": "string"
                 },
                 "semiSyncMasterStatus": {
                     "type": "boolean"
@@ -24442,6 +24586,14 @@ const docTemplate = `{
                     "$ref": "#/definitions/logrus.Fields"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.PreservedVarsCnfRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
                     "type": "string"
                 }
             }

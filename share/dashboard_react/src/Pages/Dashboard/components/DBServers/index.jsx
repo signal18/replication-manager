@@ -14,6 +14,8 @@ import ServerStatus from '../../../../components/ServerStatus'
 import RMIconButton from '../../../../components/RMIconButton'
 import { Link } from 'react-router-dom'
 import CopyToClipboard from '../../../../components/CopyToClipboard'
+import { Tooltip } from '@chakra-ui/react'
+import { TbAlertCircle } from 'react-icons/tb'
 
 function DBServers({ selectedCluster, user }) {
   const isDesktop = useSelector((state) => state.common.isDesktop)
@@ -241,6 +243,23 @@ function DBServers({ selectedCluster, user }) {
         cell: (info) => info.getValue(),
         header: 'Rep Syn',
         id: 'repSyn',
+        maxWidth: 40
+      }),
+      columnHelper.accessor((row) => {
+        if (row.hasConfigDiff) {
+          return (
+            <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab." placement="top">
+              <Link to={`/clusters/${selectedCluster?.name}/${row?.id}`} state={{ openTab: 'Variables' }}>
+                <TbAlertCircle color="orange" size={20} style={{ cursor: 'pointer' }} />
+              </Link>
+            </Tooltip>
+          )
+        }
+        return <CheckOrCrossIcon isValid={true} />
+      }, {
+        cell: (info) => info.getValue(),
+        header: 'Cfg Diff',
+        id: 'cfgDiff',
         maxWidth: 40
       })
     ],
