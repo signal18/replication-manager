@@ -31,6 +31,8 @@ function ClusterDB(props) {
   const clusterData = useSelector((state) => state.cluster.clusterData)
   const loggedUser = useSelector((state) => state.auth.user)
 
+  const isIgnoredServer = Boolean(selectedDBServer?.ignored)
+
   useEffect(() => {
     let intervalId = 0
     let interval = localStorage.getItem('refresh_interval')
@@ -295,7 +297,7 @@ function ClusterDB(props) {
                     dbId={dbId}
                     clusterName={clusterName}
                     user={user}
-                    selectedDBServer={selectedDBServer}
+                    isIgnoredServer={isIgnoredServer}
                     variableMode={variableModeRef.current}
                     toggleVariableMode={toggleVariableMode}
                     onNavigateToPFSInstruments={navigateToPFSInstruments}
