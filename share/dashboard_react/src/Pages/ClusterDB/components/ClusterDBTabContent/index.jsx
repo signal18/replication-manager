@@ -18,8 +18,9 @@ import Errors from '../Errors'
 import ServerAudit from '../ServerAudit'
 import PFSInstruments from '../PFSInstruments'
 
-function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, isIgnoredServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter }) {
+function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter }) {
   const [currentTab, setCurrentTab] = useState('')
+  const isIgnoredServer = Boolean(selectedDBServer?.ignored)
 
   const {
     cluster: { clusterMaster, clusterData, database }
