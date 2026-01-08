@@ -124,13 +124,13 @@ select_database_binaries() {
         BINARY_CLIENT="$MARIADB_CLIENT $DB_CONN_PARAMETERS"
         BINARY_CHECK="$MARIADB_CHECK"
         BINARY_DUMP="$MARIADB_DUMP"
-        send_lines_to_api "Using MariaDB binaries." "main" "$LVL_INFO"
+        send_lines_to_api "Using MariaDB binaries." "main" "$LVL_DEBUG"
     elif [[ -x "$MYSQL_CLIENT" ]]; then
         # Use command-line params to preserve existing my.cnf SSL/TLS settings
         BINARY_CLIENT="$MYSQL_CLIENT $DB_CONN_PARAMETERS"
         BINARY_CHECK="$MYSQL_CHECK"
         BINARY_DUMP="$MYSQL_DUMP"
-        send_lines_to_api "Using MySQL binaries." "main" "$LVL_INFO"
+        send_lines_to_api "Using MySQL binaries." "main" "$LVL_DEBUG"
     else
         send_lines_to_api "Neither MariaDB nor MySQL binaries available. Exiting." "main" "$LVL_ERROR"
         return 1
@@ -541,7 +541,7 @@ fetch_and_extract_config() {
     local token="${2:-}"
     local config_sender_url="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-dummy-sender"
     
-    send_lines_to_api "Requesting config send via cookie-based push mechanism..." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Requesting config send via cookie-based push mechanism..." "print-defaults" "$LVL_DEBUG"
     
     # Remove existing directory and create new one
     rm -rf "$extract_dir"
@@ -550,7 +550,7 @@ fetch_and_extract_config() {
     # Step 1: POST to queue the config send and get SST port info
     local request_timeout=10  # API should respond quickly (just queues request)
     
-    send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_DEBUG"
     
     local response
     if [[ -n "$token" ]]; then
@@ -596,13 +596,13 @@ fetch_and_extract_config() {
     fi
     
     send_lines_to_api "Config send queued (status: $status)" "print-defaults" "$LVL_INFO"
-    send_lines_to_api "Config will be sent to $sst_host:$sst_port" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Config will be sent to $sst_host:$sst_port" "print-defaults" "$LVL_DEBUG"
     
     # Step 2: Open TCP listener on the SST port to receive the config
     local config_file="$extract_dir/config.tar.gz"
     local listener_timeout=300  # 5 minutes timeout for config delivery
     
-    send_lines_to_api "Opening TCP listener on port $sst_port..." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Opening TCP listener on port $sst_port..." "print-defaults" "$LVL_DEBUG"
     
     # Use socat to listen and save received data to file
     # Format: socat -u TCP-LISTEN:port,reuseaddr,fork OPEN:file,creat,trunc
@@ -615,7 +615,7 @@ fetch_and_extract_config() {
     timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
     local socat_pid=$!
     
-    send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_DEBUG"
     
     # Wait for socat to complete or timeout
     wait $socat_pid
@@ -640,7 +640,7 @@ fetch_and_extract_config() {
     fi
     
     local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
-    send_lines_to_api "Received config file: $filesize bytes" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Received config file: $filesize bytes" "print-defaults" "$LVL_DEBUG"
     
     # Check file type before extraction
     local file_type=$(file -b "$config_file" 2>/dev/null || echo "unknown")
@@ -662,7 +662,7 @@ fetch_and_extract_config() {
     send_lines_to_api "Attempting gzip extraction (tar xzf)..." "print-defaults" "$LVL_DEBUG"
     
     if tar_output=$(tar xzf "$config_file" -C "$extract_dir" 2>&1); then
-        send_lines_to_api "Successfully extracted as gzip compressed tar" "print-defaults" "$LVL_INFO"
+        send_lines_to_api "Successfully extracted as gzip compressed tar" "print-defaults" "$LVL_DEBUG"
     else
         send_lines_to_api "Gzip extraction failed: $tar_output" "print-defaults" "$LVL_WARN"
         
@@ -670,7 +670,7 @@ fetch_and_extract_config() {
         send_lines_to_api "Trying uncompressed extraction (tar xf)..." "print-defaults" "$LVL_DEBUG"
         
         if tar_output=$(tar xf "$config_file" -C "$extract_dir" 2>&1); then
-            send_lines_to_api "Successfully extracted as uncompressed tar" "print-defaults" "$LVL_INFO"
+            send_lines_to_api "Successfully extracted as uncompressed tar" "print-defaults" "$LVL_DEBUG"
         else
             send_lines_to_api "ERROR: All extraction methods failed" "print-defaults" "$LVL_ERROR"
             send_lines_to_api "Final tar error: $tar_output" "print-defaults" "$LVL_ERROR"
@@ -761,7 +761,7 @@ send_mariadb_defaults() {
     # Log output
     echo "$processed_output" > "$log_file"
     
-    send_lines_to_api "Output sent to $receiver_addr and logged to $log_file" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Output sent to $receiver_addr and logged to $log_file" "print-defaults" "$LVL_DEBUG"
     return 0
 }
 
@@ -848,7 +848,7 @@ print_defaults_for_fetch() {
     
     # Run mariadbd with dummy configuration
     if send_mariadb_defaults "$extract_dir/dummy.cnf" "$monitor_addr:$dummy_port" "$log_file"; then
-        send_lines_to_api "Dry run (dummy) completed successfully" "print-defaults" "$LVL_INFO"
+        send_lines_to_api "Dry run (dummy) completed successfully" "print-defaults" "$LVL_DEBUG"
         return 0
     else
         send_lines_to_api "ERROR: Dry run (dummy) failed" "print-defaults" "$LVL_ERROR"
@@ -865,7 +865,7 @@ parse_json_field() {
 
 # Main function to run config print jobs
 run_config_print_jobs() {
-    send_lines_to_api "Fetching config receiver information..." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Fetching config receiver information..." "print-defaults" "$LVL_DEBUG"
     
     # Fetch receiver info
     local receiver_json=$(fetch_config_receiver) || return 1
@@ -877,7 +877,7 @@ run_config_print_jobs() {
     local current_pid_file=$(parse_json_field "$receiver_json" "current_pid_file")
     local default_config_path=$(parse_json_field "$receiver_json" "default_config_dir")
     
-    send_lines_to_api "Monitor Address: $monitor_address, Dummy Port: $dummy_config_port, Current Port: $current_config_port" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Monitor Address: $monitor_address, Dummy Port: $dummy_config_port, Current Port: $current_config_port" "print-defaults" "$LVL_DEBUG"
     
     # Prepare log files
     local dummy_log="$LOG_DIR/dummy.log"
