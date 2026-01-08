@@ -211,7 +211,7 @@ const areValuesEqual = (val1, val2, row) => {
   return String(val1) === String(val2)
 }
 
-function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user }) {
+function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user, isIgnoredServer }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
   const variables = useSelector((state) => state.cluster.database.variables)
@@ -225,6 +225,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
 
   // Truncate length for table cell values
   const TRUNCATE_LENGTH = 100
+  const disabledActionTooltip = "Server is ignored; variable edits are disabled"
 
   // Get username for user-specific localStorage key
   const username = localStorage.getItem('username') || 'default'
@@ -261,6 +262,11 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
 
   const handleConfirm = () => {
     const { type } = confirmState
+
+    if (isIgnoredServer) {
+      closeConfirmModal()
+      return
+    }
     
     if (type === 'preserve') {
       dispatch(preserveVariable({ clusterName, dbId, variableName: payload, action: 'preserve' }))
@@ -288,6 +294,9 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
   }
 
   const handleSaveCustomValue = (variableName, customValue) => {
+    if (isIgnoredServer) {
+      return
+    }
     dispatch(setCustomVariableValue({ clusterName, dbId, variableName, customValue }))
       .unwrap()
       .then(() => {
@@ -647,12 +656,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             {hasDiff && !hasPreserve && (
               <>
                 <RMIconButton 
-                  tooltip="Preserve deployed value (keep current database value)" 
+                  tooltip={isIgnoredServer ? disabledActionTooltip : "Preserve deployed value (keep current database value)"} 
                   icon={TbShield} 
                   colorScheme="blue"
                   size="sm"
+                  isDisabled={isIgnoredServer}
                   onClick={(e) => { 
                     e.stopPropagation()
+                    if (isIgnoredServer) {
+                      return
+                    }
                     vDispatch({ 
                       type: "SET_CONFIRM_ACTION", 
                       payload: { 
@@ -664,12 +677,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   }} 
                 />
                 <RMIconButton 
-                  tooltip="Accept config value (use configurator value)" 
+                  tooltip={isIgnoredServer ? disabledActionTooltip : "Accept config value (use configurator value)"} 
                   icon={TbCheck} 
                   colorScheme="green"
                   size="sm"
+                  isDisabled={isIgnoredServer}
                   onClick={(e) => { 
                     e.stopPropagation()
+                    if (isIgnoredServer) {
+                      return
+                    }
                     vDispatch({ 
                       type: "SET_CONFIRM_ACTION", 
                       payload: { 
@@ -685,12 +702,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             {hasPreserve && !runtimeDiffersFromPreserved && (
               <>
                 <RMIconButton 
-                  tooltip="Clear preservation status" 
+                  tooltip={isIgnoredServer ? disabledActionTooltip : "Clear preservation status"} 
                   icon={TbTrash} 
                   colorScheme="red"
                   size="sm"
+                  isDisabled={isIgnoredServer}
                   onClick={(e) => { 
                     e.stopPropagation()
+                    if (isIgnoredServer) {
+                      return
+                    }
                     vDispatch({ 
                       type: "SET_CONFIRM_ACTION", 
                       payload: { 
@@ -706,12 +727,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             {runtimeDiffersFromPreserved && (
               <>
                 <RMIconButton 
-                  tooltip="Re-preserve with current runtime value (update preserved value to match runtime)" 
+                  tooltip={isIgnoredServer ? disabledActionTooltip : "Re-preserve with current runtime value (update preserved value to match runtime)"} 
                   icon={TbShield} 
                   colorScheme="orange"
                   size="sm"
+                  isDisabled={isIgnoredServer}
                   onClick={(e) => { 
                     e.stopPropagation()
+                    if (isIgnoredServer) {
+                      return
+                    }
                     vDispatch({ 
                       type: "SET_CONFIRM_ACTION", 
                       payload: { 
@@ -723,12 +748,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
                   }} 
                 />
                 <RMIconButton 
-                  tooltip="Restart required to restore preserved value" 
+                  tooltip={isIgnoredServer ? disabledActionTooltip : "Restart required to restore preserved value"} 
                   icon={TbTrash} 
                   colorScheme="red"
                   size="sm"
+                  isDisabled={isIgnoredServer}
                   onClick={(e) => { 
                     e.stopPropagation()
+                    if (isIgnoredServer) {
+                      return
+                    }
                     vDispatch({ 
                       type: "SET_CONFIRM_ACTION", 
                       payload: { 
@@ -748,12 +777,16 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
               </HStack>
             )}
             <RMIconButton 
-              tooltip="Edit/Override variable value (set custom value)" 
+              tooltip={isIgnoredServer ? disabledActionTooltip : "Edit/Override variable value (set custom value)"} 
               icon={TbEdit} 
               colorScheme="purple"
               size="sm"
+              isDisabled={isIgnoredServer}
               onClick={(e) => { 
                 e.stopPropagation()
+                if (isIgnoredServer) {
+                  return
+                }
                 vDispatch({ 
                   type: "SET_EDIT_MODAL", 
                   payload: { isOpen: true, data: row }
@@ -771,7 +804,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
         minSize: 150
       })
     ],
-    [showCfg, showDeployed, showRuntime, showPreserve, onNavigateToPFSInstruments, vDispatch]
+    [showCfg, showDeployed, showRuntime, showPreserve, onNavigateToPFSInstruments, vDispatch, isIgnoredServer]
   )
 
   return (
@@ -828,6 +861,17 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
             top={-1}
             onClick={handleDismissAlert}
           />
+        </Alert>
+      )}
+      {isIgnoredServer && (
+        <Alert status="warning" variant="left-accent" mb={4}>
+          <AlertIcon />
+          <Box flex="1">
+            <AlertTitle fontSize="sm" fontWeight="bold">Ignored Server</AlertTitle>
+            <AlertDescription fontSize="xs">
+              This server is marked as ignored. Variable preservation and custom overrides are disabled to avoid tampering.
+            </AlertDescription>
+          </Box>
         </Alert>
       )}
       <Flex className={styles.actions}>

@@ -23,6 +23,9 @@ import (
 )
 
 func (server *ServerMonitor) CheckDBConfigPath() {
+	if server.IsIgnored() {
+		return
+	}
 	cluster := server.ClusterGroup
 	if cluster.IsInFailover() {
 		return
@@ -255,6 +258,9 @@ func (server *ServerMonitor) CheckReplication() string {
 
 // CheckSlaveSettings check slave variables & enforce if set
 func (server *ServerMonitor) CheckSlaveSettings() {
+	if server.IsIgnored() {
+		return
+	}
 	sl := server
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
@@ -402,6 +408,9 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 // CheckMasterSettings check master variables & enforce if set
 func (server *ServerMonitor) CheckMasterSettings() {
+	if server.IsIgnored() {
+		return
+	}
 	cluster := server.ClusterGroup
 	if cluster.Conf.ForceSlaveSemisync && server.HaveSemiSync == false {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
@@ -612,6 +621,9 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 }
 
 func (server *ServerMonitor) CheckNeedConfigFetch() {
+	if server.IsIgnored() {
+		return
+	}
 	cluster := server.ClusterGroup
 	// Default action from cluster config
 	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {

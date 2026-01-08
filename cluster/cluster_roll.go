@@ -18,6 +18,10 @@ func (cluster *Cluster) RollingReprov() error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rolling reprovisionning")
 	masterID := cluster.GetMaster().Id
 	for _, slave := range cluster.slaves {
+		if slave == nil || slave.IsIgnored() {
+			continue
+		}
+
 		if !slave.IsDown() {
 			if !slave.IsMaintenance {
 				slave.SwitchMaintenance()
@@ -94,7 +98,7 @@ func (cluster *Cluster) RollingRestart() error {
 	cluster.SetFailSync(false)
 	defer cluster.SetFailSync(saveFailoverMode)
 	for _, slave := range cluster.slaves {
-		if slave.SourceClusterName != cluster.Name {
+		if slave == nil || slave.IsIgnored() {
 			continue
 		}
 		if !slave.IsDown() {
@@ -181,6 +185,9 @@ func (cluster *Cluster) RollingRestart() error {
 
 func (cluster *Cluster) RollingOptimize() {
 	for _, s := range cluster.slaves {
+		if s == nil || s.IsIgnored() {
+			continue
+		}
 		jobid, _ := s.JobOptimize()
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Optimize job id %d on %s ", jobid, s.URL)
 	}
@@ -191,7 +198,7 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	var ts time.Time
 
 	for _, s := range cluster.slaves {
-		if s == nil {
+		if s == nil || s.IsIgnored() {
 			continue
 		}
 
@@ -213,7 +220,7 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	}
 
 	for _, s := range cluster.GetStandaloneServers() {
-		if s == nil {
+		if s == nil || s.IsIgnored() {
 			continue
 		}
 
@@ -235,7 +242,7 @@ func (cluster *Cluster) RollingJobsUpgrade() error {
 	}
 
 	master := cluster.GetMaster()
-	if master == nil {
+	if master == nil || master.IsIgnored() {
 		return nil
 	}
 

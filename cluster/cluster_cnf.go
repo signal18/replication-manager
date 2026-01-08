@@ -22,31 +22,6 @@ func (cluster *Cluster) GetPreservedVarsPath() string {
 	return filepath.Join(cluster.Conf.WorkingDir, cluster.Name, "preserved_variables.cnf")
 }
 
-// GetPreservedVarsInfo returns information about currently loaded preserved variables
-func (cluster *Cluster) GetPreservedVarsInfo() map[string]interface{} {
-	cluster.preservedVarsMutex.RLock()
-	defer cluster.preservedVarsMutex.RUnlock()
-
-	info := make(map[string]interface{})
-	info["loaded"] = cluster.preservedVarsLoaded
-	info["count"] = len(cluster.preservedVars)
-	info["path"] = cluster.GetPreservedVarsPath()
-
-	// Check if file exists
-	preservedPath := cluster.GetPreservedVarsPath()
-	if _, err := os.Stat(preservedPath); err == nil {
-		info["exists"] = true
-		if finfo, err := os.Stat(preservedPath); err == nil {
-			info["modified"] = finfo.ModTime()
-			info["size"] = finfo.Size()
-		}
-	} else {
-		info["exists"] = false
-	}
-
-	return info
-}
-
 // ReloadPreservedVars forces a reload of preserved variables from cluster working directory
 // Useful after manually editing the preserved_variables.cnf file
 func (cluster *Cluster) ReloadPreservedVars() error {
@@ -384,23 +359,6 @@ func (cluster *Cluster) initPreservedVars() error {
 		"Loaded %d preserved variables from %s", len(cluster.preservedVars), source)
 
 	return nil
-}
-
-// getPreservedValueForVar returns the preserved value for a variable from cluster-level config
-// Returns empty string if variable is not preserved at cluster level
-// This is checked BEFORE server-specific preserved files (01_preserved.cnf, etc.)
-func (cluster *Cluster) getPreservedValueForVar(varName string) (string, bool) {
-	cluster.preservedVarsMutex.RLock()
-	defer cluster.preservedVarsMutex.RUnlock()
-
-	upperName := strings.ToUpper(varName)
-
-	// Return value if it exists in loaded preserved variables
-	if val, ok := cluster.preservedVars[upperName]; ok {
-		return val, true
-	}
-
-	return "", false
 }
 
 // AddPreservedVar adds or updates a preserved variable

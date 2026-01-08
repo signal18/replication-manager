@@ -1168,6 +1168,9 @@ func (cluster *Cluster) CheckNeedConfigFetch() {
 		if srv == nil {
 			continue
 		}
+		if srv.IsIgnored() {
+			continue
+		}
 		srv.CheckNeedConfigFetch()
 	}
 }
@@ -1176,6 +1179,9 @@ func (cluster *Cluster) CheckNeedConfigFetch() {
 func (cluster *Cluster) CheckDummyConfigSendCookies() {
 	for _, srv := range cluster.Servers {
 		if srv == nil {
+			continue
+		}
+		if srv.IsIgnored() {
 			continue
 		}
 
