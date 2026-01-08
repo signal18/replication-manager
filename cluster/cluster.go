@@ -461,7 +461,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Creating directory  %s", cluster.WorkingDir)
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
 

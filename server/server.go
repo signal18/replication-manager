@@ -1380,7 +1380,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	// Proceed include files
 	//if include is defined in a config file
 	if fistRead.GetString("default.include") != "" {
-		repman.Logrus.Info("Reading default section include directory: " + fistRead.GetString("default.include"))
+		repman.Logrus.Debug("Reading default section include directory: " + fistRead.GetString("default.include"))
 
 		if _, err := os.Stat(fistRead.GetString("default.include")); os.IsNotExist(err) {
 			repman.Logrus.Warning("Include config directory does not exist " + conf.Include)
@@ -1392,7 +1392,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		//load files from the include path
 		files, err := os.ReadDir(conf.ClusterConfigPath)
 		if err != nil {
-			repman.Logrus.Infof("No config include directory %s ", conf.ClusterConfigPath)
+			repman.Logrus.Debugf("No config include directory %s ", conf.ClusterConfigPath)
 		}
 		//read and set config from all files in the include path
 		for _, f := range files {
@@ -1416,7 +1416,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 			}
 		}
 	} else {
-		repman.Logrus.Warning("No include directory in default section")
+		repman.Logrus.Debug("No include directory in default section")
 	}
 
 	repman.ImmutableClusterList = strings.Split(repman.DiscoverClusters(fistRead), ",")
@@ -1454,11 +1454,11 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 		files, err := os.ReadDir(conf.WorkingDir)
 		//load files from the working dir
 		if err != nil {
-			repman.Logrus.Infof("No working directory %s ", conf.WorkingDir)
+			repman.Logrus.Debugf("No working directory %s ", conf.WorkingDir)
 		}
 		// Preserve dynamic config after restart
 		if _, err := os.Stat(conf.WorkingDir + "/default.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
+			repman.Logrus.Debugf("No monitoring overwrite default config found %s", conf.WorkingDir+"/default.toml")
 		} else {
 			fistRead.SetConfigFile(conf.WorkingDir + "/default.toml")
 			err = fistRead.MergeInConfig()
@@ -1489,7 +1489,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 				dynRead.SetConfigName("overwrite-" + f.Name())
 				if _, err := os.Stat(conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml"); os.IsNotExist(err) || f.Name() == "overwrite" {
 					if f.Name() != "overwrite" {
-						repman.Logrus.Warning("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
+						repman.Logrus.Debug("No monitoring saved config found " + conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					}
 
 				} else {
@@ -1505,7 +1505,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 		//to read and set cloud18.toml config file if exist
 		if _, err := os.Stat(conf.WorkingDir + "/.pull/cloud18.toml"); os.IsNotExist(err) {
-			repman.Logrus.Infof("No cloud18 config found %s", conf.WorkingDir+"/.pull/cloud18.toml")
+			repman.Logrus.Debugf("No cloud18 config found %s", conf.WorkingDir+"/.pull/cloud18.toml")
 		} else {
 			tmp_read.SetConfigFile(conf.WorkingDir + "/.pull/cloud18.toml")
 			err := tmp_read.MergeInConfig()
@@ -1526,7 +1526,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 	if strClusters == "" {
 		// Discovering the clusters from all merged conf files build clusterDiscovery map
 		strClusters = repman.DiscoverClusters(fistRead)
-		repman.Logrus.WithField("clusters", strClusters).Infof("Clusters discovered: %s", strClusters)
+		repman.Logrus.WithField("clusters", strClusters).Debugf("Clusters discovered: %s", strClusters)
 	}
 
 	cfgGroupIndex = 0
@@ -1551,7 +1551,7 @@ func (repman *ReplicationManager) InitConfig(conf config.Config, init_git bool) 
 
 			//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
 			if cf3 == nil {
-				repman.Logrus.WithField("group", "default").Info("Could not parse saved configuration group")
+				repman.Logrus.WithField("group", "default").Debug("Could not parse saved configuration group")
 			} else {
 				for _, f := range cf3.AllKeys() {
 					v, ok := ImmuableMap[f]
@@ -1673,7 +1673,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 		cf2 := fistRead.Sub(cluster)
 
 		if cf2 == nil {
-			repman.Logrus.WithField("group", cluster).Infof("Could not parse configuration group")
+			repman.Logrus.WithField("group", cluster).Debugf("Could not parse configuration group")
 		} else {
 			cf2.AutomaticEnv()
 			cf2.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
@@ -1709,7 +1709,7 @@ func (repman *ReplicationManager) GetClusterConfig(fistRead *viper.Viper, Immuab
 
 			//cf4 := repman.CleanupDynamicConfig(clustImmuableMap, cf3)
 			if cf3 == nil {
-				repman.Logrus.WithField("group", cluster).Info("Could not parse saved configuration group")
+				repman.Logrus.WithField("group", cluster).Debug("Could not parse saved configuration group")
 			} else {
 				for _, f := range cf3.AllKeys() {
 					v, ok := clustImmuableMap[f]
@@ -2413,7 +2413,7 @@ func (repman *ReplicationManager) StartCluster(clusterName string) (*cluster.Clu
 	myClusterConf.ImmuableFlagMap = repman.ImmuableFlagMaps[clusterName]
 	myClusterConf.DynamicFlagMap = repman.DynamicFlagMaps[clusterName]
 	myClusterConf.DefaultFlagMap = repman.DefaultFlagMap
-	repman.Logrus.Infof("Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
+	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Starting cluster: %s workingdir %s", clusterName, myClusterConf.WorkingDir)
 
 	repman.VersionConfs[clusterName].ConfInit = myClusterConf
 	//log.Infof("Default config for %s workingdir:\n %v", clusterName, myClusterConf.DefaultFlagMap)
