@@ -3136,6 +3136,11 @@ func (repman *ReplicationManager) handlerMuxServersPortConfig(w http.ResponseWri
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
+			if node.IsIgnored() {
+				http.Error(w, "Server is ignored, skipping config regeneration", 500)
+				return
+			}
+
 			if vars["dummy"] == "dummy" {
 				node.GetDummyConfig()
 			} else {
@@ -3194,6 +3199,11 @@ func (repman *ReplicationManager) handlerMuxServersPortRegenerateConfig(w http.R
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
+			if node.IsIgnored() {
+				http.Error(w, "Server is ignored, skipping config regeneration", 500)
+				return
+			}
+
 			go func() {
 				defer mycluster.LogPanicToFile("printdefault")
 
