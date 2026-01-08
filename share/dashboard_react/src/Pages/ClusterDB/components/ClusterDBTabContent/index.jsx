@@ -96,6 +96,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           onNavigateToPFSInstruments={onNavigateToPFSInstruments}
           searchFilter={variablesSearchFilter}
           user={user}
+          selectedDBServer={selectedDBServer}
         />
       ) : currentTab === 'opensvc' ? (
         <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} />

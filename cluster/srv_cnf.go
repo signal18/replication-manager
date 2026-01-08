@@ -266,6 +266,10 @@ func (server *ServerMonitor) GetDummyConfig() error {
 func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
 	cluster := server.ClusterGroup
 
+	if server.IsIgnored() {
+		return nil
+	}
+
 	if !server.HasWaitDummyConfigSendCookie() {
 		return nil
 	}
@@ -346,6 +350,11 @@ func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieMo
 
 func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
 	cluster := server.ClusterGroup
+
+	if server.IsIgnored() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Skipping config generation for ignored server %s", server.URL)
+		return nil
+	}
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
@@ -825,6 +834,10 @@ func isSafeForRuntimeFallback(varName string) bool {
 func (server *ServerMonitor) WriteDeltaVariables() error {
 	cluster := server.ClusterGroup
 	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
+
+	if server.IsIgnored() {
+		return nil
+	}
 
 	// Build content in memory first
 	var content strings.Builder

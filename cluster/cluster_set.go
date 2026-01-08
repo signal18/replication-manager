@@ -1030,6 +1030,9 @@ func (cluster *Cluster) SetProxyServersCredential(credential string, proxytype s
 // Set Cookie for all servers that configuration has changed
 func (cluster *Cluster) SetConfigChangeCookie() {
 	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsIgnored() {
+			continue
+		}
 		srv.SetConfigCookie()        // Persist until config deployed
 		srv.SetConfigRefreshCookie() // Until config refreshed
 	}
@@ -1038,6 +1041,9 @@ func (cluster *Cluster) SetConfigChangeCookie() {
 // Set Cookie for all servers that configuration variables need refresh
 func (cluster *Cluster) SetConfigRefreshCookie() {
 	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsIgnored() {
+			continue
+		}
 		srv.SetConfigRefreshCookie()
 	}
 }
@@ -1054,6 +1060,9 @@ func (cluster *Cluster) SetDBReprovCookie() {
 }
 func (cluster *Cluster) SetDBConfigPathCookie() {
 	for _, srv := range cluster.Servers {
+		if srv == nil || srv.IsIgnored() {
+			continue
+		}
 		srv.SetConfigPathCookie()
 	}
 }
