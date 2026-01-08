@@ -20,7 +20,6 @@ import PFSInstruments from '../PFSInstruments'
 
 function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestMode, user, selectedDBServer, variableMode, toggleVariableMode, onNavigateToPFSInstruments, onNavigateToVariables, variablesSearchFilter }) {
   const [currentTab, setCurrentTab] = useState('')
-  const isIgnoredServer = Boolean(selectedDBServer?.ignored)
 
   const {
     cluster: { clusterMaster, clusterData, database }
@@ -97,7 +96,7 @@ function ClusterDBTabContent({ tab, dbId, clusterName, digestMode, toggleDigestM
           onNavigateToPFSInstruments={onNavigateToPFSInstruments}
           searchFilter={variablesSearchFilter}
           user={user}
-          isIgnoredServer={isIgnoredServer}
+          selectedDBServer={selectedDBServer}
         />
       ) : currentTab === 'opensvc' ? (
         <ServiceOpenSvc clusterName={clusterName} type="db" id={dbId} />

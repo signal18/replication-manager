@@ -211,7 +211,7 @@ const areValuesEqual = (val1, val2, row) => {
   return String(val1) === String(val2)
 }
 
-function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user, isIgnoredServer }) {
+function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavigateToPFSInstruments, searchFilter, user, selectedDBServer }) {
   const [ vState, vDispatch ] = useReducer(reducer, defaultState)
   const dispatch = useDispatch()
   const variables = useSelector((state) => state.cluster.database.variables)
@@ -220,6 +220,7 @@ function Variables({ clusterName, dbId, toggleVariableMode, variableMode, onNavi
   const [variablesAllData, setvariablesAllData] = useState(variables || [])
   const prevVariablesRef = useRef(variables)
 
+  const isIgnoredServer = Boolean(selectedDBServer?.isIgnored)
   const { showCfg, showDeployed, showRuntime, showPreserve, showRowDiff, showRowPreserved, showInfoAlert, search, confirmState, complexVariableModal, editVariableModal } = vState
   const { isOpen, title, payload } = confirmState
 
