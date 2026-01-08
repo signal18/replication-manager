@@ -281,12 +281,12 @@ func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
 	server.configGenMutex.Lock()
 	defer server.configGenMutex.Unlock()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 		"Found dummy config send cookie for server %s", server.URL)
 
 	// Re-check cookie after acquiring lock (another goroutine might have processed it)
 	if !server.HasWaitDummyConfigSendCookie() {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 			"Cookie already processed by another goroutine for server %s", server.URL)
 		return nil
 	}
@@ -328,7 +328,7 @@ func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieMo
 	// If not enough time has passed, wait for the remaining duration
 	if elapsed < minWaitTime {
 		waitDuration := minWaitTime - elapsed
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
 			"Waiting %v before sending dummy config to ensure client listener is ready for server %s",
 			waitDuration, server.URL)
 		time.Sleep(waitDuration)
@@ -356,7 +356,7 @@ func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
 		return nil
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
@@ -603,7 +603,7 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype
 		return nil
 	}
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Reading %s variables from %s", cnftype, srcpath)
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading %s variables from %s", cnftype, srcpath)
 
 	*lastUpdate = finfo.ModTime()
 
