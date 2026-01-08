@@ -2,7 +2,38 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import { handleError, showErrorBanner, showSuccessBanner } from '../utility/common'
 import { globalClustersService } from '../services/globalClustersService'
 
-export const getClusters = createAsyncThunk('globalClusters/getClusters', async ({ }, thunkAPI) => {
+const getThunkTypePrefix = (actionType) => actionType.replace(/\/(pending|fulfilled|rejected)$/, '')
+
+const getPendingKey = (typePrefix) => typePrefix
+
+const shouldTrackThunk = (action) => {
+  if (!action?.meta?.requestId) {
+    return false
+  }
+  return getThunkTypePrefix(action.type).startsWith('globalClusters/')
+}
+
+const createGuardedAsyncThunk = (typePrefix, payloadCreator, options = {}) => {
+  const { condition, ...restOptions } = options
+  return createAsyncThunk(typePrefix, payloadCreator, {
+    ...restOptions,
+    condition: (arg, api) => {
+      const pendingKey = getPendingKey(typePrefix)
+      if (api.getState()?.globalClusters?.pendingThunks?.[pendingKey]) {
+        return false
+      }
+      if (condition) {
+        const result = condition(arg, api)
+        if (result === false) {
+          return false
+        }
+      }
+      return true
+    }
+  })
+}
+
+export const getClusters = createGuardedAsyncThunk('globalClusters/getClusters', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusters()
     if (status !== 200) {
@@ -10,20 +41,11 @@ export const getClusters = createAsyncThunk('globalClusters/getClusters', async 
     }
     return { data, status }
   } catch (error) {
-    handleError(error, thunkAPI)
-  }
-},
-// Add a condition to prevent the action from being dispatched if the user is already fetching the info
-{
-  condition: (_, { getState }) => {
-    const { globalClusters } = getState();
-    if (globalClusters.isFetching.clusters) {
-      return false;
-    }
+    return handleError(error, thunkAPI)
   }
 });
 
-export const addCluster = createAsyncThunk('globalClusters/addCluster', async ({ clusterName, formdata }, thunkAPI) => {
+export const addCluster = createGuardedAsyncThunk('globalClusters/addCluster', async ({ clusterName, formdata }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.addCluster(clusterName, formdata)
     if (status === 200) {
@@ -34,11 +56,11 @@ export const addCluster = createAsyncThunk('globalClusters/addCluster', async ({
     }
   } catch (error) {
     showErrorBanner("Add cluster '" + clusterName + "' is failed!", error, thunkAPI)
-    handleError(error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 })
 
-export const dropCluster = createAsyncThunk('globalClusters/dropCluster', async ({ clusterName }, thunkAPI) => {
+export const dropCluster = createGuardedAsyncThunk('globalClusters/dropCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.dropCluster(clusterName)
     if (status === 200) {
@@ -49,11 +71,11 @@ export const dropCluster = createAsyncThunk('globalClusters/dropCluster', async 
     }
   } catch (error) {
     showErrorBanner("Drop cluster '" + clusterName + "' is failed!", error, thunkAPI)
-    handleError(error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 })
 
-export const renameCluster = createAsyncThunk('globalClusters/renameCluster', async ({ clusterName, newClusterName }, thunkAPI) => {
+export const renameCluster = createGuardedAsyncThunk('globalClusters/renameCluster', async ({ clusterName, newClusterName }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.renameCluster(clusterName, newClusterName)
     if (status === 200) {
@@ -64,65 +86,38 @@ export const renameCluster = createAsyncThunk('globalClusters/renameCluster', as
     }
   } catch (error) {
     showErrorBanner("Rename cluster '" + clusterName + "' is failed!", error, thunkAPI)
-    handleError(error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 })
 
-export const getClusterPeers = createAsyncThunk('globalClusters/getClusterPeers', async ({ }, thunkAPI) => {
+export const getClusterPeers = createGuardedAsyncThunk('globalClusters/getClusterPeers', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusterPeers()
     return { data, status }
   } catch (error) {
-    handleError(error, thunkAPI)
-  }
-},
-// Add a condition to prevent the action from being dispatched if the user is already fetching the info
-{
-  condition: (_, { getState }) => {
-    const { globalClusters } = getState();
-    if (globalClusters.isFetching.peers) {
-      return false;
-    }
+    return handleError(error, thunkAPI)
   }
 });
 
-export const getClusterForSale = createAsyncThunk('globalClusters/getClusterForSale', async ({ }, thunkAPI) => {
+export const getClusterForSale = createGuardedAsyncThunk('globalClusters/getClusterForSale', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getClusterForSale()
     return { data, status }
   } catch (error) {
-    handleError(error, thunkAPI)
-  }
-},
-// Add a condition to prevent the action from being dispatched if the user is already fetching the info
-{
-  condition: (_, { getState }) => {
-    const { globalClusters } = getState();
-    if (globalClusters.isFetching.forSale) {
-      return false;
-    }
+    return handleError(error, thunkAPI)
   }
 });
 
-export const getMonitoredData = createAsyncThunk('globalClusters/getMonitoredData', async ({ }, thunkAPI) => {
+export const getMonitoredData = createGuardedAsyncThunk('globalClusters/getMonitoredData', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getMonitoredData()
     return { data, status }
   } catch (error) {
-    handleError(error, thunkAPI)
-  }
-},
-// Add a condition to prevent the action from being dispatched if the user is already fetching the info
-{
-  condition: (_, { getState }) => {
-    const { globalClusters } = getState();
-    if (globalClusters.isFetching.monitor) {
-      return false;
-    }
+    return handleError(error, thunkAPI)
   }
 });
 
-export const switchGlobalSetting = createAsyncThunk(
+export const switchGlobalSetting = createGuardedAsyncThunk(
   'globalClusters/switchGlobalSetting',
   async ({ setting, errMsgFunc }, thunkAPI) => {
     try {
@@ -140,12 +135,12 @@ export const switchGlobalSetting = createAsyncThunk(
       } else {
         showErrorBanner('Global setting switch is failed!', error, thunkAPI)
       }
-      handleError(error, thunkAPI)
+      return handleError(error, thunkAPI)
     }
   }
 )
 
-export const setGlobalSetting = createAsyncThunk(
+export const setGlobalSetting = createGuardedAsyncThunk(
   'globalClusters/setGlobalSetting',
   async ({ setting, value, errMsgFunc }, thunkAPI) => {
     try {
@@ -163,12 +158,12 @@ export const setGlobalSetting = createAsyncThunk(
       } else {
         showErrorBanner('Global setting change is failed!', error, thunkAPI)
       }
-      handleError(error, thunkAPI)
+      return handleError(error, thunkAPI)
     }
   }
 )
 
-export const reloadClustersPlan = createAsyncThunk('globalClusters/reloadClustersPlan', async ({ }, thunkAPI) => {
+export const reloadClustersPlan = createGuardedAsyncThunk('globalClusters/reloadClustersPlan', async ({ }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.reloadClustersPlan()
     showSuccessBanner('All clusters plan reloaded!', status, thunkAPI)
@@ -176,21 +171,21 @@ export const reloadClustersPlan = createAsyncThunk('globalClusters/reloadCluster
   } catch (error) {
     console.log('error::', error)
     showErrorBanner('Failed to reload clusters plans!', error, thunkAPI)
-    handleError(error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 }
 )
 
-export const getTermsData = createAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
+export const getTermsData = createGuardedAsyncThunk('globalClusters/getTermsData', async ({ baseURL = '' }, thunkAPI) => {
   try {
     const { data, status } = await globalClustersService.getTermsData(baseURL)
     return { data, status }
   } catch (error) {
-    handleError(error, thunkAPI)
+    return handleError(error, thunkAPI)
   }
 })
 
-export const refreshAppTemplateRepo = createAsyncThunk(
+export const refreshAppTemplateRepo = createGuardedAsyncThunk(
   'globalClusters/refreshAppTemplateRepo',
   async ({ clusterName }, thunkAPI) => {
     try {
@@ -203,28 +198,20 @@ export const refreshAppTemplateRepo = createAsyncThunk(
       return { data, status }
     } catch (error) {
       showErrorBanner('Error while refreshing app template repository', error, thunkAPI)
-      handleError(error, thunkAPI)
-    }
-  }, 
-  {
-    condition: (_, { getState }) => {
-      const { globalClusters } = getState();
-      if (globalClusters.isFetching.appTemplates) {
-        return false;
-      }
+      return handleError(error, thunkAPI)
     }
   }
 )
 
 const initialState = {
   loading: false,
+  pendingThunks: {},
   error: null,
   clusters: [],
   isDownList: {},
   isFailableList: {},
   clusterPeers: null,
   clusterForSale: null,
-  isFetching: { clusters: false, monitor: false, peers: false, forSale: false, appTemplates: false },
   monitor: null,
   terms: ``
 }
@@ -238,13 +225,20 @@ export const globalClustersSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
+    builder.addMatcher(
+      (action) => action.type.endsWith('/pending') && shouldTrackThunk(action),
+      (state, action) => {
+        const typePrefix = getThunkTypePrefix(action.type)
+        const pendingKey = getPendingKey(typePrefix)
+        state.pendingThunks[pendingKey] = true
+      }
+    )
+
     builder
       .addCase(getClusters.pending, (state) => {
-        state.isFetching.clusters = true
         state.loading = true
       })
       .addCase(getClusters.fulfilled, (state, action) => {
-        state.isFetching.clusters = false
         state.loading = false
         state.clusters = action.payload.data
         state.isDownList = action.payload.status == 200 ? action.payload.data?.reduce((acc, cluster) => {
@@ -257,61 +251,49 @@ export const globalClustersSlice = createSlice({
         }, {}) : {}
       })
       .addCase(getClusters.rejected, (state, action) => {
-        state.isFetching.clusters = false
         state.loading = false
         state.error = action.error
       })
-      .addCase(getMonitoredData.pending, (state) => {
-        state.isFetching.monitor = true
-       })
       .addCase(getMonitoredData.fulfilled, (state, action) => {
         state.monitor = action.payload.data
-        state.isFetching.monitor = false
       })
       .addCase(getMonitoredData.rejected, (state, action) => {
         state.error = action.error
-        state.isFetching.monitor = false
       })
-      .addCase(getTermsData.pending, (state) => { })
       .addCase(getTermsData.fulfilled, (state, action) => {
         state.terms = action.payload.data
       })
       .addCase(getTermsData.rejected, (state, action) => {
         state.error = action.error
       })
-      .addCase(getClusterPeers.pending, (state) => { 
-        state.isFetching.peers = true
-       })
       .addCase(getClusterPeers.fulfilled, (state, action) => {
         state.clusterPeers = action.payload.data
-        state.isFetching.peers = false
       })
       .addCase(getClusterPeers.rejected, (state, action) => {
         state.error = action.error
-        state.isFetching.peers = false
       })
-      .addCase(getClusterForSale.pending, (state) => {
-        state.isFetching.forSale = true
-       })
       .addCase(getClusterForSale.fulfilled, (state, action) => {
         state.clusterForSale = action.payload.data
-        state.isFetching.forSale = false
       })
       .addCase(getClusterForSale.rejected, (state, action) => {
         state.error = action.error
-        state.isFetching.forSale = false
       })
-      .addCase(refreshAppTemplateRepo.pending, (state) => {
-        state.isFetching.appTemplates = true
-       })
       .addCase(refreshAppTemplateRepo.fulfilled, (state, action) => {
         state.monitor.serviceTemplates = action.payload.data
-        state.isFetching.appTemplates = false
       })
       .addCase(refreshAppTemplateRepo.rejected, (state, action) => {
         state.error = action.error
-        state.isFetching.appTemplates = false
       })
+
+    builder.addMatcher(
+      (action) =>
+        (action.type.endsWith('/fulfilled') || action.type.endsWith('/rejected')) && shouldTrackThunk(action),
+      (state, action) => {
+        const typePrefix = getThunkTypePrefix(action.type)
+        const pendingKey = getPendingKey(typePrefix)
+        state.pendingThunks[pendingKey] = false
+      }
+    )
   }
 })
 
