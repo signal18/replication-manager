@@ -2817,6 +2817,12 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.Respons
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		proxy := mycluster.GetProxyFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil {
+			if node.IsIgnored() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
+				return
+			}
+
 			if node.HasNoConfigFetchCookie() {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Server %s:%s has no config fetch cookie, skip fetching new config.", vars["serverName"], vars["serverPort"])
 
@@ -2828,6 +2834,12 @@ func (repman *ReplicationManager) handlerMuxServerNeedConfigFetch(w http.Respons
 			w.Write([]byte("200 -Need config fetch!"))
 			return
 		} else if proxy != nil {
+			if proxy.IsIgnored() {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte("500 -No config fetch needed!"))
+				return
+			}
+
 			if proxy.HasNoConfigFetchCookie() {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Proxy %s:%s has no config fetch cookie, skip fetching new config.", vars["serverName"], vars["serverPort"])
 				w.WriteHeader(http.StatusInternalServerError)
@@ -4339,6 +4351,10 @@ func (repman *ReplicationManager) handlerMuxServersPortConfigReceiver(w http.Res
 			node = mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		}
 		if node != nil {
+			if node.IsIgnored() {
+				http.Error(w, "Server is ignored", 500)
+				return
+			}
 			node.DelConfigRefreshCookie()
 
 			env, err := node.JobReceiveConfigFiles()
@@ -4748,6 +4764,11 @@ func (repman *ReplicationManager) handlerMuxServerAllowJobsUpgrade(w http.Respon
 
 		node := mycluster.GetServerFromName(vars["serverName"])
 		if node != nil {
+			if node.IsIgnored() {
+				http.Error(w, "Server is ignored", 500)
+				return
+			}
+
 			node.SetWaitJobsUpgradeCookie()
 			w.WriteHeader(200)
 			w.Write([]byte("Flagged for jobs upgrade"))

@@ -27,7 +27,7 @@ func (cluster *Cluster) GetPreservedVarsInfo() map[string]interface{} {
 	cluster.preservedVarsMutex.RLock()
 	defer cluster.preservedVarsMutex.RUnlock()
 
-	info := make(map[string]interface{})
+	info := make(map[string]any)
 	info["loaded"] = cluster.preservedVarsLoaded
 	info["count"] = len(cluster.preservedVars)
 	info["path"] = cluster.GetPreservedVarsPath()
@@ -384,23 +384,6 @@ func (cluster *Cluster) initPreservedVars() error {
 		"Loaded %d preserved variables from %s", len(cluster.preservedVars), source)
 
 	return nil
-}
-
-// getPreservedValueForVar returns the preserved value for a variable from cluster-level config
-// Returns empty string if variable is not preserved at cluster level
-// This is checked BEFORE server-specific preserved files (01_preserved.cnf, etc.)
-func (cluster *Cluster) getPreservedValueForVar(varName string) (string, bool) {
-	cluster.preservedVarsMutex.RLock()
-	defer cluster.preservedVarsMutex.RUnlock()
-
-	upperName := strings.ToUpper(varName)
-
-	// Return value if it exists in loaded preserved variables
-	if val, ok := cluster.preservedVars[upperName]; ok {
-		return val, true
-	}
-
-	return "", false
 }
 
 // AddPreservedVar adds or updates a preserved variable
