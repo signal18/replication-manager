@@ -490,7 +490,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.DebugLevel, "OpenSVC secret already exists: %s", path)
+		collector.Print(log.InfoLevel, "Skip creating secret file. OpenSVC secret already exists: %s", path)
 		return nil
 	}
 
@@ -543,7 +543,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.DebugLevel, "OpenSVC config already exists: %s", path)
+		collector.Print(log.InfoLevel, "Skip creating config file. OpenSVC config already exists: %s", path)
 		return nil
 	}
 

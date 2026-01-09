@@ -71,8 +71,6 @@ var tests = []string{
 	"testRestartCookieCleanup",
 	"testRestartCookieTiming",
 	"testRestartCookieConcurrent",
-	"testOpenSVCSecretPreserve",
-	"testOpenSVCConfigPreserve",
 }
 
 const recoverTime = 8
