@@ -203,6 +203,12 @@ func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp strin
 		if test.Name == "testRunSysbenchTPCPerMinuteIncreaseThreads" {
 			res = regtest.TestRunSysbenchTPCPerMinuteIncreaseThreads(cl, test.ConfigFile, &test)
 		}
+		if test.Name == "testOpenSVCSecretPreserve" {
+			res = regtest.TestOpenSVCSecretPreserve(cl, test.ConfigFile, &test)
+		}
+		if test.Name == "testOpenSVCConfigPreserve" {
+			res = regtest.TestOpenSVCConfigPreserve(cl, test.ConfigFile, &test)
+		}
 
 		test.Result = regtest.GetTestResultLabel(res)
 		if testExp == "SUITE" {
