@@ -698,6 +698,10 @@ func (cluster *Cluster) GetIgnoredROList() string {
 
 func (cluster *Cluster) GetGComm() string {
 	var gcomms []string
+	if len(cluster.Servers) == 0 {
+		return ""
+	}
+
 	for _, server := range cluster.Servers {
 		if cluster.Conf.MultiMasterWsrep {
 			gcomms = append(gcomms, server.Host+":"+strconv.Itoa(cluster.Conf.MultiMasterWsrepPort))
@@ -1911,4 +1915,12 @@ func (cluster *Cluster) GetEstimatedBackupSize(backtype string) (uint64, error) 
 	}
 
 	return required, nil
+}
+
+func (cluster *Cluster) GetSchedule(myname string) *cron.Entry {
+	if entry, ok := cluster.Schedule[myname]; ok {
+		return &entry
+	}
+
+	return nil
 }

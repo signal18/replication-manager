@@ -270,6 +270,14 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxDropTag)),
 	))
+	router.Handle("/api/clusters/{clusterName}/settings/preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxGetPreservedVarsCnf)),
+	))
+	router.Handle("/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxSavePreservedVarsCnf)),
+	))
 	router.Handle("/api/clusters/{clusterName}/settings/actions/add-proxy-tag/{tagValue}", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxAddProxyTag)),
@@ -476,6 +484,10 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 	router.Handle("/api/clusters/{clusterName}/schema/{schemaName}/all/actions/checksum-schema", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterChecksumSchema)),
+	))
+	router.Handle("/api/clusters/{clusterName}/actions/monitor-schemas", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxClusterMonitorSchemas)),
 	))
 	router.Handle("/api/clusters/{clusterName}/actions/checksum-all-tables", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
@@ -720,6 +732,10 @@ func (repman *ReplicationManager) handlerMuxServers(w http.ResponseWriter, r *ht
 			servers: make([]map[string]interface{}, 0),
 		}
 		for _, srv := range mycluster.GetServers() {
+			if srv == nil {
+				continue
+			}
+
 			var cont map[string]interface{}
 			data, _ := json.Marshal(srv)
 			data, err = sjson.SetBytes(data, "binaryLogFiles", srv.BinaryLogFiles.ToNewMap())
@@ -2370,6 +2386,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.Conf.ProvDBConfigPreserve = !mycluster.Conf.ProvDBConfigPreserve
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = !mycluster.Conf.ProvDbStartFetchConfig
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
@@ -2402,6 +2419,12 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchMonitoringScheduler()
 	case "monitoring-schema-change":
 		mycluster.SwitchMonitoringSchemaChange()
+	case "monitoring-schema-columns":
+		mycluster.SwitchMonitoringSchemaColumns()
+	case "monitoring-schema-indexes":
+		mycluster.SwitchMonitoringSchemaIndexes()
+	case "monitoring-schema-on-replicas":
+		mycluster.SwitchMonitoringSchemaOnReplicas()
 	case "monitoring-capture":
 		mycluster.SwitchMonitoringCapture()
 	case "monitoring-innodb-status":
@@ -2939,6 +2962,10 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetSchedulerJobsSshCron(value)
 	case "scheduler-alert-disable-cron":
 		mycluster.SetSchedulerAlertDisableCron(value)
+	case "monitoring-schema-scheduler-cron":
+		mycluster.SetMonitoringSchemaSchedulerCron(value)
+	case "monitoring-schema-ignore-tables":
+		mycluster.SetMonitoringSchemaIgnoreTables(value)
 	case "backup-binlogs-keep":
 		mycluster.SetBackupBinlogsKeep(value)
 	case "delay-stat-rotate":
@@ -3426,64 +3453,61 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		oldValue := mycluster.Conf.SchedulerBackupLogical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupLogical = newValue
-			mycluster.SetSchedulerBackupLogical()
+			mycluster.SwitchSchedulerBackupLogical()
 		}
 	case "scheduler-db-servers-physical-backup":
 		oldValue := mycluster.Conf.SchedulerBackupPhysical
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerBackupPhysical = newValue
-			mycluster.SetSchedulerBackupPhysical()
+			mycluster.SwitchSchedulerBackupPhysical()
 		}
 	case "scheduler-db-servers-logs":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogs
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogs = newValue
-			mycluster.SetSchedulerBackupLogs()
+			mycluster.SwitchSchedulerDatabaseLogs()
 		}
 	case "scheduler-jobs-ssh":
 		oldValue := mycluster.Conf.SchedulerJobsSSH
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerJobsSSH = newValue
-			mycluster.SetSchedulerDbJobsSsh()
+			mycluster.SwitchSchedulerDbJobsSsh()
 		}
 	case "scheduler-db-servers-logs-table-rotate":
 		oldValue := mycluster.Conf.SchedulerDatabaseLogsTableRotate
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseLogsTableRotate = newValue
-			mycluster.SetSchedulerLogsTableRotate()
+			mycluster.SwitchSchedulerDatabaseLogsTableRotate()
 		}
 	case "scheduler-rolling-restart":
 		oldValue := mycluster.Conf.SchedulerRollingRestart
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingRestart = newValue
-			mycluster.SetSchedulerRollingRestart()
+			mycluster.SwitchSchedulerRollingRestart()
 		}
 	case "scheduler-rolling-reprov":
 		oldValue := mycluster.Conf.SchedulerRollingReprov
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerRollingReprov = newValue
-			mycluster.SetSchedulerRollingReprov()
+			mycluster.SwitchSchedulerRollingReprov()
 		}
 	case "scheduler-db-servers-optimize":
 		oldValue := mycluster.Conf.SchedulerDatabaseOptimize
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseOptimize = newValue
-			mycluster.SetSchedulerOptimize()
+			mycluster.SwitchSchedulerDatabaseOptimize()
 		}
 	case "scheduler-db-servers-analyze":
 		oldValue := mycluster.Conf.SchedulerDatabaseAnalyze
 		newValue := applyIsActive(oldValue, isactive)
 		if oldValue != newValue {
-			mycluster.Conf.SchedulerDatabaseAnalyze = newValue
-			mycluster.SetSchedulerAnalyze()
+			mycluster.SwitchSchedulerDatabaseAnalyze()
+		}
+	case "monitoring-schema-scheduler":
+		oldValue := mycluster.Conf.MonitorSchemaScheduler
+		newValue := applyIsActive(oldValue, isactive)
+		if oldValue != newValue {
+			mycluster.SwitchMonitoringSchemaScheduler()
 		}
 	case "scheduler-alert-disable":
 		mycluster.Conf.SchedulerAlertDisable = applyIsActive(mycluster.Conf.SchedulerAlertDisable, isactive)
@@ -3529,6 +3553,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBConfigPreserve = applyIsActive(mycluster.Conf.ProvDBConfigPreserve, isactive)
 	case "prov-db-start-fetch-config":
 		mycluster.Conf.ProvDbStartFetchConfig = applyIsActive(mycluster.Conf.ProvDbStartFetchConfig, isactive)
+		mycluster.CheckNeedConfigFetch()
 	case "prov-db-apply-dynamic-config":
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-docker-daemon-private":
@@ -3573,6 +3598,12 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.SetMonitoringScheduler(applyIsActive(mycluster.Conf.MonitorScheduler, isactive))
 	case "monitoring-schema-change":
 		mycluster.Conf.MonitorSchemaChange = applyIsActive(mycluster.Conf.MonitorSchemaChange, isactive)
+	case "monitoring-schema-columns":
+		mycluster.Conf.MonitorSchemaColumns = applyIsActive(mycluster.Conf.MonitorSchemaColumns, isactive)
+	case "monitoring-schema-indexes":
+		mycluster.Conf.MonitorSchemaIndexes = applyIsActive(mycluster.Conf.MonitorSchemaIndexes, isactive)
+	case "monitoring-schema-on-replicas":
+		mycluster.Conf.MonitorSchemaOnReplicas = applyIsActive(mycluster.Conf.MonitorSchemaOnReplicas, isactive)
 	case "monitoring-capture":
 		mycluster.Conf.MonitorCapture = applyIsActive(mycluster.Conf.MonitorCapture, isactive)
 	case "monitoring-innodb-status":
@@ -5207,6 +5238,37 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 	return
 }
 
+// handlerMuxClusterMonitorSchemas triggers the monitoring of schemas for a given cluster.
+// @Summary Monitor schemas for a specific cluster
+// @Description This endpoint triggers the monitoring of schemas for the specified cluster.
+// @Tags ClusterMonitor
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {string} string "Successfully triggered schema monitoring"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/actions/monitor-schemas [post]
+func (repman *ReplicationManager) handlerMuxClusterMonitorSchemas(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster != nil {
+		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+			http.Error(w, "No valid ACL", 403)
+			return
+		}
+		go mycluster.SetWaitMonitorSchema()
+	} else {
+		http.Error(w, "No cluster", 500)
+		return
+	}
+	return
+
+}
+
 // handlerMuxClusterSchemaChecksumAllTable handles the checksum calculation for all tables in a given cluster.
 // @Summary Calculate checksum for all tables in a specific cluster
 // @Description This endpoint triggers the checksum calculation for all tables in the specified cluster.
@@ -5900,7 +5962,7 @@ func (repman *ReplicationManager) handlerMuxAcceptSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6023,7 +6085,7 @@ func (repman *ReplicationManager) handlerMuxRejectSubscription(w http.ResponseWr
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6088,7 +6150,7 @@ func (repman *ReplicationManager) handlerMuxRemoveSponsor(w http.ResponseWriter,
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6354,7 +6416,7 @@ func (repman *ReplicationManager) handlerMuxSubscribeExternalOps(w http.Response
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6418,7 +6480,7 @@ func (repman *ReplicationManager) handlerMuxQuoteExternalOps(w http.ResponseWrit
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6491,7 +6553,7 @@ func (repman *ReplicationManager) handlerMuxAcceptExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6625,7 +6687,7 @@ func (repman *ReplicationManager) handlerMuxRefuseExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -6707,7 +6769,7 @@ func (repman *ReplicationManager) handlerMuxRemoveExternalOps(w http.ResponseWri
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
 		w.WriteHeader(http.StatusForbidden)
-		fmt.Fprintf(w, "Error parsing JWT: "+err.Error())
+		fmt.Fprintf(w, "Error parsing JWT: %s", err.Error())
 		return
 	}
 
@@ -7215,7 +7277,7 @@ func (repman *ReplicationManager) handlerMuxSendAlert(w http.ResponseWriter, r *
 		}
 
 		if mycluster.LogSlack.IsHookActive(hooktype) {
-			mycluster.LogSlack.WithFields(post.Fields).Warnf(post.Message)
+			mycluster.LogSlack.WithFields(post.Fields).Warn(post.Message)
 		} else {
 			http.Error(w, "No slack hook", 500)
 			return
@@ -7844,4 +7906,105 @@ func (repman *ReplicationManager) handlerMuxClusterCheckJobLogLevel(w http.Respo
 	} else {
 		http.Error(w, "No cluster", 500)
 	}
+}
+
+// handlerMuxGetPreservedVarsCnf retrieves the content of the preserved variables CNF file
+// @Summary Get preserved variables CNF content
+// @Description This endpoint retrieves the content of the preserved_variables.cnf file from the cluster's working directory
+// @Tags ClusterSettings
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Success 200 {object} map[string]string "CNF file content in JSON format with 'content' key"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 404 {string} string "File not found"
+// @Failure 500 {string} string "Error reading file"
+// @Router /api/clusters/{clusterName}/settings/preserved-variables-cnf [get]
+func (repman *ReplicationManager) handlerMuxGetPreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Read the preserved variables CNF content using cluster method
+	content, err := mycluster.GetPreservedVarsCnfContent()
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, fmt.Sprintf("Error reading preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Return JSON response with content
+	response := map[string]string{
+		"content": content,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+// PreservedVarsCnfRequest represents the request body for saving preserved variables CNF
+type PreservedVarsCnfRequest struct {
+	Content string `json:"content"`
+}
+
+// handlerMuxSavePreservedVarsCnf saves the updated content to the preserved variables CNF file
+// @Summary Save preserved variables CNF content
+// @Description This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory
+// @Tags ClusterSettings
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param body body PreservedVarsCnfRequest true "CNF file content"
+// @Success 200 {string} string "Successfully saved preserved variables CNF"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 500 {string} string "Error saving file"
+// @Router /api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf [post]
+func (repman *ReplicationManager) handlerMuxSavePreservedVarsCnf(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	vars := mux.Vars(r)
+	mycluster := repman.getClusterByName(vars["clusterName"])
+	if mycluster == nil {
+		http.Error(w, "No cluster", http.StatusInternalServerError)
+		return
+	}
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Decode the request body
+	var req PreservedVarsCnfRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Write the content using cluster method
+	err = mycluster.WritePreservedVarsCnfContent(req.Content)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Error saving preserved variables file: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("Successfully saved preserved variables CNF to %s", mycluster.GetPreservedVarsPath())))
 }

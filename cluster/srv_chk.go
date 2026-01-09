@@ -23,6 +23,9 @@ import (
 )
 
 func (server *ServerMonitor) CheckDBConfigPath() {
+	if server.IsIgnored() {
+		return
+	}
 	cluster := server.ClusterGroup
 	if cluster.IsInFailover() {
 		return
@@ -37,7 +40,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			value = v.Runtime
 		}
 
-		if value != nil && *value == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
+		if value != nil && value.String() == "/var/lib/mysql/.system/innodb" && cluster.Configurator.HaveDBTag("nosplitpath") {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -46,7 +49,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			changed = true
 		}
 
-		if (value == nil || *value == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
+		if (value == nil || value.String() == "") && !cluster.Configurator.HaveDBTag("nosplitpath") {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -55,7 +58,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 			changed = true
 		}
 
-		if value != nil && v.Config != nil && *value != *v.Config {
+		if value != nil && v.Config != nil && value.String() != v.Config.String() {
 			_, file, no, ok := runtime.Caller(1)
 			if ok {
 				server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -65,7 +68,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 		}
 
 		if !changed {
-			if value != nil && *value == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
+			if value != nil && value.String() == "/var/lib/mysql/.system/innodb" && !cluster.Configurator.HaveDBTag("nosplitpath") {
 				_, file, no, ok := runtime.Caller(1)
 				if ok {
 					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -74,7 +77,7 @@ func (server *ServerMonitor) CheckDBConfigPath() {
 				changed = true
 			}
 
-			if (value == nil || *value == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
+			if (value == nil || value.String() == "") && cluster.Configurator.HaveDBTag("nosplitpath") {
 				_, file, no, ok := runtime.Caller(1)
 				if ok {
 					server.ClusterGroup.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Path Cookie called from %s#%d\n", file, no)
@@ -255,6 +258,9 @@ func (server *ServerMonitor) CheckReplication() string {
 
 // CheckSlaveSettings check slave variables & enforce if set
 func (server *ServerMonitor) CheckSlaveSettings() {
+	if server.IsIgnored() {
+		return
+	}
 	sl := server
 	cluster := server.ClusterGroup
 	master := cluster.GetMaster()
@@ -402,6 +408,9 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 // CheckMasterSettings check master variables & enforce if set
 func (server *ServerMonitor) CheckMasterSettings() {
+	if server.IsIgnored() {
+		return
+	}
 	cluster := server.ClusterGroup
 	if cluster.Conf.ForceSlaveSemisync && server.HaveSemiSync == false {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce semisync on Master %s", server.URL)
@@ -491,7 +500,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 			cluster.SetState("ERR00078", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), server.URL, myhost, err), ErrFrom: "CONF", ServerUrl: server.URL})
 		} else {
 			priv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), cluster.RepMgrHostname, myip, server.DBVersion)
-			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err))
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err)
 			if err != nil {
 				cluster.SetState("ERR00005", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00005"], cluster.GetDbUser(), cluster.RepMgrHostname, err), ErrFrom: "CONF", ServerUrl: server.URL})
 			}
@@ -510,7 +519,7 @@ func (server *ServerMonitor) CheckPrivileges() {
 			if sv2.URL != server.URL && sv2.IsRelay == false && !sv2.IsDown() {
 				rplhost, _ := misc.GetIPSafe(misc.Unbracket(sv2.Host))
 				rpriv, logs, err := dbhelper.GetPrivileges(server.Conn, cluster.GetDbUser(), sv2.Host, rplhost, server.DBVersion)
-				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, fmt.Sprintf(clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err))
+				cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err)
 				if err != nil {
 					cluster.SetState("ERR00015", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00015"], cluster.GetRplUser(), sv2.URL, err), ErrFrom: "CONF", ServerUrl: sv2.URL})
 				}
@@ -609,4 +618,17 @@ func (server *ServerMonitor) CheckTaskNeeded(checktype string) (bool, error) {
 		return false, fmt.Errorf("unknown checktype %s", checktype)
 	}
 	return false, nil
+}
+
+func (server *ServerMonitor) CheckNeedConfigFetch() {
+	if server.IsIgnored() {
+		return
+	}
+	cluster := server.ClusterGroup
+	// Default action from cluster config
+	if cluster.Conf.ProvDbStartFetchConfig && server.HasNoConfigFetchCookie() {
+		server.DelNoConfigFetchCookie()
+	} else if !cluster.Conf.ProvDbStartFetchConfig && !server.HasNoConfigFetchCookie() {
+		server.SetNoConfigFetchCookie()
+	}
 }

@@ -318,7 +318,33 @@ function SchedulerSettings({ selectedCluster, user, openConfirmModal }) {
               }
             />
           )
-        }
+        },
+        {
+          key: 'Monitor Schema Changes',
+          value: (
+            <Scheduler
+              user={user}
+              value={selectedCluster?.config?.monitoringSchemaSchedulerCron}
+              switchConfirmTitle={'Confirm switch settings for monitoring-schema-scheduler?'}
+              isSwitchChecked={selectedCluster?.config?.monitoringSchemaScheduler}
+              confirmTitle={'Confirm save monitoring schema scheduler to: '}
+              onSwitchChange={() =>
+                dispatch(
+                  switchSetting({ clusterName: selectedCluster?.name, setting: 'monitoring-schema-scheduler' })
+                )
+              }
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'monitoring-schema-scheduler-cron',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
       ]
       : [])
   ]

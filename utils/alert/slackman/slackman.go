@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bluele/logrus_slack"
-	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/signal18/replication-manager/utils/meethelper"
 	"github.com/sirupsen/logrus"
 )

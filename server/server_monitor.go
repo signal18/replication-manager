@@ -91,7 +91,7 @@ For interacting with this daemon use,
 		err := RepMan.MergeOnStart(conf)
 		if err != nil {
 			if err.Error() == ConfigMergeInactive {
-				RepMan.LogModulePrintf(RepMan.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, ConfigMergeInactive)
+				RepMan.LogModulePrintf(RepMan.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, ConfigMergeInactive)
 			} else {
 				RepMan.LogModulePrintf(RepMan.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, err.Error())
 			}

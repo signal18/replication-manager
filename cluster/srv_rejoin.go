@@ -608,7 +608,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 				} else {
 					//Adding state waiting for old master to rejoin in positional mode
 					// this state prevent crash info to be removed
-					cluster.SetState("ERR00049", state.State{ErrType: "ERRRO", ErrDesc: fmt.Sprintf(clusterError["ERR00049"]), ErrFrom: "TOPO"})
+					cluster.SetState("ERR00049", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00049"], ErrFrom: "TOPO"})
 				}
 			}
 		}
@@ -767,10 +767,10 @@ func (cluster *Cluster) RejoinFixRelay(slave *ServerMonitor, relay *ServerMonito
 	if cluster.GetTopology() == config.TopoMultiMasterRing || cluster.GetTopology() == config.TopoMultiMasterWsrep {
 		return nil
 	}
-	cluster.SetState("ERR00045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00045"]), ErrFrom: "TOPO"})
+	cluster.SetState("ERR00045", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00045"], ErrFrom: "TOPO"})
 
 	if slave.GetReplicationDelay() > cluster.Conf.FailMaxDelay {
-		cluster.SetState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00046"]), ErrFrom: "TOPO"})
+		cluster.SetState("ERR00046", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00046"], ErrFrom: "TOPO"})
 		return nil
 	} else {
 		ss, err := slave.GetSlaveStatus(slave.ReplicationSourceName)

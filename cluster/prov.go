@@ -18,6 +18,20 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
+// Constants for restart RID validation
+const (
+	RestartRidJobsContainer = "container#jobs"
+)
+
+// validateRestartRid validates the resource ID parameter for restart operations
+// Only container#jobs is allowed for targeted restarts
+func validateRestartRid(rid string) error {
+	if rid != "" && rid != RestartRidJobsContainer {
+		return fmt.Errorf("invalid rid '%s': only '%s' is allowed for restart", rid, RestartRidJobsContainer)
+	}
+	return nil
+}
+
 // Bootstrap provisions && setup topology
 func (cluster *Cluster) Bootstrap() error {
 	var err error
@@ -491,6 +505,24 @@ func (cluster *Cluster) StartDatabaseService(server *ServerMonitor) error {
 		server.DelRestartCookie()
 	}
 	server.SetConfigRefreshCookie()
+	return err
+}
+
+func (cluster *Cluster) RestartDatabaseService(server *ServerMonitor, node string, rid string) error {
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Restarting Database service %s", cluster.Name+"/svc/"+server.Name)
+	var err error
+	switch cluster.GetOrchestrator() {
+	case config.ConstOrchestratorOpenSVC:
+		err = cluster.OpenSVCRestartDatabaseService(server, node, rid)
+	default:
+		return errors.New("Restart not supported for this orchestrator yet")
+	}
+	if err == nil {
+		server.DelRestartCookie()
+		// Clear stored parameters
+		server.RestartNode = ""
+		server.RestartRid = ""
+	}
 	return err
 }
 

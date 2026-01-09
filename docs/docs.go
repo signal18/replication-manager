@@ -1252,6 +1252,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/actions/monitor-schemas": {
+            "post": {
+                "description": "This endpoint triggers the monitoring of schemas for the specified cluster.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterMonitor"
+                ],
+                "summary": "Monitor schemas for a specific cluster",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully triggered schema monitoring",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/actions/optimize": {
             "post": {
                 "description": "This endpoint triggers the optimization process for the specified cluster.",
@@ -8445,6 +8497,87 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/actions/restart": {
+            "post": {
+                "description": "Restarts a specified server within a cluster (queues restart asynchronously), optionally on a specific node and/or specific resource ID. Only OpenSVC orchestrator is supported. Only 'container#jobs' is allowed for rid parameter.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseActions"
+                ],
+                "summary": "Restart a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Node Agent (default: server's agent, use * for all nodes)",
+                        "name": "node",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resource ID. Only 'container#jobs' is allowed. Empty restarts entire service.",
+                        "name": "rid",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Restart queued successfully",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid rid parameter",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Cluster Not Found or Server Not Found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "501": {
+                        "description": "Orchestrator not supported",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/actions/run-jobs": {
             "get": {
                 "description": "Runs jobs on a specified server within a cluster.",
@@ -8481,7 +8614,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "Jobs run successfully",
+                        "description": "Run jobs command issued",
                         "schema": {
                             "type": "string"
                         }
@@ -8493,7 +8626,7 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error running job",
+                        "description": "Cluster Not Found\" or \"Server Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -10027,6 +10160,84 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/config-dummy-sender": {
+            "post": {
+                "description": "Generates dummy configuration and sends it to the specified receiver port on the client side.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Generate and send dummy config to client receiver port",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server ID \u003cdbxxx / pxxxx\u003e (Without Port) / Server Host (With Port)",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client receiver port to send config to",
+                        "name": "receiverPort",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client receiver host (default: use request remote address)",
+                        "name": "receiverHost",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing receiver port",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error generating/sending config",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/config-path-preserve/{preserve}": {
             "get": {
                 "description": "Preserves or removes the configuration path for a specified server within a cluster.",
@@ -10145,6 +10356,66 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/config/{dummy}": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Config is a dummy file",
+                        "name": "dummy",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -11806,6 +12077,13 @@ const docTemplate = `{
                         "name": "serverName",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "default": "false",
+                        "description": "Show differences (true/false)",
+                        "name": "diff",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -11831,16 +12109,16 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/clusters/{clusterName}/servers/{serverName}/variables/{diff}": {
-            "get": {
-                "description": "Retrieves the variables of a specified server within a cluster.",
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-accept": {
+            "post": {
+                "description": "Marks a variable difference as \"accepted\" (use config value) on a specified server within a cluster.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
-                    "Database"
+                    "DatabaseConfig"
                 ],
-                "summary": "Get variables of a server",
+                "summary": "Accept a variable difference on a server",
                 "parameters": [
                     {
                         "type": "string",
@@ -11866,17 +12144,23 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Show differences",
-                        "name": "diff",
-                        "in": "path"
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "Variables retrieved successfully",
+                        "description": "Variable accepted successfully",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": true
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
                         }
                     },
                     "403": {
@@ -11886,7 +12170,221 @@ const docTemplate = `{
                         }
                     },
                     "500": {
-                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Encoding error",
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error accepting variable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-clear": {
+            "post": {
+                "description": "Removes preservation status from a variable on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Clear variable preservation status on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable preservation cleared successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error clearing variable preservation",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-preserve": {
+            "post": {
+                "description": "Marks a variable difference as \"preserved\" (keep deployed value) on a specified server within a cluster.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Preserve a variable difference on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable preserved successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error preserving variable",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/variables-set-custom": {
+            "post": {
+                "description": "Sets a custom preserved value for a variable on a specified server within a cluster. This allows DBAs to manually override variable values like in my.cnf.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "DatabaseConfig"
+                ],
+                "summary": "Set custom value for a variable on a server",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Variable Name",
+                        "name": "variableName",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Custom Value",
+                        "name": "customValue",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Variable custom value set successfully",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Variable name or custom value required",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error setting custom variable value",
                         "schema": {
                             "type": "string"
                         }
@@ -12255,6 +12753,90 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-dummy-sender": {
+            "post": {
+                "description": "Generates dummy configuration and sends it to the specified receiver port on the client side.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Generate and send dummy config to client receiver port",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server ID \u003cdbxxx / pxxxx\u003e (Without Port) / Server Host (With Port)",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client receiver port to send config to",
+                        "name": "receiverPort",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Client receiver host (default: use request remote address)",
+                        "name": "receiverHost",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Status message",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Missing receiver port",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error generating/sending config",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config-gen": {
             "get": {
                 "description": "Retrieves the configuration of a specified server port within a cluster.",
@@ -12431,6 +13013,73 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Cluster Not Found\" or \"Server Not Found\" or \"Error opening receiver ports",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/servers/{serverName}/{serverPort}/config/{dummy}": {
+            "get": {
+                "description": "Retrieves the configuration of a specified server port within a cluster.",
+                "produces": [
+                    "application/octet-stream"
+                ],
+                "tags": [
+                    "Database"
+                ],
+                "summary": "Get server port configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Name",
+                        "name": "serverName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Server Port",
+                        "name": "serverPort",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Dummy Config",
+                        "name": "dummy",
+                        "in": "path"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Configuration file",
+                        "schema": {
+                            "type": "file"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "No cluster\" or \"No server",
                         "schema": {
                             "type": "string"
                         }
@@ -14318,6 +14967,73 @@ const docTemplate = `{
                 }
             }
         },
+        "/api/clusters/{clusterName}/settings/actions/save-preserved-variables-cnf": {
+            "post": {
+                "description": "This endpoint saves the updated content to the preserved_variables.cnf file in the cluster's working directory",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Save preserved variables CNF content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "CNF file content",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/server.PreservedVarsCnfRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successfully saved preserved variables CNF",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error saving file",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
         "/api/clusters/{clusterName}/settings/actions/set-cron/{settingName}/{settingValue}": {
             "post": {
                 "description": "This endpoint sets the cron jobs for the specified cluster.",
@@ -14635,6 +15351,64 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "No cluster",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/clusters/{clusterName}/settings/preserved-variables-cnf": {
+            "get": {
+                "description": "This endpoint retrieves the content of the preserved_variables.cnf file from the cluster's working directory",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "ClusterSettings"
+                ],
+                "summary": "Get preserved variables CNF content",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "default": "Bearer \u003cAdd access token here\u003e",
+                        "description": "Insert your access token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Cluster Name",
+                        "name": "clusterName",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "CNF file content in JSON format with 'content' key",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No valid ACL",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "File not found",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "500": {
+                        "description": "Error reading file",
                         "schema": {
                             "type": "string"
                         }
@@ -19257,6 +20031,10 @@ const docTemplate = `{
                 "gtidExecuted": {
                     "type": "string"
                 },
+                "hasConfigDiff": {
+                    "description": "Indicates if there are differences between deployed and generated config",
+                    "type": "boolean"
+                },
                 "hasConfigPathChanged": {
                     "type": "boolean"
                 },
@@ -19436,6 +20214,9 @@ const docTemplate = `{
                 "isReseeding": {
                     "type": "string"
                 },
+                "isRunningJobs": {
+                    "type": "boolean"
+                },
                 "isSlave": {
                     "type": "boolean"
                 },
@@ -19554,6 +20335,14 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/dbhelper.SlaveStatus"
                     }
+                },
+                "restartNode": {
+                    "description": "RestartNode stores node parameter for restart cookie (owned by cookie mechanism, single writer assumption)",
+                    "type": "string"
+                },
+                "restartRid": {
+                    "description": "RestartRid stores rid parameter for restart cookie (owned by cookie mechanism, single writer assumption)",
+                    "type": "string"
                 },
                 "semiSyncMasterStatus": {
                     "type": "boolean"
@@ -21939,6 +22728,24 @@ const docTemplate = `{
                 "monitoringSchemaChangeScript": {
                     "type": "string"
                 },
+                "monitoringSchemaColumns": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaIgnoreTables": {
+                    "type": "string"
+                },
+                "monitoringSchemaIndexes": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaOnReplicas": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaScheduler": {
+                    "type": "boolean"
+                },
+                "monitoringSchemaSchedulerCron": {
+                    "type": "string"
+                },
                 "monitoringSharedir": {
                     "type": "string"
                 },
@@ -23779,6 +24586,14 @@ const docTemplate = `{
                     "$ref": "#/definitions/logrus.Fields"
                 },
                 "message": {
+                    "type": "string"
+                }
+            }
+        },
+        "server.PreservedVarsCnfRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
                     "type": "string"
                 }
             }

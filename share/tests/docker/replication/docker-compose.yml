@@ -47,7 +47,7 @@ services:
         ipv4_address: 172.16.1.4
 
   replication-manager:
-    image: signal18/replication-manager:2.0
+    image: signal18/replication-manager:latest
     volumes:
       - /etc/replication-manager/config.toml:/etc/replication-manager/config.toml
     ports:

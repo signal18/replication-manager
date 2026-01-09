@@ -1,4 +1,4 @@
-![replication-manager](https://github.com/signal18/replication-manager/raw/2.0/dashboard/static/logo.png)
+![replication-manager](https://github.com/signal18/replication-manager/raw/develop/share/dashboard/static/logo.png)
 
 __replication-manager__ is a high availability solution to manage MariaDB 10.x and MySQL & Percona Server 5.7 replication topologies.  
 
@@ -14,11 +14,24 @@ The main features are:
 
 #### Quick start
 
-The container runs with http-server enabled by default and exposed on port 10001. It does not provide a default configuration file, since Replication Manager doesn't work well if you don't provide your own configuration. Therefore, you should at least mount a minimal config file. Please refer to our docs or to the source repository for working examples.
+The container runs with http-server enabled by default and exposed on port 10001. You can either mount a configuration file or use environment variables with `REPLICATION_MANAGER_*` prefixes and skip config reads.
 
 Example usage, deploying a container with a config file in the working directory:
 ```
-docker run -d -p 10001:10001 -v $(pwd)/config.toml:/etc/replication-manager/config.toml --name repman signal18/replication-manager:2.0
+docker run -d -p 10001:10001 -v $(pwd)/config.toml:/etc/replication-manager/config.toml --name repman signal18/replication-manager:latest
+```
+
+Example usage, deploying with env-only config:
+```
+docker run -d -p 10001:10001 \
+  -e REPLICATION_MANAGER_DEFAULT_SKIP_CONFIG=true \
+  -e REPLICATION_MANAGER_DEFAULT_HTTP_SERVER=true \
+  -e REPLICATION_MANAGER_DEFAULT_HTTP_BIND_ADDRESS=0.0.0.0 \
+  -e REPLICATION_MANAGER_DEFAULT_HTTP_PORT=10001 \
+  -e REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_HOSTS=db1,db2 \
+  -e REPLICATION_MANAGER_CLUSTER1_DB_SERVERS_CREDENTIAL=root:admin \
+  -e REPLICATION_MANAGER_CLUSTER1_REPLICATION_CREDENTIAL=root:admin \
+  --name repman signal18/replication-manager:2.0
 ```
 
 The container also includes the replication-manager client. You can run commands non-interactively such as:
@@ -30,7 +43,7 @@ docker exec -ti repman replication-manager-cli switchover
 
 As Replication Manager is a network application, it is wise to deploy it in existing Docker installations with user-defined networks, using orchestrators such as Compose, Kubernetes or Swarm.
 
-The source repository provides a [working example](https://github.com/signal18/replication-manager/blob/2.0/test/docker/replication/docker-compose.yml) for Compose.
+The source repository provides a [working example](https://github.com/signal18/replication-manager/blob/develop/share/tests/docker/replication/docker-compose.yml) for Compose.
 
 #### [Documentation](https://docs.signal18.io)
 

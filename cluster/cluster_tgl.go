@@ -312,6 +312,12 @@ func (cluster *Cluster) SwitchSchedulerRollingReprov() {
 
 func (cluster *Cluster) SwitchSchedulerAlertDisable() {
 	cluster.Conf.SchedulerAlertDisable = !cluster.Conf.SchedulerAlertDisable
+	cluster.SetSchedulerAlertDisable()
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaScheduler() {
+	cluster.Conf.MonitorSchemaScheduler = !cluster.Conf.MonitorSchemaScheduler
+	cluster.SetSchedulerMonitorSchema()
 }
 
 func (cluster *Cluster) SwitchGraphiteEmbedded() {
@@ -417,6 +423,18 @@ func (cluster *Cluster) SwitchMonitoringSaveConfig() {
 }
 func (cluster *Cluster) SwitchMonitoringSchemaChange() {
 	cluster.Conf.MonitorSchemaChange = !cluster.Conf.MonitorSchemaChange
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaColumns() {
+	cluster.Conf.MonitorSchemaColumns = !cluster.Conf.MonitorSchemaColumns
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaIndexes() {
+	cluster.Conf.MonitorSchemaIndexes = !cluster.Conf.MonitorSchemaIndexes
+}
+
+func (cluster *Cluster) SwitchMonitoringSchemaOnReplicas() {
+	cluster.Conf.MonitorSchemaOnReplicas = !cluster.Conf.MonitorSchemaOnReplicas
 }
 
 func (cluster *Cluster) SwitchMonitoringCapture() {

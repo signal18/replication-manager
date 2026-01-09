@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mattermost/mattermost-server/v6/model"
+	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/signal18/replication-manager/utils/misc"
 )
 
@@ -374,7 +374,7 @@ func GetMeetToken(gitlabUser string, gitlabPassword string, isLogSupport bool) (
 }
 
 func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
-	user, _, err := c.Client.GetMe("")
+	user, _, err := c.Client.GetMe(context.Background(), "")
 	if err != nil {
 		return "", err
 	}
@@ -383,13 +383,13 @@ func (c *MeetChatClient) GetMeetUserInfo() (string, error) {
 }
 
 func (c *MeetChatClient) GetTeamIDs() ([]string, error) {
-	teams, _, err := c.Client.GetTeamsForUser(c.UserID, "")
+	teams, _, err := c.Client.GetTeamsForUser(context.Background(), c.UserID, "")
 	if len(teams) == 0 {
 		err := c.JoinSignal18Team()
 		if err != nil {
 			return nil, err
 		}
-		teams, _, err = c.Client.GetTeamsForUser(c.UserID, "")
+		teams, _, err = c.Client.GetTeamsForUser(context.Background(), c.UserID, "")
 	}
 
 	teamIDs := make([]string, len(teams))
@@ -405,12 +405,12 @@ func (c *MeetChatClient) GetTeamIDs() ([]string, error) {
 }
 
 func (c *MeetChatClient) JoinSignal18Team() error {
-	_, _, err := c.Client.AddTeamMember("ugnppqx3jjribmik881k4pi1bh", c.UserID)
+	_, _, err := c.Client.AddTeamMember(context.Background(), "ugnppqx3jjribmik881k4pi1bh", c.UserID)
 	return err
 }
 
 func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, map[string]string, map[string]string, map[string]int, error) {
-	channels, _, err := c.Client.GetChannelsForUserWithLastDeleteAt(c.UserID, 0)
+	channels, _, err := c.Client.GetChannelsForUserWithLastDeleteAt(context.Background(), c.UserID, 0)
 	channelsMapO := make(map[string]string)
 	channelsMapP := make(map[string]string)
 	channelsMapD := make(map[string]string)
@@ -444,7 +444,7 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 	}
 
 	for _, team := range c.TeamIds {
-		channels, _, err = c.Client.GetPublicChannelsForTeam(team, 0, 50, "")
+		channels, _, err = c.Client.GetPublicChannelsForTeam(context.Background(), team, 0, 50, "")
 		if err != nil {
 			return channelsMapO, channelsMapP, channelsMapD, channelsMapOJoin, unReadMessagesByChannel, err
 		}
@@ -460,7 +460,7 @@ func (c *MeetChatClient) GetChannels() (map[string]string, map[string]string, ma
 
 // to set file and meta data
 func (c *MeetChatClient) GetFilesMessagesMetadata(metadata []MeetFile, fileId string) []MeetFile {
-	fileInfo, _, err := c.Client.GetFileInfo(fileId)
+	fileInfo, _, err := c.Client.GetFileInfo(context.Background(), fileId)
 
 	if err == nil {
 		fileInfo := MeetFile{
@@ -479,7 +479,7 @@ func (c *MeetChatClient) GetFilesMessagesMetadata(metadata []MeetFile, fileId st
 }
 
 func (c *MeetChatClient) ReadMessages(channelID string, page int) (*MeetChannelMessages, error) {
-	posts, _, err := c.Client.GetPostsForChannel(channelID, page, 30, "", true)
+	posts, _, err := c.Client.GetPostsForChannel(context.Background(), channelID, page, 30, "", true, false)
 	if err != nil {
 		return nil, err
 	}
@@ -587,7 +587,7 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 		Message:   message,
 	}
 
-	post_mod, _, err := c.Client.CreatePost(post)
+	post_mod, _, err := c.Client.CreatePost(context.Background(), post)
 	if err != nil {
 		return "", err
 	}
@@ -602,7 +602,7 @@ func (c *MeetChatClient) PostMessage(channelID, message string) (string, error) 
 
 func (c *MeetChatClient) PostAdvancedMessage(post *model.Post, markAsRead bool) (string, error) {
 
-	post_mod, resp, err := c.Client.CreatePost(post)
+	post_mod, resp, err := c.Client.CreatePost(context.Background(), post)
 	if err != nil {
 		fmt.Println("PostMessage Mattermost Error:", err, resp.StatusCode)
 		return "", err
@@ -634,7 +634,7 @@ func (c *MeetChatClient) PostMeetingLink(channelID, meetingId string) (string, e
 		},
 	}
 
-	post_mod, _, err := c.Client.CreatePost(post)
+	post_mod, _, err := c.Client.CreatePost(context.Background(), post)
 	if err != nil {
 		return "", err
 	}
@@ -651,7 +651,7 @@ func (c *MeetChatClient) GetAllUsers() (map[string]string, error) {
 	if len(c.TeamIds) == 0 {
 		return nil, fmt.Errorf("GetAllUsers Mattermost Error: No team for user")
 	}
-	users, _, err := c.Client.GetUsersInTeam(c.TeamIds[0], 0, 100, "")
+	users, _, err := c.Client.GetUsersInTeam(context.Background(), c.TeamIds[0], 0, 100, "")
 
 	usersMap := make(map[string]string)
 
@@ -668,7 +668,7 @@ func (c *MeetChatClient) GetAllUsers() (map[string]string, error) {
 
 func (c *MeetChatClient) GetUnReadMessages(channelID string) (int, error) {
 
-	channelUnread, _, err := c.Client.GetChannelUnread(channelID, c.UserID)
+	channelUnread, _, err := c.Client.GetChannelUnread(context.Background(), channelID, c.UserID)
 	if err != nil {
 		return 0, err
 	}
@@ -685,7 +685,7 @@ func (c *MeetChatClient) UpdateChannels() error {
 
 // to set message as read when a user see it, delete the channel from the map of unread messages
 func (c *MeetChatClient) ViewMessages(channelID string) error {
-	_, _, err := c.Client.ViewChannel(c.UserID, &model.ChannelView{
+	_, _, err := c.Client.ViewChannel(context.Background(), c.UserID, &model.ChannelView{
 		ChannelId:                 channelID,
 		CollapsedThreadsSupported: true,
 	})
@@ -700,7 +700,7 @@ func (c *MeetChatClient) ViewMessages(channelID string) error {
 
 // to create direct channel with a user
 func (c *MeetChatClient) CreateDirectChannel(userID string) (string, string, error) {
-	channel, _, err := c.Client.CreateDirectChannel(c.UserID, userID)
+	channel, _, err := c.Client.CreateDirectChannel(context.Background(), c.UserID, userID)
 	if err != nil {
 		return "", "", err
 	}
@@ -712,7 +712,7 @@ func (c *MeetChatClient) CreateDirectChannel(userID string) (string, string, err
 }
 
 func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, error) {
-	channel, _, err := c.Client.CreateChannel(&model.Channel{
+	channel, _, err := c.Client.CreateChannel(context.Background(), &model.Channel{
 		CreatorId:   c.UserID,
 		Name:        channelName,
 		DisplayName: channelName,
@@ -731,7 +731,7 @@ func (c *MeetChatClient) CreateOpenChannel(channelName string) (string, string, 
 }
 
 func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, string, error) {
-	channel, _, err := c.Client.CreateChannel(&model.Channel{
+	channel, _, err := c.Client.CreateChannel(context.Background(), &model.Channel{
 		CreatorId:   c.UserID,
 		Name:        channelName,
 		DisplayName: channelName,
@@ -750,7 +750,7 @@ func (c *MeetChatClient) CreatePrivateChannel(channelName string) (string, strin
 }
 
 func (c *MeetChatClient) DeleteChannel(channelID string) error {
-	_, err := c.Client.DeleteChannel(channelID)
+	_, err := c.Client.DeleteChannel(context.Background(), channelID)
 	if err != nil {
 		return err
 	}
@@ -762,7 +762,7 @@ func (c *MeetChatClient) DeleteChannel(channelID string) error {
 }
 
 func (c *MeetChatClient) LeaveChannel(channelID string) error {
-	_, err := c.Client.RemoveUserFromChannel(channelID, c.UserID)
+	_, err := c.Client.RemoveUserFromChannel(context.Background(), channelID, c.UserID)
 	if err != nil {
 		return err
 	}
@@ -774,7 +774,7 @@ func (c *MeetChatClient) LeaveChannel(channelID string) error {
 }
 
 func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
-	_, _, err := c.Client.AddChannelMember(channelID, userID)
+	_, _, err := c.Client.AddChannelMember(context.Background(), channelID, userID)
 	if err != nil {
 		return err
 	}
@@ -786,19 +786,19 @@ func (c *MeetChatClient) AddUserChannel(channelID string, userID string) error {
 
 // to set user as online
 func (c *MeetChatClient) SetUserStatusOnline() error {
-	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
+	_, _, err := c.Client.UpdateUserStatus(context.Background(), c.UserID, &model.Status{UserId: c.UserID, Status: "online"})
 	return err
 }
 
 // to set user as offline
 func (c *MeetChatClient) SetUserStatusOffline() error {
-	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
+	_, _, err := c.Client.UpdateUserStatus(context.Background(), c.UserID, &model.Status{UserId: c.UserID, Status: "offline"})
 	return err
 }
 
 // to set user as away
 func (c *MeetChatClient) SetUserStatusAway() error {
-	_, _, err := c.Client.UpdateUserStatus(c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
+	_, _, err := c.Client.UpdateUserStatus(context.Background(), c.UserID, &model.Status{UserId: c.UserID, Status: "away"})
 	return err
 }
 
@@ -807,7 +807,7 @@ func (c *MeetChatClient) GetStatusUsers() (map[string]string, error) {
 	statusUsers := make(map[string]string)
 	for userName, _ := range c.ChannelIdsDirect {
 		userId := getValue(c.AllUser, userName)
-		status, _, err := c.Client.GetUserStatus(userId, "")
+		status, _, err := c.Client.GetUserStatus(context.Background(), userId, "")
 		if err != nil {
 			return statusUsers, err
 		}
@@ -830,7 +830,7 @@ func ClearMeetClient(userID string, isSupportLog bool) {
 
 // to upload a file on a channel
 func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte, fileName string, message string) error {
-	fileRes, _, err := c.Client.UploadFile(fileBytes, channelID, fileName)
+	fileRes, _, err := c.Client.UploadFile(context.Background(), fileBytes, channelID, fileName)
 
 	if fileRes == nil || err != nil {
 		return err
@@ -844,7 +844,7 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 	}
 
 	// Post the message with the file attachment
-	if _, _, err := c.Client.CreatePost(post); err != nil {
+	if _, _, err := c.Client.CreatePost(context.Background(), post); err != nil {
 		return err
 	}
 
@@ -853,13 +853,13 @@ func (c *MeetChatClient) UploadFileOnChannel(channelID string, fileBytes []byte,
 
 // to download a file with the fileId
 func (c *MeetChatClient) DownloadFileFromChannel(fileId string) ([]byte, string, error) {
-	fileBytes, _, err := c.Client.GetFile(fileId)
+	fileBytes, _, err := c.Client.GetFile(context.Background(), fileId)
 
 	if err != nil {
 		return nil, "", err
 	}
 
-	fileInfo, _, err := c.Client.GetFileInfo(fileId)
+	fileInfo, _, err := c.Client.GetFileInfo(context.Background(), fileId)
 
 	if err != nil {
 		return nil, "", err

@@ -32,7 +32,7 @@ import (
 func (cluster *Cluster) CheckFailed() {
 	// Don't trigger a failover if a switchover is happening
 	if cluster.StateMachine.IsInFailover() {
-		cluster.SetState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00001"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00001", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00001"], ErrFrom: "CHECK"})
 		return
 	}
 	if cluster.master == nil {
@@ -152,7 +152,7 @@ func (cluster *Cluster) isAutomaticFailover() bool {
 	if cluster.Conf.Interactive == false {
 		return true
 	}
-	cluster.SetState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: fmt.Sprintf(clusterError["ERR00002"]), ErrFrom: "CHECK"})
+	cluster.SetState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: clusterError["ERR00002"], ErrFrom: "CHECK"})
 	return false
 }
 
@@ -173,7 +173,7 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	// no illimited failed count
 
 	if cluster.GetMaster() != nil && cluster.GetMaster().FailCount >= cluster.Conf.MaxFail {
-		cluster.SetState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0023"]), ErrFrom: "CHECK"})
+		cluster.SetState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0023"], ErrFrom: "CHECK"})
 		return true
 	} else {
 		//	cluster.SetState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
@@ -188,7 +188,7 @@ func (cluster *Cluster) isMaxClusterFailoverCountNotReached() bool {
 		return true
 	}
 	if cluster.FailoverCtr == cluster.Conf.FailLimit {
-		cluster.SetState("ERR00027", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00027"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00027", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00027"], ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -202,7 +202,7 @@ func (cluster *Cluster) isBetweenFailoverTimeValid() bool {
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Time to short with previous failover")
 	if rem > 0 {
-		cluster.SetState("ERR00029", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00029"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00029", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00029"], ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -359,7 +359,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 	}
 	if key == -1 {
 		// No candidates found in slaves list
-		cluster.SetState("ERR00032", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00032"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00032", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00032"], ErrFrom: "CHECK"})
 		return false
 	}
 	return true
@@ -386,7 +386,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	resp, err := client.Do(req)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", err.Error())
-		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
 		return false
 	}
 	defer resp.Body.Close()
@@ -400,14 +400,14 @@ func (cluster *Cluster) isActiveArbitration() bool {
 	err = json.Unmarshal(body, &r)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Arbitrator sent invalid JSON")
-		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
 		return false
 	}
 	if r.Arbitration == "winner" {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Arbitrator says: winner")
 		return true
 	}
-	cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00022"]), ErrFrom: "CHECK"})
+	cluster.SetState("ERR00022", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00022"], ErrFrom: "CHECK"})
 	return false
 }
 
@@ -425,7 +425,7 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	if req.StatusCode == 200 {
-		cluster.SetState("ERR00031", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00031"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00031", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00031"], ErrFrom: "CHECK"})
 		return true
 	}
 	return false
@@ -451,7 +451,7 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 	// - first replication-manager start on no topology
 	// - all cluster down
 	if cluster.GetMaster() == nil {
-		cluster.SetState("ERR00026", state.State{ErrType: config.LvlErr, ErrDesc: fmt.Sprintf(clusterError["ERR00026"]), ErrFrom: "CHECK"})
+		cluster.SetState("ERR00026", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00026"], ErrFrom: "CHECK"})
 		return false
 	}
 
@@ -903,7 +903,7 @@ func (cluster *Cluster) CheckCredentialRotation() {
 
 func (cluster *Cluster) CheckCanSaveDynamicConfig() {
 	if cluster.Conf.SecretKey == nil && cluster.GetConf().ConfRewrite {
-		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["ERR00090"]), ErrFrom: "CLUSTER"})
+		cluster.SetState("ERR00090", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00090"], ErrFrom: "CLUSTER"})
 	}
 }
 
@@ -921,7 +921,7 @@ func (cluster *Cluster) CheckIsOverwrite() {
 			if i == 1 {
 				line = strings.ReplaceAll(line, " ", "")
 				if line != "" {
-					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0102"]), ErrFrom: "CLUSTER"})
+					cluster.SetState("WARN0102", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0102"], ErrFrom: "CLUSTER"})
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check overwrite is not empty line %d : %s\n", i, line)
 				} else {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Check overwrite is empty line %d : %s\n", i, line)
@@ -1161,6 +1161,98 @@ func (cluster *Cluster) CheckEstimatedBackupSize(backtype string) error {
 	}
 
 	return nil
+}
+
+func (cluster *Cluster) CheckNeedConfigFetch() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.IsIgnored() {
+			continue
+		}
+		srv.CheckNeedConfigFetch()
+	}
+}
+
+// CheckDummyConfigSendCookies checks all servers for dummy config send cookies and sends configs
+func (cluster *Cluster) CheckDummyConfigSendCookies() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+		if srv.IsIgnored() {
+			continue
+		}
+
+		srv.ProcessDummyConfigSendCookie()
+	}
+}
+
+// CheckRestartCookies checks all servers for restart cookies and processes them
+func (cluster *Cluster) CheckRestartCookies() {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		if srv.HasRestartCookie() {
+			// Get the stored parameters
+			nodeParam := srv.RestartNode
+			ridParam := srv.RestartRid
+
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Processing restart cookie for server %s (node: %s, rid: %s)", srv.URL, nodeParam, ridParam)
+			}
+			// Call the restart function with stored parameters
+			err := cluster.RestartDatabaseService(srv, nodeParam, ridParam)
+			if err != nil {
+				if cluster.Conf != nil {
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+						"Failed to restart server %s: %s", srv.URL, err)
+				}
+				// Delete cookie even on error to avoid infinite retries
+				srv.DelRestartCookie()
+				// Clear stored parameters
+				srv.RestartNode = ""
+				srv.RestartRid = ""
+			}
+		}
+	}
+}
+
+// CleanupRestartCookies removes any lingering restart cookies and clears parameters at cluster startup
+// This prevents unwanted restarts from old cookies that may have been left from previous runs
+func (cluster *Cluster) CleanupRestartCookies() {
+	cleanedCount := 0
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		// Check if restart cookie exists
+		if srv.HasRestartCookie() {
+			if cluster.Conf != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+					"Cleaning up lingering restart cookie for server %s (node: %s, rid: %s)",
+					srv.URL, srv.RestartNode, srv.RestartRid)
+			}
+
+			// Delete the cookie
+			srv.DelRestartCookie()
+			cleanedCount++
+		}
+
+		// Clear any stored parameters (whether cookie existed or not)
+		srv.RestartNode = ""
+		srv.RestartRid = ""
+	}
+
+	if cleanedCount > 0 && cluster.Conf != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Cleaned up %d restart cookie(s) at cluster startup", cleanedCount)
+	}
 }
 
 func (cluster *Cluster) CheckClusterServiceAgents() {

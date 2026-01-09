@@ -1539,7 +1539,7 @@ func (server *ServerMonitor) JobsCheckErrors(Conn *sqlx.Conn) error {
 				defer server.SetInReseedBackup("")
 			}
 		case "xtrabackup", "mariabackup":
-			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0115"]), ErrFrom: "JOB", ServerUrl: server.URL})
+			cluster.SetState("WARN0115", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0115"], ErrFrom: "JOB", ServerUrl: server.URL})
 		}
 	}
 
@@ -2633,9 +2633,26 @@ func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, e
 
 func (server *ServerMonitor) JobRunViaSSH() error {
 	cluster := server.ClusterGroup
+
+	// Atomically check and acquire the job lock
+	if !server.TryAcquireJobLock() {
+		loglvl := config.LvlErr
+
+		if cluster.Conf.SchedulerJobsSSH {
+			loglvl = config.LvlDbg
+		}
+
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, loglvl, "Cancel dbjob via ssh since another job is running")
+		return errors.New("Cancel dbjob via ssh since another job is running")
+	}
+
+	defer server.ReleaseJobLock()
+
 	if cluster.IsInFailover() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Cancel dbjob via ssh during failover")
 		return errors.New("Cancel dbjob via ssh during failover")
 	}
+
 	client, err := server.GetCluster().OnPremiseConnect(server)
 	if err != nil {
 		if !server.HaveSSHError {
@@ -2654,7 +2671,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 	)
 	scriptpath := server.Datadir + "/init/init/dbjobs_new"
 
-	if _, err := os.Stat(scriptpath); os.IsNotExist(err) && server.GetCluster().GetConf().OnPremiseSSHDbJobScript == "" && !server.IsConfigGen {
+	if _, err := os.Stat(scriptpath); os.IsNotExist(err) {
 		server.GetDatabaseConfig()
 	}
 
@@ -2674,6 +2691,8 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	buf2 := strings.NewReader(server.GetSshEnv())
 	r := io.MultiReader(buf2, buf)
+
+	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Running database jobs via SSH script: %s with env: %v", scriptpath, server.GetSshEnv())
 
 	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
@@ -3057,7 +3076,7 @@ func (server *ServerMonitor) InitiateJobBackupBinlog(binlogfile string, isPurge 
 	return errors.New("Wrong configuration for Backup Binlog Method!")
 }
 
-func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop int) error {
+func (server *ServerMonitor) WaitAndSendSST(task string, filename string, uncompress bool, loop int) error {
 	cluster := server.ClusterGroup
 	var err error
 
@@ -3085,7 +3104,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	if count > 0 {
 		server.JobsUpdateState(task, "processing", 1, 0)
 		go func() {
-			err := cluster.SSTRunSender(filename, server)
+			err := cluster.SSTRunSender(filename, server, uncompress)
 			if err != nil {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, err.Error())
 				server.JobsUpdateState(task, err.Error(), 5, 0)
@@ -3095,7 +3114,7 @@ func (server *ServerMonitor) WaitAndSendSST(task string, filename string, loop i
 	} else {
 		if loop < 10 {
 			loop++
-			return server.WaitAndSendSST(task, filename, loop)
+			return server.WaitAndSendSST(task, filename, uncompress, loop)
 		}
 	}
 
@@ -3153,7 +3172,7 @@ func (server *ServerMonitor) ProcessReseedPhysical(task string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master physical backup to reseed %s", server.URL)
 
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, 0)
+		err := server.WaitAndSendSST(task, backupfile, true, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -3214,7 +3233,7 @@ func (server *ServerMonitor) ProcessFlashbackPhysical(task string) error {
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending physical backup to flashback %s", server.URL)
 
 	go func() {
-		err := server.WaitAndSendSST(task, backupfile, 0)
+		err := server.WaitAndSendSST(task, backupfile, true, 0)
 		if err != nil {
 			if server.HasReseedingState(task) {
 				server.SetInReseedBackup("")
@@ -3471,27 +3490,28 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")
 		os.Rename(filename, filename+".old")
-		os.Rename(filename+".tmp", filename)
-		err := server.ReadVariablesFromConfigFile(filename, true)
+		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
+			return err
+		}
+
+		err = server.ReadVariablesFromConfigFile(filename, "deployed", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 			return err
 		}
-
-		// Write preserved variables
-		destpath := filepath.Join(server.Datadir, "99_preserved.cnf")
-		err = server.WritePreservedVariables(filename, destpath)
-		if err == nil {
-			// Rename the old file to .old and the new file to the original name
-			// This is a workaround to avoid overwriting the original file when error occurs
-			os.Rename(destpath, destpath+".old")
-			os.Rename(destpath+".tmp", destpath)
-		}
 	case "printdefault-dummy":
 		filename := filepath.Join(server.Datadir, "dummy.cnf")
 		os.Rename(filename, filename+".old")
-		os.Rename(filename+".tmp", filename)
-		err := server.ReadVariablesFromConfigFile(filename, false)
+
+		err := server.LoadFromTempConfigFile(filename+".tmp", filename)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Load from temp config error: %s", err)
+			return err
+		}
+
+		err = server.ReadVariablesFromConfigFile(filename, "config", true)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
 		}
@@ -3530,7 +3550,13 @@ func (server *ServerMonitor) JobReceiveConfigFiles() (*ConfigReceiverResponse, e
 		return nil, err
 	}
 
-	return &ConfigReceiverResponse{MonitorAddress: cluster.Conf.MonitorAddress, DummyConfigPort: rcv_port, CurrentConfigPort: rcv_port_pid, CurrentPIDFile: pid_file, DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf")}, nil
+	return &ConfigReceiverResponse{
+		MonitorAddress:    cluster.Conf.MonitorAddress,
+		DummyConfigPort:   rcv_port,
+		CurrentConfigPort: rcv_port_pid,
+		CurrentPIDFile:    pid_file,
+		DefaultConfigPath: filepath.Join(server.GetDatabaseConfdir(), "my.cnf"),
+	}, nil
 }
 
 func (server *ServerMonitor) DecodeSecret(encrypted, key, iv string) (string, error) {
@@ -3627,7 +3653,7 @@ func (server *ServerMonitor) UpgradeJobsScript() error {
 	cluster := server.ClusterGroup
 	defer cluster.LogPanicToFile("jobs-upgrade")
 
-	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server)
+	err := cluster.SSTRunSender(filepath.Join(server.Datadir, "init/init", "dbjobs_new"), server, true)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error sending dbjobs_new file to %s: %s", server.Name, err.Error())
 		return err

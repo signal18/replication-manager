@@ -312,7 +312,8 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 
 		app := mycluster.GetAppFromName(vars["appName"])
 		if app != nil {
-			mycluster.OpenSVCRestartAppService(app, vars["node"])
+			rid := r.URL.Query().Get("rid")
+			mycluster.OpenSVCRestartAppService(app, vars["node"], rid)
 		} else {
 			http.Error(w, "Server Not Found", 500)
 			return

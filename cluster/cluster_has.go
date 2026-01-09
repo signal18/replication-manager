@@ -8,6 +8,7 @@ package cluster
 
 import (
 	"fmt"
+	"path"
 	"reflect"
 	"strings"
 
@@ -60,17 +61,17 @@ func (cluster *Cluster) HasValidBackup() bool {
 	if logical {
 		cluster.StateMachine.DeleteState("WARN0111")
 	} else {
-		cluster.SetState("WARN0111", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0111"]), ErrFrom: "TOPO"})
+		cluster.SetState("WARN0111", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0111"], ErrFrom: "TOPO"})
 	}
 
 	if physical {
 		cluster.StateMachine.DeleteState("WARN0112")
 	} else {
-		cluster.SetState("WARN0112", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0112"]), ErrFrom: "TOPO"})
+		cluster.SetState("WARN0112", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0112"], ErrFrom: "TOPO"})
 	}
 
 	//	}
-	// cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0101"]), ErrFrom: "TOPO"})
+	// cluster.SetState("WARN0101", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0101"], ErrFrom: "TOPO"})
 	return false
 
 }
@@ -615,4 +616,23 @@ func (cluster *Cluster) IsInErrorState(key, serverURL string) bool {
 	} else {
 		return cluster.StateMachine.IsInState(fmt.Sprintf("%s@%s", key, serverURL))
 	}
+}
+
+func (cluster *Cluster) IsInSchemaIgnore(table string) bool {
+	if cluster.Conf.MonitorSchemaIgnoreTables == "" {
+		return false
+	}
+
+	for _, pattern := range strings.Split(cluster.Conf.MonitorSchemaIgnoreTables, ",") {
+		trimmed := strings.TrimSpace(pattern)
+		if trimmed == "" {
+			continue
+		}
+		matched, _ := path.Match(trimmed, table)
+		if matched {
+			return true
+		}
+	}
+
+	return false
 }

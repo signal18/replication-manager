@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -88,6 +87,8 @@ func (server *ServerMonitor) GetEnv() map[string]string {
 		"%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%":                    server.SSTPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%":             server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.HttpPort,
 		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%":              server.ClusterGroup.Conf.MonitorAddress + ":" + server.ClusterGroup.Conf.APIPort,
+		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL_HOST%%":         server.ClusterGroup.Conf.MonitorAddress,
+		"%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL_PORT%%":         server.ClusterGroup.Conf.APIPort,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_NAME%%":    server.Host,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_HOST_PORT%%":    server.Port,
 		"%%ENV:ENV:SVC_CONF_ENV_REPLICATION_MANAGER_CLUSTER_NAME%%": server.ClusterGroup.Name,
@@ -249,13 +250,118 @@ func (server *ServerMonitor) GetConfigVariable(variable string) string {
 }
 
 func (server *ServerMonitor) GetDatabaseConfig() error {
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
+	return server.getDatabaseConfig(true)
+}
+
+func (server *ServerMonitor) GetDummyConfig() error {
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
+	return server.getDatabaseConfig(false)
+}
+
+// ProcessDummyConfigSendCookie checks if this server has a dummy config send cookie,
+// and if so, processes it by generating and sending the config file
+func (server *ServerMonitor) ProcessDummyConfigSendCookie() error {
 	cluster := server.ClusterGroup
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Database Config generation "+server.Datadir+"/config.tar.gz")
+
+	if server.IsIgnored() {
+		return nil
+	}
+
+	if !server.HasWaitDummyConfigSendCookie() {
+		return nil
+	}
+
+	// Lock to prevent concurrent config generation AND protect the config.tar.gz file
+	// during the send operation. The lock will be held until the entire operation completes
+	// (including the wait and send) to prevent another goroutine from regenerating the
+	// config.tar.gz while it's being transmitted.
+	server.configGenMutex.Lock()
+	defer server.configGenMutex.Unlock()
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+		"Found dummy config send cookie for server %s", server.URL)
+
+	// Re-check cookie after acquiring lock (another goroutine might have processed it)
+	if !server.HasWaitDummyConfigSendCookie() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"Cookie already processed by another goroutine for server %s", server.URL)
+		return nil
+	}
+
+	// Get the cookie modification time before deletion
+	cookieModTime, modTimeErr := server.GetWaitDummyConfigSendCookieModTime()
+	if modTimeErr != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to get cookie modtime for server %s: %s", server.URL, modTimeErr)
+		// Still try to proceed even if we can't get modtime
+		cookieModTime = time.Now().Add(-5 * time.Second) // Assume it's been at least 5 seconds
+	}
+
+	// Remove the cookie first to prevent re-processing
+	server.DelWaitDummyConfigSendCookie()
+
+	// Generate dummy config without double locking
+	err := server.getDatabaseConfig(false)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to generate dummy config for server %s: %s", server.URL, err)
+		return err
+	}
+
+	// Send the config file - still protected by the lock held above via defer
+	// This ensures no other goroutine can regenerate config.tar.gz during transmission
+	configFile := filepath.Join(server.Datadir, "config.tar.gz")
+	return server.sendDummyConfigWithWait(configFile, cookieModTime)
+}
+
+// sendDummyConfigWithWait sends the dummy config file after ensuring client listener is ready
+func (server *ServerMonitor) sendDummyConfigWithWait(configFile string, cookieModTime time.Time) error {
+	cluster := server.ClusterGroup
+
+	// Calculate time elapsed since cookie creation
+	elapsed := time.Since(cookieModTime)
+	minWaitTime := 2 * time.Second // Minimum wait to ensure client listener is ready
+
+	// If not enough time has passed, wait for the remaining duration
+	if elapsed < minWaitTime {
+		waitDuration := minWaitTime - elapsed
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+			"Waiting %v before sending dummy config to ensure client listener is ready for server %s",
+			waitDuration, server.URL)
+		time.Sleep(waitDuration)
+	}
+
+	// Send the config file using SSTRunSender
+	// Uses the server's pre-defined Host and SSTPort
+	err := cluster.SSTRunSender(configFile, server, false)
+	if err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr,
+			"Failed to send dummy config for server %s: %s", server.URL, err)
+	} else {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Successfully sent dummy config for server %s", server.URL)
+	}
+
+	return err
+}
+
+func (server *ServerMonitor) getDatabaseConfig(preserve bool) error {
+	cluster := server.ClusterGroup
+
+	if server.IsIgnored() {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Skipping config generation for ignored server %s", server.URL)
+		return nil
+	}
+
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Database Config generation "+server.Datadir+"/config.tar.gz")
 	if server.IsCompute {
 		cluster.Configurator.AddDBTag("spider")
 	}
 
-	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, cluster.Conf.ProvDBConfigPreserve, server.HasConfigPathCookie())
+	err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir+"/"+cluster.Name, server.GetDatabaseBasedir(), server.GetEnv(), cluster.RepMgrVersion, preserve)
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Database Config generation "+server.Datadir+"/config.tar.gz error: %s", err)
 		return err
@@ -285,29 +391,25 @@ func (server *ServerMonitor) RemovePreservedConfigPath() {
 }
 
 func (server *ServerMonitor) ReadVariablesFromConfigs() {
-	cluster := server.ClusterGroup
-
-	var err error
 	var wg sync.WaitGroup
 	wg.Add(2)
+
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), false)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
-		}
+		// Error is already logged inside ReadVariablesFromConfigFile
+		server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "dummy.cnf"), "config", true)
 	}()
 
 	go func() {
 		defer wg.Done()
-		err = server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), true)
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Read variables from config error: %s", err)
-		}
+		// Error is already logged inside ReadVariablesFromConfigFile
+		server.ReadVariablesFromConfigFile(filepath.Join(server.Datadir, "current.cnf"), "deployed", true)
 	}()
 
 	wg.Wait()
 
+	server.ReadPreservedVariables()
+	server.WriteDeltaVariables()
 	server.IsNeedPathCheck = true
 }
 
@@ -415,25 +517,79 @@ func (server *ServerMonitor) CreateLocalCnf(cnf string) error {
 	return os.WriteFile(cnf, []byte("[mysqld]\n!includedir "+filepath.Join(server.Datadir, "init/etc/mysql/conf.d")+"\n"), 0644)
 }
 
-func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deployed bool) error {
+func (server *ServerMonitor) LoadFromTempConfigFile(srcpath, dstpath string) error {
+	vars := make([]string, 0)
+
+	_, err := os.Stat(srcpath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+
+	srcfile, err := os.Open(srcpath)
+	if err != nil {
+		return err
+	}
+	defer srcfile.Close()
+
+	// Read the file content
+	scanner := bufio.NewScanner(srcfile)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		// Only process lines that start with --
+		if !strings.HasPrefix(line, "--") {
+			continue
+		}
+
+		// Remove the -- prefix and trim whitespace
+		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
+		if line == "" {
+			continue
+		}
+
+		vars = append(vars, line)
+	}
+
+	dstFile, err := os.OpenFile(dstpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+
+	_, err = dstFile.WriteString("[mysqld]\n")
+	if err != nil {
+		return err
+	}
+
+	for _, v := range vars {
+		_, err = dstFile.WriteString(v + "\n")
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, cnftype string, empty bool) error {
 	cluster := server.ClusterGroup
-	var srcfile *os.File
 	var err error
 
-	var lastUpdate time.Time
-	if deployed {
-		lastUpdate = server.LastConfigUpdate.Deployed
-	} else {
-		lastUpdate = server.LastConfigUpdate.Config
+	var lastUpdate *time.Time
+	switch cnftype {
+	case "deployed":
+		lastUpdate = &server.LastConfigUpdate.Deployed
+	case "config":
+		lastUpdate = &server.LastConfigUpdate.Config
+	default:
+		return fmt.Errorf("invalid config type: %s", cnftype)
 	}
 
 	finfo, err := os.Stat(srcpath)
 	if err != nil {
-		if deployed {
-			server.LastConfigUpdate.Deployed = time.Time{}
-		} else {
-			server.LastConfigUpdate.Config = time.Time{}
-		}
 		if os.IsNotExist(err) {
 			return nil
 		}
@@ -442,236 +598,505 @@ func (server *ServerMonitor) ReadVariablesFromConfigFile(srcpath string, deploye
 		return err
 	}
 
-	if !lastUpdate.Before(finfo.ModTime()) {
+	if !lastUpdate.IsZero() && !lastUpdate.Before(finfo.ModTime()) {
 		// No need to read the file if it hasn't changed
 		return nil
 	}
 
-	if deployed {
-		server.LastConfigUpdate.Deployed = finfo.ModTime()
-	} else {
-		server.LastConfigUpdate.Config = finfo.ModTime()
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Reading %s variables from %s", cnftype, srcpath)
+
+	*lastUpdate = finfo.ModTime()
+
+	if server.VariablesMap == nil {
+		server.VariablesMap = config.NewVariablesMap()
+	}
+
+	// Clear all previous values
+	if empty {
+		switch cnftype {
+		case "deployed":
+			server.VariablesMap.EmptyDeployedValues()
+		case "config":
+			server.VariablesMap.EmptyConfigValues()
+		}
 	}
 
 	// Read the file
-	srcfile, err = os.Open(srcpath)
+	err = server.VariablesMap.LoadFromConfigFile(srcpath, cnftype)
 	if err != nil {
-		server.LastConfigUpdate.Config = time.Time{}
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
 		return err
 	}
 
-	defer srcfile.Close()
+	return nil
+}
 
-	// Clear all previous values
-	if deployed {
-		server.VariablesMap.EmptyDeployedValues()
-	} else {
-		server.VariablesMap.EmptyConfigValues()
+func (server *ServerMonitor) ReadPreservedVariables() error {
+	cluster := server.ClusterGroup
+
+	if server.VariablesMap == nil {
+		server.VariablesMap = config.NewVariablesMap()
 	}
 
-	// Read the file content
-	scanner := bufio.NewScanner(srcfile)
-	for scanner.Scan() {
-		line := scanner.Text()
+	// PRIORITY 1: Load server-specific 01_preserved.cnf (highest priority)
+	server.VariablesMap.LoadFromConfigFile(filepath.Join(server.Datadir, "01_preserved.cnf"), "preserved")
 
-		// Only process lines that start with --
-		if !strings.HasPrefix(line, "--") {
-			continue
-		}
-
-		// Remove the -- prefix and trim whitespace
-		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
-		if line == "" {
-			continue
-		}
-
-		line = strings.TrimPrefix(line, "loose_") // handle --loose_option
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			varname := strings.ReplaceAll(strings.TrimSpace(parts[0]), "-", "_")
-			key := strings.ToUpper(varname)
-			value := strings.TrimSpace(parts[1])
-			v, ok := server.VariablesMap.CheckAndGet(key)
-			if ok {
-				v.Variable_name = varname
-				if deployed {
-					if v.Deployed == nil {
-						v.Deployed = &value
-					} else if *v.Deployed != value {
-						// If the value contains "=" in the value, append else replace
-						if strings.Contains(value, "=") {
-							*v.Deployed += "\n" + value
-						} else {
-							*v.Deployed = value
-						}
-					}
-				} else {
-					if v.Config == nil {
-						v.Config = &value
-					} else if *v.Config != value {
-						// If the value contains "=" in the value, append else replace
-						if strings.Contains(value, "=") {
-							*v.Config += "\n" + value
-						} else {
-							*v.Config = value
-						}
-					}
-				}
-			} else {
-				v = &config.VariableState{Variable_name: varname}
-				if deployed {
-					v.Deployed = &value
-				} else {
-					v.Config = &value
-				}
-				server.VariablesMap.Store(key, v)
+	// Mark all loaded variables as server-specific (Priority 1)
+	server.VariablesMap.Range(func(k, v any) bool {
+		if varState, ok := v.(*config.VariableState); ok {
+			if varState.Preserved != nil {
+				varState.PreservedSource = "server-specific"
+				varState.PreservedPriority = 1
+				varState.IsExcludedFromCluster = false
 			}
 		}
+		return true
+	})
+
+	// PRIORITY 2: Load cluster-level preserved variables (can be overridden by server-specific)
+	// This replaces the old ProvDBConfigPreserveVars mechanism
+	cluster.preservedVarsMutex.RLock()
+	for varName, value := range cluster.preservedVars {
+		// Check if this server is excluded from this cluster-level preserved variable
+		if excludeMap, hasExclusions := cluster.preservedVarsExcludeServers[varName]; hasExclusions {
+			if excludeMap[server.Id] {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+					"Server %s is excluded from cluster-level preserved variable %s", server.URL, varName)
+
+				// Mark this variable as excluded even if it has server-specific value
+				if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+					v.IsExcludedFromCluster = true
+				}
+
+				continue
+			}
+		}
+
+		// Only apply if not already set by server-specific 01_preserved.cnf
+		if v, exists := server.VariablesMap.CheckAndGet(varName); exists {
+			// Server-specific value exists, but mark that cluster-level is available
+			if v.PreservedSource == "" {
+				// This shouldn't happen, but handle it
+				v.PreservedSource = "server-specific"
+				v.PreservedPriority = 1
+			}
+		} else {
+			// No server-specific value, use cluster-level
+			// Use NewVariableState to create with proper lowercase key
+			v := config.NewVariableState(varName)
+
+			// Always set preserved value, even if empty
+			// Empty value means "preserve whatever is currently deployed"
+			v.SetPreservedValue(value)
+
+			// Set metadata for cluster-level (Priority 2)
+			v.PreservedSource = "cluster-level"
+			v.PreservedPriority = 2
+			v.IsExcludedFromCluster = false
+
+			// Use Set() instead of Store() to ensure lowercase key normalization
+			server.VariablesMap.Set(varName, v)
+
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg,
+				"Applied cluster-level preserved variable %s=%s to server %s", varName, value, server.URL)
+		}
 	}
+	cluster.preservedVarsMutex.RUnlock()
 
-	list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
-	for _, opt := range list {
-		opt = strings.TrimSpace(opt)
-		if opt == "" {
-			continue
-		}
+	// LEGACY SUPPORT: Still honor ProvDBConfigPreserveVars for backward compatibility
+	// This will be deprecated in future versions
+	if cluster.Conf.ProvDBConfigPreserveVars != "" {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"ProvDBConfigPreserveVars is deprecated. Please migrate to cluster-level preserved_variables.cnf")
 
-		value := ""
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 2 {
-			opt = parts[0]
-			value = parts[1]
-		}
+		list := strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";")
+		for _, opt := range list {
+			opt = strings.TrimSpace(opt)
+			if opt == "" {
+				continue
+			}
 
-		key := strings.ToUpper(opt)
-		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-			v.Preserve = &value
-		} else if value != "" {
-			v = &config.VariableState{Variable_name: opt, Preserve: &value}
-			server.VariablesMap.Store(key, v)
+			value := ""
+			parts := strings.SplitN(opt, "=", 2)
+			if len(parts) == 2 {
+				opt = parts[0]
+				value = parts[1]
+			}
+
+			isMap := strings.Contains(value, "=")
+
+			key := strings.ToUpper(opt)
+			if v, ok := server.VariablesMap.CheckAndGet(key); ok {
+				v.SetPreservedValue(value)
+			} else if value != "" {
+				v = new(config.VariableState)
+				if isMap {
+					v.Preserved = make(config.MapValue)
+				} else {
+					v.Preserved = new(config.SingleValue)
+				}
+				v.SetPreservedValue(value)
+
+				server.VariablesMap.Store(key, v)
+			}
 		}
 	}
 
 	return nil
 }
 
-func (server *ServerMonitor) WritePreservedVariables(srcpath, destpath string) error {
-	cluster := server.ClusterGroup
+// Read-only variables that should never be written to config files
+var readOnlyVariables = []string{
+	"VERSION",
+	"VERSION_COMMENT",
+	"VERSION_COMPILE_MACHINE",
+	"VERSION_COMPILE_OS",
+	"HOSTNAME",
+	"SERVER_UUID",
+	"BASEDIR",
+	"LOG_BIN_BASENAME",
+	"LOG_BIN_INDEX",
+	"RELAY_LOG_BASENAME",
+	"RELAY_LOG_INDEX",
+	"DATADIR", // Paths should not be changed via runtime fallback
+}
 
-	// Check if the source file exists
-	if _, err := os.Stat(srcpath); os.IsNotExist(err) {
+// Variables safe for runtime fallback (whitelist)
+var safeRuntimeFallbackVariables = []string{
+	"INNODB_BUFFER_POOL_SIZE",
+	"MAX_CONNECTIONS",
+	"INNODB_LOG_FILE_SIZE",
+	"INNODB_FLUSH_LOG_AT_TRX_COMMIT",
+	"SYNC_BINLOG",
+	"BINLOG_FORMAT",
+	"SLOW_QUERY_LOG",
+	"SLOW_QUERY_LOG_FILE",
+	"LONG_QUERY_TIME",
+	"LOG_QUERIES_NOT_USING_INDEXES",
+	"GENERAL_LOG",
+	"GENERAL_LOG_FILE",
+	"LOG_ERROR",
+	"LOG_WARNINGS",
+	"EXPIRE_LOGS_DAYS",
+	"BINLOG_EXPIRE_LOGS_SECONDS",
+	"MAX_ALLOWED_PACKET",
+	"MAX_BINLOG_SIZE",
+	"MAX_RELAY_LOG_SIZE",
+	"RELAY_LOG_SPACE_LIMIT",
+	"INNODB_IO_CAPACITY",
+	"INNODB_IO_CAPACITY_MAX",
+	"INNODB_FLUSH_METHOD",
+	"INNODB_FILE_PER_TABLE",
+	"INNODB_BUFFER_POOL_INSTANCES",
+	"INNODB_LOG_BUFFER_SIZE",
+	"INNODB_WRITE_IO_THREADS",
+	"INNODB_READ_IO_THREADS",
+	"INNODB_PURGE_THREADS",
+	"INNODB_PAGE_CLEANERS",
+	"TABLE_OPEN_CACHE",
+	"TABLE_DEFINITION_CACHE",
+	"OPEN_FILES_LIMIT",
+	"THREAD_CACHE_SIZE",
+	"QUERY_CACHE_SIZE",
+	"QUERY_CACHE_TYPE",
+	"TMP_TABLE_SIZE",
+	"MAX_HEAP_TABLE_SIZE",
+	"JOIN_BUFFER_SIZE",
+	"SORT_BUFFER_SIZE",
+	"READ_BUFFER_SIZE",
+	"READ_RND_BUFFER_SIZE",
+	"BINLOG_CACHE_SIZE",
+	"BINLOG_STMT_CACHE_SIZE",
+}
+
+// isReadOnlyVariable checks if a variable is read-only and should never be changed
+func isReadOnlyVariable(varName string) bool {
+	upperName := strings.ToUpper(varName)
+	for _, readOnly := range readOnlyVariables {
+		if upperName == readOnly {
+			return true
+		}
+	}
+	return false
+}
+
+// isSafeForRuntimeFallback checks if a variable is whitelisted for runtime fallback
+func isSafeForRuntimeFallback(varName string) bool {
+	upperName := strings.ToUpper(varName)
+	for _, safe := range safeRuntimeFallbackVariables {
+		if upperName == safe {
+			return true
+		}
+	}
+	return false
+}
+
+func (server *ServerMonitor) WriteDeltaVariables() error {
+	cluster := server.ClusterGroup
+	deltapath := filepath.Join(server.Datadir, "02_delta.cnf")
+
+	if server.IsIgnored() {
 		return nil
 	}
 
-	destfile, err := os.OpenFile(destpath+".tmp", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644) // Create the file if it doesn't exist or truncate it
-	if err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error opening file %s: %s", destpath, err)
-	}
-	defer destfile.Close()
+	// Build content in memory first
+	var content strings.Builder
+	content.WriteString("[mysqld]\n")
 
-	if _, err := destfile.WriteString("[mysqld]" + "\n"); err != nil {
-		return err
-	}
-
-	// Read the file
-	srcfile, err := os.Open(srcpath)
-	if err != nil {
-		server.LastConfigUpdate.Config = time.Time{}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
-		return err
-	}
-
-	defer srcfile.Close()
-
-	fixedlist := make([]string, 0)
-	dynamiclist := make([]string, 0)
-	remaining := make(map[string]bool)
-	for _, opt := range strings.Split(cluster.Conf.ProvDBConfigPreserveVars, ";") {
-		opt = strings.TrimSpace(opt)
-		if opt == "" {
+	delta := server.VariablesMap.GetVariables(true)
+	for _, v := range delta {
+		// Skip variables that have preservation status set
+		// These are handled by 01_preserved.cnf or 03_agreed.cnf
+		if v.Preserved != nil {
 			continue
 		}
 
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 1 {
-			dynamiclist = append(dynamiclist, parts[0])
-			remaining[parts[0]] = true
-		} else {
-			fixedlist = append(fixedlist, opt)
-		}
-	}
+		// 4-LAYER SAFETY FRAMEWORK FOR RUNTIME FALLBACK
+		// Only use runtime value if deployed is nil and all safety checks pass
+		if v.Deployed == nil && v.Runtime != nil {
+			runtimeStr := v.Runtime.String()
 
-	errvarlist := make([]error, 0)
-	// Read the file content
-	scanner := bufio.NewScanner(srcfile)
-	for scanner.Scan() {
-		line := scanner.Text()
-
-		// Only process lines that start with --
-		if !strings.HasPrefix(line, "--") {
-			continue
-		}
-
-		// Remove the -- prefix and trim whitespace
-		line = strings.TrimSpace(strings.TrimPrefix(line, "--"))
-		if line == "" {
-			continue
-		}
-
-		varname := strings.ToLower(strings.TrimPrefix(line, "loose_")) // handle --loose_option
-		parts := strings.SplitN(varname, "=", 2)
-		varname = strings.TrimSpace(parts[0])
-
-		if slices.Contains(dynamiclist, varname) {
-			// Write the line to the file
-			if _, err := destfile.WriteString(line + "\n"); err != nil {
-				errvarlist = append(errvarlist, err)
+			// Layer 1: Empty value check - never write empty values
+			// Layer 2: Read-only check - never write read-only variables
+			// Layer 3: Whitelist check - only write whitelisted variables
+			// Layer 4: Server status check - only if server is running (not failed)
+			if runtimeStr != "" &&
+				!isReadOnlyVariable(v.VariableName) &&
+				isSafeForRuntimeFallback(v.VariableName) &&
+				!server.IsFailed() {
+				// Safe to use runtime value as fallback
+				v.Deployed = v.Runtime
+				content.WriteString(v.PrintDeployedDelta() + "\n")
+				v.Deployed = nil // Reset to avoid persisting the change
 			}
-		}
-	}
-
-	// Write the remaining variables in runtime
-	for opt := range remaining {
-		if opt == "" {
+			// If any check fails, skip this variable (don't write it)
 			continue
 		}
 
-		key := strings.ToUpper(opt)
-		if v, ok := server.VariablesMap.CheckAndGet(key); ok {
-			if v.Runtime != nil {
-				if _, err := destfile.WriteString(opt + "=" + *v.Runtime + "\n"); err != nil {
-					errvarlist = append(errvarlist, err)
+		// LAYER 5: MYSQL DEFAULT FALLBACK - REMOVED
+		// This layer has been removed because Configurator generates a base CNF from tags.
+		// Configuration priority is now:
+		//   1. Server-specific preserved variables (01_preserved.cnf, 02_delta.cnf, 03_agreed.cnf)
+		//   2. Cluster-wide preserved variables
+		//   3. Configurator settings (tags, templates, dynamic configs)
+		//   4. Runtime/deployed values
+		// No need for mysql_defaults.cnf as configurator provides the base configuration.
+		/*
+			if v.Deployed == nil && v.Runtime == nil && server.IsFailed() {
+				defaultValue := cluster.getMySQLDefaultForVar(v.VariableName)
+				if defaultValue != "" {
+					sv := config.SingleValue(defaultValue)
+					v.Deployed = &sv
+					content.WriteString(v.PrintDeployedDelta() + "\n")
+					v.Deployed = nil // Reset to avoid persisting the change
+
+					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+						"Using MySQL default for variable %s=%s (server failed, no deployed/runtime values)",
+						v.VariableName, defaultValue)
 				}
+				continue
 			}
-		}
+		*/
+
+		// Normal case: deployed value exists
+		content.WriteString(v.PrintDeployedDelta() + "\n")
 	}
 
-	// Write the fixed variables
-	for _, opt := range fixedlist {
-		if opt == "" {
-			continue
-		}
-		parts := strings.SplitN(opt, "=", 2)
-		if len(parts) == 2 {
-			opt = parts[0]
-			value := parts[1]
-			if _, err := destfile.WriteString("loose_" + opt + "=" + value + "\n"); err != nil {
-				errvarlist = append(errvarlist, err)
-			}
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error reading file %s: %s", srcpath, err)
-		return err
-	}
-
-	if len(errvarlist) > 0 {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", destpath, errvarlist)
+	// Write atomically
+	if err := atomicWriteFile(deltapath, []byte(content.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", deltapath, err)
 		return err
 	}
 
 	return nil
+}
 
+// atomicWriteFile writes data to a file atomically by writing to a temp file first,
+// then renaming it to the target path. This prevents partial writes and corruption.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	// Create temp file in the same directory to ensure same filesystem
+	dir := filepath.Dir(path)
+	tmpfile, err := os.CreateTemp(dir, ".tmp-*.cnf")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpfile.Name()
+
+	// Clean up temp file on error
+	defer func() {
+		if tmpfile != nil {
+			tmpfile.Close()
+			os.Remove(tmpPath)
+		}
+	}()
+
+	// Write data to temp file
+	if _, err := tmpfile.Write(data); err != nil {
+		return fmt.Errorf("failed to write to temp file: %w", err)
+	}
+
+	// Sync to ensure data is written to disk
+	if err := tmpfile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+
+	// Close the temp file
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+	tmpfile = nil // Mark as closed for defer cleanup
+
+	// Set permissions
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		return fmt.Errorf("failed to set permissions: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
+}
+
+func (server *ServerMonitor) WritePreservedVariables() error {
+	cluster := server.ClusterGroup
+	preservepath := filepath.Join(server.Datadir, "01_preserved.cnf")
+	agreedpath := filepath.Join(server.Datadir, "03_agreed.cnf")
+
+	// Build content for both files in memory
+	var preservedContent strings.Builder
+	var agreedContent strings.Builder
+	preservedContent.WriteString("[mysqld]\n")
+	agreedContent.WriteString("[mysqld]\n")
+
+	for key, v := range server.VariablesMap.ToNewMap() {
+		// If preserve is set, write to preserve.cnf or agreed.cnf
+		if v.Preserved != nil {
+			if v.IsPreserved() {
+				// Write preserved variables to preserve.cnf
+				preservedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
+			} else {
+				// Write non-preserved variables to agreed.cnf
+				agreedContent.WriteString(fmt.Sprintf("%s=%s\n", key, v.Preserved.String()))
+			}
+		}
+	}
+
+	// Write both files atomically
+	if err := atomicWriteFile(agreedpath, []byte(agreedContent.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", agreedpath, err)
+		return err
+	}
+
+	if err := atomicWriteFile(preservepath, []byte(preservedContent.String()), 0644); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Error writing file %s: %s", preservepath, err)
+		return err
+	}
+
+	return nil
+}
+
+// SetVariablePreserved marks a variable difference as "preserved" (keep deployed value)
+func (server *ServerMonitor) SetVariablePreserved(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Set preserved to deployed value to keep current deployed value
+	if varState.Deployed != nil {
+		varState.Preserved = varState.Deployed
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable %s marked as preserved with value: %s", variableName, varState.Deployed.String())
+	} else {
+		return fmt.Errorf("variable %s has no deployed value", variableName)
+	}
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// SetVariableCustomPreserved sets a custom preserved value for a variable
+// This allows DBAs to manually override variable values like in my.cnf
+func (server *ServerMonitor) SetVariableCustomPreserved(variableName string, customValue string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Create a new variable value from the custom string
+	// Determine the type based on the existing value type
+	var newValue config.VariableValue
+
+	switch varState.Config.(type) {
+	case config.MapValue:
+		// For map values (like optimizer_switch, performance_schema_instrument)
+		mv := make(config.MapValue)
+		mv.Set(customValue)
+		newValue = mv
+	case *config.SliceValue:
+		// For slice values
+		sv := &config.SliceValue{}
+		sv.Set(customValue)
+		newValue = sv
+	case *config.SingleValue:
+		// For simple string values
+		singleVal := config.SingleValue(customValue)
+		newValue = &singleVal
+	default:
+		// Default to single value
+		singleVal := config.SingleValue(customValue)
+		newValue = &singleVal
+	}
+
+	varState.Preserved = newValue
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Variable %s set to custom preserved value: %s", variableName, customValue)
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// SetVariableAccepted marks a variable difference as "accepted" (use config value)
+func (server *ServerMonitor) SetVariableAccepted(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	// Set preserved to config value to accept config value
+	if varState.Config != nil {
+		varState.Preserved = varState.Config
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+			"Variable %s marked as accepted with value: %s", variableName, varState.Config.String())
+	} else {
+		return fmt.Errorf("variable %s has no config value", variableName)
+	}
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
+}
+
+// ClearVariablePreservation removes preservation status from a variable
+func (server *ServerMonitor) ClearVariablePreservation(variableName string) error {
+	cluster := server.ClusterGroup
+
+	varState, exists := server.VariablesMap.ToNewMap()[strings.ToLower(variableName)]
+	if !exists {
+		return fmt.Errorf("variable %s not found", variableName)
+	}
+
+	varState.Preserved = nil
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo,
+		"Variable %s preservation cleared", variableName)
+
+	// Write preserved variables to files
+	return server.WritePreservedVariables()
 }

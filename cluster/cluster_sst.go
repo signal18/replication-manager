@@ -222,7 +222,7 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 	sst.in, err = sst.listener.Accept()
 
 	if err != nil {
-
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s : %v", task, err)
 		return
 	}
 
@@ -259,7 +259,7 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 	sst.in, err = sst.listener.Accept()
 	if err != nil {
-		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener : %v", err)
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlErr, "SST connection error starting listener for task %s: %v", task, err)
 		return
 	}
 
@@ -427,7 +427,7 @@ func (sst *SST) stream_copy_to_restic() <-chan int {
 	return sync_channel
 }
 
-func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) error {
+func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncompress bool) error {
 	var err error
 	port, _ := strconv.Atoi(sv.SSTPort)
 
@@ -443,7 +443,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor) error
 	}
 	defer client.Close()
 
-	if strings.HasSuffix(backupfile, "gz") {
+	if strings.HasSuffix(backupfile, "gz") && uncompress {
 		err = cluster.SSTRunSendGzip(client, backupfile, sv)
 	} else {
 		err = cluster.SSTRunSendFile(client, backupfile, sv)

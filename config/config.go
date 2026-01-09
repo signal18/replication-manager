@@ -83,6 +83,12 @@ type Config struct {
 	MonitorWriteHeartbeatCredential           string                 `mapstructure:"monitoring-write-heartbeat-credential" toml:"monitoring-write-heartbeat-credential" json:"monitoringWriteHeartbeatCredential"`
 	MonitorVariableDiff                       bool                   `mapstructure:"monitoring-variable-diff" toml:"monitoring-variable-diff" json:"monitoringVariableDiff"`
 	MonitorSchemaChange                       bool                   `mapstructure:"monitoring-schema-change" toml:"monitoring-schema-change" json:"monitoringSchemaChange"`
+	MonitorSchemaColumns                      bool                   `mapstructure:"monitoring-schema-columns" toml:"monitoring-schema-columns" json:"monitoringSchemaColumns"`
+	MonitorSchemaIndexes                      bool                   `mapstructure:"monitoring-schema-indexes" toml:"monitoring-schema-indexes" json:"monitoringSchemaIndexes"`
+	MonitorSchemaOnReplicas                   bool                   `mapstructure:"monitoring-schema-on-replicas" toml:"monitoring-schema-on-replicas" json:"monitoringSchemaOnReplicas"`
+	MonitorSchemaIgnoreTables                 string                 `mapstructure:"monitoring-schema-ignore-tables" toml:"monitoring-schema-ignore-tables" json:"monitoringSchemaIgnoreTables"`
+	MonitorSchemaScheduler                    bool                   `mapstructure:"monitoring-schema-scheduler" toml:"monitoring-schema-scheduler" json:"monitoringSchemaScheduler"`
+	MonitorSchemaSchedulerCron                string                 `mapstructure:"monitoring-schema-scheduler-cron" toml:"monitoring-schema-scheduler-cron" json:"monitoringSchemaSchedulerCron"`
 	MonitorQueryRules                         bool                   `mapstructure:"monitoring-query-rules" toml:"monitoring-query-rules" json:"monitoringQueryRules"`
 	MonitorSchemaChangeScript                 string                 `mapstructure:"monitoring-schema-change-script" toml:"monitoring-schema-change-script" json:"monitoringSchemaChangeScript"`
 	MonitorCheckGrants                        bool                   `mapstructure:"monitoring-check-grants" toml:"monitoring-check-grants" json:"monitoringCheckGrants"`
@@ -1028,7 +1034,7 @@ type MyDumperMetaData struct {
 	BinLogFileName string    `json:"log_filename" db:"log_filename"`
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
-	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+	EndTimestamp   time.Time `json:"end_timestamp" db:"end_timestamp"`
 }
 
 type ConfVersion struct {
@@ -1653,8 +1659,7 @@ func (conf *Config) Reveal(clusterName string, tmpDir string) {
 
 		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
 			decryptedValue := conf.GetDecryptedPassword(key, field.String())
-			line := fmt.Sprintf("Key: %s, Decrypted Value: %s\n", key, decryptedValue)
-			fmt.Fprintf(file, line)
+			fmt.Fprintf(file, "Key: %s, Decrypted Value: %s\n", key, decryptedValue)
 		}
 	}
 
@@ -1690,7 +1695,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 	_, err := os.Stat(conf.MonitoringKeyPath)
 	// Check if the file does not exist
 	if err == nil {
-		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		Logger.Debugf("Repman discovered that key is already generated. Using existing key.")
 		return nil
 	} else {
 		if !os.IsNotExist(err) {
@@ -1701,16 +1706,16 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 		newdir := "/home/repman/.config/replication-manager/etc"
 		newpath := newdir + "/.replication-manager.key"
 
-		Logger.Infof("Key not found. Checking in extra path : %s", newpath)
+		Logger.Debugf("Key not found. Checking in extra path : %s", newpath)
 
 		_, err = os.Stat(newpath)
 		if err == nil {
-			Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", newpath)
+			Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", newpath)
 			conf.MonitoringKeyPath = newpath
 			return nil
 		} else {
 
-			Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+			Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
 			if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
 				newdir := "/home/repman/.config/replication-manager/etc"
@@ -2368,8 +2373,6 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
-		GrantProvAppProvision:          GrantProvAppProvision,
-		GrantProvAppUnprovision:        GrantProvAppUnprovision,
 		GrantAppConfig:                 GrantAppConfig,
 		GrantAppDocker:                 GrantAppDocker,
 		GrantAppDeployment:             GrantAppDeployment,
@@ -3036,7 +3039,7 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 		dynRead.AddConfigPath(dirPath)
 		err := dynRead.ReadInConfig()
 		if err != nil {
-			fmt.Printf("Could not read in config : " + dirPath + "/overwrite.toml")
+			fmt.Printf("Could not read in config %s: %s", dirPath+"/overwrite.toml", err)
 		}
 
 		dynSub := dynRead.Sub("overwrite-" + name)
@@ -3683,7 +3686,7 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
 		}
 		return
 	}
@@ -3691,12 +3694,12 @@ func (conf *Config) CreateGitlabProjects() {
 	uid, err := githelper.GetGitLabUserId(acces_tok, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf(err.Error() + "\n")
+			log.Error(err.Error() + "\n")
 		}
 		return
 	} else if uid == 0 {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf("Invalid user Id \n")
+			log.Error("Invalid user Id \n")
 		}
 		return
 	}
