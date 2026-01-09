@@ -86,6 +86,19 @@ function OrchestratorDbVM({ selectedCluster, user }) {
           }
         />
       )
+    },
+    {
+      key: 'Provisioning Allow Overwrite Config/Secret Objects',
+      value: (
+        <RMSwitch
+          isChecked={selectedCluster?.config?.provObjectAllowOverwrite}
+          isDisabled={user?.grants['cluster-settings'] == false}
+          confirmTitle={'Confirm switch settings for prov-object-allow-overwrite?'}
+          onChange={() =>
+            dispatch(switchSetting({ clusterName: selectedCluster?.name, setting: 'prov-object-allow-overwrite' }))
+          }
+        />
+      )
     }
   ]
   return (

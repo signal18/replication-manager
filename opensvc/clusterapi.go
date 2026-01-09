@@ -431,6 +431,8 @@ type CreateRequest struct {
 	Sync      bool                   `json:"sync,omitempty"`
 }
 
+var ErrObjectAlreadyExists = errors.New("opensvc object already exists")
+
 func (collector *Collector) objectExists(path string, agent string) (bool, error) {
 	urlget := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
 
@@ -492,8 +494,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.InfoLevel, "OpenSVC secret %s already exists. Skip creating secret file and continue to overwrite per key value.", path)
-		return nil
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
@@ -545,8 +546,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.InfoLevel, "OpenSVC config %s already exists. Skip creating config file and continue to overwrite per key value.", path)
-		return nil
+		return fmt.Errorf("%w: %s", ErrObjectAlreadyExists, path)
 	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"

@@ -2391,6 +2391,8 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 		mycluster.SwitchDBApplyDynamicConfig()
 	case "prov-docker-daemon-private":
 		mycluster.SwitchProvDockerDaemonPrivate()
+	case "prov-object-allow-overwrite":
+		mycluster.Conf.ProvObjectAllowOverwrite = !mycluster.Conf.ProvObjectAllowOverwrite
 	case "backup-restic-aws":
 		mycluster.SwitchBackupResticAws()
 	case "backup-restic":
@@ -3558,6 +3560,8 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		mycluster.Conf.ProvDBApplyDynamicConfig = applyIsActive(mycluster.Conf.ProvDBApplyDynamicConfig, isactive)
 	case "prov-docker-daemon-private":
 		mycluster.Conf.ProvDockerDaemonPrivate = applyIsActive(mycluster.Conf.ProvDockerDaemonPrivate, isactive)
+	case "prov-object-allow-overwrite":
+		mycluster.Conf.ProvObjectAllowOverwrite = applyIsActive(mycluster.Conf.ProvObjectAllowOverwrite, isactive)
 	case "backup-restic-aws":
 		mycluster.Conf.BackupResticAws = applyIsActive(mycluster.Conf.BackupResticAws, isactive)
 	case "backup-restic":
