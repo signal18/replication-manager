@@ -84,7 +84,7 @@ func (collector *Collector) GetGottyServer(srv string, rid string) (string, stri
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
-	collector.Print(log.DebugLevel, "OpenSVC API Response: ", string(body))
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
 
 	//{"nodes": {"s18-fr-4": {"data": {"url": "https://user:ce860a2b-a757-4de5-8429-b3e7c9bd8124@s18-fr-42025/03/31 19:39:27 URL: https://127.0.0.1:0/i7qd0lop/"}}}, "status": 0}
 	type NodeData struct {
@@ -429,14 +429,77 @@ type CreateRequest struct {
 	Sync      bool                   `json:"sync,omitempty"`
 }
 
+func (collector *Collector) objectExists(path string, agent string) (bool, error) {
+	urlget := fmt.Sprintf("https://%s:%s/object_status?path=%s", collector.Host, collector.Port, url.QueryEscape(path))
+
+	client := collector.GetHttpClient()
+	req, err := http.NewRequest("GET", urlget, nil)
+	if err != nil {
+		return false, err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	myagent := "ANY"
+	if agent != "" {
+		myagent = agent
+	}
+	req.Header.Set("o-node", myagent)
+
+	ctx, cancel := context.WithTimeout(req.Context(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, err
+	}
+
+	collector.Print(log.DebugLevel, "OpenSVC API Response: %s", string(body))
+
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, fmt.Errorf("HTTP request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	status := gjson.GetBytes(body, "status")
+	if status.Exists() && status.Int() != 0 {
+		lowerBody := bytes.ToLower(body)
+		if bytes.Contains(lowerBody, []byte("not found")) || bytes.Contains(lowerBody, []byte("not exist")) {
+			return false, nil
+		}
+		return false, fmt.Errorf("OpenSVC object_status error: %s", string(body))
+	}
+
+	return true, nil
+}
+
 func (collector *Collector) CreateSecretV2(namespace string, service string, agent string) error {
+
+	path := fmt.Sprintf("%s/sec/%s", namespace, service)
+	exists, err := collector.objectExists(path, agent)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		collector.Print(log.DebugLevel, "OpenSVC secret already exists: %s", path)
+		return nil
+	}
 
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
 
-	// just create or replace
+	// create only if missing to avoid wiping existing custom values
 	reqparams := CreateRequest{
 		Data: map[string]interface{}{
-			namespace + "/sec/" + service: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
+			path: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
 		},
 	}
 
@@ -473,11 +536,22 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 
 func (collector *Collector) CreateConfigV2(namespace string, service string, agent string) error {
 
+	path := fmt.Sprintf("%s/cfg/%s", namespace, service)
+	exists, err := collector.objectExists(path, agent)
+	if err != nil {
+		return err
+	}
+
+	if exists {
+		collector.Print(log.DebugLevel, "OpenSVC config already exists: %s", path)
+		return nil
+	}
+
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/create"
-	// just create or replace
+	// create only if missing to avoid wiping existing custom values
 	reqparams := CreateRequest{
 		Data: map[string]interface{}{
-			namespace + "/cfg/" + service: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
+			path: struct{}{}, // Utilisation d'une structure vide pour créer ou remplacer
 		},
 	}
 	//jsondata := `{"data": {"` + namespace + `/cfg/` + service + `": {}}}`

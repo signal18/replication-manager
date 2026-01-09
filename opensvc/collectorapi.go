@@ -1422,7 +1422,7 @@ func (collector *Collector) GetAction(actionid string) *Action {
 	client := &http.Client{Transport: tr}
 	url := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions/" + actionid
 
-	collector.Print(log.InfoLevel, "INFO ", url)
+	collector.Print(log.InfoLevel, "INFO %s", url)
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -1574,7 +1574,7 @@ func (collector *Collector) StopService(nodeid string, serviceid string) (string
 	client := &http.Client{Transport: tr}
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/init/rest/api/actions"
 
-	collector.Print(log.InfoLevel, "INFO ", urlpost)
+	collector.Print(log.InfoLevel, "INFO %s", urlpost)
 
 	var jsonStr = []byte(`[{"node_id":"` + nodeid + `", "svc_id":"` + serviceid + `", "action": "stop"}]`)
 	req, err := http.NewRequest("PUT", urlpost, bytes.NewBuffer(jsonStr))
