@@ -335,16 +335,17 @@ func (collector *Collector) CreateConfigKeyValueV2(namespace string, service str
 	requestData := ConfigKeyValueRequest{
 		Path: fmt.Sprintf("%s/cfg/%s", namespace, service),
 		Key:  key,
-		Data: value,
 	}
+
+	collector.Print(log.DebugLevel, "API Request: %s Payload: %v", urlpost, requestData)
+
+	requestData.Data = value
 
 	// Sérialisation en JSON
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
-
-	collector.Print(log.DebugLevel, "API Request: %s Payload: %s", urlpost, jsonData)
 
 	client := collector.GetHttpClient()
 
@@ -390,16 +391,17 @@ func (collector *Collector) CreateSecretKeyValueV2(namespace string, service str
 	requestData := ConfigKeyValueRequest{
 		Path: fmt.Sprintf("%s/sec/%s", namespace, service),
 		Key:  key,
-		Data: value,
 	}
+
+	collector.Print(log.DebugLevel, "API Request: %s Payload: %v", urlpost, requestData)
+
+	requestData.Data = value
 
 	// Sérialisation en JSON
 	jsonData, err := json.Marshal(requestData)
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
-
-	collector.Print(log.DebugLevel, "API Request: %s Payload: %s", urlpost, jsonData)
 
 	client := collector.GetHttpClient()
 	b := bytes.NewBuffer(jsonData)
@@ -490,7 +492,7 @@ func (collector *Collector) CreateSecretV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.InfoLevel, "Skip creating secret file. OpenSVC secret already exists: %s", path)
+		collector.Print(log.InfoLevel, "OpenSVC secret %s already exists. Skip creating secret file and continue to overwrite per key value.", path)
 		return nil
 	}
 
@@ -543,7 +545,7 @@ func (collector *Collector) CreateConfigV2(namespace string, service string, age
 	}
 
 	if exists {
-		collector.Print(log.InfoLevel, "Skip creating config file. OpenSVC config already exists: %s", path)
+		collector.Print(log.InfoLevel, "OpenSVC config %s already exists. Skip creating config file and continue to overwrite per key value.", path)
 		return nil
 	}
 
