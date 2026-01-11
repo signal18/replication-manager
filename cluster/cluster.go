@@ -1880,7 +1880,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		}
 	}
 
-	for tblname, _ := range slTables {
+	for tblname := range slTables {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {
@@ -1959,15 +1959,25 @@ func (cluster *Cluster) MonitorQueryRules() {
 				var myRule config.QueryRule
 				if clrule, ok := cluster.QueryRules[rule.Id]; ok {
 					myRule = clrule
-					duplicates := strings.Split(clrule.Proxies, ",")
+
+					// Handle existing proxies list
+					var proxyIds []string
+					if clrule.Proxies != "" {
+						proxyIds = strings.Split(clrule.Proxies, ",")
+					}
+
+					// Check if current proxy already tracked
 					found := false
-					for _, prxid := range duplicates {
+					for _, prxid := range proxyIds {
 						if prx.Id == prxid {
 							found = true
+							break
 						}
 					}
+
 					if !found {
-						duplicates = append(duplicates, prx.Id)
+						proxyIds = append(proxyIds, prx.Id)
+						myRule.Proxies = strings.Join(proxyIds, ",")
 					}
 				} else {
 					myRule.Id = rule.Id
