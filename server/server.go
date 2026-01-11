@@ -150,7 +150,6 @@ type ReplicationManager struct {
 	IsNeedGitPush                                    bool                           `json:"-"`
 	CanConnectVault                                  bool                           `json:"canConnectVault"`
 	IsExportPush                                     bool                           `json:"-"`
-	errorConnectVault                                error                          `json:"-"`
 	globalScheduler                                  *cron.Cron                     `json:"-"`
 	CheckSumConfig                                   map[string]hash.Hash           `json:"-"`
 	Mailer                                           *mailer.Mailer                 `json:"-"`

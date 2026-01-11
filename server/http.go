@@ -311,17 +311,6 @@ func (repman *ReplicationManager) handlerRepoComp(w http.ResponseWriter, r *http
 
 }
 
-func (repman *ReplicationManager) handlerAgents(w http.ResponseWriter, r *http.Request) {
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(repman.Agents)
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}
-
 func (repman *ReplicationManager) handlerHeartbeat(w http.ResponseWriter, r *http.Request) {
 	repman.Lock()
 	var send Heartbeat
@@ -336,18 +325,3 @@ func (repman *ReplicationManager) handlerHeartbeat(w http.ResponseWriter, r *htt
 	repman.Unlock()
 }
 
-func (repman *ReplicationManager) handlerLog(w http.ResponseWriter, r *http.Request) {
-	e := json.NewEncoder(w)
-	values := r.URL.Query()
-	off := values.Get("offset")
-	if off == "" {
-		off = "1000"
-	}
-	noff, _ := strconv.Atoi(off)
-	err := e.Encode(repman.Logs.Buffer[:noff])
-	if err != nil {
-		log.Println("Error encoding JSON: ", err)
-		http.Error(w, "Encoding error", 500)
-		return
-	}
-}

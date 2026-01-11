@@ -1584,28 +1584,6 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 	return
 }
 
-func (repman *ReplicationManager) handlerMuxServicesBootstrap(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		err := mycluster.ProvisionServices()
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error Bootstrap Micro Services: %s", err)
-			http.Error(w, err.Error(), 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
-		return
-	}
-	return
-}
-
 // handlerMuxServicesProvision handles the provisioning of services for a given cluster.
 // @Summary Provision services for a specific cluster
 // @Description This endpoint provisions services for the specified cluster.
@@ -4377,23 +4355,6 @@ func (repman *ReplicationManager) handlerMuxDropProxyTag(w http.ResponseWriter, 
 	return
 }
 
-func (repman *ReplicationManager) handlerMuxSwitchReadOnly(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		mycluster.SwitchReadOnly()
-	} else {
-		http.Error(w, "Cluster Not Found", 500)
-		return
-	}
-	return
-}
-
 // handlerMuxLog handles the retrieval of logs for a given cluster.
 // @Summary Retrieve logs for a specific cluster
 // @Description This endpoint retrieves the logs for the specified cluster.
@@ -4978,28 +4939,6 @@ func (repman *ReplicationManager) handlerMuxClusterOptimize(w http.ResponseWrite
 		}
 		w.WriteHeader(http.StatusOK)
 		mycluster.RollingOptimize()
-	} else {
-		w.WriteHeader(http.StatusBadRequest)
-		io.WriteString(w, "No cluster found:"+vars["clusterName"])
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxClusterSSTStop(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	vars := mux.Vars(r)
-	mycluster := repman.getClusterByName(vars["clusterName"])
-	port, err := strconv.Atoi(vars["port"])
-	w.WriteHeader(http.StatusOK)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		mycluster.SSTCloseReceiver(port)
 	} else {
 		w.WriteHeader(http.StatusBadRequest)
 		io.WriteString(w, "No cluster found:"+vars["clusterName"])

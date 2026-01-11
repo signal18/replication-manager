@@ -58,8 +58,6 @@ import (
 //RSA KEYS AND INITIALISATION
 
 var signingKey, verificationKey []byte
-var apiPass string
-var apiUser string
 
 type AuthToken struct {
 	Token string `json:"token"`
@@ -131,22 +129,6 @@ type token struct {
 	Token string `json:"token"`
 }
 
-// Proxy function that forwards the request to the target URL
-func (repman *ReplicationManager) proxyToURL(target string) http.Handler {
-	url, err := url.Parse(target)
-	if err != nil {
-		log.Fatalf("Failed to parse target URL: %v", err)
-	}
-
-	proxy := httputil.NewSingleHostReverseProxy(url)
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Modify the request as needed before forwarding
-		r.Host = url.Host
-		proxy.ServeHTTP(w, r)
-	})
-}
-
 func (repman *ReplicationManager) SharedirHandler(folder string) http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, folder)
 	if err != nil {
@@ -190,8 +172,6 @@ func (repman *ReplicationManager) DashboardFSHandler() http.Handler {
 	})
 
 }
-
-var filewalked bool
 
 func (repman *ReplicationManager) DashboardFSHandlerApp() http.Handler {
 	sub, err := fs.Sub(share.EmbededDbModuleFS, "dashboard/index.html")
@@ -1563,21 +1543,6 @@ func (repman *ReplicationManager) handlerMuxPrometheus(w http.ResponseWriter, r 
 			res := server.GetPrometheusMetrics()
 			w.Write([]byte(res))
 		}
-	}
-}
-
-func (repman *ReplicationManager) handlerMuxClustersOld(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	s := new(Settings)
-	s.Clusters = repman.ClusterList
-	regtest := new(regtest.RegTest)
-	s.RegTests = regtest.GetTests()
-	e := json.NewEncoder(w)
-	e.SetIndent("", "\t")
-	err := e.Encode(s)
-	if err != nil {
-		http.Error(w, "Encoding error", 500)
-		return
 	}
 }
 
