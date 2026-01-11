@@ -4670,7 +4670,6 @@ func (repman *ReplicationManager) handlerMuxServerNeeds(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	checktype := vars["taskname"]
 	if mycluster != nil {
-		clientAddress := r.Header.Get("X-Forwarded-For")
 		node := mycluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 		if node != nil && !node.IsDown() {
 			if ok, err := node.CheckTaskNeeded(checktype); err == nil {

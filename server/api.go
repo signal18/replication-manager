@@ -46,7 +46,6 @@ import (
 	"github.com/signal18/replication-manager/config"
 	_ "github.com/signal18/replication-manager/docs"
 	"github.com/signal18/replication-manager/peer"
-	"github.com/signal18/replication-manager/regtest"
 	"github.com/signal18/replication-manager/share"
 	"github.com/signal18/replication-manager/utils/alert/mailer"
 	"github.com/signal18/replication-manager/utils/githelper"
