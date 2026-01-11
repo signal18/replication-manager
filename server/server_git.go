@@ -870,7 +870,7 @@ func (repman *ReplicationManager) CountAllCommits() (int, error) {
 
 	commitCount := 0
 	// Count commits for this branch/tag
-	err = commitIter.ForEach(func(c *git_obj.Commit) error {
+	_ = commitIter.ForEach(func(c *git_obj.Commit) error {
 		commitCount++
 		return nil
 	})

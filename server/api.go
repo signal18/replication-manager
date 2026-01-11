@@ -1160,11 +1160,6 @@ func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *
 		return
 	}
 
-	peerUser := uinfo["User"]
-	if peerUser == "admin" {
-		peerUser = repman.Conf.Cloud18GitUser
-	}
-
 	cl, err := repman.PeerManager.GetPeerNodesJSON()
 	if err != nil {
 		http.Error(w, "Error Marshal", 500)
@@ -1196,11 +1191,6 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 	if err != nil {
 		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
 		return
-	}
-
-	peerUser := uinfo["User"]
-	if peerUser == "admin" {
-		peerUser = repman.Conf.Cloud18GitUser
 	}
 
 	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser)
