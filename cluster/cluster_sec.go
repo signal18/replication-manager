@@ -601,16 +601,16 @@ type DecodedData struct {
 	Data string `json:"data"`
 }
 
-func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, error, int) {
+func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCloser) (*ServerMonitor, int, error) {
 	var decodedData DecodedData
 	body, err := io.ReadAll(rbody)
 	if err != nil {
-		return nil, fmt.Errorf("Decode reading body :%s", err.Error()), 500
+		return nil, 500, fmt.Errorf("Error reading body: %s", err.Error())
 	}
 
 	err = json.Unmarshal(body, &decodedData)
 	if err != nil {
-		return nil, fmt.Errorf("Decode body :%s. Err: %s", string(body), err.Error()), 400
+		return nil, 400, fmt.Errorf("Decode body: %s. Err: %s", string(body), err.Error())
 	}
 
 	var node *ServerMonitor
@@ -620,7 +620,7 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 		node = cluster.GetServerFromURL(vars["serverName"] + ":" + vars["serverPort"])
 	}
 	if node == nil {
-		return nil, fmt.Errorf("No server"), 500
+		return nil, 500, fmt.Errorf("No server")
 	}
 	// Decrypt the encrypted data
 	key := crypto.GetSHA256Hash(node.Pass)
@@ -628,12 +628,12 @@ func (cluster *Cluster) SecretLoginCheck(vars map[string]string, rbody io.ReadCl
 
 	decrypted, err := node.DecodeSecret(decodedData.Data, key, iv)
 	if err != nil {
-		return nil, fmt.Errorf("Error decrypting data : %s", err.Error()), 500
+		return nil, 500, fmt.Errorf("Error decrypting data : %s", err.Error())
 	}
 
 	if decrypted != cluster.GetDbPass() {
-		return nil, fmt.Errorf("Invalid secret"), 401
+		return nil, 401, fmt.Errorf("Invalid secret")
 	}
 
-	return node, nil, 200
+	return node, 200, nil
 }

@@ -101,32 +101,32 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
-	if hasBinLogs == false && cluster.Conf.CheckBinFilter == true {
+	if !hasBinLogs && cluster.Conf.CheckBinFilter == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if cluster.IsEqualReplicationFilters(cluster.master, sl) == false && cluster.Conf.CheckReplFilter == true {
+	if !cluster.IsEqualReplicationFilters(cluster.master, sl) && cluster.Conf.CheckReplFilter == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if cluster.Conf.SwitchGtidCheck && cluster.IsCurrentGTIDSync(sl, cluster.master) == false && cluster.Conf.RplChecks == true {
+	if cluster.Conf.SwitchGtidCheck && !cluster.IsCurrentGTIDSync(sl, cluster.master) && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if sl.HaveSemiSync && sl.SemiSyncSlaveStatus == false && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
+	if sl.HaveSemiSync && !sl.SemiSyncSlaveStatus && cluster.Conf.SwitchSync && cluster.Conf.RplChecks {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Semi-sync slave %s is out of sync. Skipping", sl.URL)
 		// }
 		return false
 	}
 
-	if ss.SecondsBehindMaster.Valid == false && cluster.Conf.RplChecks == true {
+	if !ss.SecondsBehindMaster.Valid && cluster.Conf.RplChecks == true {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		// }
@@ -175,8 +175,6 @@ func (cluster *Cluster) isMaxMasterFailedCountReached() bool {
 	if cluster.GetMaster() != nil && cluster.GetMaster().FailCount >= cluster.Conf.MaxFail {
 		cluster.SetState("WARN0023", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0023"], ErrFrom: "CHECK"})
 		return true
-	} else {
-		//	cluster.SetState("ERR00023", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf("Constraint is blocking state %s, interactive:%t, maxfail reached:%d", cluster.master.State, cluster.Conf.Interactive, cluster.Conf.MaxFail), ErrFrom: "CONF"})
 	}
 	return false
 }
@@ -351,7 +349,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 	if cluster.GetTopology() == config.TopoActivePassive {
 		return true
 	}
-	key := -1
+	var key int
 	if cluster.Conf.MultiMasterGrouprep {
 		key = cluster.electSwitchoverGroupReplicationCandidate(cluster.slaves, true)
 	} else {
@@ -378,7 +376,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 		mst = cluster.master.URL
 	}
 	var jsonStr = []byte(`{"uuid":"` + cluster.runUUID + `","secret":"` + cluster.Conf.ArbitrationSasSecret + `","cluster":"` + cluster.Name + `","master":"` + mst + `","id":` + strconv.Itoa(cluster.Conf.ArbitrationSasUniqueId) + `}`)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
+	req, _ := http.NewRequest("POST", url, bytes.NewBuffer(jsonStr))
 	req.Header.Set("X-Custom-Header", "myvalue")
 	req.Header.Set("Content-Type", "application/json")
 
@@ -462,16 +460,6 @@ func (cluster *Cluster) isNotFirstSlave() bool {
 // must lead to Fatal errors if initialized with wrong values.
 
 func (cluster *Cluster) isValidConfig() error {
-	if cluster.Conf.LogFile != "" {
-		var err error
-
-		//cluster.logPtr, err = os.OpenFile(cluster.Conf.LogFile, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		//log.
-		if err != nil {
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failed opening logfile, disabling for the rest of the session")
-			cluster.Conf.LogFile = ""
-		}
-	}
 
 	// if slaves option has been supplied, split into a slice.
 	if cluster.Conf.Hosts == "" {
@@ -1102,9 +1090,10 @@ func (cluster *Cluster) CheckDisksUsage() {
 
 	overThreshold := cluster.DiskStatManager.GetOverThresholdPaths(float64(cluster.Conf.BackupDiskTresholdWarn), float64(cluster.Conf.BackupDiskTresholdCrit))
 	for level, statlist := range overThreshold {
-		if level == "critical" {
+		switch level {
+		case "critical":
 			cluster.SetState("WARN0140", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0140"], reducePolicy, statlist, cluster.Conf.BackupDiskTresholdCrit), ErrFrom: "JOB"})
-		} else if level == "warning" {
+		case "warning":
 			cluster.SetState("WARN0139", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0139"], statlist, cluster.Conf.BackupDiskTresholdWarn), ErrFrom: "JOB"})
 		}
 	}
@@ -1149,11 +1138,12 @@ func (cluster *Cluster) CheckEstimatedBackupSize(backtype string) error {
 	}
 
 	if free < required {
-		if backtype == "logical" {
+		switch backtype {
+		case "logical":
 			cluster.SetState("WARN0141", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0141"], cluster.Conf.BackupLogicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
-		} else if backtype == "physical" {
+		case "physical":
 			cluster.SetState("WARN0142", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0142"], cluster.Conf.BackupPhysicalType, bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
-		} else if backtype == "binlog" {
+		case "binlog":
 			cluster.SetState("WARN0143", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(cluster.GetErrorList()["WARN0143"], bcksrv.URL, diskstat.Path, humanize.Bytes(diskstat.Free), humanize.Bytes(required)), ErrFrom: "JOB", ServerUrl: bcksrv.URL})
 		}
 

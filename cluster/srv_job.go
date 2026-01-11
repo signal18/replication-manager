@@ -731,7 +731,8 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
-	if backtype == config.ConstBackupLogicalTypeMysqldump {
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump:
 		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
@@ -748,7 +749,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
 		}
-	} else if backtype == config.ConstBackupLogicalTypeMydumper {
+	case config.ConstBackupLogicalTypeMydumper:
 		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
 		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
@@ -946,9 +947,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
 				}
 
-				if err == nil {
-					server.StartSlave()
-				}
+				server.StartSlave()
 			}
 
 			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {

@@ -112,7 +112,7 @@ func (cluster *Cluster) MasterFailover(fail bool) bool {
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
-	key := -1
+	var key int
 	if fail {
 		key = cluster.electFailoverCandidate(cluster.slaves, true)
 	} else {
@@ -1151,15 +1151,6 @@ func (cluster *Cluster) isSlaveValidReader(sl *ServerMonitor, forcingLog bool) b
 	return true
 }
 
-func (cluster *Cluster) foundPreferedMaster(l []*ServerMonitor) *ServerMonitor {
-	for _, sl := range l {
-		if strings.Contains(cluster.Conf.PrefMaster, sl.URL) && cluster.master.State != stateFailed {
-			return sl
-		}
-	}
-	return nil
-}
-
 // VMasterFailover triggers a leader change and returns the new master URL when all possible leader multimaster ring or galera
 func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	if cluster.IsInFailover() {
@@ -1223,7 +1214,7 @@ func (cluster *Cluster) VMasterFailover(fail bool) bool {
 	for _, s := range cluster.slaves {
 		s.Refresh()
 	}
-	key := -1
+	var key int
 	if cluster.GetTopology() != config.TopoMultiMasterWsrep && cluster.GetTopology() != config.TopoMultiMasterGrouprep {
 		key = cluster.electVirtualCandidate(cluster.oldMaster, true)
 	} else {

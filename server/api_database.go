@@ -4414,7 +4414,7 @@ func (repman *ReplicationManager) secretLoginHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	_, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+	_, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), errcode)
 		return
@@ -4723,7 +4723,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCheckReceiver(w http.Respo
 	if mycluster != nil {
 		defer mycluster.LogPanicToFile("jobs-check")
 
-		node, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -4809,7 +4809,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsUpgradeSender(w http.Respo
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return
@@ -4845,7 +4845,7 @@ func (repman *ReplicationManager) handlerMuxServerJobsCreateTable(w http.Respons
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
-		node, err, errcode := mycluster.SecretLoginCheck(vars, r.Body)
+		node, errcode, err := mycluster.SecretLoginCheck(vars, r.Body)
 		if err != nil {
 			http.Error(w, err.Error(), errcode)
 			return

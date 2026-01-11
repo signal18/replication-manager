@@ -8,7 +8,6 @@ package cluster
 
 import (
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -32,7 +31,6 @@ type SST struct {
 	outresticreader   io.WriteCloser
 	outfilegzipwriter *gzip.Writer
 	cluster           *Cluster
-	port              int
 }
 
 type ProtectedSSTconnections struct {
@@ -51,7 +49,7 @@ func (cluster *Cluster) SSTCloseReceiver(destinationPort int) {
 
 func (cluster *Cluster) SSTWatchRestic(r io.Reader) error {
 	var out []byte
-	buf := make([]byte, 1024, 1024)
+	buf := make([]byte, 1024)
 	for {
 		n, err := r.Read(buf[:])
 		if n > 0 {
@@ -437,7 +435,7 @@ func (cluster *Cluster) SSTRunSender(backupfile string, sv *ServerMonitor, uncom
 		return cluster.SSTRunSenderSSL(backupfile, sv)
 	}
 
-	client, err := net.Dial("tcp", fmt.Sprintf("%s:%d", sv.Host, port))
+	client, err := net.Dial("tcp", net.JoinHostPort(sv.Host, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return fmt.Errorf("SST Reseed failed connection to port %s server %s %s ", sv.SSTPort, sv.Host, err)
 	}
@@ -462,7 +460,7 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "SST sending file: %s to node: %s port: %s", backupfile, sv.Host, sv.SSTPort)
 	file, err := os.Open(backupfile)
 	if err != nil {
-		return errors.New(fmt.Sprintf("SST to server %s failed to open backup file, err: %s ", sv.URL, err))
+		return fmt.Errorf("SST to server %s failed to open backup file, err: %s ", sv.URL, err)
 	}
 
 	sendBuffer := make([]byte, cluster.Conf.SSTSendBuffer)
@@ -473,7 +471,7 @@ func (cluster *Cluster) SSTRunSendGzip(client net.Conn, backupfile string, sv *S
 
 	fz, err := gzip.NewReaderN(file, cluster.Conf.SSTSendBuffer, 4)
 	if err != nil {
-		return errors.New(fmt.Sprintf("SST to server %s failed in init gzip reader, err: %s", sv.URL, err))
+		return fmt.Errorf("SST to server %s failed in init gzip reader, err: %s", sv.URL, err)
 	}
 	defer fz.Close()
 

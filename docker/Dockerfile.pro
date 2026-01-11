@@ -18,7 +18,9 @@ ENV MYDUMPER_VERSION=0.17.1-1
 RUN mkdir -p \
         /etc/replication-manager \
         /etc/replication-manager/cluster.d \
-        /var/lib/replication-manager
+        /var/lib/replication-manager \
+        /var/lib/replication-manager/conf \
+        /var/lib/replication-manager/recover
 
 RUN apt-get update && apt-get -y  install apt-transport-https curl \
  && mkdir -p /etc/apt/keyrings && curl -o /etc/apt/keyrings/mariadb-keyring.pgp 'https://mariadb.org/mariadb_release_signing_key.pgp'
@@ -38,6 +40,9 @@ RUN apt-get update && apt-get -y install mydumper ca-certificates restic mariadb
   && curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb \
   && curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb \
   && rm -f *.deb && rm -rf /var/lib/mysql/*
-
+RUN addgroup --system repman \
+  && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+  && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
+USER repman
 CMD ["replication-manager", "monitor", "--http-server"]
 EXPOSE 10001

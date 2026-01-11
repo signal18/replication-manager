@@ -20,11 +20,6 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-type topologyError struct {
-	Code int
-	Msg  string
-}
-
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
@@ -668,10 +663,8 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 		parts := strings.Split(sl.SlaveStatus.MasterLogFile.String, ".")
 		curInt, err := strconv.Atoi(parts[len(parts)-1])
 		if err != nil {
-			if err != nil {
-				// Create state when master log file is not found or incorrect
-				cluster.SetState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
-			}
+			// Create state when master log file is not found or incorrect
+			cluster.SetState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
 		}
 		if curInt > 0 && (binInt == 0 || curInt < binInt) {
 			binInt = curInt
