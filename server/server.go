@@ -271,9 +271,6 @@ func (repman *ReplicationManager) SetDefaultFlags(v *viper.Viper) {
 func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Config, isClient bool) {
 	flags.IntVar(&conf.TokenTimeout, "api-token-timeout", 48, "Timespan of API Token before expired in hour")
 
-	if WithDeprecate == "ON" {
-		//	initDeprecated() // not needed used alias in main
-	}
 	var usr string
 	if repman != nil && repman.OsUser != nil {
 		usr = repman.OsUser.Username
@@ -1139,9 +1136,7 @@ func (repman *ReplicationManager) DiscoverClusters(FirstRead *viper.Viper) strin
 			defaults := []string{"default", "saved-default", "overwrite-default"}
 			lowername := strings.ToLower(mycluster)
 			if !slices.Contains(defaults, lowername) {
-				if strings.HasPrefix(mycluster, "saved-") {
-					mycluster = strings.TrimPrefix(mycluster, "saved-")
-				}
+				mycluster = strings.TrimPrefix(mycluster, "saved-")
 				_, ok := clusterDiscovery[mycluster]
 				if !ok {
 					clusterDiscovery[mycluster] = mycluster
@@ -2337,12 +2332,9 @@ func (repman *ReplicationManager) Run() error {
 	repman.RefreshDiskStats()
 
 	var counter int64 = 0
-	for repman.exit == false {
+	for !repman.exit {
 		if repman.Conf.Arbitration {
 			repman.Heartbeat()
-		}
-		if repman.Conf.Enterprise {
-			//			agents = svc.GetNodes()
 		}
 		time.Sleep(time.Second * time.Duration(repman.Conf.MonitoringTicker))
 
@@ -2477,14 +2469,14 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		if bcksplitbrain == false {
+		if !bcksplitbrain {
 			repman.Logrus.Debugf("Error building HTTP request: %s", err)
 		}
 		return true
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		if bcksplitbrain == false {
+		if !bcksplitbrain {
 			repman.Logrus.Debugf("Could not reach peer node, might be down or incorrect address")
 		}
 		return true
@@ -2492,7 +2484,7 @@ func (repman *ReplicationManager) HeartbeatPeerSplitBrain(peer string, bcksplitb
 	defer resp.Body.Close()
 	monjson, err := io.ReadAll(resp.Body)
 	if err != nil {
-		if bcksplitbrain == false {
+		if !bcksplitbrain {
 			repman.Logrus.Debugf("Could not read body from peer response")
 		}
 		return true
@@ -2999,7 +2991,7 @@ func (repman *ReplicationManager) SaveImmutable() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key, _ := range repman.Conf.ImmuableFlagMap {
+	for key := range repman.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 

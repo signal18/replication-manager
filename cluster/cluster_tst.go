@@ -263,7 +263,6 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 		test = cluster.Conf.SysbenchTest
 		tablesize = "--table-size=" + mySize
 		threads = "--threads=" + myThreads
-		requests = "" //			--events=N
 		time = "--time=" + myTime
 		cmdrun = exec.Command(cluster.Conf.SysbenchBinaryPath, test, tablesize, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetDbUser(), "--mysql-password="+cluster.GetDbPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), time, threads, "run")
 		if cluster.Conf.SysbenchTest == "tpcc" {
