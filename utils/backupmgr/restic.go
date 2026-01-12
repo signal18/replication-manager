@@ -68,6 +68,12 @@ type ResticTask struct {
 	NewPassFile string            `json:"-"`
 }
 
+type ResticLsEntry struct {
+	Path string `json:"path"`
+	Type string `json:"type"`
+	Size int64  `json:"size,omitempty"`
+}
+
 // ResticResult holds the output or error of a task
 type ResticResult struct {
 	TaskID   int
@@ -471,8 +477,8 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 
 	args := []string{"restore", snapshotID, "--target", targetDir}
 	for _, path := range paths {
-		if path != "" {
-			args = append(args, "--path", path)
+		if strings.TrimSpace(path) != "" {
+			args = append(args, "--include", strings.TrimSpace(path))
 		}
 	}
 
@@ -482,6 +488,66 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 	}
 
 	return nil
+}
+
+func (repo *ResticManager) ListSnapshot(snapshotID string, paths []string, recursive bool) ([]ResticLsEntry, error) {
+	if snapshotID == "" {
+		return nil, fmt.Errorf("snapshot ID is empty")
+	}
+
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.ListSnapshot(snapshotID, paths, recursive)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	if err := repo.CheckRepoFiles(); err != nil {
+		return nil, err
+	}
+
+	if err := repo.CheckResticLocks(); err != nil {
+		return nil, err
+	}
+
+	args := []string{"ls", snapshotID, "--json"}
+	if recursive {
+		args = append(args, "--recursive")
+	}
+	for _, path := range paths {
+		if strings.TrimSpace(path) != "" {
+			args = append(args, strings.TrimSpace(path))
+		}
+	}
+
+	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list snapshot: %v, stderr: %s", err, stderr)
+	}
+
+	entries := make([]ResticLsEntry, 0)
+	scanner := bufio.NewScanner(bytes.NewReader(stdout))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry ResticLsEntry
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			return nil, fmt.Errorf("failed to parse restic ls output: %w", err)
+		}
+		if entry.Path == "" {
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read restic ls output: %w", err)
+	}
+
+	return entries, nil
 }
 
 func (repo *ResticManager) DumpSnapshot(snapshotID, filePath string, writer io.Writer) error {

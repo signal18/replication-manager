@@ -301,6 +301,31 @@ export const purgeResticByPolicy = createGuardedAsyncThunk('cluster/purgeResticB
   }
 })
 
+export const resticListSnapshot = createGuardedAsyncThunk('cluster/resticListSnapshot', async ({ clusterName, snapshotId, paths, recursive }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticListSnapshot(clusterName, snapshotId, paths, recursive, baseURL)
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
+export const resticRestoreSnapshot = createGuardedAsyncThunk('cluster/resticRestoreSnapshot', async ({ clusterName, snapshotId, targetDir, paths, sourcePath, sourcePathType }, thunkAPI) => {
+  try {
+    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
+    const { data, status } = await clusterService.resticRestoreSnapshot(
+      clusterName,
+      snapshotId,
+      { targetDir, paths, sourcePath, sourcePathType },
+      baseURL
+    )
+    return { data, status }
+  } catch (error) {
+    return handleError(error, thunkAPI)
+  }
+})
+
 export const getResticQueue = createGuardedAsyncThunk('cluster/getResticQueue', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

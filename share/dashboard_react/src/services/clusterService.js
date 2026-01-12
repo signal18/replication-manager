@@ -22,6 +22,8 @@ export const clusterService = {
   getResticStats,
   purgeResticSnapshot,
   purgeResticByPolicy,
+  resticListSnapshot,
+  resticRestoreSnapshot,
   getResticQueue,
   resticQueueResume,
   resticQueuePause,
@@ -716,6 +718,17 @@ function purgeResticSnapshot(clusterName, snapshotId, baseURL) {
 
 function purgeResticByPolicy(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/restic/purge/policy`)
+}
+
+function resticListSnapshot(clusterName, snapshotId, paths, recursive, baseURL) {
+  return getApi(baseURL).get(`clusters/${clusterName}/restic/ls/${snapshotId}`, {
+    path: paths,
+    recursive: recursive ? true : undefined
+  })
+}
+
+function resticRestoreSnapshot(clusterName, snapshotId, payload, baseURL) {
+  return getApi(baseURL).post(`clusters/${clusterName}/restic/restore/${snapshotId}`, payload)
 }
 
 function getResticQueue(clusterName, baseURL) {

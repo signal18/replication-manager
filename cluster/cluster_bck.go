@@ -270,6 +270,18 @@ func (cluster *Cluster) ResticRestoreSnapshot(snapshotID, targetDir string, path
 	return cluster.ResticManager.RestoreSnapshot(snapshotID, targetDir, paths)
 }
 
+func (cluster *Cluster) ResticListSnapshot(snapshotID string, paths []string, recursive bool) ([]backupmgr.ResticLsEntry, error) {
+	if !cluster.Conf.BackupRestic {
+		return nil, fmt.Errorf("restic backup is not enabled")
+	}
+
+	if cluster.ResticManager == nil {
+		cluster.StartResticManager()
+	}
+
+	return cluster.ResticManager.ListSnapshot(snapshotID, paths, recursive)
+}
+
 func (cluster *Cluster) ResticDumpSnapshot(snapshotID, filePath string, writer io.Writer) error {
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("restic backup is not enabled")

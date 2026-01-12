@@ -132,6 +132,16 @@ func (repman *ReplicationManager) apiClusterProtectedHandler(router *mux.Router)
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticPurge)),
 	))
 
+	router.Handle("/api/clusters/{clusterName}/restic/ls/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticLs)),
+	))
+
+	router.Handle("/api/clusters/{clusterName}/restic/restore/{snapshotID}", negroni.New(
+		negroni.HandlerFunc(repman.validateTokenMiddleware),
+		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticRestoreSnapshot)),
+	))
+
 	router.Handle("/api/clusters/{clusterName}/restic/unlock", negroni.New(
 		negroni.HandlerFunc(repman.validateTokenMiddleware),
 		negroni.Wrap(http.HandlerFunc(repman.handlerMuxResticUnlock)),
@@ -6925,6 +6935,13 @@ func (repman *ReplicationManager) withResticCluster(
 	handler(cluster, vars)
 }
 
+type ResticRestoreSnapshotRequest struct {
+	TargetDir      string   `json:"targetDir"`
+	Paths          []string `json:"paths"`
+	SourcePath     string   `json:"sourcePath"`
+	SourcePathType string   `json:"sourcePathType"`
+}
+
 // handlerMuxResticRestoreConfig handles the HTTP request to restore the restic config for a given cluster.
 // @Summary Restore Restic Config
 // @Description Restores the restic config for the specified cluster.
@@ -6952,6 +6969,163 @@ func (repman *ReplicationManager) handlerMuxResticRestoreConfig(w http.ResponseW
 
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Restic config restore done"))
+	})
+}
+
+// handlerMuxResticLs handles the HTTP request to list a restic snapshot for a given cluster.
+// @Summary List Restic Snapshot Files
+// @Description Lists files in the specified restic snapshot.
+// @Tags ClusterRestic
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param snapshotID path string true "Snapshot ID"
+// @Param path query []string false "Paths filter"
+// @Success 200 {array} backupmgr.ResticLsEntry "Restic snapshot listing"
+// @Failure 400 {string} string "Invalid request"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/ls/{snapshotID} [get]
+func (repman *ReplicationManager) handlerMuxResticLs(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		snapshotID := vars["snapshotID"]
+		if snapshotID == "" {
+			http.Error(w, "No snapshot ID provided", http.StatusBadRequest)
+			return
+		}
+
+		rawPaths := r.URL.Query()["path"]
+		if extra := r.URL.Query().Get("paths"); extra != "" {
+			rawPaths = append(rawPaths, extra)
+		}
+
+		paths := make([]string, 0, len(rawPaths))
+		for _, raw := range rawPaths {
+			for _, part := range strings.Split(raw, ",") {
+				part = strings.TrimSpace(part)
+				if part != "" {
+					paths = append(paths, part)
+				}
+			}
+		}
+
+		recursive := false
+		if rawRecursive := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("recursive"))); rawRecursive == "true" || rawRecursive == "1" {
+			recursive = true
+		}
+
+		entries, err := mycluster.ResticListSnapshot(snapshotID, paths, recursive)
+		if err != nil {
+			http.Error(w, "Error listing restic snapshot: "+err.Error(), 500)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(entries); err != nil {
+			http.Error(w, "Error encoding response: "+err.Error(), 500)
+			return
+		}
+	})
+}
+
+// handlerMuxResticRestoreSnapshot handles the HTTP request to restore a restic snapshot for a given cluster.
+// @Summary Restore Restic Snapshot
+// @Description Restores the specified restic snapshot to the target directory.
+// @Tags ClusterRestic
+// @Accept json
+// @Produce json
+// @Param Authorization header string true "Insert your access token" default(Bearer <Add access token here>)
+// @Param clusterName path string true "Cluster Name"
+// @Param snapshotID path string true "Snapshot ID"
+// @Param body body ResticRestoreSnapshotRequest true "Restore target configuration"
+// @Success 200 {string} string "Restic snapshot restore done"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 403 {string} string "No valid ACL"
+// @Failure 500 {string} string "No cluster"
+// @Router /api/clusters/{clusterName}/restic/restore/{snapshotID} [post]
+func (repman *ReplicationManager) handlerMuxResticRestoreSnapshot(w http.ResponseWriter, r *http.Request) {
+	repman.withResticCluster(w, r, true, func(mycluster *cluster.Cluster, vars map[string]string) {
+		snapshotID := vars["snapshotID"]
+		if snapshotID == "" {
+			http.Error(w, "No snapshot ID provided", http.StatusBadRequest)
+			return
+		}
+
+		var payload ResticRestoreSnapshotRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if payload.TargetDir == "" {
+			http.Error(w, "Target directory is required", http.StatusBadRequest)
+			return
+		}
+
+		snapshotRef := snapshotID
+		includePaths := payload.Paths
+		sourcePath := strings.TrimSpace(payload.SourcePath)
+		sourceType := strings.ToLower(strings.TrimSpace(payload.SourcePathType))
+
+		if sourcePath != "" && sourceType == "dir" {
+			trimmedBase := strings.TrimRight(sourcePath, "/")
+			if trimmedBase == "" {
+				trimmedBase = "/"
+			}
+
+			useSubdir := true
+			if len(includePaths) > 0 {
+				for _, include := range includePaths {
+					trimmedInclude := strings.TrimSpace(include)
+					if trimmedInclude == "" {
+						continue
+					}
+					if trimmedBase == "/" {
+						continue
+					}
+					if trimmedInclude != trimmedBase && !strings.HasPrefix(trimmedInclude, trimmedBase+"/") {
+						useSubdir = false
+						break
+					}
+				}
+			}
+
+			if useSubdir {
+				snapshotRef = snapshotID + ":" + trimmedBase
+				if len(includePaths) > 0 {
+					relative := make([]string, 0, len(includePaths))
+					for _, include := range includePaths {
+						trimmedInclude := strings.TrimSpace(include)
+						if trimmedInclude == "" {
+							continue
+						}
+						if trimmedInclude == trimmedBase {
+							continue
+						}
+						if trimmedBase != "/" && strings.HasPrefix(trimmedInclude, trimmedBase+"/") {
+							trimmedInclude = strings.TrimPrefix(trimmedInclude, trimmedBase)
+							if trimmedInclude == "" {
+								continue
+							}
+						}
+						if !strings.HasPrefix(trimmedInclude, "/") {
+							trimmedInclude = "/" + trimmedInclude
+						}
+						relative = append(relative, trimmedInclude)
+					}
+					includePaths = relative
+				}
+			}
+		}
+
+		if err := mycluster.ResticRestoreSnapshot(snapshotRef, payload.TargetDir, includePaths); err != nil {
+			http.Error(w, "Error restoring restic snapshot: "+err.Error(), 500)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Restic snapshot restore done"))
 	})
 }
 

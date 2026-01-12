@@ -1,10 +1,11 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
+import PropTypes from 'prop-types'
 import { createColumnHelper } from '@tanstack/react-table'
 import { Box, HStack, VStack } from '@chakra-ui/react'
 import { DataTable } from '../../../components/DataTable'
 import TableType3 from '../../../components/TableType3'
 import RMIconButton from '../../../components/RMIconButton'
-import { HiPause, HiPlay, HiTrash } from 'react-icons/hi'
+import { HiDownload, HiPause, HiPlay, HiTrash } from 'react-icons/hi'
 import styles from '../styles.module.scss'
 
 const columnHelper = createColumnHelper()
@@ -83,17 +84,44 @@ function SnapshotTables({
         header: 'Tags'
       }),
       columnHelper.accessor(
-        (row) => (
-          <RMIconButton
-            icon={HiTrash}
-            onClick={() =>
-              onConfirmAction('Purge Snapshot', {
-                action: 'snapshotPurge',
-                data: { snapshotId: row.id }
-              })
-            }
-          />
-        ),
+        (row) => {
+          const restorePaths = Array.isArray(row.paths) ? row.paths : row.paths ? [row.paths] : []
+          const basePath = restorePaths.length === 1 && typeof restorePaths[0] === 'string'
+            ? restorePaths[0].trim()
+            : ''
+          const targetDir = basePath || '/tmp/restic-restore'
+
+          return (
+            <HStack spacing={2}>
+              <RMIconButton
+                icon={HiDownload}
+                tooltip="Restore snapshot"
+                onClick={() =>
+                  onConfirmAction('Restore Snapshot', {
+                    action: 'snapshotRestore',
+                    data: {
+                      snapshotId: row.id,
+                      targetDir,
+                      basePath,
+                      basePaths: restorePaths,
+                      paths: []
+                    }
+                  })
+                }
+              />
+              <RMIconButton
+                icon={HiTrash}
+                tooltip="Purge snapshot"
+                onClick={() =>
+                  onConfirmAction('Purge Snapshot', {
+                    action: 'snapshotPurge',
+                    data: { snapshotId: row.id }
+                  })
+                }
+              />
+            </HStack>
+          )
+        },
         {
           cell: (info) => info.getValue(),
           header: 'Actions',
@@ -187,3 +215,32 @@ function SnapshotTables({
 }
 
 export default SnapshotTables
+
+SnapshotTables.propTypes = {
+  snapshotData: PropTypes.arrayOf(
+    PropTypes.shape({
+      short_id: PropTypes.string,
+      time: PropTypes.string,
+      paths: PropTypes.oneOfType([PropTypes.arrayOf(PropTypes.string), PropTypes.string]),
+      hostname: PropTypes.string,
+      tags: PropTypes.arrayOf(PropTypes.string),
+      id: PropTypes.string
+    })
+  ),
+  snapshotStats: PropTypes.shape({
+    total_size: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    total_file_count: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    total_blob_count: PropTypes.oneOfType([PropTypes.string, PropTypes.number])
+  }),
+  queueData: PropTypes.arrayOf(
+    PropTypes.shape({
+      task_id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+      task_type: PropTypes.number,
+      dir_path: PropTypes.string,
+      tags: PropTypes.arrayOf(PropTypes.string),
+      opt: PropTypes.object
+    })
+  ),
+  isQueuePaused: PropTypes.bool,
+  onConfirmAction: PropTypes.func
+}
