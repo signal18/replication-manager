@@ -352,7 +352,6 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 		prx.DelRestartCookie()
 	}
 	return err
-	return nil
 }
 
 func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error {

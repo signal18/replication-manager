@@ -71,9 +71,7 @@ func (proxy *SphinxProxy) Connect() (sphinx.SphinxSQL, error) {
 		Port:     proxy.Port,
 	}
 
-	var err error
-	err = sphinx.Connect()
-	if err != nil {
+	if err := sphinx.Connect(); err != nil {
 		return sphinx, err
 	}
 	return sphinx, nil

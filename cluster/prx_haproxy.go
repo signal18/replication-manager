@@ -234,7 +234,7 @@ func (proxy *HaproxyProxy) Refresh() error {
 		showleaderstate = "# " + showleaderstate
 
 		// API return space sparator conveting to csv
-		showleaderstate = strings.Replace(showleaderstate, " ", ",", -1)
+		showleaderstate = strings.ReplaceAll(showleaderstate, " ", ",")
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlDbg, "haproxy show servers state response :%s", showleaderstate)
 

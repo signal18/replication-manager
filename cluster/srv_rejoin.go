@@ -312,7 +312,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 	cliParams = append(cliParams, server.GetSSLClientParam("client")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.Replace(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "FlashBack: %s %s", cluster.GetMysqlBinlogPath(), strings.ReplaceAll(strings.Join(binlogCmd.Args, " "), cluster.GetRplPass(), "XXXX"))
 
 	var err error
 	clientCmd.Stdin, err = binlogCmd.StdoutPipe()
@@ -321,11 +321,11 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	if err := binlogCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.Path, cluster.GetRplPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Failed mysqlbinlog command: %s at %s", err, strings.ReplaceAll(binlogCmd.Path, cluster.GetRplPass(), "XXXX"))
 		return err
 	}
 	if err := clientCmd.Run(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error starting client: %s at %s", err, strings.Replace(clientCmd.Path, cluster.GetRplPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "Error starting client: %s at %s", err, strings.ReplaceAll(clientCmd.Path, cluster.GetRplPass(), "XXXX"))
 		return err
 	}
 	logs, err := dbhelper.SetGTIDSlavePos(server.Conn, crash.FailoverIOGtid.Sprint())
@@ -717,7 +717,7 @@ func (server *ServerMonitor) backupBinlog(crash *Crash) error {
 	cmdOutPipe, _ := cmdrun.StdoutPipe()
 
 	if err := cmdrun.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.ReplaceAll(cmdrun.String(), cluster.GetDbPass(), "XXXX"))
 		return err
 	}
 

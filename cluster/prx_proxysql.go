@@ -82,9 +82,7 @@ func (proxy *ProxySQLProxy) Connect() (proxysql.ProxySQL, error) {
 		Weight:   proxy.Weight,
 	}
 
-	var err error
-	err = psql.Connect()
-	if err != nil {
+	if err := psql.Connect(); err != nil {
 		return psql, err
 	}
 	return psql, nil

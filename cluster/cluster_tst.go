@@ -164,7 +164,7 @@ func (cluster *Cluster) PrepareBench() error {
 			}
 		}
 
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.Replace(cmdprep.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.ReplaceAll(cmdprep.String(), cluster.GetDbPass(), "XXXX"))
 
 		out, err := cmdprep.CombinedOutput()
 		if err != nil {
@@ -197,7 +197,7 @@ func (cluster *Cluster) CleanupBench() error {
 			test = cluster.Conf.SysbenchTest
 		}
 		var cleanup = cluster.Conf.SysbenchBinaryPath + test + " --db-driver=mysql --mysql-db=replication_manager_schema --mysql-user=" + cluster.GetRplUser() + " --mysql-password=" + cluster.GetRplPass() + " --mysql-host=" + prx.GetHost() + " --mysql-port=" + strconv.Itoa(prx.GetWritePort()) + " cleanup"
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.Replace(cleanup, cluster.GetRplPass(), "XXXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(cleanup, cluster.GetRplPass(), "XXXXX"))
 		var cmdcls *exec.Cmd
 		cmdcls = exec.Command(cluster.Conf.SysbenchBinaryPath, test, "--db-driver=mysql", "--mysql-db=replication_manager_schema", "--mysql-user="+cluster.GetRplUser(), "--mysql-password="+cluster.GetRplPass(), "--mysql-host="+prx.GetHost(), "--mysql-port="+strconv.Itoa(prx.GetWritePort()), "cleanup")
 		if cluster.Conf.SysbenchTest == "tpcc" {
@@ -215,7 +215,7 @@ func (cluster *Cluster) CleanupBench() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "%s", cmdclsErr)
 			return cmdclsErr
 		}
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.Replace(outcls.String(), cluster.GetRplPass(), "XXXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "BENCH", "%s", strings.ReplaceAll(outcls.String(), cluster.GetRplPass(), "XXXXX"))
 	}
 	if cluster.benchmarkType == "table" {
 
@@ -272,7 +272,7 @@ func (cluster *Cluster) RunSysBench(myTest string, myThreads string, mySize stri
 			cmdrun.Dir = cluster.Conf.ShareDir + "/submodule/sysbench-tpcc"
 		}
 	}
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.Replace(cmdrun.String(), cluster.GetDbPass(), "XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Command: %s", strings.ReplaceAll(cmdrun.String(), cluster.GetDbPass(), "XXXX"))
 
 	out, err := cmdrun.CombinedOutput()
 	if err != nil {

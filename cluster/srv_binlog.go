@@ -343,7 +343,7 @@ func (server *ServerMonitor) GetTimestampUsingRegex(str string) (int64, error) {
 	}
 
 	//Get First Timestamp From Binlog Format Desc and remove multiple space
-	strin := strings.Replace(regex.FindString(str), "  ", " ", -1)
+	strin := strings.ReplaceAll(regex.FindString(str), "  ", " ")
 	if strin == "" {
 		return 0, errors.New("Timestamp not found on binlog")
 	}
@@ -988,11 +988,11 @@ func (server *ServerMonitor) ReadAndApplyBinaryLogsWithinRange(start backupmgr.R
 		return err
 	}*/
 	if err := binlogCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(binlogCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.ReplaceAll(binlogCmd.String(), cluster.GetDbPass(), "XXXX"))
 		return err
 	}
 	if err := clientCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), cluster.GetDbPass(), "XXXX"))
 		return err
 	}
 	var wg sync.WaitGroup

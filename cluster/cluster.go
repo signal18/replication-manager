@@ -335,13 +335,6 @@ type VariableDiff struct {
 }
 
 const (
-	stateClusterStart string = "Running starting"
-	stateClusterDown  string = "Running cluster down"
-	stateClusterErr   string = "Running with errors"
-	stateClusterWarn  string = "Running with warnings"
-	stateClusterRun   string = "Running"
-)
-const (
 	ConstJobCreateFile string = "JOB_O_CREATE_FILE"
 	ConstJobAppendFile string = "JOB_O_APPEND_FILE"
 )

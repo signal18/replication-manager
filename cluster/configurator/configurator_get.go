@@ -199,15 +199,13 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePct() string {
 		//	value := mem/1000
 
 	*/
-	var value int64
-	value = 40
+	value := int64(40)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }
 
 func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
-	var value int64
-	value = 20
+	value := int64(20)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }
@@ -238,8 +236,7 @@ func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {
 	//result in MB
-	var value int64
-	value = 16
+	value := int64(16)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }

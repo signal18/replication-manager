@@ -766,9 +766,7 @@ func (server *ServerMonitor) Refresh() error {
 	cluster := server.ClusterGroup
 	var err error
 
-	var cpu_usage_dt int64
-
-	cpu_usage_dt = 1
+	cpu_usage_dt := int64(1)
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -797,7 +795,7 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.IsMaxscale = false
 	}
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) {
+	if !cluster.Conf.MxsBinlogOn || !server.IsMaxscale {
 		// maxscale don't support show variables
 		server.PrevMonitorTime = server.MonitorTime
 		server.MonitorTime = time.Now().Unix()
@@ -900,7 +898,7 @@ func (server *ServerMonitor) Refresh() error {
 
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
-			if server.HavePFS && !server.HasAnyReseedingState() && !(cluster.IsInBackup() && server == cluster.GetBackupServer()) {
+			if server.HavePFS && !server.HasAnyReseedingState() && (!cluster.IsInBackup() || server != cluster.GetBackupServer()) {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
@@ -1050,7 +1048,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW SLAVE STATUS
 
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
+	if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
 		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPostgreSQL() && server.ReplicationSourceName == "" {
 			//setting first subscription if we don't have one
@@ -1096,12 +1094,12 @@ func (server *ServerMonitor) Refresh() error {
 			if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
 				server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
 			}
-			server.AddReplicationTag(!(server.SlaveStatus.ReplicateDoTable.String == "" &&
-				server.SlaveStatus.ReplicateDoDB.String == "" &&
-				server.SlaveStatus.ReplicateIgnoreDB.String == "" &&
-				server.SlaveStatus.ReplicateIgnoreTable.String == "" &&
-				server.SlaveStatus.ReplicateWildIgnoreTable.String == "" &&
-				server.SlaveStatus.ReplicateWildDoTable.String == ""),
+			server.AddReplicationTag(server.SlaveStatus.ReplicateDoTable.String != "" ||
+				server.SlaveStatus.ReplicateDoDB.String != "" ||
+				server.SlaveStatus.ReplicateIgnoreDB.String != "" ||
+				server.SlaveStatus.ReplicateIgnoreTable.String != "" ||
+				server.SlaveStatus.ReplicateWildIgnoreTable.String != "" ||
+				server.SlaveStatus.ReplicateWildDoTable.String != "",
 				"NO_ALL_SCHEMA")
 		}
 	}
@@ -1718,7 +1716,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Status for server %s: %s ", server.URL, err)
 
-		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+		if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		} else {
 			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)

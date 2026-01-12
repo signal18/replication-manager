@@ -344,7 +344,7 @@ func (cluster *Cluster) SetPrefMaster(PrefMasterURL string) {
 		} else {
 			if strings.Contains(PrefMasterURL, srv.URL) {
 				srv.SetPrefered(true)
-				prefmasterlist = append(prefmasterlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				prefmasterlist = append(prefmasterlist, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetPrefered(false)
 			}
@@ -383,8 +383,8 @@ func (cluster *Cluster) RemoveIgnoreSrv(node *ServerMonitor) error {
 		cluster.SetIgnoreSrv("")
 	} else {
 		//Remove the prefered from list
-		newIgnoredHost := strings.Replace(savedIgnoredHost, node.URL+",", "", -1)
-		newIgnoredHost = strings.Replace(newIgnoredHost, ","+node.URL, "", -1)
+		newIgnoredHost := strings.ReplaceAll(savedIgnoredHost, node.URL+",", "")
+		newIgnoredHost = strings.ReplaceAll(newIgnoredHost, ","+node.URL, "")
 		cluster.SetIgnoreSrv(newIgnoredHost)
 	}
 
@@ -402,7 +402,7 @@ func (cluster *Cluster) SetIgnoreSrv(IgnoredHostURL string) {
 			// Only add to config if node is in main cluster
 			if strings.Contains(IgnoredHostURL, srv.URL) {
 				srv.SetIgnored(true)
-				ignoresrvlist = append(ignoresrvlist, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				ignoresrvlist = append(ignoresrvlist, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetIgnored(false)
 			}
@@ -423,7 +423,7 @@ func (cluster *Cluster) SetIgnoreRO(IgnoredReadOnlyHostURL string) {
 			// Only add to config if node is in main cluster
 			if strings.Contains(IgnoredReadOnlyHostURL, srv.URL) {
 				srv.SetIgnoredReadonly(true)
-				ignoreROList = append(ignoreROList, strings.Replace(srv.URL, srv.Domain+":3306", "", -1))
+				ignoreROList = append(ignoreROList, strings.ReplaceAll(srv.URL, srv.Domain+":3306", ""))
 			} else {
 				srv.SetIgnoredReadonly(false)
 			}

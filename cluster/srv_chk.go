@@ -312,7 +312,7 @@ func (server *ServerMonitor) CheckSlaveSettings() {
 
 		// If master is in GTID mode ON or ON_PERMISSIVE, and slave has GTID mode ON_PERMISSIVE
 		if !cluster.StateMachine.IsInStateList("ERR00099@"+sl.URL, "ERR00098") && !hasErr {
-			if !(sl.DBVersion.IsMySQLOrPercona() && sl.DBVersion.GreaterEqual("5.7.6") && sl.SlaveStatus.AutoPosition == 1) {
+			if !sl.DBVersion.IsMySQLOrPercona() || !sl.DBVersion.GreaterEqual("5.7.6") || sl.SlaveStatus.AutoPosition != 1 {
 				dbhelper.SetSlaveGTIDMode(sl.Conn, "slave_pos", cluster.Conf.MasterConn, server.DBVersion)
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Enforce GTID replication on slave %s", sl.URL)
 			}

@@ -345,7 +345,7 @@ func (server *ServerMonitor) HasLogMutex() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	//if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -361,7 +361,7 @@ func (server *ServerMonitor) HasLogLatch() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	// if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -403,7 +403,7 @@ func (server *ServerMonitor) HasUserStats() bool {
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
 
-	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
+	if !server.DBVersion.IsMySQL() && !server.DBVersion.IsPercona() {
 		return false
 	}
 	if server.GetClusterConfig().ForceSlaveNoGtid {
