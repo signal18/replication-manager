@@ -689,7 +689,7 @@ func (cluster *Cluster) Run() {
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
-	for cluster.exit == false {
+	for !cluster.exit {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
@@ -893,23 +893,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0075" {
-				/*
-					This action is inactive due to direct function from Job
-				*/
-				// //Only mysqldump exists in the script
-				// task := "reseed" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
-				// if master != nil {
-				// 	if mybcksrv != nil {
-				// 		go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	} else {
-				// 		go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	}
-				// } else {
-				// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
-				// }
-			}
+
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
@@ -921,31 +905,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0077" {
-				/*
-					This action is inactive due to direct function from rejoin
-				*/
-				// //Only mysqldump exists in the script
-				// task := "flashback" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-				// if mybcksrv != nil {
-				// 	go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// } else {
-				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// }
-			}
-			/*
-				// Unused, will be split to logical and physical backup. For rejoin will still use the same ReseedMasterSST
-					if s.ErrKey == "WARN0101" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
-						for _, srv := range cluster.Servers {
-							if srv.HasWaitBackupCookie() {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
-								go srv.ReseedMasterSST()
-							}
-						}
-					}
-			*/
+
 			if s.ErrKey == "WARN0111" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have logical backup")
 				for _, srv := range cluster.Servers {
@@ -1697,7 +1657,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables.ToNewMap()
-			if slaveVariables[k] != v && exceptVariables[k] != true {
+			if slaveVariables[k] != v && !exceptVariables[k] {
 				var slavevalue Diff
 				slavevalue.Server = s.URL
 				slavevalue.VariableValue = slaveVariables[k]
@@ -1799,7 +1759,11 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 			if haschanged {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
-						if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+						if t.TableSchema != "replication_manager_schema" &&
+							!strings.Contains(t.TableName, "_copy") &&
+							!strings.Contains(t.TableName, "_back") &&
+							!strings.Contains(t.TableName, "_old") &&
+							!strings.Contains(t.TableName, "_reshard") {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
 							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 						}
@@ -1969,6 +1933,7 @@ func (cluster *Cluster) MonitorQueryRules() {
 					if !found {
 						duplicates = append(duplicates, prx.Id)
 					}
+					myRule.Proxies = strings.Join(duplicates, ",")
 				} else {
 					myRule.Id = rule.Id
 					myRule.UserName = rule.UserName

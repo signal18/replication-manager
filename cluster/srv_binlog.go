@@ -54,7 +54,7 @@ func (server *ServerMonitor) RefreshBinaryLogs() error {
 
 	var oldmeta = make(map[string]dbhelper.BinaryLogMetadata)
 	if server.BinaryLogFilesCount == 0 {
-		oldmeta, err = server.ReadLocalBinaryLogMetadata()
+		oldmeta, _ = server.ReadLocalBinaryLogMetadata()
 	}
 
 	count, oldest, trimmed, _, err := dbhelper.GetBinaryLogs(server.Conn, server.DBVersion, server.BinaryLogFiles)
@@ -326,7 +326,7 @@ func (server *ServerMonitor) ForcePurgeBinlogs() {
 			go server.JobBinlogPurgeMaster()
 		}
 
-		if !isMaster && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && cluster.StateMachine.CurState.Search("WARN0107") == false && !server.IsIgnored() {
+		if !isMaster && cluster.Conf.ForceBinlogPurgeReplicas && server.HaveBinlogSlaveUpdates && !cluster.StateMachine.CurState.Search("WARN0107") && !server.IsIgnored() {
 			go server.JobBinlogPurgeSlave()
 		}
 	}
@@ -422,7 +422,7 @@ func (server *ServerMonitor) JobBinlogPurgeMaster() {
 	cluster.CheckSlavesReplicationsPurge()
 
 	if cluster.SlavesConnected <= cluster.Conf.ForceBinlogPurgeMinReplica {
-		if cluster.StateMachine.CurState.Search("WARN0106") == false {
+		if !cluster.StateMachine.CurState.Search("WARN0106") {
 			cluster.SetState("WARN0106", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0106"], cluster.Conf.ForceBinlogPurgeMinReplica), ErrFrom: "PURGE", ServerUrl: server.URL})
 		}
 		return

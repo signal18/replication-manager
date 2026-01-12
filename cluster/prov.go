@@ -113,20 +113,18 @@ func (cluster *Cluster) ProvisionServices() error {
 	}
 
 	for _, server := range cluster.Servers {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+		err := <-cluster.errorChan
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
 
-				if hasConfigPath[server.HostCnf] {
-					server.SetConfigPathCookie() // revert the config path cookie since error occured
-				}
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
-				server.SetProvisionCookie()
-				server.DelReprovisionCookie()
-				server.DelRestartCookie()
+			if hasConfigPath[server.HostCnf] {
+				server.SetConfigPathCookie() // revert the config path cookie since error occured
 			}
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for database %s", cluster.Name+"/svc/"+server.Name)
+			server.SetProvisionCookie()
+			server.DelReprovisionCookie()
+			server.DelRestartCookie()
 		}
 	}
 	err := cluster.WaitDatabaseCanConn()
@@ -155,14 +153,12 @@ func (cluster *Cluster) ProvisionServices() error {
 		if !ok {
 			continue
 		}
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
-				prx.SetProvisionCookie()
-			}
+		err := <-cluster.errorChan
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Provisionning proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Provisionning done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
+			prx.SetProvisionCookie()
 		}
 	}
 
@@ -190,14 +186,12 @@ func (cluster *Cluster) InitDatabaseService(server *ServerMonitor) error {
 		return nil
 	}
 	cluster.ProvisionDatabaseScript(server)
-	select {
-	case err := <-cluster.errorChan:
-		cluster.StateMachine.RemoveFailoverState()
-		if err == nil {
-			server.SetProvisionCookie()
-		} else {
-			return err
-		}
+	err := <-cluster.errorChan
+	cluster.StateMachine.RemoveFailoverState()
+	if err == nil {
+		server.SetProvisionCookie()
+	} else {
+		return err
 	}
 
 	return nil
@@ -219,14 +213,12 @@ func (cluster *Cluster) InitProxyService(prx DatabaseProxy) error {
 		return nil
 	}
 	cluster.ProvisionProxyScript(prx)
-	select {
-	case err := <-cluster.errorChan:
-		cluster.StateMachine.RemoveFailoverState()
-		if err == nil {
-			prx.SetProvisionCookie()
-		} else {
-			return err
-		}
+	err := <-cluster.errorChan
+	cluster.StateMachine.RemoveFailoverState()
+	if err == nil {
+		prx.SetProvisionCookie()
+	} else {
+		return err
 	}
 	return nil
 }
@@ -243,14 +235,12 @@ func (cluster *Cluster) InitAppService(app *App) error {
 		return nil
 	}
 	// cluster.ProvisionAppScript(app)
-	select {
-	case err := <-cluster.errorChan:
-		cluster.StateMachine.RemoveFailoverState()
-		if err == nil {
-			app.SetProvisionCookie()
-		} else {
-			return err
-		}
+	err := <-cluster.errorChan
+	cluster.StateMachine.RemoveFailoverState()
+	if err == nil {
+		app.SetProvisionCookie()
+	} else {
+		return err
 	}
 	return nil
 }
@@ -286,16 +276,14 @@ func (cluster *Cluster) Unprovision() error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral,config.LvlErr, "Unprovision proxy continue ")
 				continue
 			}*/
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
-				prx.DelProvisionCookie()
-				prx.DelRestartCookie()
-				prx.DelReprovisionCookie()
-			}
+		err := <-cluster.errorChan
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision proxy error %s on  %s", err, cluster.Name+"/svc/"+prx.GetName())
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for proxy %s", cluster.Name+"/svc/"+prx.GetName())
+			prx.DelProvisionCookie()
+			prx.DelRestartCookie()
+			prx.DelReprovisionCookie()
 		}
 	}
 
@@ -316,17 +304,15 @@ func (cluster *Cluster) Unprovision() error {
 		cluster.UnprovisionDatabaseScript(server)
 	}
 	for _, server := range cluster.Servers {
-		select {
-		case err := <-cluster.errorChan:
-			if err != nil {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
-				server.DelProvisionCookie()
-				server.DelRestartCookie()
-				server.DelReprovisionCookie()
-				server.DelConfigPathCookie()
-			}
+		err := <-cluster.errorChan
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Unprovision error %s on  %s", err, cluster.Name+"/svc/"+server.Name)
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Unprovision done for database %s", cluster.Name+"/svc/"+server.Name)
+			server.DelProvisionCookie()
+			server.DelRestartCookie()
+			server.DelReprovisionCookie()
+			server.DelConfigPathCookie()
 		}
 	}
 	err := cluster.WaitClusterStop()
@@ -359,15 +345,13 @@ func (cluster *Cluster) UnprovisionProxyService(prx DatabaseProxy) error {
 	default:
 	}
 	cluster.UnprovisionProxyScript(prx)
-	select {
-	case err := <-cluster.errorChan:
-		if err == nil {
-			prx.DelProvisionCookie()
-			prx.DelReprovisionCookie()
-			prx.DelRestartCookie()
-		}
-		return err
+	err := <-cluster.errorChan
+	if err == nil {
+		prx.DelProvisionCookie()
+		prx.DelReprovisionCookie()
+		prx.DelRestartCookie()
 	}
+	return err
 	return nil
 }
 
@@ -386,16 +370,13 @@ func (cluster *Cluster) UnprovisionDatabaseService(server *ServerMonitor) error 
 		go cluster.LocalhostUnprovisionDatabaseService(server)
 	}
 	cluster.UnprovisionDatabaseScript(server)
-	select {
-
-	case err := <-cluster.errorChan:
-		if err == nil {
-			server.DelProvisionCookie()
-			server.DelReprovisionCookie()
-			server.DelRestartCookie()
-		} else {
-			return err
-		}
+	err := <-cluster.errorChan
+	if err == nil {
+		server.DelProvisionCookie()
+		server.DelReprovisionCookie()
+		server.DelRestartCookie()
+	} else {
+		return err
 	}
 	return nil
 }
@@ -657,7 +638,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 	}
 
 	// Assume master-slave if nothing else is declared
-	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMasterRing == false && cluster.Conf.MultiMaster == false && cluster.Conf.MxsBinlogOn == false && cluster.Conf.MultiTierSlave == false {
+	if !cluster.Conf.ActivePassive && !cluster.Conf.MultiMasterRing && !cluster.Conf.MultiMaster && !cluster.Conf.MxsBinlogOn && !cluster.Conf.MultiTierSlave {
 
 		for key, server := range cluster.Servers {
 			if server.State == stateFailed {
@@ -706,7 +687,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 	}
 	// Slave Relay
-	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiTierSlave == true {
+	if !cluster.Conf.ActivePassive && cluster.Conf.MultiTierSlave {
 		relaykey := 1
 		if masterKey == 1 {
 			relaykey = 0
@@ -763,7 +744,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Environment bootstrapped with %s as master", cluster.Servers[masterKey].URL)
 	}
 	// Multi Master
-	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMaster == true {
+	if !cluster.Conf.ActivePassive && cluster.Conf.MultiMaster {
 		for _, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue
@@ -805,7 +786,7 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 		}
 	}
 	// Ring
-	if cluster.Conf.ActivePassive == false && cluster.Conf.MultiMasterRing == true {
+	if !cluster.Conf.ActivePassive && cluster.Conf.MultiMasterRing {
 		for _, server := range cluster.Servers {
 			if server.State == stateFailed {
 				continue

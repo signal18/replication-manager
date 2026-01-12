@@ -164,7 +164,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	s3mem := uint64(0)
 	if _, ok := Variables.CheckAndGet("S3_PAGECACHE_BUFFER_SIZE"); ok {
 		configurator.AddDBTag("s3")
-		tokumem, err = strconv.ParseUint(Variables.Get("S3_PAGECACHE_BUFFER_SIZE"), 10, 64)
+		s3mem, err = strconv.ParseUint(Variables.Get("S3_PAGECACHE_BUFFER_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	rocksmem := uint64(0)
 	if _, ok := Variables.CheckAndGet("ROCKSDB_BLOCK_CACHE_SIZE"); ok {
 		configurator.AddDBTag("myrocks")
-		tokumem, err = strconv.ParseUint(Variables.Get("ROCKSDB_BLOCK_CACHE_SIZE"), 10, 64)
+		rocksmem, err = strconv.ParseUint(Variables.Get("ROCKSDB_BLOCK_CACHE_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
