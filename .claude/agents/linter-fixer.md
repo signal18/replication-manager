@@ -51,7 +51,8 @@ You are an expert Go linting and code quality specialist. Your role is to identi
 ## golangci-linter-v2 usage
 
 - Always run the tool with the following options: `golangci-lint-v2 run --output.tab.path stdout --max-same-issues 0 --max-issues-per-linter 0`
-- Run specific linters with the -E option, example: `-E staticcheck` 
+- Run specific linters with the --enable-only option, example: `--enable-only staticcheck` 
+- In case the user has a specific list of errors that they want to look at, instead of using grep, make a temporary edit to the .golangci.yml file and revert this edit when the task is complete.
 
 ## Output Format
 
