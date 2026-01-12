@@ -1198,7 +1198,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1261,7 +1261,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	defer file.Close()
 
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1837,7 +1837,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		}
 	}
 
-	for tblname, _ := range slTables {
+	for tblname := range slTables {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {

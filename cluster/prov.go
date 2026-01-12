@@ -673,10 +673,10 @@ func (cluster *Cluster) BootstrapReplication(clean bool) error {
 				}
 
 				if cluster.Conf.MultiMasterGrouprep {
-					err = server.ChangeMasterTo(server, "SLAVE_POS")
+					_ = server.ChangeMasterTo(server, "SLAVE_POS")
 					server.StartGroupReplication()
 				} else {
-					err = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
+					_ = server.ChangeMasterTo(cluster.Servers[masterKey], "SLAVE_POS")
 				}
 				if !server.ClusterGroup.IsInIgnoredReadonly(server) {
 					server.SetReadOnly()

@@ -352,6 +352,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 func (server *ServerMonitor) RejoinDirectDump() error {
 	cluster := server.ClusterGroup
 	var err3 error
+	var logs string
 
 	if server.HasAnyReseedingState() {
 		return fmt.Errorf("Server is in reseeding state by %s", server.IsReseeding)
@@ -390,7 +391,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 	}
 	// done change master just to set the host and port before dump
 	if server.MxsHaveGtid || !server.IsMaxscale {
-		logs, err3 := server.SetReplicationGTIDSlavePosFromServer(realmaster)
+		logs, err3 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
 
 	} else {
@@ -398,7 +399,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		opt.Logfile = realmaster.FailoverMasterLogFile
 		opt.Logpos = realmaster.FailoverMasterLogPos
 
-		logs, err3 := dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
+		logs, err3 = dbhelper.ChangeMaster(server.Conn, opt, server.DBVersion)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlErr, "Failed change master maxscale on %s: %s", server.URL, err3)
 	}
 	if err3 != nil {
@@ -532,7 +533,7 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master found from replication")
 		return errors.New("No master found from replication")
 	}
-	if cluster.master != nil && cluster.master.Id != server.Id && mycurrentmaster != nil {
+	if cluster.master != nil && cluster.master.Id != server.Id {
 		if cluster.master.URL == mycurrentmaster.URL {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Cancel rejoin, found same leader already from replication %s	", mycurrentmaster.URL)
 			return errors.New("Same master found from replication")

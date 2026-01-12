@@ -37,7 +37,7 @@ var dbResourceCategoryIndex int = 0
 var dbUsedTags []string
 var dbCategoryIndex int
 var dbTagIndex int
-var dbCurrentCategoryTags []v3.Tag
+var dbCurrentCategoryTags []*v3.Tag
 var dbUsedTagIndex int
 var PanIndex int
 var dbHost string
@@ -493,7 +493,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 
 	curWitdh = 1
 
-	dbCurrentCategoryTags = make([]v3.Tag, 0, len(tags))
+	dbCurrentCategoryTags = make([]*v3.Tag, 0, len(tags))
 	dbUsedTags = configurator.GetDBTags()
 
 	for _, tag := range tags {

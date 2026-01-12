@@ -264,8 +264,6 @@ func (proxy *MariadbShardProxy) RotateProxyPasswords(password string) {
 	if proxy.ShardProxy.IsRunning() {
 		proxy.ShardProxy.SetCredential(proxy.ShardProxy.URL, proxy.ShardProxy.User, password)
 	}
-
-	return
 }
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MariadbShardProxy) error {

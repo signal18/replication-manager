@@ -1770,27 +1770,6 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	return nil
 }
 
-func (server *ServerMonitor) JobHandler(JobId int64) error {
-	exitloop := 0
-	ticker := time.NewTicker(time.Second * 3600)
-
-	for exitloop < 8 {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			if true == true {
-				exitloop = 8
-			}
-		default:
-		}
-
-	}
-
-	return nil
-}
-
 func (server *ServerMonitor) GetMyBackupDirectory() string {
 	cluster := server.ClusterGroup
 	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
@@ -2609,7 +2588,7 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
 	var out []byte
-	buf := make([]byte, 1024, 1024)
+	buf := make([]byte, 1024)
 	for {
 		n, err := r.Read(buf[:])
 		if n > 0 {
@@ -2693,7 +2672,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Running database jobs via SSH script: %s with env: %v", scriptpath, server.GetSshEnv())
 
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+	if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}
 	out := stdout.String()

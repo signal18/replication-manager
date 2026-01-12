@@ -143,8 +143,6 @@ func (server *ServerMonitor) RefreshBinlogMetaGoMySQL(meta *dbhelper.BinaryLogMe
 			return err
 		}
 	}
-
-	return nil
 }
 
 func (server *ServerMonitor) RefreshBinlogMetaMySQL(meta *dbhelper.BinaryLogMetadata) error {

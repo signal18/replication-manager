@@ -564,7 +564,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 			repman.UserAuthTry.Store(user.Username, auth_try)
 		}
 	} else {
-		var auth_try authTry = authTry{
+		var auth_try = authTry{
 			User: user.Username,
 			Try:  1,
 			Time: time.Now(),
@@ -676,7 +676,7 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	// Reset the auth try counter
-	var auth_try authTry = authTry{
+	var auth_try = authTry{
 		User: user.Username,
 		Try:  0,
 		Time: time.Now(),
@@ -851,7 +851,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 
 	res, err := json.Marshal(repman)
 	if err != nil {
-		http.Error(w, "Error Marshal", 500)
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
 	}
 
@@ -862,7 +862,7 @@ func (repman *ReplicationManager) handlerMuxReplicationManager(w http.ResponseWr
 	}
 
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
 
@@ -914,13 +914,13 @@ func (repman *ReplicationManager) handlerMuxWhoAmI(w http.ResponseWriter, r *htt
 
 	res, err := json.Marshal(user)
 	if err != nil {
-		http.Error(w, "Error Marshal", 500)
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
 	}
 
 	res, err = sjson.SetBytes(res, "Password", "*****")
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
 
@@ -961,15 +961,15 @@ func (repman *ReplicationManager) handlerMuxAddClusterUser(w http.ResponseWriter
 		if valid, delegator := repman.IsValidClusterACL(r, mycluster); valid {
 			err := mycluster.AddUser(userform, delegator, true)
 			if err != nil {
-				http.Error(w, "Error adding new user: "+err.Error(), 500)
+				http.Error(w, "Error adding new user: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "No Valid ACL", 403)
+			http.Error(w, "No Valid ACL", http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1007,15 +1007,15 @@ func (repman *ReplicationManager) handlerMuxUpdateClusterUser(w http.ResponseWri
 		if valid, delegator := repman.IsValidClusterACL(r, mycluster); valid {
 			err := mycluster.UpdateUser(userform, delegator, true)
 			if err != nil {
-				http.Error(w, "Error updating user: "+err.Error(), 500)
+				http.Error(w, "Error updating user: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "No Valid ACL", 403)
+			http.Error(w, "No Valid ACL", http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1053,15 +1053,15 @@ func (repman *ReplicationManager) handlerMuxDropClusterUser(w http.ResponseWrite
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); valid {
 			err := mycluster.DropUser(userform, true)
 			if err != nil {
-				http.Error(w, "Error dropping user: "+err.Error(), 500)
+				http.Error(w, "Error dropping user: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "No Valid ACL", 403)
+			http.Error(w, "No Valid ACL", http.StatusForbidden)
 			return
 		}
 	} else {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1090,12 +1090,12 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 
 		sort.Sort(cluster.ClusterSorter(clusters))
 
-		var cl []byte = []byte("[")
+		var cl = []byte("[")
 
 		for i, cluster := range clusters {
 			cj, err := cluster.GetCompactJson()
 			if err != nil {
-				http.Error(w, "Error getting compact JSON: "+err.Error(), 500)
+				http.Error(w, "Error getting compact JSON: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			cl = append(cl, cj...)
@@ -1109,7 +1109,7 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 		w.Write(cl)
 
 	} else {
-		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 }
@@ -1127,19 +1127,19 @@ func (repman *ReplicationManager) handlerMuxClusters(w http.ResponseWriter, r *h
 func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *http.Request) {
 	ok, err := repman.isValidRequest(r)
 	if !ok {
-		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	_, err = repman.GetJWTClaims(r)
 	if err != nil {
-		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
+		http.Error(w, "Failed to get token claims: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	cl, err := repman.PeerManager.GetPeerNodesJSON()
 	if err != nil {
-		http.Error(w, "Error Marshal", 500)
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
 	}
 
@@ -1160,13 +1160,13 @@ func (repman *ReplicationManager) handlerMuxPeerNodes(w http.ResponseWriter, r *
 func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, r *http.Request) {
 	ok, err := repman.isValidRequest(r)
 	if !ok {
-		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	uinfo, err := repman.GetJWTClaims(r)
 	if err != nil {
-		http.Error(w, "Failed to get token claims: "+err.Error(), 500)
+		http.Error(w, "Failed to get token claims: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1177,7 +1177,7 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 
 	cl, err := repman.PeerManager.GetUserClustersJSON(peerUser)
 	if err != nil {
-		http.Error(w, "Error Marshal", 500)
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
 	}
 
@@ -1198,13 +1198,13 @@ func (repman *ReplicationManager) handlerMuxPeerClusters(w http.ResponseWriter, 
 func (repman *ReplicationManager) handlerMuxPeerClustersForSale(w http.ResponseWriter, r *http.Request) {
 	ok, err := repman.isValidRequest(r)
 	if !ok {
-		http.Error(w, "Unauthenticated resource: "+err.Error(), 401)
+		http.Error(w, "Unauthenticated resource: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	cl, err := repman.PeerManager.GetSaleClustersJSON()
 	if err != nil {
-		http.Error(w, "Error Marshal", 500)
+		http.Error(w, "Error Marshal", http.StatusInternalServerError)
 		return
 	}
 
@@ -1236,7 +1236,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "No valid cluster", 500)
+		http.Error(w, "No valid cluster", http.StatusInternalServerError)
 		return
 	}
 
@@ -1263,7 +1263,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 	}
 
 	if repman.Conf.Cloud18GitUser == "" || repman.Conf.Cloud18GitPassword == "" || !repman.Conf.Cloud18 {
-		http.Error(w, "Peer does not have cloud18 setup!", 500)
+		http.Error(w, "Peer does not have cloud18 setup!", http.StatusInternalServerError)
 		return
 	}
 
@@ -1313,7 +1313,7 @@ func (repman *ReplicationManager) handlerMuxClusterSubscribe(w http.ResponseWrit
 
 	err = repman.SendCloud18ClusterSubscriptionMail(mycluster.Name, userform)
 	if err != nil {
-		http.Error(w, "Error sending email :"+err.Error(), 500)
+		http.Error(w, "Error sending email :"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1461,13 +1461,13 @@ func (repman *ReplicationManager) handlerMuxClusterDelete(w http.ResponseWriter,
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "Invalid cluster name", 500)
+		http.Error(w, "Invalid cluster name", http.StatusInternalServerError)
 		return
 	}
 
 	valid, _ := repman.IsValidClusterACL(r, mycluster)
 	if !valid {
-		http.Error(w, "No Valid ACL", 500)
+		http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 		return
 	}
 
@@ -1492,30 +1492,30 @@ func (repman *ReplicationManager) handlerMuxClusterRename(w http.ResponseWriter,
 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster == nil {
-		http.Error(w, "Invalid cluster name", 500)
+		http.Error(w, "Invalid cluster name", http.StatusInternalServerError)
 		return
 	}
 
 	if slices.Contains(repman.ImmutableClusterList, mycluster.Name) {
-		http.Error(w, "Cluster is not dynamic", 500)
+		http.Error(w, "Cluster is not dynamic", http.StatusInternalServerError)
 		return
 	}
 
 	valid, _ := repman.IsValidClusterACL(r, mycluster)
 	if !valid {
-		http.Error(w, "No Valid ACL", 500)
+		http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 		return
 	}
 
 	// Check if new cluster name is already exist
 	if newcluster := repman.getClusterByName(vars["newClusterName"]); newcluster != nil {
-		http.Error(w, "Cluster name already exists", 500)
+		http.Error(w, "Cluster name already exists", http.StatusInternalServerError)
 		return
 	}
 
 	err := mycluster.RenameCluster(vars["newClusterName"])
 	if err != nil {
-		http.Error(w, err.Error(), 500)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1617,7 +1617,7 @@ func (repman *ReplicationManager) handlerStatic(h http.Handler) http.Handler {
 // @Router /api/configs/grafana [get]
 func (repman *ReplicationManager) handlerMuxGrafana(w http.ResponseWriter, r *http.Request) {
 	var entries []fs.DirEntry
-	var list []string = make([]string, 0)
+	var list = make([]string, 0)
 	var err error
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
@@ -1627,7 +1627,7 @@ func (repman *ReplicationManager) handlerMuxGrafana(w http.ResponseWriter, r *ht
 		entries, err = share.EmbededDbModuleFS.ReadDir("grafana")
 	}
 	if err != nil {
-		http.Error(w, "Encoding reading directory", 500)
+		http.Error(w, "Encoding reading directory", http.StatusInternalServerError)
 		return
 	}
 	for _, b := range entries {
@@ -1638,7 +1638,7 @@ func (repman *ReplicationManager) handlerMuxGrafana(w http.ResponseWriter, r *ht
 
 	err = json.NewEncoder(w).Encode(list)
 	if err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1816,7 +1816,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	path := r.URL.Path
 
 	if !repman.Conf.TerminalSessionEnabled {
-		http.Error(w, "Terminal session is disabled", 403)
+		http.Error(w, "Terminal session is disabled", http.StatusForbidden)
 		return
 	}
 
@@ -1830,7 +1830,7 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Error upgrading connection: %v", err)
-		http.Error(w, "Failed to upgrade connection", 500)
+		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
 		return
 	}
 	defer conn.Close()
@@ -1841,7 +1841,8 @@ func (repman *ReplicationManager) handlerTerminal(w http.ResponseWriter, r *http
 	repman.LogModulePrintf(repman.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Socket upgraded successfully for url %s", r.URL.String())
 	session.SafeWriteMessage(websocket.TextMessage, []byte("Connected. Waiting for token...\n"))
 
-	ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Handle the message
 	token := session.HandleWebToken(ctx)
@@ -2019,12 +2020,12 @@ func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseW
 
 	claims, err := repman.GetJWTClaims(r)
 	if err != nil {
-		http.Error(w, "Error getting JWT claims", 500)
+		http.Error(w, "Error getting JWT claims", http.StatusInternalServerError)
 		return
 	}
 
 	if !repman.Conf.TerminalSessionEnabled {
-		http.Error(w, "Terminal session is disabled", 403)
+		http.Error(w, "Terminal session is disabled", http.StatusForbidden)
 		return
 	}
 
@@ -2046,7 +2047,7 @@ func (repman *ReplicationManager) handlerGetTerminalSessionList(w http.ResponseW
 	// Return the list of sessions as JSON
 	jsonSessions, err := json.Marshal(sessions)
 	if err != nil {
-		http.Error(w, "Error encoding JSON", 500)
+		http.Error(w, "Error encoding JSON", http.StatusInternalServerError)
 		return
 	}
 
@@ -2074,14 +2075,14 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 
 	uinfomap, err := repman.GetJWTClaims(r)
 	if err != nil {
-		http.Error(w, "Error getting JWT claims", 500)
+		http.Error(w, "Error getting JWT claims", http.StatusInternalServerError)
 		return
 	}
 
 	// Decode the request body into the Email struct
 	err = json.NewDecoder(r.Body).Decode(&email)
 	if err != nil {
-		http.Error(w, "Error in request", 400)
+		http.Error(w, "Error in request", http.StatusBadRequest)
 		return
 	}
 
@@ -2089,32 +2090,32 @@ func (repman *ReplicationManager) handlerMuxSendEmail(w http.ResponseWriter, r *
 	if clusterName != "" {
 		mycluster := repman.getClusterByName(clusterName)
 		if mycluster == nil {
-			http.Error(w, "Invalid cluster name", 500)
+			http.Error(w, "Invalid cluster name", http.StatusInternalServerError)
 			return
 		}
 
 		if !mycluster.IsValidACL(uinfomap["User"], uinfomap["Password"], r.URL.Path, "oidc") {
-			http.Error(w, "No valid ACL", 500)
+			http.Error(w, "No valid ACL", http.StatusInternalServerError)
 			return
 		}
 
 		// Send the email in the cluster scope
 		err = mycluster.SendMail(email)
 		if err != nil {
-			http.Error(w, "Error sending email: "+err.Error(), 500)
+			http.Error(w, "Error sending email: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 	} else {
 		if uinfomap["User"] != "admin" && uinfomap["User"] != repman.Conf.Cloud18GitUser {
-			http.Error(w, "No valid ACL", 500)
+			http.Error(w, "No valid ACL", http.StatusInternalServerError)
 			return
 		}
 
 		// Send the email in global scope
 		err = repman.SendMail(email)
 		if err != nil {
-			http.Error(w, "Error sending email: "+err.Error(), 500)
+			http.Error(w, "Error sending email: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}

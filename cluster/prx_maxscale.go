@@ -254,7 +254,7 @@ func (cluster *Cluster) setMaintenanceMaxscale(pr DatabaseProxy, server *ServerM
 }
 
 func (proxy *MaxscaleProxy) BackendsStateChange() {
-	return
+	// TODO
 }
 
 func (pr *MaxscaleProxy) SetMaintenance(server *ServerMonitor) {

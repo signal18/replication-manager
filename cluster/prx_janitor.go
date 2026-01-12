@@ -249,7 +249,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 					} else {
 						//scenario restart with failed leader
 						psql.Weight = s.GetJanitorWeight()
-						err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
+						_ = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 					}
 					updated = true
 

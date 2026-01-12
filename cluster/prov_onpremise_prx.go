@@ -89,6 +89,7 @@ func (cluster *Cluster) OnPremiseProvisionProxyService(pri DatabaseProxy) error 
 		}
 		srv.ClusterGroup = cluster
 		cluster.OnPremiseProvisionDatabaseService(srv)
+		err = srv.Refresh()
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Bootstrap MariaDB Sharding Cluster Failed")
 			cluster.errorChan <- err

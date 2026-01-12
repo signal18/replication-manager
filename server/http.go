@@ -319,8 +319,7 @@ func (repman *ReplicationManager) handlerHeartbeat(w http.ResponseWriter, r *htt
 	send.Status = repman.Status
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	if err := json.NewEncoder(w).Encode(send); err != nil {
-		http.Error(w, "Encoding error", 500)
+		http.Error(w, "Encoding error", http.StatusInternalServerError)
 	}
 	repman.Unlock()
 }
-

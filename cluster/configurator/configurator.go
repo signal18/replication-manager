@@ -32,8 +32,8 @@ type Configurator struct {
 	DBModule              config.Compliance `json:"-"`
 	ProxyModule           config.Compliance `json:"-"`
 	Logger                *logrus.Logger    `json:"-"`
-	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
-	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
+	ConfigDBTags          []*v3.Tag         `json:"configTags"`    //from module
+	ConfigPrxTags         []*v3.Tag         `json:"configPrxTags"` //from module
 	DBTags                []string          `json:"dbServersTags"` //from conf
 	ProxyTags             []string          `json:"proxyServersTags"`
 	DBTagsDiscover        []string          `json:"dbServersTagsDiscover"` //from conf
