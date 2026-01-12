@@ -5480,28 +5480,43 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-
-	if mycluster != nil {
-		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
-			return
-		}
-		for _, pri := range mycluster.Proxies {
-			if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
-				if vars["clusterShard"] != "" {
-					destcluster := repman.getClusterByName(vars["clusterShard"])
-					if mycluster != nil {
-						mycluster.ShardProxyMoveTable(pr, vars["schemaName"], vars["tableName"], destcluster)
-						return
-					}
-				}
-			}
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
+	if mycluster == nil {
+		http.Error(w, "Source cluster not found", http.StatusNotFound)
 		return
 	}
-	http.Error(w, "Unrichable code", 500)
+
+	if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
+		http.Error(w, "No valid ACL", http.StatusForbidden)
+		return
+	}
+
+	// Validate required parameters
+	if vars["clusterShard"] == "" {
+		http.Error(w, "Destination cluster name is required", http.StatusBadRequest)
+		return
+	}
+	if vars["schemaName"] == "" || vars["tableName"] == "" {
+		http.Error(w, "Schema name and table name are required", http.StatusBadRequest)
+		return
+	}
+
+	// Get destination cluster
+	destcluster := repman.getClusterByName(vars["clusterShard"])
+	if destcluster == nil {
+		http.Error(w, "Destination cluster not found", http.StatusNotFound)
+		return
+	}
+
+	// Find shard proxy and move table
+	for _, pri := range mycluster.Proxies {
+		if pr, ok := pri.(*cluster.MariadbShardProxy); ok {
+			mycluster.ShardProxyMoveTable(pr, vars["schemaName"], vars["tableName"], destcluster)
+			return
+		}
+	}
+
+	// No shard proxy found
+	http.Error(w, "No MariaDB shard proxy found in cluster", http.StatusBadRequest)
 }
 
 // handlerMuxClusterSchema handles the retrieval of schema information for a given cluster.
