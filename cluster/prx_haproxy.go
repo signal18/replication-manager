@@ -129,36 +129,6 @@ func (proxy *HaproxyProxy) Init() {
 	bew := haproxy.Backend{Name: cluster.Conf.HaproxyAPIWriteBackend, Mode: "tcp"}
 	haConfig.AddBackend(&bew)
 
-	if _, err := haConfig.GetServer(cluster.Conf.HaproxyAPIWriteBackend, "leader"); err != nil {
-		// log.Printf("No leader")
-	} else {
-		// log.Printf("Found exiting leader removing")
-	}
-
-	stagingsrv := cluster.StagingServer
-	if stagingsrv == nil {
-		stagingsrv = cluster.SetStandaloneAsStaging()
-	}
-
-	if cluster.Conf.TopologyStaging && proxy.IsStaging && stagingsrv != nil {
-		p, _ := strconv.Atoi(stagingsrv.Port)
-		s := haproxy.ServerDetail{Name: "leader", Host: stagingsrv.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
-		}
-	} else if cluster.GetMaster() != nil {
-		p, _ := strconv.Atoi(cluster.GetMaster().Port)
-		s := haproxy.ServerDetail{Name: "leader", Host: cluster.GetMaster().Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
-		}
-	} else {
-		s := haproxy.ServerDetail{Name: "leader", Host: "unknown", Port: 3306, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}
-		if err = haConfig.AddServer(cluster.Conf.HaproxyAPIWriteBackend, &s); err != nil {
-			//	log.Printf("Failed to add server to service_write ")
-		}
-	}
-
 	fer := haproxy.Frontend{Name: "my_read_frontend", Mode: "tcp", DefaultBackend: cluster.Conf.HaproxyAPIReadBackend, BindPort: cluster.Conf.HaproxyReadPort, BindIp: cluster.Conf.HaproxyReadBindIp}
 	if err := haConfig.AddFrontend(&fer); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModHAProxy, config.LvlErr, "HAProxy failed to add frontend read")
