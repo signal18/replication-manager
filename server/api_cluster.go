@@ -4994,7 +4994,6 @@ func (repman *ReplicationManager) handlerMuxClusterReloadCertificates(w http.Res
 		}
 		go mycluster.ReloadCertificates()
 	}
-	return
 }
 
 // handlerMuxClusterWaitDatabases handles the waiting for databases to be ready for a given cluster.
@@ -5024,7 +5023,6 @@ func (repman *ReplicationManager) handlerMuxClusterWaitDatabases(w http.Response
 			return
 		}
 	}
-	return
 }
 
 // handlerMuxCluster handles the HTTP request to retrieve the details of a specified cluster.
@@ -5168,10 +5166,7 @@ func (repman *ReplicationManager) handlerMuxClusterMonitorSchemas(w http.Respons
 		go mycluster.SetWaitMonitorSchema()
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaChecksumAllTable handles the checksum calculation for all tables in a given cluster.
