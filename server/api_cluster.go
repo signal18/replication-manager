@@ -5194,10 +5194,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumAllTable(w http
 		go mycluster.CheckAllTableChecksum()
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterChecksumSchema handles the checksum calculation for a specific table in a given cluster.
@@ -5226,10 +5223,7 @@ func (repman *ReplicationManager) handlerMuxClusterChecksumSchema(w http.Respons
 		go mycluster.CheckAllTableChecksumSchema(vars["schemaName"])
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaChecksumTable handles the checksum calculation for a specific table in a given cluster.
@@ -5259,10 +5253,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaChecksumTable(w http.Re
 		go mycluster.CheckTableChecksum(vars["schemaName"], vars["tableName"])
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaAnalyzeAllTables handles the analyze calculation for all tables in a given cluster.
@@ -5298,10 +5289,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeAllTables(w http
 		go mycluster.JobAnalyzeSQL(persistent)
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterAnalyzeSchema handles the analyze calculation for a specific table in a given cluster.
@@ -5341,10 +5329,7 @@ func (repman *ReplicationManager) handlerMuxClusterAnalyzeSchema(w http.Response
 		go mycluster.JobAnalyzeSchema(vars["schemaName"], "", persistent)
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaAnalyzeTable handles the analyze calculation for a specific table in a given cluster.
@@ -5391,10 +5376,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaAnalyzeTable(w http.Res
 		go mycluster.JobAnalyzeSchema(vars["schemaName"], vars["tableName"], persistent)
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaUniversalTable handles the setting of a universal table for a given cluster.
@@ -5428,10 +5410,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaUniversalTable(w http.R
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaReshardTable handles the resharding of a table for a given cluster.
@@ -5478,10 +5457,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaReshardTable(w http.Res
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerMuxClusterSchemaMoveTable handles the movement of a table to a different shard cluster.
@@ -5526,8 +5502,6 @@ func (repman *ReplicationManager) handlerMuxClusterSchemaMoveTable(w http.Respon
 		return
 	}
 	http.Error(w, "Unrichable code", 500)
-	return
-
 }
 
 // handlerMuxClusterSchema handles the retrieval of schema information for a given cluster.
@@ -5562,10 +5536,7 @@ func (repman *ReplicationManager) handlerMuxClusterSchema(w http.ResponseWriter,
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
-
 }
 
 // handlerDiffVariables handles the retrieval of variable differences for a given cluster.
