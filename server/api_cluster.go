@@ -4497,7 +4497,6 @@ func (repman *ReplicationManager) handlerMuxOneTest(w http.ResponseWriter, r *ht
 	}
 	mycluster.SetTestStartCluster(false)
 	mycluster.SetTestStopCluster(false)
-	return
 }
 
 // handlerMuxTests handles the execution of all tests for a given cluster.
@@ -4945,7 +4944,6 @@ func (repman *ReplicationManager) handlerMuxClusterSysbench(w http.ResponseWrite
 		}
 		go mycluster.RunSysbench()
 	}
-	return
 }
 
 // handlerMuxClusterApplyDynamicConfig handles the application of dynamic configuration for a given cluster.
@@ -4971,7 +4969,6 @@ func (repman *ReplicationManager) handlerMuxClusterApplyDynamicConfig(w http.Res
 		}
 		go mycluster.SetDBDynamicConfig()
 	}
-	return
 }
 
 // handlerMuxClusterReloadCertificates handles the reloading of client certificates for a given cluster.
