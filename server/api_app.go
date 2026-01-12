@@ -431,20 +431,20 @@ func (repman *ReplicationManager) handlerMuxAppNeedRestart(w http.ResponseWriter
 			return
 		}
 		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasRestartCookie() {
 				w.Write([]byte("200 -Need restart!"))
 				return
 			}
 			w.Write([]byte("503 -No restart needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -468,24 +468,24 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasReprovCookie() {
 				w.Write([]byte("200 -Need reprov!"))
 				return
 			}
 			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1313,7 +1313,6 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage added successfully"))
-	return
 }
 
 // @Summary Modify Storage Field

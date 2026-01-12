@@ -98,7 +98,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 						return errors.New("No Autoseed")
 					}
 				} //crash info is available
-				if cluster.Conf.AutorejoinBackupBinlog == true {
+				if cluster.Conf.AutorejoinBackupBinlog {
 					server.backupBinlog(crash)
 				}
 
@@ -110,7 +110,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "ERROR", "State transfer rejoin failed")
 					}
 				}
-				if cluster.Conf.AutorejoinBackupBinlog == true {
+				if cluster.Conf.AutorejoinBackupBinlog {
 					server.saveBinlog(crash)
 				}
 
@@ -129,7 +129,7 @@ func (server *ServerMonitor) RejoinMaster() error {
 				server.SetReadWrite()
 				cluster.lastmaster = nil
 			} else {
-				if cluster.Conf.FailRestartUnsafe == false {
+				if !cluster.Conf.FailRestartUnsafe {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rediscovering not the master from last seen master: %s", server.URL)
 					server.rejoinMasterAsSlave()
 					// if consul or internal proxy need to adapt read only route to new slaves
@@ -153,7 +153,7 @@ func (server *ServerMonitor) RejoinPreviousSnapshot() error {
 
 func (server *ServerMonitor) RejoinMasterSST() error {
 	cluster := server.ClusterGroup
-	if cluster.Conf.AutorejoinMysqldump == true {
+	if cluster.Conf.AutorejoinMysqldump {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin flashback dump restore %s", server.URL)
 		err := server.RejoinDirectDump()
 		if err != nil {
@@ -208,7 +208,7 @@ func (server *ServerMonitor) RejoinScript() {
 func (server *ServerMonitor) ReseedMasterSST() error {
 	cluster := server.ClusterGroup
 	server.DelWaitBackupCookie()
-	if cluster.Conf.AutorejoinMysqldump == true {
+	if cluster.Conf.AutorejoinMysqldump {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoin dump restore %s", server.URL)
 		err := server.RejoinDirectDump()
 		if err != nil {
@@ -334,7 +334,7 @@ func (server *ServerMonitor) rejoinMasterFlashBack(crash *Crash) error {
 		return err
 	}
 	var err2 error
-	if server.MxsHaveGtid || server.IsMaxscale == false {
+	if server.MxsHaveGtid || !server.IsMaxscale {
 		logs, err2 = server.SetReplicationGTIDSlavePosFromServer(realmaster)
 	} else {
 		logs, err2 = server.SetReplicationFromMaxscaleServer(realmaster)
@@ -389,7 +389,7 @@ func (server *ServerMonitor) RejoinDirectDump() error {
 		return errors.New("No master defined exiting rejoin direct dump ")
 	}
 	// done change master just to set the host and port before dump
-	if server.MxsHaveGtid || server.IsMaxscale == false {
+	if server.MxsHaveGtid || !server.IsMaxscale {
 		logs, err3 := server.SetReplicationGTIDSlavePosFromServer(realmaster)
 		cluster.LogSQL(logs, err3, server.URL, "Rejoin", config.LvlInfo, "Failed SetReplicationGTIDSlavePosFromServer on %s: %s", server.URL, err3)
 
@@ -436,12 +436,12 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Rejoined GTID sequence  %d from server id %d", server.CurrentGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Crash Saved GTID sequence %d from server id %d", crash.FailoverIOGtid.GetSeqServerIdNos(server.GetUniversalGtidServerID()), server.GetUniversalGtidServerID())
 	}
-	if server.isReplicationAheadOfMasterElection(crash) == false || cluster.Conf.MxsBinlogOn {
+	if !server.isReplicationAheadOfMasterElection(crash) || cluster.Conf.MxsBinlogOn {
 		server.rejoinMasterSync(crash)
 		return nil
 	} else {
 		// don't try flashback on old style replication that are ahead jump to SST
-		if server.HasGTIDReplication() == false {
+		if !server.HasGTIDReplication() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Incremental canceled caused by old style replication")
 			return errors.New("Incremental canceled caused by old style replication")
 		}
@@ -458,7 +458,7 @@ func (server *ServerMonitor) rejoinMasterIncremental(crash *Crash) error {
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Old server GTID for flashback not found")
 	}
-	if crash.FailoverIOGtid != nil && cluster.canFlashBack == true && cluster.Conf.AutorejoinFlashback == true && cluster.Conf.AutorejoinBackupBinlog == true {
+	if crash.FailoverIOGtid != nil && cluster.canFlashBack && cluster.Conf.AutorejoinFlashback && cluster.Conf.AutorejoinBackupBinlog {
 		err := server.rejoinMasterFlashBack(crash)
 		if err == nil {
 			return nil
@@ -539,10 +539,10 @@ func (server *ServerMonitor) rejoinSlave(ss dbhelper.SlaveStatus) error {
 		}
 		//Found slave to rejoin
 		cluster.SetState("ERR00067", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00067"], server.URL, server.PrevState, ss.SlaveIORunning.String, cluster.master.URL), ErrFrom: "REJOIN"})
-		if cluster.master.IsDown() && cluster.Conf.FailRestartUnsafe == false {
+		if cluster.master.IsDown() && !cluster.Conf.FailRestartUnsafe {
 			server.HaveNoMasterOnStart = true
 		}
-		if mycurrentmaster.IsMaxscale == false && cluster.Conf.MultiTierSlave == false && cluster.Conf.ReplicationNoRelay {
+		if !mycurrentmaster.IsMaxscale && !cluster.Conf.MultiTierSlave && cluster.Conf.ReplicationNoRelay {
 
 			if server.HasGTIDReplication() {
 				crash := cluster.getCrashFromMaster(cluster.master.URL)

@@ -876,8 +876,9 @@ func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_Ge
 		return err
 	}
 
-	for _, tag := range mycluster.Configurator.GetDBModuleTags() {
-		if err := stream.Send(&tag); err != nil {
+	tags := mycluster.Configurator.GetDBModuleTags()
+	for i := range tags {
+		if err := stream.Send(&tags[i]); err != nil {
 			return err
 		}
 	}

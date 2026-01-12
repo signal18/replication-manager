@@ -76,7 +76,7 @@ func (proxy *MaxscaleProxy) AddFlags(flags *pflag.FlagSet, conf *config.Config) 
 
 func (proxy *MaxscaleProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.MxsOn == false {
+	if !cluster.Conf.MxsOn {
 		return nil
 	}
 	var m maxscale.MaxScale
@@ -148,7 +148,7 @@ func (cluster *Cluster) initMaxscale(proxy DatabaseProxy) {
 
 func (proxy *MaxscaleProxy) Init() {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.MxsOn == false {
+	if !cluster.Conf.MxsOn {
 		return
 	}
 
@@ -186,7 +186,7 @@ func (proxy *MaxscaleProxy) Init() {
 		}
 		monitor = m.GetMonitor()
 	}
-	if monitor != "" && cluster.Conf.MxsDisableMonitor == true {
+	if monitor != "" && cluster.Conf.MxsDisableMonitor {
 		cmd := "shutdown monitor \"" + monitor + "\""
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlInfo, "Maxscale shutdown monitor: %s", cmd)
 		err = m.ShutdownMonitor(monitor)
@@ -214,7 +214,7 @@ func (proxy *MaxscaleProxy) Init() {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModMaxscale, config.LvlErr, "MaxScale client could not send command:%s", err)
 	}
 
-	if cluster.Conf.MxsBinlogOn == false {
+	if !cluster.Conf.MxsBinlogOn {
 		for _, s := range cluster.Servers {
 			if s != cluster.GetMaster() {
 

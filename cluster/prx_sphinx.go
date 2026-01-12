@@ -82,7 +82,7 @@ func (proxy *SphinxProxy) Connect() (sphinx.SphinxSQL, error) {
 func (proxy *SphinxProxy) Init() {
 	cluster := proxy.ClusterGroup
 
-	if cluster.Conf.SphinxOn == false {
+	if !cluster.Conf.SphinxOn {
 		return
 	}
 
@@ -96,12 +96,11 @@ func (proxy *SphinxProxy) Init() {
 }
 
 func (proxy *SphinxProxy) BackendsStateChange() {
-	return
 }
 
 func (proxy *SphinxProxy) Refresh() error {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.SphinxOn == false {
+	if !cluster.Conf.SphinxOn {
 		return nil
 	}
 
@@ -135,7 +134,6 @@ func (proxy *SphinxProxy) Refresh() error {
 }
 
 func (proxy *SphinxProxy) SetMaintenance(s *ServerMonitor) {
-	return
 }
 
 func (proxy *SphinxProxy) CertificatesReload() error {

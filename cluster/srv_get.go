@@ -121,7 +121,7 @@ func (server *ServerMonitor) GetReplicationDelay() int64 {
 	if sserr != nil {
 		return 0
 	}
-	if ss.SecondsBehindMaster.Valid == false {
+	if !ss.SecondsBehindMaster.Valid {
 		return 0
 	}
 	return ss.SecondsBehindMaster.Int64

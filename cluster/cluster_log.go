@@ -389,7 +389,7 @@ This function is for printing state
 */
 func (cluster *Cluster) LogPrintAllStates() {
 	SM := cluster.GetStateMachine()
-	if cluster.runOnceAfterTopology == false {
+	if !cluster.runOnceAfterTopology {
 		for _, st := range SM.GetLastResolvedStates() {
 			cluster.LogPrintState(st, true)
 		}

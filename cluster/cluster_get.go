@@ -943,7 +943,7 @@ func (cluster *Cluster) GetTopologyFromConf() string {
 		targetTopology = config.TopoActivePassive
 	} else {
 		relay := cluster.GetRelayServer()
-		if relay != nil && cluster.Conf.ReplicationNoRelay == false {
+		if relay != nil && !cluster.Conf.ReplicationNoRelay {
 			targetTopology = config.TopoMultiTierSlave
 		}
 	}

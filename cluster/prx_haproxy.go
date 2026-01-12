@@ -180,7 +180,7 @@ func (proxy *HaproxyProxy) Init() {
 	//var checksum64 string
 	//	crcHost := crc64.MakeTable(crc64.ECMA)
 	for _, server := range cluster.Servers {
-		if server.IsMaintenance == false {
+		if !server.IsMaintenance {
 			p, _ := strconv.Atoi(server.Port)
 			//		checksum64 := fmt.Sprintf("%d", crc64.Checksum([]byte(server.Host+":"+server.Port), crcHost))
 			s := haproxy.ServerDetail{Name: server.Id, Host: server.Host, Port: p, Weight: 100, MaxConn: 2000, Check: true, CheckInterval: 1000}

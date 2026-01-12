@@ -324,6 +324,9 @@ func (proxy *ProxyJanitor) Refresh() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
 		} else {
 			err = psql.SaveServersToDisk()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not save servers to disk (%s)", err)
+			}
 		}
 	}
 	/*proxy.QueryRules, err = psql.GetQueryRulesRuntime()

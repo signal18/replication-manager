@@ -66,7 +66,7 @@ func (proxy *ConsulProxy) Init() {
 	cluster := proxy.ClusterGroup
 	var opt registry.Options
 	//opt := consul.DefaultConfig()
-	if cluster.Conf.RegistryConsul == false || cluster.IsActive() == false {
+	if !cluster.Conf.RegistryConsul || !cluster.IsActive() {
 		return
 	}
 	opt.Addrs = strings.Split(cluster.Conf.RegistryConsulHosts, ",")
@@ -133,7 +133,7 @@ func (proxy *ConsulProxy) Init() {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected consul deregister error for server %s: %v", srv.URL, err)
 		}
 		if srv.State != stateFailed && srv.State != stateMaintenance && srv.State != stateUnconn {
-			if (srv.IsSlave && srv.HasReplicationIssue() == false) || (srv.IsMaster() && cluster.Conf.PRXServersReadOnMaster) {
+			if (srv.IsSlave && !srv.HasReplicationIssue()) || (srv.IsMaster() && cluster.Conf.PRXServersReadOnMaster) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Register consul read service  %s %s", srv.Id, srv.URL)
 				if err := reg.Register(&readsrv); err != nil {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Unexpected consul register error for server %s: %v", srv.URL, err)

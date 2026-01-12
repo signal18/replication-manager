@@ -62,7 +62,7 @@ func (cluster *Cluster) SetStatus() {
 
 func (cluster *Cluster) SetCertificate(svc opensvc.Collector) {
 	var err error
-	if cluster.Conf.Enterprise == false {
+	if !cluster.Conf.Enterprise {
 		return
 	}
 	if cluster.Conf.ProvSSLCa != "" {

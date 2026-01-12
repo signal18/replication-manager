@@ -49,13 +49,13 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if password != "" {
 		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+			return nil, fmt.Errorf("OnPremise Provisioning via SSH %s %s", err.Error(), key)
 		}
 		return client, nil
 	} else {
 		client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+			return nil, fmt.Errorf("OnPremise Provisioning via SSH %s %s", err.Error(), key)
 		}
 		return client, nil
 	}

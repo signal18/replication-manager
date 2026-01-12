@@ -40,11 +40,9 @@ func (cluster *Cluster) initMyProxy(proxy *MyProxyProxy) {
 }
 
 func (proxy *MyProxyProxy) BackendsStateChange() {
-	return
 }
 
 func (proxy *MyProxyProxy) SetMaintenance(s *ServerMonitor) {
-	return
 }
 
 func (proxy *MyProxyProxy) Refresh() error {

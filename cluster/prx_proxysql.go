@@ -104,7 +104,7 @@ func (proxy *ProxySQLProxy) UseSSL() string {
 
 func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.ProxysqlOn == false {
+	if !cluster.Conf.ProxysqlOn {
 		return
 	}
 	psql, err := proxy.Connect()
@@ -118,7 +118,7 @@ func (proxy *ProxySQLProxy) AddShardProxy(shardproxy *MariadbShardProxy) {
 
 func (proxy *ProxySQLProxy) AddQueryRulesProxysql(rules []proxysql.QueryRule) error {
 	cluster := proxy.ClusterGroup
-	if cluster.Conf.ProxysqlOn == false {
+	if !cluster.Conf.ProxysqlOn {
 		return errors.New("No proxysql enable in config")
 	}
 	psql, err := proxy.Connect()
@@ -296,7 +296,7 @@ func (proxy *ProxySQLProxy) Refresh() error {
 	// if cluster.Conf.LogLevel > 9 {
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxySQL, config.LvlDbg, "ProxySQL port : %s, user %s, pass %s\n", proxy.Port, proxy.User, proxy.Pass)
 	// }
-	if cluster.Conf.ProxysqlOn == false {
+	if !cluster.Conf.ProxysqlOn {
 		return nil
 	}
 

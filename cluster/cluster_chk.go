@@ -101,19 +101,19 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		// }
 		return false
 	}
-	if !hasBinLogs && cluster.Conf.CheckBinFilter == true {
+	if !hasBinLogs && cluster.Conf.CheckBinFilter {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Binlog filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if !cluster.IsEqualReplicationFilters(cluster.master, sl) && cluster.Conf.CheckReplFilter == true {
+	if !cluster.IsEqualReplicationFilters(cluster.master, sl) && cluster.Conf.CheckReplFilter {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Replication filters differ on master and slave %s. Skipping", sl.URL)
 		// }
 		return false
 	}
-	if cluster.Conf.SwitchGtidCheck && !cluster.IsCurrentGTIDSync(sl, cluster.master) && cluster.Conf.RplChecks == true {
+	if cluster.Conf.SwitchGtidCheck && !cluster.IsCurrentGTIDSync(sl, cluster.master) && cluster.Conf.RplChecks {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Equal-GTID option is enabled and GTID position on slave %s differs from master. Skipping", sl.URL)
 		// }
@@ -126,7 +126,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 		return false
 	}
 
-	if !ss.SecondsBehindMaster.Valid && cluster.Conf.RplChecks == true {
+	if !ss.SecondsBehindMaster.Valid && cluster.Conf.RplChecks {
 		// if cluster.Conf.LogLevel > 1 || forcingLog {
 		cluster.LogModulePrintf(forcingLog, config.ConstLogModWriterElection, config.LvlWarn, "Slave %s is stopped. Skipping", sl.URL)
 		// }
@@ -149,7 +149,7 @@ func (cluster *Cluster) isSlaveElectableForSwitchover(sl *ServerMonitor, forcing
 }
 
 func (cluster *Cluster) isAutomaticFailover() bool {
-	if cluster.Conf.Interactive == false {
+	if !cluster.Conf.Interactive {
 		return true
 	}
 	cluster.SetState("ERR00002", state.State{ErrType: "ERR00002", ErrDesc: clusterError["ERR00002"], ErrFrom: "CHECK"})
@@ -162,10 +162,7 @@ func (cluster *Cluster) isMasterFailed() bool {
 	/*if cluster.master == nil {
 		return false
 	}*/
-	if cluster.GetMaster().State == stateFailed {
-		return true
-	}
-	return false
+	return cluster.GetMaster().State == stateFailed
 }
 
 // isMaxMasterFailedCountReach test tentative to connect
@@ -288,10 +285,10 @@ func (cluster *Cluster) isOneSlaveHeartbeatIncreasing() bool {
 }
 
 func (cluster *Cluster) isMaxscaleSupectRunning() bool {
-	if cluster.Conf.MxsOn == false {
+	if !cluster.Conf.MxsOn {
 		return false
 	}
-	if cluster.Conf.CheckFalsePositiveMaxscale == false {
+	if !cluster.Conf.CheckFalsePositiveMaxscale {
 		return false
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover Maxscale Master Satus")
@@ -365,7 +362,7 @@ func (cluster *Cluster) isFoundCandidateMaster() bool {
 
 func (cluster *Cluster) isActiveArbitration() bool {
 
-	if cluster.Conf.Arbitration == false {
+	if !cluster.Conf.Arbitration {
 		return true
 	}
 	//	cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Arbitration")
@@ -410,7 +407,7 @@ func (cluster *Cluster) isActiveArbitration() bool {
 }
 
 func (cluster *Cluster) isExternalOk() bool {
-	if cluster.Conf.CheckFalsePositiveExternal == false {
+	if !cluster.Conf.CheckFalsePositiveExternal {
 		return false
 	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModGeneral,"CHECK: Failover External Request")
@@ -418,11 +415,12 @@ func (cluster *Cluster) isExternalOk() bool {
 		return false
 	}
 	url := "http://" + cluster.master.Host + ":" + strconv.Itoa(cluster.Conf.CheckFalsePositiveExternalPort)
-	req, err := http.Get(url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return false
 	}
-	if req.StatusCode == 200 {
+	defer resp.Body.Close()
+	if resp.StatusCode == 200 {
 		cluster.SetState("ERR00031", state.State{ErrType: config.LvlErr, ErrDesc: clusterError["ERR00031"], ErrFrom: "CHECK"})
 		return true
 	}
@@ -442,7 +440,7 @@ func (cluster *Cluster) isArbitratorAlive() bool {
 
 func (cluster *Cluster) isNotFirstSlave() bool {
 	// let the failover doable if interactive or failover on first slave
-	if cluster.Conf.Interactive == true || cluster.Conf.FailRestartUnsafe == true {
+	if cluster.Conf.Interactive || cluster.Conf.FailRestartUnsafe {
 		return true
 	}
 	// do not failover if master info is unknowned:
@@ -502,30 +500,24 @@ func (cluster *Cluster) isValidConfig() error {
 
 func (cluster *Cluster) IsEqualBinlogFilters(m *ServerMonitor, s *ServerMonitor) (bool, error) {
 
-	if m.MasterStatus.Binlog_Do_DB == s.MasterStatus.Binlog_Do_DB && m.MasterStatus.Binlog_Ignore_DB == s.MasterStatus.Binlog_Ignore_DB {
-		return true, nil
-	}
-	return false, nil
+	return m.MasterStatus.Binlog_Do_DB == s.MasterStatus.Binlog_Do_DB && m.MasterStatus.Binlog_Ignore_DB == s.MasterStatus.Binlog_Ignore_DB, nil
 }
 
 func (cluster *Cluster) IsEqualReplicationFilters(m *ServerMonitor, s *ServerMonitor) bool {
 
-	if m.Variables.Get("REPLICATE_DO_TABLE") == s.Variables.Get("REPLICATE_DO_TABLE") && m.Variables.Get("REPLICATE_IGNORE_TABLE") == s.Variables.Get("REPLICATE_IGNORE_TABLE") && m.Variables.Get("REPLICATE_WILD_DO_TABLE") == s.Variables.Get("REPLICATE_WILD_DO_TABLE") && m.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") == s.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") && m.Variables.Get("REPLICATE_DO_DB") == s.Variables.Get("REPLICATE_DO_DB") && m.Variables.Get("REPLICATE_IGNORE_DB") == s.Variables.Get("REPLICATE_IGNORE_DB") {
-		return true
-	} else {
-		return false
-	}
+	return m.Variables.Get("REPLICATE_DO_TABLE") == s.Variables.Get("REPLICATE_DO_TABLE") &&
+		m.Variables.Get("REPLICATE_IGNORE_TABLE") == s.Variables.Get("REPLICATE_IGNORE_TABLE") &&
+		m.Variables.Get("REPLICATE_WILD_DO_TABLE") == s.Variables.Get("REPLICATE_WILD_DO_TABLE") &&
+		m.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") == s.Variables.Get("REPLICATE_WILD_IGNORE_TABLE") &&
+		m.Variables.Get("REPLICATE_DO_DB") == s.Variables.Get("REPLICATE_DO_DB") &&
+		m.Variables.Get("REPLICATE_IGNORE_DB") == s.Variables.Get("REPLICATE_IGNORE_DB")
 }
 
 func (cluster *Cluster) IsCurrentGTIDSync(m *ServerMonitor, s *ServerMonitor) bool {
 
 	sGtid := s.Variables.Get("GTID_CURRENT_POS")
 	mGtid := m.Variables.Get("GTID_CURRENT_POS")
-	if sGtid == mGtid {
-		return true
-	} else {
-		return false
-	}
+	return sGtid == mGtid
 }
 
 func (cluster *Cluster) CheckCapture(st state.State) {
@@ -548,7 +540,7 @@ func (cluster *Cluster) CheckCapture(st state.State) {
 		}
 
 		//Capture if the server is not logged
-		if st.ServerUrl != "" && cstate.Contains(st.ServerUrl) == false {
+		if st.ServerUrl != "" && !cstate.Contains(st.ServerUrl) {
 			srv := cluster.GetServerFromURL(st.ServerUrl)
 			if srv != nil {
 				//Add entry to captured state
@@ -692,7 +684,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 		predicate = predicate + " AND A." + p + " >= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMinKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1) and A." + p + "<= SUBSTRING_INDEX(SUBSTRING_INDEX(B.chunkMaxKey,'/*;*/'," + strconv.Itoa(i+1) + "),'/*;*/',-1)"
 	}
 
-	for true {
+	for {
 		query := "INSERT INTO replication_manager_schema.table_checksum SELECT chunkId, chunkMinKey , chunkMaxKey," + md5Sum + " as chunkCheckSum FROM " + schema + "." + table + " A inner join (select * from replication_manager_schema.table_chunk limit 1) B on " + predicate
 		_, err := Conn.Exec(query)
 		if err != nil {
@@ -729,7 +721,7 @@ func (cluster *Cluster) CheckTableChecksum(schema string, table string) {
 
 	for _, s := range cluster.slaves {
 		if !s.IsFailed() && !s.IsReplicationBroken() {
-			for true {
+			for {
 				slaveSeq := s.SlaveGtid.GetSeqServerIdNos(uint64(cluster.master.ServerID))
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Wait sync on slave %s sequence %d", s.URL, slaveSeq)
 				if slaveSeq >= masterSeq {

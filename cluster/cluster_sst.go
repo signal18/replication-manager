@@ -226,12 +226,9 @@ func (sst *SST) tcp_con_handle_to_gzip(server *ServerMonitor, task string) {
 
 	chan_to_stdout := sst.stream_copy_to_gzip()
 
-	select {
-
-	case <-chan_to_stdout:
-		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
-		}
+	<-chan_to_stdout
+	if sst.cluster.Conf.LogSST {
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 	}
 }
 
@@ -263,12 +260,9 @@ func (sst *SST) tcp_con_handle_to_file(server *ServerMonitor, task string) {
 
 	chan_to_stdout := sst.stream_copy_to_file()
 
-	select {
-
-	case <-chan_to_stdout:
-		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
-		}
+	<-chan_to_stdout
+	if sst.cluster.Conf.LogSST {
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 	}
 }
 
@@ -300,12 +294,9 @@ func (sst *SST) tcp_con_handle_to_restic() {
 
 	chan_to_stdout := sst.stream_copy_to_restic()
 
-	select {
-
-	case <-chan_to_stdout:
-		if sst.cluster.Conf.LogSST {
-			sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
-		}
+	<-chan_to_stdout
+	if sst.cluster.Conf.LogSST {
+		sst.cluster.LogModulePrintf(sst.cluster.Conf.Verbose, config.ConstLogModSST, config.LvlInfo, "Chan SST out for %d", sst.listener.Addr().(*net.TCPAddr).Port)
 	}
 }
 

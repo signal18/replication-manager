@@ -716,7 +716,6 @@ func (repman *ReplicationManager) loginHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	repman.jsonResponse(resp, w)
-	return
 }
 
 func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, r *http.Request) {
@@ -826,7 +825,6 @@ func (repman *ReplicationManager) handlerMuxAuthCallback(w http.ResponseWriter, 
 	w.WriteHeader(http.StatusForbidden)
 	fmt.Println("Error logging in")
 	fmt.Fprint(w, "Invalid credentials")
-	return
 }
 
 //AUTH TOKEN VALIDATION
@@ -1355,7 +1353,6 @@ func (repman *ReplicationManager) validateSwaggerMiddleware(w http.ResponseWrite
 		return
 	}
 	next(w, r)
-	return
 }
 
 //HELPER FUNCTIONS

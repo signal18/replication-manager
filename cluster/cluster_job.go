@@ -243,26 +243,26 @@ func (cluster *Cluster) JobParseMyDumperMetaOld(dir string) (config.MyDumperMeta
 			newline := bytes.TrimLeft(line, "")
 			buf.Write(bytes.Trim(newline, "\n"))
 		}
-		if strings.Contains(buf.String(), "Started") == true {
+		if strings.Contains(buf.String(), "Started") {
 			splitbuf := strings.Split(buf.String(), ":")
 			m.StartTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
 		}
-		if strings.Contains(buf.String(), "Log") == true {
+		if strings.Contains(buf.String(), "Log") {
 			splitbuf := strings.Split(buf.String(), ":")
 			m.BinLogFileName = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
 		}
-		if strings.Contains(buf.String(), "Pos") == true {
+		if strings.Contains(buf.String(), "Pos") {
 			splitbuf := strings.Split(buf.String(), ":")
 			pos, _ := strconv.Atoi(strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "))
 
 			m.BinLogFilePos = uint64(pos)
 		}
 
-		if strings.Contains(buf.String(), "GTID") == true {
+		if strings.Contains(buf.String(), "GTID") {
 			splitbuf := strings.Split(buf.String(), ":")
 			m.BinLogUuid = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
 		}
-		if strings.Contains(buf.String(), "Finished") == true {
+		if strings.Contains(buf.String(), "Finished") {
 			splitbuf := strings.Split(buf.String(), ":")
 			m.EndTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
 		}
