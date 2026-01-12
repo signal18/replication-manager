@@ -35,7 +35,7 @@ ENV MYDUMPER_VERSION=0.17.1-1
 RUN curl -LsS https://r.mariadb.com/downloads/mariadb_repo_setup | bash -s -- --mariadb-server-version="mariadb-$MARIADB_VERSION" --skip-maxscale
 
 # Move to top for better cache
-RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3
+RUN apt-get update && apt-get -y install ca-certificates restic mariadb-client mariadb-server mariadb-backup mariadb-plugin-spider haproxy wget openssh-client libmariadb-dev fuse sysbench curl vim libatomic1 libglib2.0 libpcre3 adduser
 RUN curl -LO https://github.com/sysown/proxysql/releases/download/v$PROXYSQL_VERSION/proxysql_$PROXYSQL_VERSION-debian12_amd64.deb && dpkg -i proxysql_$PROXYSQL_VERSION-debian12_amd64.deb
 RUN curl -LO https://github.com/mydumper/mydumper/releases/download/v$MYDUMPER_VERSION/mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb && dpkg -i mydumper_$MYDUMPER_VERSION.bookworm_amd64.deb
 
@@ -64,7 +64,12 @@ RUN ln -s build/binaries/replication-manager-pro replication-manager-pro && \
 RUN mkdir -p \
             /etc/replication-manager \
             /etc/replication-manager/cluster.d \
-            /var/lib/replication-manager
+            /var/lib/replication-manager \
+            /var/lib/replication-manager/conf \
+            /var/lib/replication-manager/recover
+RUN addgroup --system repman \
+        && adduser --system --ingroup repman --home /var/lib/replication-manager --no-create-home --shell /usr/sbin/nologin repman \
+        && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
 
 RUN cp etc/local/config.toml.docker /etc/replication-manager/config.toml && \
         cp etc/local/masterslave/haproxy/config.toml /etc/replication-manager/cluster.d/localmasterslavehaproxy.toml && \

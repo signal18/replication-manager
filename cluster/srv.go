@@ -308,13 +308,6 @@ func (cluster *Cluster) newServerMonitor(url string, user string, pass string, c
 
 	if cluster.Conf.ProvNetCNI && cluster.GetOrchestrator() == config.ConstOrchestratorOpenSVC {
 		// OpenSVC and Sharding proxy monitoring
-		if server.IsCompute {
-			if cluster.Conf.ClusterHead != "" {
-				url = server.Name + "." + cluster.Conf.ClusterHead + ".svc." + cluster.Conf.ProvOrchestratorCluster + ":3306"
-			} else {
-				url = server.Name + "." + cluster.Name + ".svc." + cluster.Conf.ProvOrchestratorCluster + ":3306"
-			}
-		}
 		url = server.Name + server.Domain + ":3306"
 	}
 	var sid uint64
@@ -773,9 +766,7 @@ func (server *ServerMonitor) Refresh() error {
 	cluster := server.ClusterGroup
 	var err error
 
-	var cpu_usage_dt int64
-
-	cpu_usage_dt = 1
+	cpu_usage_dt := int64(1)
 
 	if server.Conn == nil {
 		return errors.New("Connection is nil, server unreachable")
@@ -804,7 +795,7 @@ func (server *ServerMonitor) Refresh() error {
 	} else {
 		server.IsMaxscale = false
 	}
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) {
+	if !cluster.Conf.MxsBinlogOn || !server.IsMaxscale {
 		// maxscale don't support show variables
 		server.PrevMonitorTime = server.MonitorTime
 		server.MonitorTime = time.Now().Unix()
@@ -907,7 +898,7 @@ func (server *ServerMonitor) Refresh() error {
 
 			server.HaveSlowQueryLog = server.HasLogSlowQuery()
 			server.HavePFS = server.HasLogPFS()
-			if server.HavePFS && !server.HasAnyReseedingState() && !(cluster.IsInBackup() && server == cluster.GetBackupServer()) {
+			if server.HavePFS && !server.HasAnyReseedingState() && (!cluster.IsInBackup() || server != cluster.GetBackupServer()) {
 				server.HavePFSSlowQueryLog = server.HasLogPFSSlowQuery()
 			}
 			server.HaveMySQLGTID = server.HasMySQLGTID()
@@ -927,7 +918,13 @@ func (server *ServerMonitor) Refresh() error {
 				}
 				if cluster.Conf.MultiMasterGrouprep {
 					server.IsGroupReplicationMaster, err = dbhelper.IsGroupReplicationMaster(server.Conn, server.DBVersion, server.Host)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication master: %s", err)
+					}
 					server.IsGroupReplicationSlave, err = dbhelper.IsGroupReplicationSlave(server.Conn, server.DBVersion, server.Host)
+					if err != nil {
+						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Could not check group replication slave: %s", err)
+					}
 					if server.IsGroupReplicationSlave && server.State == stateUnconn {
 						server.SetState(stateSlave)
 					}
@@ -1039,6 +1036,7 @@ func (server *ServerMonitor) Refresh() error {
 
 		if server.HaveDiskMonitor {
 			server.Disks, logs, err = dbhelper.GetDisks(server.Conn, server.DBVersion)
+			cluster.LogSQL(logs, err, server.URL, "Monitor", config.LvlDbg, "Could not get disks %s %s", server.URL, err)
 		}
 		if cluster.Conf.MonitorScheduler {
 			server.CheckDisks()
@@ -1050,7 +1048,7 @@ func (server *ServerMonitor) Refresh() error {
 
 	// SHOW SLAVE STATUS
 
-	if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
+	if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() || server.DBVersion.IsPostgreSQL() {
 		server.Replications, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		if len(server.Replications) > 0 && err == nil && server.DBVersion.IsPostgreSQL() && server.ReplicationSourceName == "" {
 			//setting first subscription if we don't have one
@@ -1096,12 +1094,12 @@ func (server *ServerMonitor) Refresh() error {
 			if server.DBVersion.IsMySQLOrPerconaGreater57() && server.HasGTIDReplication() {
 				server.SlaveGtid = gtid.NewList(server.SlaveStatus.ExecutedGtidSet.String)
 			}
-			server.AddReplicationTag(!(server.SlaveStatus.ReplicateDoTable.String == "" &&
-				server.SlaveStatus.ReplicateDoDB.String == "" &&
-				server.SlaveStatus.ReplicateIgnoreDB.String == "" &&
-				server.SlaveStatus.ReplicateIgnoreTable.String == "" &&
-				server.SlaveStatus.ReplicateWildIgnoreTable.String == "" &&
-				server.SlaveStatus.ReplicateWildDoTable.String == ""),
+			server.AddReplicationTag(server.SlaveStatus.ReplicateDoTable.String != "" ||
+				server.SlaveStatus.ReplicateDoDB.String != "" ||
+				server.SlaveStatus.ReplicateIgnoreDB.String != "" ||
+				server.SlaveStatus.ReplicateIgnoreTable.String != "" ||
+				server.SlaveStatus.ReplicateWildIgnoreTable.String != "" ||
+				server.SlaveStatus.ReplicateWildDoTable.String != "",
 				"NO_ALL_SCHEMA")
 		}
 	}
@@ -1135,7 +1133,7 @@ func (server *ServerMonitor) Refresh() error {
 	}
 	server.ReplicationHealth = server.CheckReplication()
 
-	if server.IsSlave == true {
+	if server.IsSlave {
 		if cluster.Conf.DelayStatCapture {
 			if server.State == stateFailed || server.State == stateSlaveErr {
 				server.DelayStat.UpdateSlaveErrorStat(cluster.Conf.DelayStatRotate)
@@ -1282,7 +1280,7 @@ func (server *ServerMonitor) ReadAllRelayLogs() error {
 		//myGtid_Slave_Pos := gtid.NewList(ss.GtidSlavePos.String)
 		//https://jira.mariadb.org/browse/MDEV-14182
 
-		for myGtid_Slave_Pos.Equal(myGtid_IO_Pos) == false && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
+		for !myGtid_Slave_Pos.Equal(myGtid_IO_Pos) && ss.UsingGtid.String != "" && ss.GtidSlavePos.String != "" && server.State != stateFailed {
 			server.Refresh()
 			ss, logs, err = dbhelper.GetMSlaveStatus(server.Conn, cluster.Conf.MasterConn, server.DBVersion)
 			cluster.LogSQL(logs, err, server.URL, "ReadAllRelayLogs", config.LvlInfo, "Could not get slave status %s %s", server.URL, err)
@@ -1326,12 +1324,10 @@ func (server *ServerMonitor) LogReplPostion() {
 	cluster := server.ClusterGroup
 	server.Refresh()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
-	return
 }
 
 func (server *ServerMonitor) Close() {
 	server.Conn.Close()
-	return
 }
 
 func (server *ServerMonitor) writeState() error {
@@ -1718,7 +1714,7 @@ func (server *ServerMonitor) CaptureLoop(start int64) {
 		clsave.Status, logs, err = dbhelper.GetStatus(server.Conn, server.DBVersion, server.HasLogMutex(), server.HasLogLatch(), server.HasLogPFSMemory())
 		cluster.LogSQL(logs, err, server.URL, "CaptureLoop", config.LvlDbg, "Failed Status for server %s: %s ", server.URL, err)
 
-		if !(cluster.Conf.MxsBinlogOn && server.IsMaxscale) && server.DBVersion.IsMariaDB() {
+		if (!cluster.Conf.MxsBinlogOn || !server.IsMaxscale) && server.DBVersion.IsMariaDB() {
 			clsave.SlaveSatus, logs, err = dbhelper.GetAllSlavesStatus(server.Conn, server.DBVersion)
 		} else {
 			clsave.SlaveSatus, logs, err = dbhelper.GetChannelSlaveStatus(server.Conn, server.DBVersion)
@@ -1871,7 +1867,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		//MySQL group replication
 		logs, err = dbhelper.ChangeMaster(server.Conn, cluster.GetChangeMasterBaseOptForReplGroup(server), server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Group Replication bootstrapped  for", server.URL)
-	} else if cluster.Conf.ForceSlaveNoGtid == false && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
+	} else if !cluster.Conf.ForceSlaveNoGtid && server.DBVersion.IsMariaDB() && server.DBVersion.Major >= 10 {
 		//mariadb using GTID
 		master.Refresh()
 		_, err = server.Conn.Exec("SET GLOBAL gtid_slave_pos = \"" + master.CurrentGtid.Sprint() + "\"")
@@ -1882,7 +1878,7 @@ func (server *ServerMonitor) ChangeMasterTo(master *ServerMonitor, master_use_gi
 		changemasteropt.Mode = master_use_gitd
 		logs, err = dbhelper.ChangeMaster(server.Conn, changemasteropt, server.DBVersion)
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Replication bootstrapped on %s with %s as master", server.URL, master.URL)
-	} else if hasMyGTID && cluster.Conf.ForceSlaveNoGtid == false {
+	} else if hasMyGTID && !cluster.Conf.ForceSlaveNoGtid {
 		// MySQL GTID
 		changemasteropt := cluster.GetChangeMasterBaseOptForSlave(server, master, server.IsDelayed)
 		changemasteropt.Mode = "MASTER_AUTO_POSITION"

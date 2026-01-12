@@ -292,7 +292,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		for _, f := range files {
 			new_cluster_discover := true
 			if f.IsDir() && f.Name() != "graphite" && f.Name() != "backups" && f.Name() != ".git" && f.Name() != "cloud18.toml" && !strings.Contains(f.Name(), ".json") && !strings.Contains(f.Name(), ".csv") && f.Name() != ".pull" {
-				for name, _ := range repman.Clusters {
+				for name := range repman.Clusters {
 					if name == f.Name() {
 						new_cluster_discover = false
 					}
@@ -870,7 +870,7 @@ func (repman *ReplicationManager) CountAllCommits() (int, error) {
 
 	commitCount := 0
 	// Count commits for this branch/tag
-	err = commitIter.ForEach(func(c *git_obj.Commit) error {
+	_ = commitIter.ForEach(func(c *git_obj.Commit) error {
 		commitCount++
 		return nil
 	})

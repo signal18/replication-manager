@@ -716,7 +716,7 @@ func (cluster *Cluster) OpenSVCProvisionRoute(app *App) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Bad DNS entry %s to gateway %s", route.CName, cluster.Conf.Cloud18GatewayDomainName)
 			}
 		} else {
-			if strings.ToLower(strings.TrimRight(result, ".")) != strings.ToLower(strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName, ".")) {
+			if !strings.EqualFold(strings.TrimRight(result, "."), strings.TrimRight(cluster.Conf.Cloud18GatewayDomainName, ".")) {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping add CNAME %s pointing to % different location from the gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)
 			} else {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Skipping add CNAME %s already resolving to gateway %s", route.CName, result, cluster.Conf.Cloud18GatewayDomainName)

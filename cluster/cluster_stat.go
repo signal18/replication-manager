@@ -152,7 +152,7 @@ func (sds *ServerDelayStat) UpdateSlaveErrorStat(limit int) {
 }
 
 func (cluster *Cluster) PrintTotalDelayStat() {
-	var allStat map[string]DelayStat = make(map[string]DelayStat)
+	var allStat = make(map[string]DelayStat)
 	for _, sl := range cluster.slaves {
 		allStat[sl.URL] = sl.DelayStat.Total
 	}
@@ -166,7 +166,7 @@ func (cluster *Cluster) PrintTotalDelayStat() {
 }
 
 func (cluster *Cluster) PrintDelayStatHistory() {
-	var allStat map[string]DelayHistoryList = make(map[string]DelayHistoryList)
+	var allStat = make(map[string]DelayHistoryList)
 	for _, sl := range cluster.slaves {
 		allStat[sl.URL] = sl.DelayStat.DelayHistory
 	}

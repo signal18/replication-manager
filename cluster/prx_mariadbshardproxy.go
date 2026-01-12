@@ -153,11 +153,9 @@ func (proxy *MariadbShardProxy) Failover() {
 }
 
 func (proxy *MariadbShardProxy) BackendsStateChange() {
-	return
 }
 
 func (proxy *MariadbShardProxy) SetMaintenance(s *ServerMonitor) {
-	return
 }
 
 func (cluster *Cluster) CheckMdbShardServersSchema(proxy *MariadbShardProxy) {
@@ -266,8 +264,6 @@ func (proxy *MariadbShardProxy) RotateProxyPasswords(password string) {
 	if proxy.ShardProxy.IsRunning() {
 		proxy.ShardProxy.SetCredential(proxy.ShardProxy.URL, proxy.ShardProxy.User, password)
 	}
-
-	return
 }
 
 func (cluster *Cluster) refreshMdbsproxy(oldmaster *ServerMonitor, proxy *MariadbShardProxy) error {
@@ -345,6 +341,9 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema 
 	if len(duplicates) == 1 {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Creating federation table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
+		if err != nil {
+			return err
+		}
 		cluster.CheckMdbShardServersSchema(proxy)
 		query := "CREATE OR REPLACE TABLE " + schema + "." + ddl + " ENGINE=spider comment='wrapper \"mysql\", table \"" + table + "\", srv \"RW" + strconv.FormatUint(checksum64, 10) + "\"'"
 		err = cluster.RunQueryWithLog(proxy.ShardProxy, query)
@@ -357,6 +356,9 @@ func (cluster *Cluster) ShardProxyCreateVTable(proxy *MariadbShardProxy, schema 
 	} else if strings.Contains(cluster.Conf.MdbsUniversalTables, schema+"."+table) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Creating universal table in MdbShardProxy %s", schema+"."+table)
 		ddl, err = cluster.GetTableDLLNoFK(schema, table, cluster.master)
+		if err != nil {
+			return err
+		}
 		srv_def := " srv \""
 		link_status_def := " link_status \""
 		for _, cl := range cluster.ShardProxyGetShardClusters() {
@@ -856,6 +858,10 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MariadbShardProxy) er
 
 		var sv map[string]string
 		sv, _, err = dbhelper.GetVariables(c, proxy.ShardProxy.DBVersion)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed to fetch spider variables: %s", err)
+			return err
+		}
 
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlInfo, "Spider release is %s", sv["SPIDER_VERSION"])
 
@@ -927,33 +933,6 @@ func (cluster *Cluster) ShardProxyCreateSystemTable(proxy *MariadbShardProxy) er
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxy, config.LvlErr, "Failed query %s %s", query, err)
 			return err
 		}
-
-		query = `create table if not exists mysql.spider_tables(
-      db_name char(64) not null default '',
-      table_name char(64) not null default '',
-      link_id int not null default 0,
-      priority bigint not null default 0,
-      server char(64) default null,
-      scheme char(64) default null,
-      host char(64) default null,
-      port char(5) default null,
-      socket text,
-      username char(64) default null,
-      password char(64) default null,
-      ssl_ca text,
-      ssl_capath text,
-      ssl_cert text,
-      ssl_cipher char(64) default null,
-      ssl_key text,
-      ssl_verify_server_cert tinyint not null default 0,
-      default_file text,
-      default_group char(64) default null,
-      tgt_db_name char(64) default null,
-      tgt_table_name char(64) default null,
-      link_status tinyint not null default 1,
-		  primary key (db_name, table_name, link_id),
-      key idx1 (priority)
-    ) engine=MyISAM default charset=utf8 collate=utf8_bin`
 
 		query = `	create table if not exists mysql.spider_tables(
 	db_name char(64) not null default '',

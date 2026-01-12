@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -122,7 +121,6 @@ func (cluster *Cluster) OpenSVCProvisionDatabaseService(s *ServerMonitor) {
 	cluster.WaitDatabaseStart(s)
 
 	cluster.errorChan <- nil
-	return
 }
 
 func (cluster *Cluster) OpenSVCStopDatabaseService(server *ServerMonitor) error {
@@ -592,10 +590,6 @@ func (cluster *Cluster) OpenSVCGetFSPodSection() map[string]string {
 		}
 		svcfs["type"] = cluster.Conf.ProvDiskFS
 		if cluster.Conf.ProvDiskPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(cluster.Conf.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			svcfs["dev"] = " /dev/{namespace}-{svcname}_01"
 			svcfs["vg"] = "{namespace}-{svcname}_01"
 			svcfs["size"] = "100%FREE"

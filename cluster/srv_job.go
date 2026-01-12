@@ -731,7 +731,8 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 
 	server.JobsUpdateState(task, "processing", 1, 0)
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Receive reseed logical backup %s request for server: %s", backtype, server.URL)
-	if backtype == config.ConstBackupLogicalTypeMysqldump {
+	switch backtype {
+	case config.ConstBackupLogicalTypeMysqldump:
 		err = server.JobReseedMysqldump(backupfile, cluster.Conf.BackupRestoreMysqlUser && source.LastBackupMeta.Logical != nil && source.LastBackupMeta.Logical.SplitUser)
 		if err != nil {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Error reseed %s on %s: %s", backtype, server.URL, err.Error())
@@ -748,7 +749,7 @@ func (server *ServerMonitor) JobReseedLogicalBackup(backtype string) error {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Task only updated in runtime. Error while writing to jobs table: %s", e2.Error())
 			}
 		}
-	} else if backtype == config.ConstBackupLogicalTypeMydumper {
+	case config.ConstBackupLogicalTypeMydumper:
 		err = server.JobReseedMyLoader(backupfile, cluster.Conf.BackupRestoreMysqlUser)
 		if err == nil && server.IsSlave && !server.PointInTimeMeta.IsInPITR {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Parsing mydumper metadata ")
@@ -946,9 +947,7 @@ func (server *ServerMonitor) JobFlashbackLogicalBackup() error {
 					server.ExecQueryNoBinLog("SET GLOBAL gtid_slave_pos='"+meta.BinLogUuid+"'", time.Second)
 				}
 
-				if err == nil {
-					server.StartSlave()
-				}
+				server.StartSlave()
 			}
 
 			if e2 := server.JobsUpdateState(task, "Flashback completed", 3, 1); e2 != nil {
@@ -1288,7 +1287,7 @@ func (server *ServerMonitor) JobReseedMysqldump(backupfile string, restoreUser b
 	cliParams = append(cliParams, strings.Split(cluster.Conf.BackupMysqlclientOptions, " ")...)
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 
 	sql_log_bin := 0
 	resetmaster := "RESET MASTER;"
@@ -1574,7 +1573,7 @@ func (server *ServerMonitor) JobsCancelTasks(force bool, tasks ...string) error 
 		return true
 	})
 
-	if !(canCancel || force) {
+	if !canCancel && !force {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlWarn, "Failed to cancel tasks. No rows found or tasks already started", server.URL)
 	}
 
@@ -1771,27 +1770,6 @@ func (server *ServerMonitor) AfterJobProcess(conn *sqlx.Conn, task DBTask) error
 	return nil
 }
 
-func (server *ServerMonitor) JobHandler(JobId int64) error {
-	exitloop := 0
-	ticker := time.NewTicker(time.Second * 3600)
-
-	for exitloop < 8 {
-		select {
-		case <-ticker.C:
-
-			exitloop++
-
-			if true == true {
-				exitloop = 8
-			}
-		default:
-		}
-
-	}
-
-	return nil
-}
-
 func (server *ServerMonitor) GetMyBackupDirectory() string {
 	cluster := server.ClusterGroup
 	s3dir := cluster.Conf.WorkingDir + "/" + config.ConstStreamingSubDir + "/" + cluster.Name + "/" + server.Host + "_" + server.Port
@@ -1838,7 +1816,7 @@ func (server *ServerMonitor) JobBackupScript() error {
 	defer cluster.SetInLogicalBackupState(false)
 
 	scriptCmd := exec.Command(cluster.Conf.BackupSaveScript, server.Host, server.GetCluster().GetMaster().Host, server.Port, server.GetCluster().GetMaster().Port, cluster.GetDbUser(), cluster.GetDbPass(), cluster.Name)
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.Replace(scriptCmd.String(), cluster.GetDbPass(), "XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s", strings.ReplaceAll(scriptCmd.String(), cluster.GetDbPass(), "XXXX"))
 	stdoutIn, _ := scriptCmd.StdoutPipe()
 	stderrIn, _ := scriptCmd.StderrPipe()
 	scriptCmd.Start()
@@ -1904,7 +1882,7 @@ func (server *ServerMonitor) JobBackupMysqldump(filename string) error {
 
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), cluster.GetMysqlDumpOptions(server, server.JobGetDumpGtidParameter())...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 	// Get the stdout pipe from the command
 	stdout, err := dumpCmd.StdoutPipe()
 	if err != nil {
@@ -2046,7 +2024,7 @@ func (server *ServerMonitor) JobBackupMysqldumpUser() error {
 	dumpargs = append(dumpargs, "--insert-ignore", "--system=user")
 	dumpCmd := exec.Command(cluster.GetMysqlDumpPath(), dumpargs...)
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 
 	f, err := os.Create(userpath)
 	if err != nil {
@@ -2610,7 +2588,7 @@ func (server *ServerMonitor) BackupRestic(tags ...string) {
 
 func (server *ServerMonitor) copyAndCapture(w io.Writer, r io.Reader) ([]byte, error) {
 	var out []byte
-	buf := make([]byte, 1024, 1024)
+	buf := make([]byte, 1024)
 	for {
 		n, err := r.Read(buf[:])
 		if n > 0 {
@@ -2694,7 +2672,7 @@ func (server *ServerMonitor) JobRunViaSSH() error {
 
 	// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlDbg, "Running database jobs via SSH script: %s with env: %v", scriptpath, server.GetSshEnv())
 
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+	if err = client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Database jobs run via SSH: %s", stderr.String())
 	}
 	out := stdout.String()
@@ -2767,7 +2745,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 	cmdOutPipe, _ := cmdrun.StdoutPipe()
 
 	if err := cmdrun.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.Replace(cmdrun.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqlbinlog command: %s at %s", err, strings.ReplaceAll(cmdrun.String(), "="+cluster.GetDbPass(), "=XXXX"))
 		return err
 	}
 
@@ -2931,7 +2909,7 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	clientCmd := exec.Command(cluster.GetMysqlclientPath(), misc.RemoveEmptyString(cliParams)...)
 	stderrOut, _ := clientCmd.StderrPipe()
 
-	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlInfo, "Command: %s ", strings.ReplaceAll(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 
 	iodumpreader, _ := dumpCmd.StdoutPipe()
 
@@ -2942,11 +2920,11 @@ func (cluster *Cluster) JobRejoinMysqldumpFromSource(source *ServerMonitor, dest
 	clientCmd.Stdin = io.MultiReader(bytes.NewBufferString(cmdstring), iodumpreader)
 
 	if err := dumpCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.Replace(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Failed mysqldump command: %s at %s", err, strings.ReplaceAll(dumpCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 		return err
 	}
 	if err := clientCmd.Start(); err != nil {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.Replace(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX", -1))
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTask, config.LvlErr, "Can't start mysql client:%s at %s", err, strings.ReplaceAll(clientCmd.String(), "="+cluster.GetDbPass(), "=XXXX"))
 		return err
 	}
 	var wg sync.WaitGroup

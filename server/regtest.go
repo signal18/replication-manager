@@ -38,7 +38,7 @@ import (
 
 func (repman *ReplicationManager) RunAllTests(cl *cluster.Cluster, testExp string, path string) []cluster.Test {
 	regtest := new(regtest.RegTest)
-	var allTests = map[string]cluster.Test{}
+	var allTests map[string]cluster.Test
 	pathdefault := cl.GetShareDir() + "/tests/" + cl.GetOrchestrator() + "/config/masterslave/mariadb/without_traffic/10.5/x2/semisync"
 	if path == "" {
 		path = pathdefault

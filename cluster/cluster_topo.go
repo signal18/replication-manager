@@ -20,17 +20,10 @@ import (
 	"github.com/signal18/replication-manager/utils/state"
 )
 
-type topologyError struct {
-	Code int
-	Msg  string
-}
-
 func (cluster *Cluster) newServerList() error {
 	//sva issue to monitor server should not be fatal
 
-	var err error
-
-	err = cluster.isValidConfig()
+	err := cluster.isValidConfig()
 	if err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlErr, "Failed to validate config: %s", err)
 	}
@@ -189,7 +182,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	cluster.CheckSameServerID()
 
 	// Spider shard discover
-	if cluster.Conf.Spider == true {
+	if cluster.Conf.Spider {
 		cluster.SpiderShardsDiscovery()
 	}
 
@@ -300,7 +293,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 	// Check that all slave servers have the same master and conformity.
 	if !cluster.Conf.MultiMaster && !cluster.Conf.Spider {
 		for _, sl := range cluster.slaves {
-			if sl.IsMaxscale == false && !sl.IsFailed() {
+			if !sl.IsMaxscale && !sl.IsFailed() {
 				sl.CheckSlaveSettings()
 				sl.CheckSlaveSameMasterGrants()
 				if sl.HasCycling() {
@@ -314,22 +307,22 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 							cluster.Topology = config.TopoMultiMasterRing
 						}
 
-						if cluster.Conf.MultiMasterRing == true && cluster.GetMaster() == nil {
+						if cluster.Conf.MultiMasterRing && cluster.GetMaster() == nil {
 							cluster.vmaster = sl
 						}
 					}
 
 					//broken replication ring
-				} else if cluster.Conf.MultiMasterRing == true {
+				} else if cluster.Conf.MultiMasterRing {
 					//setting a virtual master if none
 					cluster.SetState("ERR00048", state.State{ErrType: "WARNING", ErrDesc: clusterError["ERR00048"], ErrFrom: "TOPO"})
 					cluster.master = cluster.GetFailedServer()
 				}
 			}
 
-			if cluster.Conf.MultiMaster == false && sl.IsMaxscale == false {
-				if sl.IsSlave == true && sl.HasSlaves(cluster.slaves) == true {
-					if sl.IsRelay == false {
+			if !cluster.Conf.MultiMaster && !sl.IsMaxscale {
+				if sl.IsSlave && sl.HasSlaves(cluster.slaves) {
+					if !sl.IsRelay {
 						sl.IsRelay = true
 						sl.SetState(stateRelay)
 					}
@@ -455,7 +448,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 		// Replication checks
 		if cluster.Topology != config.TopoMultiMaster {
 			for _, sl := range cluster.slaves {
-				if sl.IsRelay == false {
+				if !sl.IsRelay {
 					// if cluster.Conf.LogLevel > 2 {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlDbg, "Checking if server %s is a slave of server %s", sl.Host, cluster.master.Host)
 					// }
@@ -532,7 +525,7 @@ func (cluster *Cluster) TopologyDiscover(wcg *sync.WaitGroup) error {
 // AllServersDown track state of unvailable cluster
 func (cluster *Cluster) AllServersFailed() bool {
 	for _, s := range cluster.Servers {
-		if s.IsFailed() == false {
+		if !s.IsFailed() {
 			return false
 		}
 	}
@@ -557,7 +550,7 @@ func (cluster *Cluster) TopologyClusterDown() bool {
 					cluster.lastmaster = cluster.master
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Backing up last seen master: %s for safe failover restart", cluster.master.URL)
 
-					if cluster.Conf.FailRestartUnsafe == false {
+					if !cluster.Conf.FailRestartUnsafe {
 						// forget the master if safe mode
 						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModTopology, config.LvlInfo, "Forget the leader as no more slave and failover unsafe is disable: %s ", cluster.master.URL)
 						cluster.master = nil
@@ -631,10 +624,7 @@ func (cluster *Cluster) MultipleSlavesUp(candidate *ServerMonitor) bool {
 			ct++
 		}
 	}
-	if ct > 0 {
-		return true
-	}
-	return false
+	return ct > 0
 }
 
 func (cluster *Cluster) CheckSlavesReplicationsPurge() {
@@ -668,10 +658,8 @@ func (cluster *Cluster) CheckSlavesReplicationsPurge() {
 		parts := strings.Split(sl.SlaveStatus.MasterLogFile.String, ".")
 		curInt, err := strconv.Atoi(parts[len(parts)-1])
 		if err != nil {
-			if err != nil {
-				// Create state when master log file is not found or incorrect
-				cluster.SetState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
-			}
+			// Create state when master log file is not found or incorrect
+			cluster.SetState("WARN0109", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0109"], sl.Host+":"+sl.Port, sl.SlaveStatus.MasterLogFile.String, err.Error()), ErrFrom: "PURGE"})
 		}
 		if curInt > 0 && (binInt == 0 || curInt < binInt) {
 			binInt = curInt
@@ -838,7 +826,7 @@ func (cluster *Cluster) SetReadWriteAsMaster() bool {
 		// If sid found, and server is standalone and master not found, set it as master
 		if !s.IsDown() && s.IsReadWrite() {
 			cluster.master = cluster.Servers[k]
-			if cluster.Conf.MultiMaster == true {
+			if cluster.Conf.MultiMaster {
 				cluster.master.SetMaster()
 			} else {
 				cluster.vmaster = cluster.Servers[k]

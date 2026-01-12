@@ -336,7 +336,6 @@ server leader none:3306 ` + DNS + ` weight 100 maxconn 2000 check inter 1000`
 	default:
 		return ""
 	}
-	return ""
 }
 
 func (p *Proxy) GetAgent() string {

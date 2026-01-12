@@ -14,15 +14,15 @@ import (
 	v3 "github.com/signal18/replication-manager/repmanv3"
 )
 
-func (configurator *Configurator) GetDBModuleTags() []v3.Tag {
-	var tags []v3.Tag
+func (configurator *Configurator) GetDBModuleTags() []*v3.Tag {
+	tags := make([]*v3.Tag, 0, len(configurator.DBModule.Filtersets))
 	for _, value := range configurator.DBModule.Filtersets {
-		var t v3.Tag
-		t.Id = uint64(value.ID)
 		s := strings.Split(value.Name, ".")
-		t.Name = s[len(s)-1]
-		t.Category = s[len(s)-2]
-		tags = append(tags, t)
+		tags = append(tags, &v3.Tag{
+			Id:       uint64(value.ID),
+			Name:     s[len(s)-1],
+			Category: s[len(s)-2],
+		})
 	}
 	return tags
 }
@@ -47,14 +47,14 @@ func (configurator *Configurator) GetProxyTags() []string {
 	return configurator.ProxyTags
 }
 
-func (configurator *Configurator) GetProxyModuleTags() []v3.Tag {
-	var tags []v3.Tag
+func (configurator *Configurator) GetProxyModuleTags() []*v3.Tag {
+	tags := make([]*v3.Tag, 0, len(configurator.ProxyModule.Filtersets))
 	for _, value := range configurator.ProxyModule.Filtersets {
-		var t v3.Tag
-		t.Id = uint64(value.ID)
 		s := strings.SplitAfter(value.Name, ".")
-		t.Name = s[len(s)-1]
-		tags = append(tags, t)
+		tags = append(tags, &v3.Tag{
+			Id:   uint64(value.ID),
+			Name: s[len(s)-1],
+		})
 	}
 	return tags
 }
@@ -199,15 +199,13 @@ func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePct() string {
 		//	value := mem/1000
 
 	*/
-	var value int64
-	value = 40
+	value := int64(40)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }
 
 func (configurator *Configurator) GetConfigInnoDBMaxDirtyPagePctLwm() string {
-	var value int64
-	value = 20
+	value := int64(20)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }
@@ -238,8 +236,7 @@ func (configurator *Configurator) GetConfigInnoDBLogFileSize() string {
 
 func (configurator *Configurator) GetConfigInnoDBLogBufferSize() string {
 	//result in MB
-	var value int64
-	value = 16
+	value := int64(16)
 	s10 := strconv.FormatInt(value, 10)
 	return s10
 }

@@ -26,7 +26,6 @@ import (
 	teams "github.com/atc0005/go-teams-notify/v2"
 	"github.com/atc0005/go-teams-notify/v2/messagecard"
 
-	"github.com/nsf/termbox-go"
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/s18log"
 	"github.com/signal18/replication-manager/utils/state"
@@ -65,19 +64,7 @@ func (cluster *Cluster) LogSQL(logs string, err error, url string, from string, 
 	}
 }
 
-func (cluster *Cluster) printTb(x, y int, fg, bg termbox.Attribute, msg string) {
-	for _, c := range msg {
-		termbox.SetCell(x, y, c, fg, bg)
-		x++
-	}
-}
-
-func (cluster *Cluster) printfTb(x, y int, fg, bg termbox.Attribute, format string, args ...interface{}) {
-	s := fmt.Sprintf(format, args...)
-	cluster.printTb(x, y, fg, bg, s)
-}
-
-func (cluster *Cluster) LogPrint(msg ...interface{}) {
+func (cluster *Cluster) LogPrint(msg ...any) {
 	stamp := fmt.Sprint(time.Now().Format("2006/01/02 15:04:05"))
 
 	if cluster.Conf.LogFile != "" {
@@ -402,7 +389,7 @@ This function is for printing state
 */
 func (cluster *Cluster) LogPrintAllStates() {
 	SM := cluster.GetStateMachine()
-	if cluster.runOnceAfterTopology == false {
+	if !cluster.runOnceAfterTopology {
 		for _, st := range SM.GetLastResolvedStates() {
 			cluster.LogPrintState(st, true)
 		}
