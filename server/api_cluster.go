@@ -1057,50 +1057,56 @@ func (repman *ReplicationManager) handlerMuxSlavesCount(w http.ResponseWriter, r
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/clusters/{clusterName}/topology/slaves/index/{slaveIndex} [get]
 func (repman *ReplicationManager) handlerMuxSlaveIndex(w http.ResponseWriter, r *http.Request) {
-	//marshal unmarchal for ofuscation deep copy of struc
+	// Marshal/unmarshal for obfuscation deep copy of struct
 	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/json")
 	vars := mux.Vars(r)
 	mycluster := repman.getClusterByName(vars["clusterName"])
-	if mycluster != nil {
-		uname := repman.GetUserFromRequest(r)
-		if _, ok := mycluster.APIUsers[uname]; !ok {
-			http.Error(w, "No Valid ACL", 500)
-			return
-		}
+	if mycluster == nil {
+		http.Error(w, "Cluster not found", http.StatusNotFound)
+		return
+	}
 
-		index, err := strconv.Atoi(vars["slaveIndex"])
-		if err != nil {
-			http.Error(w, "Invalid index", 500)
-			return
-		}
+	uname := repman.GetUserFromRequest(r)
+	if _, ok := mycluster.APIUsers[uname]; !ok {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
 
-		slave := mycluster.GetSlaveByIndex(index)
-		if slave == nil {
-			http.Error(w, "Slave not found", 500)
-			return
-		}
+	index, err := strconv.Atoi(vars["slaveIndex"])
+	if err != nil {
+		http.Error(w, "Invalid slave index", http.StatusBadRequest)
+		return
+	}
 
-		data, _ := json.Marshal(slave)
-		var srv cluster.ServerMonitor
+	slave := mycluster.GetSlaveByIndex(index)
+	if slave == nil {
+		http.Error(w, "Slave not found", http.StatusNotFound)
+		return
+	}
 
-		err = json.Unmarshal(data, &srv)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
+	data, err := json.Marshal(slave)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error marshaling slave: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
 
-		srv.Pass = "XXXXXXXX"
-		e := json.NewEncoder(w)
-		e.SetIndent("", "\t")
-		err = e.Encode(srv)
-		if err != nil {
-			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-			http.Error(w, "Encoding error", 500)
-			return
-		}
-	} else {
-		http.Error(w, "No cluster", 500)
+	var srv cluster.ServerMonitor
+	err = json.Unmarshal(data, &srv)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error unmarshaling slave: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	srv.Pass = "XXXXXXXX"
+	e := json.NewEncoder(w)
+	e.SetIndent("", "\t")
+	err = e.Encode(&srv)
+	if err != nil {
+		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: %v", err)
+		// Cannot send http.Error here as headers are already sent
 		return
 	}
 }
@@ -1268,7 +1274,6 @@ func (repman *ReplicationManager) handlerMuxRotateKeys(w http.ResponseWriter, r 
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // @Summary Reset SLA for a specific cluster
@@ -1294,7 +1299,6 @@ func (repman *ReplicationManager) handlerMuxResetSla(w http.ResponseWriter, r *h
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxFailover handles the failover process for a given cluster.
@@ -1324,7 +1328,6 @@ func (repman *ReplicationManager) handlerMuxFailover(w http.ResponseWriter, r *h
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterShardingAdd handles the addition of a sharding cluster to an existing cluster.
@@ -1355,7 +1358,6 @@ func (repman *ReplicationManager) handlerMuxClusterShardingAdd(w http.ResponseWr
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxRolling handles the rolling restart process for a given cluster.
@@ -1384,7 +1386,6 @@ func (repman *ReplicationManager) handlerMuxRolling(w http.ResponseWriter, r *ht
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.
@@ -1414,7 +1415,6 @@ func (repman *ReplicationManager) handlerMuxStartTraffic(w http.ResponseWriter, 
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxStopTraffic handles the stop traffic process for a given cluster.
@@ -1444,7 +1444,6 @@ func (repman *ReplicationManager) handlerMuxStopTraffic(w http.ResponseWriter, r
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxStartTraffic handles the start traffic process for a given cluster.
@@ -1474,7 +1473,6 @@ func (repman *ReplicationManager) handlerMuxStartTrafficStaging(w http.ResponseW
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxStopTraffic handles the stop traffic process for a given cluster.
@@ -1504,7 +1502,6 @@ func (repman *ReplicationManager) handlerMuxStopTrafficStaging(w http.ResponseWr
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxBootstrapReplicationCleanup handles the cleanup process for replication bootstrap.
@@ -1538,9 +1535,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplicationCleanup(w http.R
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxBootstrapReplication handles the bootstrap replication process for a given cluster.
@@ -1579,9 +1574,7 @@ func (repman *ReplicationManager) handlerMuxBootstrapReplication(w http.Response
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxServicesProvision handles the provisioning of services for a given cluster.
@@ -1613,9 +1606,7 @@ func (repman *ReplicationManager) handlerMuxServicesProvision(w http.ResponseWri
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxServicesUnprovision handles the unprovisioning of services for a given cluster.
@@ -1642,9 +1633,7 @@ func (repman *ReplicationManager) handlerMuxServicesUnprovision(w http.ResponseW
 		mycluster.Unprovision()
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxServicesCancelRollingRestart handles the cancellation of rolling restart for a given cluster.
@@ -1671,9 +1660,7 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingRestart(w http.
 		mycluster.CancelRollingRestart()
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxServicesCancelRollingReprov handles the cancellation of rolling reprovision for a given cluster.
@@ -1700,9 +1687,7 @@ func (repman *ReplicationManager) handlerMuxServicesCancelRollingReprov(w http.R
 		mycluster.CancelRollingReprov()
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxSetSettingsDiscover handles the discovery of settings for a given cluster.
@@ -1733,9 +1718,7 @@ func (repman *ReplicationManager) handlerMuxSetSettingsDiscover(w http.ResponseW
 		}
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxClusterResetFailoverControl handles the reset of failover control for a given cluster.
@@ -1763,9 +1746,7 @@ func (repman *ReplicationManager) handlerMuxClusterResetFailoverControl(w http.R
 	} else {
 
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxSwitchover handles the switchover process for a given cluster.
@@ -1812,9 +1793,7 @@ func (repman *ReplicationManager) handlerMuxSwitchover(w http.ResponseWriter, r 
 
 	} else {
 		http.Error(w, "No cluster", 500)
-		return
 	}
-	return
 }
 
 // handlerMuxMaster handles the HTTP request to retrieve the master of a specified cluster.
@@ -1878,10 +1857,8 @@ func (repman *ReplicationManager) handlerMuxClusterCertificates(w http.ResponseW
 		e.SetIndent("", "\t")
 		certs, err := mycluster.GetClientCertificates()
 		if err != nil {
-			if err != nil {
-				http.Error(w, err.Error(), 500)
-				return
-			}
+			http.Error(w, err.Error(), 500)
+			return
 		}
 		err = e.Encode(certs)
 		if err != nil {
@@ -4257,7 +4234,6 @@ func (repman *ReplicationManager) handlerMuxAddTag(w http.ResponseWriter, r *htt
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxAddProxyTag handles the addition of a proxy tag to a given cluster.
@@ -4292,7 +4268,6 @@ func (repman *ReplicationManager) handlerMuxAddProxyTag(w http.ResponseWriter, r
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxDropTag handles the removal of a tag from a given cluster.
@@ -4322,7 +4297,6 @@ func (repman *ReplicationManager) handlerMuxDropTag(w http.ResponseWriter, r *ht
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxDropProxyTag handles the removal of a proxy tag from a given cluster.
@@ -4352,7 +4326,6 @@ func (repman *ReplicationManager) handlerMuxDropProxyTag(w http.ResponseWriter, 
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxLog handles the retrieval of logs for a given cluster.
@@ -4562,7 +4535,6 @@ func (repman *ReplicationManager) handlerMuxTests(w http.ResponseWriter, r *http
 		http.Error(w, "Cluster Not Found", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxSettingsReload handles the reloading of cluster settings.
@@ -5106,7 +5078,6 @@ func (repman *ReplicationManager) handlerMuxCluster(w http.ResponseWriter, r *ht
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 
 }
 
@@ -5143,7 +5114,6 @@ func (repman *ReplicationManager) handlerMuxClusterSettings(w http.ResponseWrite
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 
 }
 
@@ -5174,7 +5144,6 @@ func (repman *ReplicationManager) handlerMuxClusterSendVaultToken(w http.Respons
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterMonitorSchemas triggers the monitoring of schemas for a given cluster.
@@ -5642,7 +5611,6 @@ func (repman *ReplicationManager) handlerDiffVariables(w http.ResponseWriter, r 
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerRotatePasswords rotates the passwords for a given cluster.
@@ -5672,7 +5640,6 @@ func (repman *ReplicationManager) handlerRotatePasswords(w http.ResponseWriter, 
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterGraphiteFilterList handles the retrieval of Graphite filter list for a given cluster.
@@ -5779,7 +5746,6 @@ func (repman *ReplicationManager) handlerMuxClusterReloadGraphiteFilterList(w ht
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterResetGraphiteFilterList handles the reset of Graphite filter list for a given cluster.
@@ -5814,7 +5780,6 @@ func (repman *ReplicationManager) handlerMuxClusterResetGraphiteFilterList(w htt
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxClusterGetJobEntries retrieves job entries for a specific cluster.
@@ -6269,7 +6234,6 @@ func (repman *ReplicationManager) handlerMuxRefreshStagingCluster(w http.Respons
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxReloadStagingScript handles the HTTP request to reload the staging script.
@@ -6306,7 +6270,6 @@ func (repman *ReplicationManager) handlerMuxReloadStagingScript(w http.ResponseW
 		http.Error(w, "No cluster", 500)
 		return
 	}
-	return
 }
 
 // handlerMuxSubscribeExternalOps handles the registration of external operations for a given cluster.
