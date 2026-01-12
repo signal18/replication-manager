@@ -2124,7 +2124,7 @@ func (repman *ReplicationManager) handlerMuxSwitchSettings(w http.ResponseWriter
 			if value == "" {
 				err := repman.switchClusterSettings(mycluster, setting)
 				if err != nil {
-					http.Error(w, "Setting Not Found", 501)
+					http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 					return
 				}
 			} else {
@@ -2167,7 +2167,7 @@ func (repman *ReplicationManager) handlerMuxSwitchGlobalSettings(w http.Response
 	setting := vars["settingName"]
 	serverScope := config.IsScope(setting, "server")
 	if !serverScope {
-		http.Error(w, "setting is not in global scope", 501)
+		http.Error(w, "setting is not in global scope", http.StatusNotImplemented)
 		return
 	}
 
@@ -2498,7 +2498,7 @@ func (repman *ReplicationManager) switchClusterSettings(mycluster *cluster.Clust
 	case "analyze-use-persistent":
 		mycluster.SwitchAnalyzeUsePersistent()
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
@@ -2587,7 +2587,7 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 	setting := vars["settingName"]
 	serverScope := config.IsScope(setting, "server")
 	if !serverScope {
-		http.Error(w, "Setting Not Found", 501)
+		http.Error(w, "Setting Not Found", http.StatusNotImplemented)
 		return
 	}
 	value := ""
@@ -2617,7 +2617,7 @@ func (repman *ReplicationManager) handlerMuxSetGlobalSettings(w http.ResponseWri
 			mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, "INFO", "Option '%s' is a shared values between clusters", setting)
 			err := repman.setServerSetting(user, r.URL.Path, setting, value)
 			if err != nil {
-				http.Error(w, err.Error(), 501)
+				http.Error(w, err.Error(), http.StatusNotImplemented)
 				return
 			}
 		} else {
@@ -3041,7 +3041,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertScript(string(val))
 	case "alert-slack-channel":
@@ -3049,7 +3049,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-slack-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertSlackUrl(string(val))
 	case "alert-slack-user":
@@ -3070,7 +3070,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-alert-slack-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetCloud18AlertSlackUrl(string(val))
 	case "cloud18-alert-slack-user":
@@ -3078,7 +3078,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-teams-proxy-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertTeamsProxyUrl(string(val))
 	case "alert-teams-state":
@@ -3086,7 +3086,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "alert-teams-url":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.SetAlertTeamsUrl(string(val))
 	case "monitoring-alert-trigger":
@@ -3096,7 +3096,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.MailSMTPPassword = string(val)
 		var new_secret config.Secret
@@ -3133,7 +3133,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-gitlab-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.Cloud18GitPassword = string(val)
 		var new_secret config.Secret
@@ -3148,14 +3148,14 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-local-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticLocalRepository = string(val)
 		mycluster.ReloadResticEnv()
 	case "backup-restic-repository":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticRepository = string(val)
 		mycluster.ReloadResticEnv()
@@ -3164,7 +3164,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-aws-access-secret":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupResticAwsAccessSecret = string(val)
 		var new_secret config.Secret
@@ -3174,7 +3174,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-restic-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		newval := string(val)
 		if mycluster.Conf.BackupRestic {
@@ -3213,43 +3213,43 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-mydumper-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyDumperOptions = string(val)
 	case "backup-mydumper-regex":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyDumperRegex = string(val)
 	case "backup-myloader-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMyLoaderOptions = string(val)
 	case "backup-mysqldump-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqldumpOptions = string(val)
 	case "backup-mysqlclient-options":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupMysqlclientOptions = string(val)
 	case "backup-logical-post-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupLogicalPostScript = string(val)
 	case "backup-physical-post-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupPhysicalPostScript = string(val)
 	case "cloud18-monthly-infra-cost":
@@ -3275,7 +3275,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-dba-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		err = mycluster.SetDatabaseCredentials("dba", string(val))
 		if err != nil {
@@ -3284,7 +3284,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "cloud18-sponsor-user-credentials":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		err = mycluster.SetDatabaseCredentials("sponsor", string(val))
 		if err != nil {
@@ -3310,25 +3310,25 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "backup-save-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupSaveScript = string(val)
 	case "backup-load-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.BackupLoadScript = string(val)
 	case "topology-staging-refresh-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.TopologyStagingRefreshScript = string(val)
 	case "topology-staging-post-detach-script":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		mycluster.Conf.TopologyStagingPostDetachScript = string(val)
 	case "replication-multisource-head-clusters":
@@ -3845,7 +3845,7 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 	case "analyze-use-persistent":
 		mycluster.Conf.AnalyzeUsePersistent = applyIsActive(mycluster.Conf.AnalyzeUsePersistent, isactive)
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	return nil
@@ -3905,7 +3905,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		}
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		repman.Conf.Cloud18GitPassword = string(val)
 		var new_secret config.Secret
@@ -4011,7 +4011,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 	case "mail-smtp-password":
 		val, err := base64.StdEncoding.DecodeString(value)
 		if err != nil {
-			return errors.New("Unable to decode")
+			return errors.New("unable to decode")
 		}
 		repman.Conf.MailSMTPPassword = string(val)
 		var new_secret config.Secret
@@ -4067,7 +4067,7 @@ func (repman *ReplicationManager) setRepmanSetting(name string, value string) er
 		repman.Conf.MailTimeout = v
 		repman.Mailer.UpdateTimeout(v)
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 
 	repman.ConfigManager.SaveConfig(repman, false)
@@ -4116,7 +4116,7 @@ func (repman *ReplicationManager) switchRepmanSetting(name string) error {
 	case "log-support":
 		repman.Conf.LogSupport = !repman.Conf.LogSupport
 	default:
-		return errors.New("Setting not found")
+		return errors.New("setting not found")
 	}
 	repman.ConfigManager.SaveConfig(repman, false)
 	return nil
