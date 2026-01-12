@@ -1324,12 +1324,10 @@ func (server *ServerMonitor) LogReplPostion() {
 	cluster := server.ClusterGroup
 	server.Refresh()
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server:%s Current GTID:%s Slave GTID:%s Binlog Pos:%s", server.URL, server.CurrentGtid.Sprint(), server.SlaveGtid.Sprint(), server.GTIDBinlogPos.Sprint())
-	return
 }
 
 func (server *ServerMonitor) Close() {
 	server.Conn.Close()
-	return
 }
 
 func (server *ServerMonitor) writeState() error {
