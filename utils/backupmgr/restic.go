@@ -1368,18 +1368,7 @@ func (repo *ResticManager) purgeSingleSnapshot(snapshotID string) error {
 func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 	repo.Printf(logrus.InfoLevel, "Purging snapshots with policy: %+v", opt)
 
-	args := []string{"forget", "--prune"}
-
-	// Get the arguments for the "keep" options
-	keepWithin, useWithin := GetKeepWithinTime(opt.KeepWithin, opt.KeepWithinHourly, opt.KeepWithinDaily, opt.KeepWithinWeekly, opt.KeepWithinMonthly, opt.KeepWithinYearly)
-	if useWithin {
-		args = append(args, keepWithin...)
-	}
-
-	keep, useKeep := GetKeepN(opt.KeepLast, opt.KeepHourly, opt.KeepDaily, opt.KeepWeekly, opt.KeepMonthly, opt.KeepYearly)
-	if useKeep {
-		args = append(args, keep...)
-	}
+	args := buildForgetArgs(opt)
 
 	// Execute the Restic "forget" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
@@ -1389,6 +1378,29 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 	}
 
 	return nil
+}
+
+func buildForgetArgs(opt ResticPurgeOption) []string {
+	args := []string{"forget", "--prune"}
+
+	keepWithin, useWithin := GetKeepWithinTime(
+		opt.KeepWithin,
+		opt.KeepWithinHourly,
+		opt.KeepWithinDaily,
+		opt.KeepWithinWeekly,
+		opt.KeepWithinMonthly,
+		opt.KeepWithinYearly,
+	)
+	if useWithin {
+		args = append(args, keepWithin...)
+	}
+
+	keep, useKeep := GetKeepN(opt.KeepLast, opt.KeepHourly, opt.KeepDaily, opt.KeepWeekly, opt.KeepMonthly, opt.KeepYearly)
+	if useKeep {
+		args = append(args, keep...)
+	}
+
+	return args
 }
 
 // ResticPurgeRepo performs the actual purging of the repository

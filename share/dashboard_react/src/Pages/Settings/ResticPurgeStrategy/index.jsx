@@ -23,19 +23,18 @@ function ResticPurgeStrategy({ clusterName, config }) {
   const { title, body } = action
 
   const ResticKeepLastNTooltip = `
-The number of snapshots to keep.  
-If set to 1, only the last snapshot will be kept.  
-If set to 2, the last 2 snapshots will be kept, and so on.  
-If set to 0, the argument will be omitted and snapshots might be purged unless other rules apply.  
-Restic will keep the last N snapshots for each category like using OR condition.`
+Choose how many recent snapshots to keep for this section.  
+Example: 3 keeps the latest 3 snapshots.  
+Set to 0 to disable this rule.  
+We apply both keep-last and keep-within settings. A snapshot stays if it matches either one.`
 
   const ResticKeepWithinTooltip = `
-The duration format is a sequence of decimal numbers, each with a unit suffix.  
-Valid time units are "h", "m", "d", "y".  
-For example, "2h" means 2 hours, "1d" means 1 day. It also supports multiple units like "1d2h".  
-Empty value will be omitted and snapshots might be purged unless other rules apply.  
-Restic will keep snapshots within the duration for each category like using OR condition.  
-The duration will be calculated from the time of the last snapshot.  
+Keep snapshots from the most recent time window in this section.  
+Examples: "2h", "1d", "1d2h".  
+Units: h (hours), d (days), m (months), y (years).  
+Leave blank to disable this rule.  
+We apply both keep-last and keep-within settings. A snapshot stays if it matches either one.  
+The window is counted back from the newest snapshot.  
 `
 
   const columnTitles = {
@@ -61,6 +60,47 @@ The duration will be calculated from the time of the last snapshot.
       )
     })
     openCommonModal()
+  }
+
+  const toInt = (value) => {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const buildForgetCommand = () => {
+    const args = ['restic', 'forget', '--prune']
+
+    const keepWithinMap = [
+      ['--keep-within', config?.backupKeepWithin],
+      ['--keep-within-hourly', config?.backupKeepWithinHourly],
+      ['--keep-within-daily', config?.backupKeepWithinDaily],
+      ['--keep-within-weekly', config?.backupKeepWithinWeekly],
+      ['--keep-within-monthly', config?.backupKeepWithinMonthly],
+      ['--keep-within-yearly', config?.backupKeepWithinYearly]
+    ]
+
+    keepWithinMap.forEach(([flag, value]) => {
+      if (value) {
+        args.push(flag, value)
+      }
+    })
+
+    const keepMap = [
+      ['--keep-last', toInt(config?.backupKeepLast)],
+      ['--keep-hourly', toInt(config?.backupKeepHourly)],
+      ['--keep-daily', toInt(config?.backupKeepDaily)],
+      ['--keep-weekly', toInt(config?.backupKeepWeekly)],
+      ['--keep-monthly', toInt(config?.backupKeepMonthly)],
+      ['--keep-yearly', toInt(config?.backupKeepYearly)]
+    ]
+
+    keepMap.forEach(([flag, value]) => {
+      if (value > 0) {
+        args.push(flag, String(value))
+      }
+    })
+
+    return args.join(' ')
   }
 
   const handleSave = (key, value) => {
@@ -169,9 +209,14 @@ The duration will be calculated from the time of the last snapshot.
           </React.Fragment>
         ))}
       </Grid>
+      <Box className={styles.commandBox} borderWidth="1px" borderRadius="md">
+        <Text className={styles.commandLabel}>Command preview</Text>
+        <Text className={styles.commandText}>{buildForgetCommand()}</Text>
+        <Text className={styles.commandHint}>Updates as you change the policy.</Text>
+      </Box>
       <Box className={styles.infoBox} p={2} borderWidth="1px" borderRadius="md" bg="gray.50">
         <RMIconButton icon={HiTrash} confirm={true} onClick={() => dispatch(purgeResticByPolicy({clusterName}))} />
-        <Text as="span">Click the trash icon to purge restic backups according to the defined retention policy.</Text>
+        <Text as="span">Use the trash icon to run a purge with the current retention policy.</Text>
       </Box>
             
       {isCommonModalOpen && (

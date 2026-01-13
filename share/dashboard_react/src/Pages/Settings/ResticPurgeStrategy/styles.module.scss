@@ -114,3 +114,32 @@
   align-items: center;
   gap: rem(8);
 }
+
+.commandBox {
+  padding: rem(8) rem(12);
+  background-color: var(--secondary-gray-color);
+  border-color: var(--gray-color);
+  display: flex;
+  flex-direction: column;
+  gap: rem(4);
+}
+
+.commandLabel {
+  font-size: rem(12);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: rem(0.6);
+  color: var(--secondary-color);
+}
+
+.commandText {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: rem(13);
+  color: var(--text-color);
+  word-break: break-word;
+}
+
+.commandHint {
+  font-size: rem(12);
+  color: var(--darkgray-color);
+}
