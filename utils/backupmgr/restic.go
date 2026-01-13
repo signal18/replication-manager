@@ -1022,7 +1022,7 @@ func (repo *ResticManager) CheckRepoFiles() error {
 
 // RunCommand executes a command within the context of a Restic repository, capturing stdout and stderr.
 // It uses the ResticRepo's BinaryPath as the first parameter, along with any additional args.
-// Optionally, you can skip capturing the output to save memory.
+// Optionally, you can skip capturing stdout to save memory (stderr is always captured for error reporting).
 func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, captureOutput bool) ([]byte, []byte, error) {
 	// Set up the command
 	cmd := exec.Command(repo.BinaryPath, args...)
@@ -1053,14 +1053,14 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 	wg.Add(2)
 
 	// Function to read output
-	streamOutput := func(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer) {
+	streamOutput := func(pipe io.ReadCloser, prefix string, buffer *bytes.Buffer, capture bool) {
 		defer wg.Done() // Mark goroutine as done
 
 		scanner := bufio.NewScanner(pipe)
 		for scanner.Scan() {
 			line := scanner.Text()
 			repo.Print(logrus.DebugLevel, prefix+line)
-			if captureOutput {
+			if capture {
 				buffer.WriteString(line + "\n")
 			}
 		}
@@ -1070,8 +1070,8 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 	}
 
 	// Start streaming stdout and stderr in separate goroutines
-	go streamOutput(stdoutPipe, "[OUT] ", &stdoutBuf)
-	go streamOutput(stderrPipe, "[ERR] ", &stderrBuf)
+	go streamOutput(stdoutPipe, "[OUT] ", &stdoutBuf, captureOutput)
+	go streamOutput(stderrPipe, "[ERR] ", &stderrBuf, true)
 
 	// Wait for both output goroutines to finish reading
 	wg.Wait()
@@ -1087,7 +1087,8 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 	if captureOutput {
 		return stdoutBuf.Bytes(), stderrBuf.Bytes(), nil
 	}
-	return nil, nil, nil
+
+	return nil, stderrBuf.Bytes(), nil
 }
 
 func (repo *ResticManager) InitRepo(force bool) error {
