@@ -29,6 +29,7 @@ const (
 	PurgeTask
 	UnlockTask
 	ChangePassTask
+	RestoreTask
 )
 
 type MoveType string
@@ -39,20 +40,22 @@ const (
 	MoveLast  MoveType = "last"
 )
 
-func GetTaskName(TaskType TaskType) string {
-	switch TaskType {
-	case 0:
+func GetTaskName(taskType TaskType) string {
+	switch taskType {
+	case InitTask:
 		return "init"
-	case 1:
+	case FetchTask:
 		return "fetch"
-	case 2:
+	case BackupTask:
 		return "backup"
-	case 3:
+	case PurgeTask:
 		return "purge"
-	case 4:
+	case UnlockTask:
 		return "unlock"
-	case 5:
+	case ChangePassTask:
 		return "changepass"
+	case RestoreTask:
+		return "restore"
 	default:
 		return "Unknown"
 	}
@@ -66,6 +69,7 @@ type ResticTask struct {
 	Tags        []string          `json:"tags"`
 	Opt         ResticPurgeOption `json:"opt"`
 	NewPassFile string            `json:"-"`
+	resultCh    chan ResticResult
 }
 
 type ResticLsEntry struct {
@@ -378,19 +382,22 @@ func (repo *ResticManager) worker() {
 		switch task.Type {
 		case FetchTask:
 			err := repo.FetchRepo()
-			result = ResticResult{TaskID: task.ID, Error: err}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case PurgeTask:
 			err := repo.PurgeRepo(task.Opt)
 			_ = repo.FetchRepo()
-			result = ResticResult{TaskID: task.ID, Error: err}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case BackupTask:
 			err := repo.Backup(task.DirPath, task.Tags)
 			_ = repo.FetchRepo()
-			result = ResticResult{TaskID: task.ID, Error: err}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case UnlockTask:
 			err := repo.UnlockRepo()
 			_ = repo.FetchRepo()
-			result = ResticResult{TaskID: task.ID, Error: err}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+		case RestoreTask:
+			err := repo.restoreSnapshot(task.Opt.SnapshotID, task.DirPath, task.Tags)
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		default:
 			repo.Printf(logrus.WarnLevel, "Unknown task type: %d", task.Type)
 			continue
@@ -398,6 +405,14 @@ func (repo *ResticManager) worker() {
 
 		if result.Error != nil {
 			repo.SetError(task.Type, result.Error)
+		}
+
+		if task.resultCh != nil {
+			select {
+			case task.resultCh <- result:
+			default:
+			}
+			close(task.resultCh)
 		}
 
 		repo.Printf(loglevel, "Worker finished task ID: %d", task.ID)
@@ -421,6 +436,23 @@ func (repo *ResticManager) appendTask(task *ResticTask) {
 	}
 
 	// Notify the worker that a new task is available if not paused
+	repo.cond.Signal()
+}
+
+func (repo *ResticManager) prependTask(task *ResticTask) {
+	if task == nil {
+		return
+	}
+
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.TaskQueue = append([]*ResticTask{task}, repo.TaskQueue...)
+
+	if task.ID != 0 {
+		repo.Printf(logrus.InfoLevel, "Added %s task to the queue, ID: %d", GetTaskName(task.Type), task.ID)
+	}
+
 	repo.cond.Signal()
 }
 
@@ -455,13 +487,35 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 		return fmt.Errorf("target dir is empty")
 	}
 
+	repo.Mutex.Lock()
+	paused := repo.isPaused
+	shutdown := repo.Shutdown
+	repo.Mutex.Unlock()
+
+	if paused || shutdown {
+		return repo.restoreSnapshot(snapshotID, targetDir, paths)
+	}
+
+	resultCh := repo.AddRestoreTask(snapshotID, targetDir, paths)
+	result := <-resultCh
+	return result.Error
+}
+
+func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths []string) error {
+	if snapshotID == "" {
+		return fmt.Errorf("snapshot ID is empty")
+	}
+	if targetDir == "" {
+		return fmt.Errorf("target dir is empty")
+	}
+
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target dir: %w", err)
 	}
 
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.RestoreSnapshot(snapshotID, targetDir, paths)
+		return repo.restoreSnapshot(snapshotID, targetDir, paths)
 	}
 
 	repo.SetCanFetch(false)
@@ -831,6 +885,20 @@ func (repo *ResticManager) AddUnlockTask() {
 		Type: UnlockTask,
 	}
 	repo.appendTask(&task)
+}
+
+func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string) <-chan ResticResult {
+	task := &ResticTask{
+		ID:       repo.GenerateTaskID(),
+		Type:     RestoreTask,
+		DirPath:  targetDir,
+		Tags:     append([]string(nil), paths...),
+		Opt:      ResticPurgeOption{SnapshotID: snapshotID},
+		resultCh: make(chan ResticResult, 1),
+	}
+
+	repo.prependTask(task)
+	return task.resultCh
 }
 
 func (repo *ResticManager) MoveTask(mvType string, taskID, afterTaskID int) error {

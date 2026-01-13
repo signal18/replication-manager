@@ -24,6 +24,8 @@ const getResticTaskType = (rtt) => {
       return 'unlock'
     case 5:
       return 'changepass'
+    case 6:
+      return 'restore'
     default:
       return 'Unknown'
   }
@@ -50,6 +52,23 @@ const renderResticTaskDetail = (row) => {
           <HStack>
             <Box>Options:</Box>
             <Box>{JSON.stringify(row.opt)}</Box>
+          </HStack>
+        </VStack>
+      )
+    case 6:
+      return (
+        <VStack>
+          <HStack>
+            <Box>Snapshot:</Box>
+            <Box>{row.opt?.snapshot_id}</Box>
+          </HStack>
+          <HStack>
+            <Box>Target:</Box>
+            <Box>{row.dir_path}</Box>
+          </HStack>
+          <HStack>
+            <Box>Include:</Box>
+            <Box>{row.tags?.join(', ') || '-'}</Box>
           </HStack>
         </VStack>
       )
