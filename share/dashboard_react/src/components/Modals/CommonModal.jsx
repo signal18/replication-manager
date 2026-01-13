@@ -9,14 +9,26 @@ import {
 import React from 'react'
 import parentStyles from './styles.module.scss'
 
-function CommonModal({ body, title, size = 'md', isOpen, closeModal }) {
+function CommonModal({
+    body,
+    title,
+    size = 'md',
+    isOpen,
+    closeModal,
+    contentClassName = '',
+    headerClassName = '',
+    bodyClassName = '',
+    className = ''
+}) {
+    const bodyClasses = `${bodyClassName || className}`
+
     return (
         <Modal size={size} isOpen={isOpen} onClose={closeModal}>
             <ModalOverlay />
-            <ModalContent className={parentStyles.modalLightContent}>
-                <ModalHeader>{title}</ModalHeader>
+            <ModalContent className={`${parentStyles.modalLightContent} ${contentClassName}`}>
+                <ModalHeader className={headerClassName}>{title}</ModalHeader>
                 <ModalCloseButton />
-                <ModalBody>
+                <ModalBody className={bodyClasses}>
                     {body}
                 </ModalBody>
             </ModalContent>
