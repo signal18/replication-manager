@@ -1,4 +1,4 @@
-import { Box, Grid, GridItem, Text, VStack } from '@chakra-ui/react'
+import { Box, Grid, GridItem, HStack, Text, VStack } from '@chakra-ui/react'
 import React, { useState } from 'react'
 import styles from './styles.module.scss'
 import NumberInput from '../../../components/NumberInput'
@@ -42,6 +42,15 @@ The window is counted back from when the purge runs.
     keepWithin: 'Keep Within Duration'
   }
 
+  const ResticPurgeGroupByTooltip = `
+Override restic group-by.  
+Examples: "host", "paths", "host,paths", "tags".  
+Allowed values: host, paths, tags.  
+host: separate retention per client hostname.  
+paths: separate retention per source path.  
+tags: separate retention per tag set (tag types follow backup-restic-tag-categories).  
+Leave blank to use restic defaults.`
+
   const openCommonModal = () => {
     setIsCommonModalOpen(true)
   }
@@ -69,6 +78,10 @@ The window is counted back from when the purge runs.
 
   const buildForgetCommand = () => {
     const args = ['restic', 'forget', '--prune']
+    const groupBy = config?.backupResticPurgeGroupBy?.trim()
+    if (groupBy) {
+      args.push('--group-by', groupBy)
+    }
 
     const keepWithinMap = [
       ['--keep-within', config?.backupKeepWithin],
@@ -170,6 +183,32 @@ The window is counted back from when the purge runs.
 
   return (
     <VStack spacing={2} align="stretch" w={"100%"}>
+      <Grid
+        className={styles.filterGrid}
+        templateColumns={{ base: '1fr', md: 'minmax(160px, 0.7fr) minmax(240px, 1fr)' }}
+        columnGap={3}
+        rowGap={2}
+        w="full"
+      >
+        <GridItem className={styles.rowLabel}>
+          <HStack spacing={2}>
+            <Text>Group By</Text>
+            <RMIconButton icon={HiQuestionMarkCircle} onClick={() => openInfoModal('Restic Group By', ResticPurgeGroupByTooltip)} />
+          </HStack>
+        </GridItem>
+        <GridItem className={styles.valueCell}>
+          <TextForm
+            className={styles.marginCenter}
+            size="sm"
+            value={config?.backupResticPurgeGroupBy}
+            confirmTitle={"Confirm update 'backup-restic-purge-group-by':"}
+            onSave={(v) => { handleSave('backup-restic-purge-group-by', v) }}
+          />
+          <Text className={styles.helperText}>
+            Allowed values: host, paths, tags. Comma-separated for multiple.
+          </Text>
+        </GridItem>
+      </Grid>
       <Grid
         className={`${styles.container}`}
         templateColumns={{ base: '1fr', md: 'minmax(140px, 0.7fr) minmax(220px, 1fr) minmax(240px, 1fr)' }}

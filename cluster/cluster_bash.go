@@ -219,7 +219,7 @@ func (cluster *Cluster) BinlogCopyScript(server *ServerMonitor, binlog string, i
 				server.WriteBackupBinlogMetadata()
 				// Backup to restic when no error (defer to prevent unfinished physical copy)
 				backtype := "binlog"
-				defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+				defer server.BackupRestic(server.BuildResticTags(backtype, "")...)
 			}
 		}
 

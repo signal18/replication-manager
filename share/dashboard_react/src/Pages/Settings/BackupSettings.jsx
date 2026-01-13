@@ -800,6 +800,25 @@ The script will be executed with the following parameters:
           )
         },
         {
+          key: 'Restic backup tag categories',
+          value: (
+            <TextForm
+              value={selectedCluster?.config?.backupResticTagCategories}
+              confirmTitle={`Confirm backup-restic-tag-categories to `}
+              className={styles.textbox}
+              onSave={(value) =>
+                dispatch(
+                  setSetting({
+                    clusterName: selectedCluster?.name,
+                    setting: 'backup-restic-tag-categories',
+                    value: value
+                  })
+                )
+              }
+            />
+          )
+        },
+        {
           key: 'Restic Purge Strategy',
           value: (
             <ResticPurgeStrategy clusterName={selectedCluster?.name} config={selectedCluster?.config} />

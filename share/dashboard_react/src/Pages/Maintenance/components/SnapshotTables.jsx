@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import PropTypes from 'prop-types'
 import { createColumnHelper } from '@tanstack/react-table'
-import { Box, HStack, VStack } from '@chakra-ui/react'
+import { Box, HStack, Text, VStack } from '@chakra-ui/react'
 import { DataTable } from '../../../components/DataTable'
 import TableType3 from '../../../components/TableType3'
 import RMIconButton from '../../../components/RMIconButton'
@@ -31,7 +31,113 @@ const getResticTaskType = (rtt) => {
   }
 }
 
-const renderResticTaskDetail = (row) => {
+const resticTagCategoryOrder = ['tenant', 'cluster', 'engine', 'version', 'backup-type', 'backup-tool']
+const resticTagLabelMap = {
+  tenant: 'Tenant',
+  cluster: 'Cluster',
+  engine: 'Engine',
+  version: 'Version',
+  'backup-type': 'Backup Type',
+  'backup-tool': 'Backup Tool'
+}
+
+const normalizeResticTagCategory = (value) => {
+  if (!value || typeof value !== 'string') {
+    return ''
+  }
+  return value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+}
+
+const parseResticTagValue = (tag) => {
+  if (!tag || typeof tag !== 'string') {
+    return { category: '', value: '' }
+  }
+  const trimmed = tag.trim()
+  if (!trimmed.includes(':')) {
+    return { category: '', value: trimmed }
+  }
+  const separatorIndex = trimmed.indexOf(':')
+  const rawCategory = trimmed.slice(0, separatorIndex)
+  const valuePart = trimmed.slice(separatorIndex + 1)
+  const category = normalizeResticTagCategory(rawCategory)
+  const value = valuePart.trim()
+  if (!category || !value) {
+    return { category: '', value: trimmed }
+  }
+  return { category, value }
+}
+
+const parseResticTagCategories = (value) => {
+  if (!value || typeof value !== 'string') {
+    return []
+  }
+  const seen = new Set()
+  return value
+    .split(',')
+    .map(normalizeResticTagCategory)
+    .filter(Boolean)
+    .filter((category) => {
+      if (seen.has(category)) {
+        return false
+      }
+      seen.add(category)
+      return true
+    })
+}
+
+const normalizeResticTags = (tags) => {
+  if (Array.isArray(tags)) {
+    return tags
+  }
+  if (typeof tags === 'string') {
+    return tags.split(',').map((tag) => tag.trim()).filter(Boolean)
+  }
+  return []
+}
+
+const buildResticTagDetails = (tags, tagCategories) => {
+  const normalized = normalizeResticTags(tags)
+    .map((tag) => (typeof tag === 'string' ? tag.trim() : ''))
+    .filter(Boolean)
+
+  const categories = parseResticTagCategories(tagCategories)
+  const labelOrder = categories.length > 0 ? categories : resticTagCategoryOrder
+
+  let fallbackIndex = 0
+  return normalized.map((tag) => {
+    const parsed = parseResticTagValue(tag)
+    if (parsed.category && resticTagLabelMap[parsed.category]) {
+      return { label: resticTagLabelMap[parsed.category], value: parsed.value }
+    }
+    const category = labelOrder[fallbackIndex]
+    const label = resticTagLabelMap[category] || category || `Tag ${fallbackIndex + 1}`
+    const value = parsed.category && !resticTagLabelMap[parsed.category] ? tag : (parsed.value || tag)
+    fallbackIndex += 1
+    return { label, value }
+  })
+}
+
+const renderResticTagDetails = (tags, tagCategories) => {
+  const details = buildResticTagDetails(tags, tagCategories)
+  if (details.length === 0) {
+    return '-'
+  }
+
+  return (
+    <VStack spacing={1} align="start">
+      {details.map((detail, index) => (
+        <HStack key={`${detail.label}-${index}`} spacing={1} align="baseline">
+          <Text fontSize="sm" fontWeight="semibold">
+            {detail.label}:
+          </Text>
+          <Text fontSize="sm">{detail.value}</Text>
+        </HStack>
+      ))}
+    </VStack>
+  )
+}
+
+const renderResticTaskDetail = (row, tagCategories) => {
   switch (row.task_type) {
     case 2:
       return (
@@ -42,7 +148,7 @@ const renderResticTaskDetail = (row) => {
           </HStack>
           <HStack>
             <Box>Tags:</Box>
-            <Box>{row.tags?.join(', ')}</Box>
+            <Box>{renderResticTagDetails(row.tags, tagCategories)}</Box>
           </HStack>
         </VStack>
       )
@@ -81,6 +187,7 @@ function SnapshotTables({
   snapshotData,
   snapshotStats,
   queueData,
+  tagCategories,
   isQueuePaused,
   onConfirmAction = () => { }
 }) {
@@ -99,8 +206,11 @@ function SnapshotTables({
       columnHelper.accessor((row) => row.hostname, {
         header: 'Hostname'
       }),
-      columnHelper.accessor((row) => row.tags?.join(','), {
-        header: 'Tags'
+      columnHelper.accessor((row) => row.tags, {
+        header: 'Tags',
+        id: 'tags',
+        cell: (info) => normalizeResticTags(info.getValue()).join(', '),
+        textAlign: 'left'
       }),
       columnHelper.accessor(
         (row) => {
@@ -148,7 +258,7 @@ function SnapshotTables({
         }
       )
     ],
-    [onConfirmAction]
+    [onConfirmAction, tagCategories]
   )
 
   const queueColumns = useMemo(
@@ -160,7 +270,7 @@ function SnapshotTables({
       columnHelper.accessor((row) => getResticTaskType(row.task_type), {
         header: 'Task Type'
       }),
-      columnHelper.accessor((row) => renderResticTaskDetail(row), {
+      columnHelper.accessor((row) => renderResticTaskDetail(row, tagCategories), {
         header: 'Details',
         cell: (info) => info.getValue(),
         id: 'details',
@@ -185,7 +295,7 @@ function SnapshotTables({
         }
       )
     ],
-    [onConfirmAction]
+    [onConfirmAction, tagCategories]
   )
 
   const snapshotDataStats = [
@@ -260,6 +370,7 @@ SnapshotTables.propTypes = {
       opt: PropTypes.object
     })
   ),
+  tagCategories: PropTypes.string,
   isQueuePaused: PropTypes.bool,
   onConfirmAction: PropTypes.func
 }

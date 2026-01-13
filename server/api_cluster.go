@@ -2839,6 +2839,16 @@ func (repman *ReplicationManager) setClusterSetting(mycluster *cluster.Cluster, 
 		if err != nil {
 			return err
 		}
+	case "backup-restic-purge-group-by":
+		err = mycluster.SetBackupResticPurgeGroupBy(value)
+		if err != nil {
+			return err
+		}
+	case "backup-restic-tag-categories":
+		err = mycluster.SetBackupResticTagCategories(value)
+		if err != nil {
+			return err
+		}
 	case "backup-disk-treshold-warn":
 		val, _ := strconv.Atoi(value)
 		mycluster.Conf.BackupDiskTresholdWarn = val

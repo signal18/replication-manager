@@ -822,6 +822,8 @@ func (repman *ReplicationManager) AddFlags(flags *pflag.FlagSet, conf *config.Co
 	flags.StringVar(&conf.BackupKeepWithinWeekly, "backup-keep-within-weekly", "", "Only for compatible version. Keep this duration of weekly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinMonthly, "backup-keep-within-monthly", "", "Only for compatible version. Keep this duration of monthly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
 	flags.StringVar(&conf.BackupKeepWithinYearly, "backup-keep-within-yearly", "", "Only for compatible version. Keep this duration of yearly backup, example '2y5m7d3h'. Empty value will be omitted from the policy")
+	flags.StringVar(&conf.BackupResticPurgeGroupBy, "backup-restic-purge-group-by", "", "Override restic forget group-by: host (per hostname), paths (per source path), tags (per backup-restic-tag-categories)")
+	flags.StringVar(&conf.BackupResticTagCategories, "backup-restic-tag-categories", "tenant,cluster,engine,version,backup-type,backup-tool", "Comma-separated restic backup tag categories to include")
 
 	flags.StringVar(&conf.BackupSaveScript, "backup-save-script", "", "Customized backup save script")
 	flags.StringVar(&conf.BackupLoadScript, "backup-load-script", "", "Customized backup load script")

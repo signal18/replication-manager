@@ -2483,7 +2483,7 @@ func (server *ServerMonitor) JobBackupLogical() error {
 	}
 
 	backtype := "logical"
-	server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupLogicalType)
+	server.BackupRestic(server.BuildResticTags(backtype, cluster.Conf.BackupLogicalType)...)
 	return nil
 }
 
@@ -2800,7 +2800,7 @@ func (server *ServerMonitor) JobBackupBinlog(binlogfile string, isPurge bool) er
 		server.WriteBackupBinlogMetadata()
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
-		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+		defer server.BackupRestic(server.BuildResticTags(backtype, "")...)
 	}
 
 	return nil
@@ -3056,7 +3056,7 @@ func (server *ServerMonitor) JobBackupBinlogSSH(binlogfile string, isPurge bool)
 
 		// Backup to restic when no error (defer to prevent unfinished physical copy)
 		backtype := "binlog"
-		defer server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype)
+		defer server.BackupRestic(server.BuildResticTags(backtype, "")...)
 	}
 	return nil
 }
@@ -3485,7 +3485,7 @@ func (server *ServerMonitor) JobFinishReceiveFile(task string) error {
 	case config.ConstBackupPhysicalTypeXtrabackup, config.ConstBackupPhysicalTypeMariaBackup:
 		backtype := "physical"
 		server.WriteBackupMetadata(backupmgr.BackupMethodPhysical)
-		server.BackupRestic(cluster.Conf.Cloud18GitUser, cluster.Name, server.DBVersion.Flavor, server.DBVersion.ToString(), backtype, cluster.Conf.BackupPhysicalType)
+		server.BackupRestic(server.BuildResticTags(backtype, cluster.Conf.BackupPhysicalType)...)
 		cluster.SetInPhysicalBackupState(false)
 	case "printdefault-current":
 		filename := filepath.Join(server.Datadir, "current.cnf")

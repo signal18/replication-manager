@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/shirou/gopsutil/disk"
 	"github.com/signal18/replication-manager/config"
@@ -156,6 +157,12 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			cluster.StartResticManager()
 		}
 
+		groupBy, err := normalizeResticPurgeGroupBy(cluster.Conf.BackupResticPurgeGroupBy)
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Invalid restic purge group-by, using default: %s", err.Error())
+			groupBy = ""
+		}
+
 		cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 			KeepLast:          cluster.Conf.BackupKeepLast,
 			KeepHourly:        cluster.Conf.BackupKeepHourly,
@@ -169,6 +176,7 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			KeepWithinWeekly:  cluster.Conf.BackupKeepWithinWeekly,
 			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
+			GroupBy:           groupBy,
 		}, now)
 	}
 	return nil
@@ -578,4 +586,153 @@ func (cluster *Cluster) CheckPhysicalBackupToolVersion(server *ServerMonitor) er
 		}
 	}
 	return nil
+}
+
+var resticTagCategoryOrder = []string{
+	"tenant",
+	"cluster",
+	"engine",
+	"version",
+	"backup-type",
+	"backup-tool",
+}
+
+var resticTagCategorySet = map[string]struct{}{
+	"tenant":      {},
+	"cluster":     {},
+	"engine":      {},
+	"version":     {},
+	"backup-type": {},
+	"backup-tool": {},
+}
+
+var resticPurgeGroupByAllowed = map[string]struct{}{
+	"host":  {},
+	"paths": {},
+	"tags":  {},
+}
+
+func normalizeResticTagCategory(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	return normalized
+}
+
+func parseResticTagCategories(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+
+	parts := strings.Split(value, ",")
+	categories := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		category := normalizeResticTagCategory(part)
+		if category == "" {
+			continue
+		}
+		if _, ok := resticTagCategorySet[category]; !ok {
+			continue
+		}
+		if _, ok := seen[category]; ok {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+	return categories
+}
+
+func normalizeResticTagCategories(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", nil
+	}
+
+	parts := strings.Split(value, ",")
+	categories := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	invalid := make([]string, 0)
+	for _, part := range parts {
+		category := normalizeResticTagCategory(part)
+		if category == "" {
+			continue
+		}
+		if _, ok := resticTagCategorySet[category]; !ok {
+			invalid = append(invalid, strings.TrimSpace(part))
+			continue
+		}
+		if _, ok := seen[category]; ok {
+			continue
+		}
+		seen[category] = struct{}{}
+		categories = append(categories, category)
+	}
+	if len(invalid) > 0 {
+		return "", fmt.Errorf("invalid restic tag categories: %s", strings.Join(invalid, ", "))
+	}
+	return strings.Join(categories, ","), nil
+}
+
+func normalizeResticPurgeGroupBy(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	seen := make(map[string]struct{})
+	groupBy := make([]string, 0, len(parts))
+	invalid := make([]string, 0)
+	for _, part := range parts {
+		normalized := strings.ToLower(strings.TrimSpace(part))
+		normalized = strings.ReplaceAll(normalized, "_", "")
+		switch normalized {
+		case "path":
+			normalized = "paths"
+		}
+		if normalized == "" {
+			continue
+		}
+		if _, ok := resticPurgeGroupByAllowed[normalized]; !ok {
+			invalid = append(invalid, strings.TrimSpace(part))
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		groupBy = append(groupBy, normalized)
+	}
+
+	if len(invalid) > 0 {
+		return "", fmt.Errorf("invalid group-by values: %s", strings.Join(invalid, ", "))
+	}
+	return strings.Join(groupBy, ","), nil
+}
+
+func (server *ServerMonitor) BuildResticTags(backupType, backupTool string) []string {
+	cluster := server.ClusterGroup
+	categories := parseResticTagCategories(cluster.Conf.BackupResticTagCategories)
+	if len(categories) == 0 {
+		categories = resticTagCategoryOrder
+	}
+
+	tagValues := map[string]string{
+		"tenant":      cluster.Conf.Cloud18GitUser,
+		"cluster":     cluster.Name,
+		"engine":      server.DBVersion.Flavor,
+		"version":     server.DBVersion.ToString(),
+		"backup-type": backupType,
+		"backup-tool": backupTool,
+	}
+
+	tags := make([]string, 0, len(categories))
+	for _, category := range categories {
+		value := strings.TrimSpace(tagValues[category])
+		if value != "" {
+			tags = append(tags, fmt.Sprintf("%s:%s", category, value))
+		}
+	}
+	return tags
 }

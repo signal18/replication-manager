@@ -879,6 +879,24 @@ func (cluster *Cluster) SetBackupKeepWithinYearly(keep string) error {
 	return nil
 }
 
+func (cluster *Cluster) SetBackupResticPurgeGroupBy(value string) error {
+	normalized, err := normalizeResticPurgeGroupBy(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupResticPurgeGroupBy = normalized
+	return nil
+}
+
+func (cluster *Cluster) SetBackupResticTagCategories(value string) error {
+	normalized, err := normalizeResticTagCategories(value)
+	if err != nil {
+		return err
+	}
+	cluster.Conf.BackupResticTagCategories = normalized
+	return nil
+}
+
 func (cluster *Cluster) SetBackupLogicalType(backup string) {
 	if cluster.Conf.BackupLogicalType != backup {
 		cluster.Conf.BackupLogicalType = backup

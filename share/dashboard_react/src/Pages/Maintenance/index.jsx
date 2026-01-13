@@ -380,6 +380,7 @@ function Maintenance({ selectedCluster, user }) {
             snapshotData={snapshotData}
             snapshotStats={stats}
             queueData={queueData}
+            tagCategories={selectedCluster?.config?.backupResticTagCategories}
             isQueuePaused={selectedCluster?.isResticQueuePaused}
             onConfirmAction={openConfirmModal}
           />

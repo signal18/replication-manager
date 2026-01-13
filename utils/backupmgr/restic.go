@@ -88,6 +88,7 @@ type ResticResult struct {
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
 	SnapshotID        string `json:"snapshot_id,omitempty"`
+	GroupBy           string `json:"group_by,omitempty"`
 	KeepLast          int    `json:"keep_last,omitempty"`
 	KeepHourly        int    `json:"keep_hourly,omitempty"`
 	KeepDaily         int    `json:"keep_daily,omitempty"`
@@ -1382,6 +1383,10 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 
 func buildForgetArgs(opt ResticPurgeOption) []string {
 	args := []string{"forget", "--prune"}
+
+	if strings.TrimSpace(opt.GroupBy) != "" {
+		args = append(args, "--group-by", strings.TrimSpace(opt.GroupBy))
+	}
 
 	keepWithin, useWithin := GetKeepWithinTime(
 		opt.KeepWithin,
