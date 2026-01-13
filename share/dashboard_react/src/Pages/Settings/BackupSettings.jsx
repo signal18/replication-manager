@@ -11,6 +11,7 @@ import Dropdown from '../../components/Dropdown'
 import { convertObjectToArrayForDropdown, formatBytes } from '../../utility/common'
 import TextForm from '../../components/TextForm'
 import CommonModal from '../../components/Modals/CommonModal'
+import Checkboxes from '../../components/Checkboxes/Checkboxes'
 import Markdown from 'react-markdown'
 import { HiQuestionMarkCircle } from 'react-icons/hi'
 import RMIconButton from '../../components/RMIconButton'
@@ -29,6 +30,24 @@ const sizeGenerator = () => {
   return result.map((size) => {
     return { name: formatBytes(size, 0), value: size }
   })
+}
+
+const resticTagCategoryOptions = [
+  { name: 'Tenant', value: 'tenant' },
+  { name: 'Cluster', value: 'cluster' },
+  { name: 'Engine', value: 'engine' },
+  { name: 'Version', value: 'version' },
+  { name: 'Backup type', value: 'backup-type' },
+  { name: 'Backup tool', value: 'backup-tool' }
+]
+
+const normalizeResticTagCategories = (values = []) => {
+  if (!Array.isArray(values)) {
+    return ''
+  }
+
+  const order = resticTagCategoryOptions.map((option) => option.value)
+  return order.filter((category) => values.includes(category)).join(',')
 }
 
 function BackupSettings({ selectedCluster, user }) {
@@ -802,16 +821,17 @@ The script will be executed with the following parameters:
         {
           key: 'Restic backup tag categories',
           value: (
-            <TextForm
-              value={selectedCluster?.config?.backupResticTagCategories}
-              confirmTitle={`Confirm backup-restic-tag-categories to `}
-              className={styles.textbox}
-              onSave={(value) =>
+            <Checkboxes
+              list={resticTagCategoryOptions}
+              values={selectedCluster?.config?.backupResticTagCategories}
+              confirm={true}
+              confirmTitle="Confirm backup-restic-tag-categories to"
+              onChange={(values) =>
                 dispatch(
                   setSetting({
                     clusterName: selectedCluster?.name,
                     setting: 'backup-restic-tag-categories',
-                    value: value
+                    value: normalizeResticTagCategories(values)
                   })
                 )
               }
