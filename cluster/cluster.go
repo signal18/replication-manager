@@ -753,7 +753,7 @@ func (cluster *Cluster) Run() {
 						go cluster.refreshApps(wg)
 						cluster.CheckWaitRunJobSSH()
 						cluster.CheckDummyConfigSendCookies()
-						cluster.CheckRestartCookies()
+						// cluster.CheckRestartCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
@@ -1934,9 +1934,9 @@ func (cluster *Cluster) MonitorQueryRules() {
 
 					if !found {
 						proxyIds = append(proxyIds, prx.Id)
-						myRule.Proxies = strings.Join(proxyIds, ",")
 					}
-					myRule.Proxies = strings.Join(duplicates, ",")
+
+					myRule.Proxies = strings.Join(proxyIds, ",")
 				} else {
 					myRule.Id = rule.Id
 					myRule.UserName = rule.UserName
