@@ -34,7 +34,7 @@ Examples: "2h", "1d", "1d2h".
 Units: h (hours), d (days), m (months), y (years).  
 Leave blank to disable this rule.  
 We apply both keep-last and keep-within settings. A snapshot stays if it matches either one.  
-The window is counted back from the newest snapshot.  
+The window is counted back from when the purge runs.  
 `
 
   const columnTitles = {
