@@ -162,15 +162,20 @@ const renderResticTaskDetail = (row, tagCategories) => {
         </VStack>
       )
     case 6:
+      const overwrite = row.restore?.overwrite || row.opt?.overwrite
       return (
         <VStack>
           <HStack>
             <Box>Snapshot:</Box>
-            <Box>{row.opt?.snapshot_id}</Box>
+            <Box>{row.restore?.snapshot_id || row.opt?.snapshot_id}</Box>
           </HStack>
           <HStack>
             <Box>Target:</Box>
             <Box>{row.dir_path}</Box>
+          </HStack>
+          <HStack>
+            <Box>Overwrite:</Box>
+            <Box>{overwrite || 'default'}</Box>
           </HStack>
           <HStack>
             <Box>Include:</Box>
@@ -233,7 +238,8 @@ function SnapshotTables({
                       targetDir,
                       basePath,
                       basePaths: restorePaths,
-                      paths: []
+                      paths: [],
+                      overwrite: ''
                     }
                   })
                 }
@@ -367,7 +373,8 @@ SnapshotTables.propTypes = {
       task_type: PropTypes.number,
       dir_path: PropTypes.string,
       tags: PropTypes.arrayOf(PropTypes.string),
-      opt: PropTypes.object
+      opt: PropTypes.object,
+      restore: PropTypes.object
     })
   ),
   tagCategories: PropTypes.string,

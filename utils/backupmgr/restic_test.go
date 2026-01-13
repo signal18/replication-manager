@@ -550,7 +550,7 @@ func TestRestoreDumpMountUnmount(t *testing.T) {
 	if err := os.RemoveAll(targetDir); err != nil {
 		t.Fatalf("remove restore dir: %v", err)
 	}
-	if err := repo.RestoreSnapshot(snapshotID, targetDir, []string{dataDir}); err != nil {
+	if err := repo.RestoreSnapshot(snapshotID, targetDir, []string{dataDir}, ""); err != nil {
 		t.Fatalf("restore snapshot: %v", err)
 	}
 

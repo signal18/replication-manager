@@ -193,22 +193,30 @@ function Home() {
         dispatch(getClusterCertificates({ clusterName: selectedClusterNameRef.current }))
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Maintenance') {
+        if (!isAutoReloadPaused) {
         dispatch(getResticSnapshot({ clusterName: selectedClusterNameRef.current }))
         dispatch(getResticStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackups({ clusterName: selectedClusterNameRef.current }))
         dispatch(getBackupStats({ clusterName: selectedClusterNameRef.current }))
         dispatch(getResticQueue({ clusterName: selectedClusterNameRef.current }))
         dispatch(getJobs({ clusterName: selectedClusterNameRef.current }))
+        }
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Tops') {
+        if (!isAutoReloadPaused) {
         dispatch(getTopProcess({ clusterName: selectedClusterNameRef.current }))
         dispatch(getOpenSVCStats({ clusterName: selectedClusterNameRef.current }))
+        }
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Query Rules') {
+        if (!isAutoReloadPaused) {
         dispatch(getQueryRules({ clusterName: selectedClusterNameRef.current }))
+        }
       }
       if (dashboardTabsRef.current[selectedTabRef.current - 1] === 'Shards') {
+        if (!isAutoReloadPaused) {
         dispatch(getShardSchema({ clusterName: selectedClusterNameRef.current }))
+        }
       }
     }
 

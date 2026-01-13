@@ -6950,6 +6950,7 @@ type ResticRestoreSnapshotRequest struct {
 	Paths          []string `json:"paths"`
 	SourcePath     string   `json:"sourcePath"`
 	SourcePathType string   `json:"sourcePathType"`
+	Overwrite      string   `json:"overwrite"`
 }
 
 // handlerMuxResticRestoreConfig handles the HTTP request to restore the restic config for a given cluster.
@@ -7129,7 +7130,7 @@ func (repman *ReplicationManager) handlerMuxResticRestoreSnapshot(w http.Respons
 			}
 		}
 
-		if err := mycluster.ResticRestoreSnapshot(snapshotRef, payload.TargetDir, includePaths); err != nil {
+		if err := mycluster.ResticRestoreSnapshot(snapshotRef, payload.TargetDir, includePaths, payload.Overwrite); err != nil {
 			http.Error(w, "Error restoring restic snapshot: "+err.Error(), 500)
 			return
 		}

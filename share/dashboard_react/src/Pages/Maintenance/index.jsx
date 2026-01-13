@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PropTypes from 'prop-types'
 import { convertObjectToArray } from '../../utility/common'
 import AccordionComponent from '../../components/AccordionComponent'
@@ -9,7 +9,7 @@ import BackupSettings from '../Settings/BackupSettings'
 import SchedulerSettings from '../Settings/SchedulerSettings'
 import { TaskLogs } from '../Dashboard/components/Logs'
 import DatabaseJobs from './DatabaseJobs'
-import { purgeResticSnapshot, resticListSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume, resticRestoreSnapshot } from '../../redux/clusterSlice'
+import { pauseAutoReload, purgeResticSnapshot, resticListSnapshot, resticQueueCancel, resticQueueMove, resticQueuePause, resticQueueResume, resticRestoreSnapshot } from '../../redux/clusterSlice'
 import ConfirmModal from '../../components/Modals/ConfirmModal'
 import { showWarningToast } from '../../redux/toastSlice'
 import BackupTables from './components/BackupTables'
@@ -61,6 +61,7 @@ function Maintenance({ selectedCluster, user }) {
   const [restoreListState, setRestoreListState] = useState({ snapshotId: null, pathsKey: '', items: [], isLoading: false, error: null })
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', payload: null })
   const { isOpen: isConfirmModalOpen, title, payload } = confirmState
+  const confirmPauseRef = useRef(false)
 
   const dispatch = useDispatch()
   const clusterName = selectedCluster?.name
@@ -102,6 +103,22 @@ function Maintenance({ selectedCluster, user }) {
     console.log('Confirm Modal State Changed:', confirmState)
   }, [confirmState])
 
+  useEffect(() => {
+    if (isConfirmModalOpen) {
+      const wasPaused = Boolean(localStorage.getItem('pause_auto_reload'))
+      confirmPauseRef.current = !wasPaused
+      if (!wasPaused) {
+        dispatch(pauseAutoReload({ isPaused: true }))
+      }
+      return
+    }
+
+    if (confirmPauseRef.current) {
+      dispatch(pauseAutoReload({ isPaused: false }))
+      confirmPauseRef.current = false
+    }
+  }, [dispatch, isConfirmModalOpen])
+
   const handleConfirm = () => {
     if (payload && payload.action) {
       switch (payload.action) {
@@ -125,7 +142,8 @@ function Maintenance({ selectedCluster, user }) {
               targetDir: payload.data.targetDir,
               paths: payload.data.paths,
               sourcePath,
-              sourcePathType
+              sourcePathType,
+              overwrite: payload.data?.overwrite
             })
           )
           break
@@ -206,6 +224,19 @@ function Maintenance({ selectedCluster, user }) {
         data: {
           ...prevState.payload.data,
           targetDir
+        }
+      }
+    }))
+  }, [])
+
+  const handleRestoreOverwrite = useCallback((overwrite) => {
+    setConfirmState((prevState) => ({
+      ...prevState,
+      payload: {
+        ...prevState.payload,
+        data: {
+          ...prevState.payload.data,
+          overwrite
         }
       }
     }))
@@ -415,6 +446,7 @@ function Maintenance({ selectedCluster, user }) {
               onMove={handleMove}
               onRestoreBasePath={handleRestoreBasePath}
               onRestoreTarget={handleRestoreTarget}
+              onRestoreOverwrite={handleRestoreOverwrite}
               onRestorePaths={handleRestorePaths}
               restorePaths={restoreListState.items}
               restorePathsLoading={restoreListState.isLoading}

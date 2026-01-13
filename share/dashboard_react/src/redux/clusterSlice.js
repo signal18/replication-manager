@@ -311,13 +311,13 @@ export const resticListSnapshot = createGuardedAsyncThunk('cluster/resticListSna
   }
 })
 
-export const resticRestoreSnapshot = createGuardedAsyncThunk('cluster/resticRestoreSnapshot', async ({ clusterName, snapshotId, targetDir, paths, sourcePath, sourcePathType }, thunkAPI) => {
+export const resticRestoreSnapshot = createGuardedAsyncThunk('cluster/resticRestoreSnapshot', async ({ clusterName, snapshotId, targetDir, paths, sourcePath, sourcePathType, overwrite }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
     const { data, status } = await clusterService.resticRestoreSnapshot(
       clusterName,
       snapshotId,
-      { targetDir, paths, sourcePath, sourcePathType },
+      { targetDir, paths, sourcePath, sourcePathType, overwrite },
       baseURL
     )
     return { data, status }

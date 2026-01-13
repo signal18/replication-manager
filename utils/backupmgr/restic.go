@@ -67,7 +67,8 @@ type ResticTask struct {
 	Type        TaskType          `json:"task_type"`
 	DirPath     string            `json:"dir_path"`
 	Tags        []string          `json:"tags"`
-	Opt         ResticPurgeOption `json:"opt"`
+	Opt         ResticPurgeOption `json:"opt,omitempty"`
+	Restore     ResticRestoreOption `json:"restore,omitempty"`
 	NewPassFile string            `json:"-"`
 	resultCh    chan ResticResult
 }
@@ -101,6 +102,12 @@ type ResticPurgeOption struct {
 	KeepWithinWeekly  string `json:"keep_within_weekly,omitempty"`
 	KeepWithinMonthly string `json:"keep_within_monthly,omitempty"`
 	KeepWithinYearly  string `json:"keep_within_yearly,omitempty"`
+}
+
+// ResticRestoreOption holds the configuration for restore
+type ResticRestoreOption struct {
+	SnapshotID string `json:"snapshot_id,omitempty"`
+	Overwrite  string `json:"overwrite,omitempty"`
 }
 
 // TaskStatus represents the task state information stored in the JSON flag file
@@ -396,9 +403,9 @@ func (repo *ResticManager) worker() {
 			err := repo.UnlockRepo()
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
-		case RestoreTask:
-			err := repo.restoreSnapshot(task.Opt.SnapshotID, task.DirPath, task.Tags)
-			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+	case RestoreTask:
+		err := repo.restoreSnapshot(task.Restore.SnapshotID, task.DirPath, task.Tags, task.Restore.Overwrite)
+		result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		default:
 			repo.Printf(logrus.WarnLevel, "Unknown task type: %d", task.Type)
 			continue
@@ -480,7 +487,7 @@ func (repo *ResticManager) AddPurgeTask(opt ResticPurgeOption, immediate bool) e
 	return nil
 }
 
-func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths []string) error {
+func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths []string, overwrite string) error {
 	if snapshotID == "" {
 		return fmt.Errorf("snapshot ID is empty")
 	}
@@ -494,15 +501,33 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 	repo.Mutex.Unlock()
 
 	if paused || shutdown {
-		return repo.restoreSnapshot(snapshotID, targetDir, paths)
+		return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
 	}
 
-	resultCh := repo.AddRestoreTask(snapshotID, targetDir, paths)
+	resultCh := repo.AddRestoreTask(snapshotID, targetDir, paths, overwrite)
 	result := <-resultCh
 	return result.Error
 }
 
-func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths []string) error {
+var resticRestoreOverwriteModes = map[string]struct{}{
+	"always":                   {},
+	"if-changed":               {},
+	"if-newer":                 {},
+	"if-newer-or-size-changed": {},
+}
+
+func normalizeResticRestoreOverwrite(value string) (string, error) {
+	trimmed := strings.TrimSpace(strings.ToLower(value))
+	if trimmed == "" {
+		return "", nil
+	}
+	if _, ok := resticRestoreOverwriteModes[trimmed]; !ok {
+		return "", fmt.Errorf("invalid restic overwrite policy: %s", value)
+	}
+	return trimmed, nil
+}
+
+func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths []string, overwrite string) error {
 	if snapshotID == "" {
 		return fmt.Errorf("snapshot ID is empty")
 	}
@@ -516,7 +541,7 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.restoreSnapshot(snapshotID, targetDir, paths)
+		return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
 	}
 
 	repo.SetCanFetch(false)
@@ -530,7 +555,15 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 		return err
 	}
 
+	overwritePolicy, err := normalizeResticRestoreOverwrite(overwrite)
+	if err != nil {
+		return err
+	}
+
 	args := []string{"restore", snapshotID, "--target", targetDir}
+	if overwritePolicy != "" {
+		args = append(args, "--overwrite", overwritePolicy)
+	}
 	for _, path := range paths {
 		if strings.TrimSpace(path) != "" {
 			args = append(args, "--include", strings.TrimSpace(path))
@@ -888,13 +921,13 @@ func (repo *ResticManager) AddUnlockTask() {
 	repo.appendTask(&task)
 }
 
-func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string) <-chan ResticResult {
+func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string, overwrite string) <-chan ResticResult {
 	task := &ResticTask{
 		ID:       repo.GenerateTaskID(),
 		Type:     RestoreTask,
 		DirPath:  targetDir,
 		Tags:     append([]string(nil), paths...),
-		Opt:      ResticPurgeOption{SnapshotID: snapshotID},
+		Restore:  ResticRestoreOption{SnapshotID: snapshotID, Overwrite: overwrite},
 		resultCh: make(chan ResticResult, 1),
 	}
 

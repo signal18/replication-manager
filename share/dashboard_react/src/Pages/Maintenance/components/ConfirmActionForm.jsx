@@ -135,9 +135,42 @@ const buildPathTrees = (entries, basePaths) => {
   return Array.from(roots.values())
 }
 
+const resticOverwriteOptions = [
+  { label: 'Use restic default', value: '' },
+  { label: 'Overwrite always', value: 'always' },
+  { label: 'Overwrite if changed', value: 'if-changed' },
+  { label: 'Overwrite if newer', value: 'if-newer' },
+  { label: 'Never overwrite', value: 'never' }
+]
+
+const RestorePathTree = memo(({ pathTrees, renderTreeNodes, isLoading, loadError }) => (
+  <FormControl>
+    <FormLabel>Available paths</FormLabel>
+    <FormHelperText>Select entries to populate the Paths list (scoped to the base path).</FormHelperText>
+    {isLoading && <Box>Loading snapshot contents...</Box>}
+    {!isLoading && loadError && <Box color="red.500">{loadError}</Box>}
+    {!isLoading && !loadError && pathTrees.length === 0 && <Box>No snapshot paths loaded.</Box>}
+    {!isLoading && pathTrees.length > 0 && (
+      <Box maxH="240px" overflowY="auto" borderWidth="1px" borderRadius="md" padding={2}>
+        <VStack align="start" spacing={3}>
+          {pathTrees.map((root) => (
+            <Box key={root.path} width="100%">
+              <Text fontWeight="bold" mb={1}>Contents of {root.path}</Text>
+              {renderTreeNodes(root.children)}
+            </Box>
+          ))}
+        </VStack>
+      </Box>
+    )}
+  </FormControl>
+))
+
+RestorePathTree.displayName = 'RestorePathTree'
+
 const SnapshotRestoreForm = memo(({
   basePath = '',
   targetDir = '',
+  overwrite = '',
   paths = [],
   availablePaths = [],
   basePaths = [],
@@ -145,6 +178,7 @@ const SnapshotRestoreForm = memo(({
   loadError = null,
   onBasePathChange = () => { },
   onTargetChange = () => { },
+  onOverwriteChange = () => { },
   onPathsChange = () => { }
 }) => {
   const [pathsText, setPathsText] = useState(Array.isArray(paths) ? paths.join('\n') : '')
@@ -168,7 +202,12 @@ const SnapshotRestoreForm = memo(({
     }
     return normalizedBasePaths
   }, [basePath, normalizedBasePaths])
-  const pathTrees = useMemo(() => buildPathTrees(availablePaths, treeBasePaths), [availablePaths, treeBasePaths])
+  const pathTrees = useMemo(() => {
+    if (!useSpecificPaths) {
+      return []
+    }
+    return buildPathTrees(availablePaths, treeBasePaths)
+  }, [availablePaths, treeBasePaths, useSpecificPaths])
   const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths])
 
   useEffect(() => {
@@ -323,6 +362,17 @@ const SnapshotRestoreForm = memo(({
         <FormHelperText>Target directory for restic restore (--target). Defaults to the source path.</FormHelperText>
       </FormControl>
       <FormControl>
+        <FormLabel>Overwrite policy</FormLabel>
+        <Select value={overwrite} onChange={(e) => onOverwriteChange(e.target.value)}>
+          {resticOverwriteOptions.map((option) => (
+            <option key={option.label} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <FormHelperText>Controls restic --overwrite behavior when restoring in place.</FormHelperText>
+      </FormControl>
+      <FormControl>
         <Checkbox isChecked={useSpecificPaths} onChange={handleToggleSpecificPaths}>
           Restore specific paths
         </Checkbox>
@@ -339,25 +389,12 @@ const SnapshotRestoreForm = memo(({
             />
             <FormHelperText>Each entry becomes a restic --include pattern and will be restored under the target directory.</FormHelperText>
           </FormControl>
-          <FormControl>
-            <FormLabel>Available paths</FormLabel>
-            <FormHelperText>Select entries to populate the Paths list (scoped to the base path).</FormHelperText>
-            {isLoading && <Box>Loading snapshot contents...</Box>}
-            {!isLoading && loadError && <Box color="red.500">{loadError}</Box>}
-            {!isLoading && !loadError && pathTrees.length === 0 && <Box>No snapshot paths loaded.</Box>}
-            {!isLoading && pathTrees.length > 0 && (
-              <Box maxH="240px" overflowY="auto" borderWidth="1px" borderRadius="md" padding={2}>
-                <VStack align="start" spacing={3}>
-                  {pathTrees.map((root) => (
-                    <Box key={root.path} width="100%">
-                      <Text fontWeight="bold" mb={1}>Contents of {root.path}</Text>
-                      {renderTreeNodes(root.children)}
-                    </Box>
-                  ))}
-                </VStack>
-              </Box>
-            )}
-          </FormControl>
+          <RestorePathTree
+            pathTrees={pathTrees}
+            renderTreeNodes={renderTreeNodes}
+            isLoading={isLoading}
+            loadError={loadError}
+          />
         </>
       )}
     </VStack>
@@ -377,16 +414,18 @@ const formConfig = {
   },
   snapshotRestore: {
     component: SnapshotRestoreForm,
-    getProps: ({ payload, onRestoreBasePath, onRestoreTarget, onRestorePaths, restorePaths, restorePathsLoading, restorePathsError }) => ({
-      basePath: payload?.data?.basePath || '',
-      targetDir: payload?.data?.targetDir || '',
-      paths: payload?.data?.paths || [],
-      availablePaths: restorePaths || [],
-      basePaths: payload?.data?.basePaths || [],
-      isLoading: restorePathsLoading || false,
-      loadError: restorePathsError || null,
+    getProps: ({ payload, onRestoreBasePath, onRestoreTarget, onRestoreOverwrite, onRestorePaths, restorePaths, restorePathsLoading, restorePathsError }) => ({
+      basePath: payload?.data?.basePath,
+      targetDir: payload?.data?.targetDir,
+      overwrite: payload?.data?.overwrite,
+      paths: payload?.data?.paths,
+      availablePaths: restorePaths,
+      basePaths: payload?.data?.basePaths,
+      isLoading: restorePathsLoading,
+      loadError: restorePathsError,
       onBasePathChange: onRestoreBasePath,
       onTargetChange: onRestoreTarget,
+      onOverwriteChange: onRestoreOverwrite,
       onPathsChange: onRestorePaths
     })
   }
@@ -398,6 +437,7 @@ function ConfirmActionForm({
   onMove,
   onRestoreBasePath = () => { },
   onRestoreTarget = () => { },
+  onRestoreOverwrite = () => { },
   onRestorePaths = () => { },
   restorePaths = [],
   restorePathsLoading = false,
@@ -405,7 +445,8 @@ function ConfirmActionForm({
 }) {
   if (!payload) return null
 
-  const entry = formConfig[payload.action]
+  const entry = useMemo(() => formConfig[payload.action], [payload.action])
+  
   if (!entry) return null
 
   const Component = entry.component
@@ -415,6 +456,7 @@ function ConfirmActionForm({
     onMove,
     onRestoreBasePath,
     onRestoreTarget,
+    onRestoreOverwrite,
     onRestorePaths,
     restorePaths,
     restorePathsLoading,
@@ -435,6 +477,7 @@ QueueMoveForm.propTypes = {
 SnapshotRestoreForm.propTypes = {
   basePath: PropTypes.string,
   targetDir: PropTypes.string,
+  overwrite: PropTypes.string,
   paths: PropTypes.arrayOf(PropTypes.string),
   availablePaths: PropTypes.arrayOf(
     PropTypes.shape({
@@ -448,6 +491,7 @@ SnapshotRestoreForm.propTypes = {
   loadError: PropTypes.string,
   onBasePathChange: PropTypes.func,
   onTargetChange: PropTypes.func,
+  onOverwriteChange: PropTypes.func,
   onPathsChange: PropTypes.func
 }
 
@@ -460,6 +504,7 @@ ConfirmActionForm.propTypes = {
   onMove: PropTypes.func,
   onRestoreBasePath: PropTypes.func,
   onRestoreTarget: PropTypes.func,
+  onRestoreOverwrite: PropTypes.func,
   onRestorePaths: PropTypes.func,
   restorePaths: PropTypes.arrayOf(
     PropTypes.shape({

@@ -266,7 +266,7 @@ func (cluster *Cluster) ResticUnlockRepo() {
 
 }
 
-func (cluster *Cluster) ResticRestoreSnapshot(snapshotID, targetDir string, paths []string) error {
+func (cluster *Cluster) ResticRestoreSnapshot(snapshotID, targetDir string, paths []string, overwrite string) error {
 	if !cluster.Conf.BackupRestic {
 		return fmt.Errorf("restic backup is not enabled")
 	}
@@ -275,7 +275,7 @@ func (cluster *Cluster) ResticRestoreSnapshot(snapshotID, targetDir string, path
 		cluster.StartResticManager()
 	}
 
-	return cluster.ResticManager.RestoreSnapshot(snapshotID, targetDir, paths)
+	return cluster.ResticManager.RestoreSnapshot(snapshotID, targetDir, paths, overwrite)
 }
 
 func (cluster *Cluster) ResticListSnapshot(snapshotID string, paths []string, recursive bool) ([]backupmgr.ResticLsEntry, error) {
