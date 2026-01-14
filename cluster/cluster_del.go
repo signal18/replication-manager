@@ -7,7 +7,6 @@
 package cluster
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -48,7 +47,7 @@ func (cluster *Cluster) RemoveServerMonitor(host string, port string) error {
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
 	} else {
-		return errors.New(fmt.Sprintf("Host with address %s:%s not found in cluster!", host, port))
+		return fmt.Errorf("Host with address %s:%s not found in cluster", host, port)
 	}
 	return nil
 }
@@ -157,7 +156,7 @@ func (cluster *Cluster) RemoveProxyMonitor(prx string, host string, port string)
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
 	} else {
-		return errors.New(fmt.Sprintf("Proxy host with address %s:%s not found in cluster!", host, port))
+		return fmt.Errorf("Proxy host with address %s:%s not found in cluster", host, port)
 	}
 
 	return nil
@@ -179,7 +178,7 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 	newApps := make([]*App, 0)
 	app, index := cluster.GetAppByHostPort(host, port)
 	if app == nil {
-		return fmt.Errorf("App with address %s:%s not found in cluster!", host, port)
+		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)
 	}
 
 	appcnf := app.GetAppConfig()
@@ -205,7 +204,7 @@ func (cluster *Cluster) RemoveAppMonitor(host string, port string) error {
 		cluster.Unlock()
 		cluster.StateMachine.RemoveFailoverState()
 	} else {
-		return fmt.Errorf("App with address %s:%s not found in cluster!", host, port)
+		return fmt.Errorf("App with address %s:%s not found in cluster", host, port)
 	}
 
 	return nil

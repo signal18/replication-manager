@@ -4,67 +4,174 @@
 
 # %%ENV:GENLINE%%
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
+########################
+# Helper Functions    #
+########################
 
-USER=%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%
-PASSWORD=$MYSQL_ROOT_PASSWORD
-MYSQL_PORT=%%ENV:SERVER_PORT%%
-MYSQL_SERVER=%%ENV:SERVER_HOST%%
-CLUSTER_NAME=%%ENV:SVC_NAMESPACE%%
-REPLICATION_MANAGER_ADDR=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%
-REPLICATION_MANAGER_URL=%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%
-REPLICATION_MANAGER_HOST=$(echo "$REPLICATION_MANAGER_URL" | cut -d":" -f1)
-REPLICATION_MANAGER_PORT=$(echo "$REPLICATION_MANAGER_URL" | cut -d":" -f2)
-MYSQL_CONF=%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%
-DATADIR=%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%
-BINARY_CLIENT_PARAMETERS="-u$USER -h$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT"
+# Function to add square brackets to IPv6 addresses if not already present
+# Parameter: hostname or IP address
+# Returns: original string if IPv4/hostname, or IPv6 with brackets if IPv6
+add_ipv6_brackets() {
+    local addr="$1"
+    # Check if it contains a colon (IPv6) and doesn't already have brackets
+    if [[ "$addr" == *:* ]] && [[ "$addr" != \[*\]* ]]; then
+        echo "[$addr]"
+    else
+        echo "$addr"
+    fi
+}
 
-# MariaDB binary paths
-MARIADB_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariadb"
-MARIADB_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariadb-check
-MARIADB_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariadb-dump
+########################
+# Global Configuration #
+########################
 
-# MySQL binary paths
-MYSQL_CLIENT="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysql"
-MYSQL_CHECK=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqlcheck
-MYSQL_DUMP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mysqldump
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly REPMAN_CLIENT="$SCRIPT_DIR/replication-manager-cli"
 
-SOCAT_BIND="%%ENV:SERVER_IP%%"
-# If socat is ipv6 without [], add them
-if [[ "$SOCAT_BIND" == *:* ]] && [[ "$SOCAT_BIND" != \[*\]* ]]; then
-    SOCAT_BIND="[$SOCAT_BIND],ipv6only=0"
+# MySQL/MariaDB Configuration
+# Note: %%ENV:...%% placeholders are replaced during script generation
+readonly USER="%%ENV:SVC_CONF_ENV_MYSQL_ROOT_USER%%"
+readonly PASSWORD="$MYSQL_ROOT_PASSWORD"
+readonly MYSQL_PORT="%%ENV:SERVER_PORT%%"
+readonly MYSQL_SERVER="%%ENV:SERVER_HOST%%"
+readonly CLUSTER_NAME="%%ENV:SVC_NAMESPACE%%"
+readonly DB_CONN_PARAMETERS="-u$USER -h$MYSQL_SERVER -p$PASSWORD -P$MYSQL_PORT"
+
+# Replication Manager Configuration
+readonly REPLICATION_MANAGER_ADDR="%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_ADDR%%"
+readonly REPLICATION_MANAGER_URL="%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL%%"
+readonly REPLICATION_MANAGER_HOST="$(add_ipv6_brackets "%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL_HOST%%")"
+readonly REPLICATION_MANAGER_PORT="%%ENV:SVC_CONF_ENV_REPLICATION_MANAGER_URL_PORT%%"
+
+# Paths
+readonly MYSQL_CONF="%%ENV:SVC_CONF_ENV_MYSQL_CONFDIR%%"
+readonly DATADIR="%%ENV:SVC_CONF_ENV_MYSQL_DATADIR%%"
+readonly CLIENT_BASEDIR="%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%"
+
+# MariaDB binaries
+readonly MARIADB_CLIENT="${CLIENT_BASEDIR}/mariadb"
+readonly MARIADB_CHECK="${CLIENT_BASEDIR}/mariadb-check"
+readonly MARIADB_DUMP="${CLIENT_BASEDIR}/mariadb-dump"
+readonly MARIADB_BACKUP="${CLIENT_BASEDIR}/mariabackup"
+
+# MySQL binaries
+readonly MYSQL_CLIENT="${CLIENT_BASEDIR}/mysql"
+readonly MYSQL_CHECK="${CLIENT_BASEDIR}/mysqlcheck"
+readonly MYSQL_DUMP="${CLIENT_BASEDIR}/mysqldump"
+readonly XTRABACKUP="${CLIENT_BASEDIR}/xtrabackup"
+readonly INNODBACKUPEX="${CLIENT_BASEDIR}/innobackupex"
+
+# Network Configuration
+SOCAT_BIND="$(add_ipv6_brackets "%%ENV:SERVER_IP%%")"
+if [[ "$SOCAT_BIND" == \[*\]* ]]; then
+    SOCAT_BIND="$SOCAT_BIND,ipv6only=0"
 fi
+readonly SOCAT_BIND
 
-SST_RECEIVER_PORT=%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%
-MARIADB_BACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/mariabackup
-XTRABACKUP=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/xtrabackup
-INNODBACKUPEX=%%ENV:SVC_CONF_ENV_CLIENT_BASEDIR%%/innobackupex
+readonly SST_RECEIVER_PORT="%%ENV:SVC_CONF_ENV_SST_RECEIVER_PORT%%"
 
-AUDITLOG=%%ENV:SVC_CONF_ENV_AUDIT_LOG%%
-SQLERRORLOG=%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%
-ERRORLOG=%%ENV:SVC_CONF_ENV_ERROR_LOG%%
-SLOWLOG=%%ENV:SVC_CONF_ENV_SLOW_LOG%%
-BACKUPDIR=$DATADIR/.system/backup
-TMP_DIR=%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%
+# Logs
+readonly AUDITLOG="%%ENV:SVC_CONF_ENV_AUDIT_LOG%%"
+readonly SQLERRORLOG="%%ENV:SVC_CONF_ENV_SQL_ERROR_LOG%%"
+readonly ERRORLOG="%%ENV:SVC_CONF_ENV_ERROR_LOG%%"
+readonly SLOWLOG="%%ENV:SVC_CONF_ENV_SLOW_LOG%%"
 
-# Directory where the logs are stored
-LOG_DIR="$TMP_DIR"
-# Directory where the checkpoints are stored
-CHECKPOINT_DIR="$TMP_DIR/checkpoints"
-# Directory where lock files are stored
-LOCK_DIR="$TMP_DIR/locks"
-BATCH_SIZE=5
-JOBS=("xtrabackup" "mariabackup" "errorlog" "slowquery" "auditlog" "sqlerrorlog" "zfssnapback" "optimize" "reseedxtrabackup" "reseedmariabackup" "flashbackxtrabackup" "flashbackmariadbackup" "stop" "restart" "start")
+# Directories
+readonly BACKUPDIR="${DATADIR}/.system/backup"
+readonly TMP_DIR="%%ENV:SVC_CONF_ENV_JOBS_DATADIR%%"
+readonly LOG_DIR="${TMP_DIR}"
+readonly CHECKPOINT_DIR="${TMP_DIR}/checkpoints"
+readonly LOCK_DIR="${TMP_DIR}/locks"
 
-# OSX need socat extra path
-export PATH=$PATH:/usr/local/bin
+# Constants
+readonly BATCH_SIZE=5
+readonly MAX_RETRIES=3
+readonly API_LOG_FILE="${LOG_DIR}/api_calls.log"
+readonly LOG_MAX_SIZE=1048576  # 1MB
+
+# Job types
+readonly -a JOBS=(
+    "xtrabackup" "mariabackup" "errorlog" "slowquery" 
+    "auditlog" "sqlerrorlog" "zfssnapback" "optimize" 
+    "reseedxtrabackup" "reseedmariabackup" 
+    "flashbackxtrabackup" "flashbackmariadbackup" 
+    "stop" "restart" "start"
+)
 
 # Logging levels
-LVL_ERROR="ERROR"
-LVL_WARN="WARN"
-LVL_INFO="INFO"
-LVL_DEBUG="DEBUG"
+readonly LVL_ERROR="ERROR"
+readonly LVL_WARN="WARN"
+readonly LVL_INFO="INFO"
+readonly LVL_DEBUG="DEBUG"
+
+# Binary selection (determined later)
+BINARY_CLIENT=""
+BINARY_CHECK=""
+BINARY_DUMP=""
+
+TOKEN=""
+
+# OSX support
+export PATH="$PATH:/usr/local/bin"
+
+########################
+# Binary Selection     #
+########################
+
+select_database_binaries() {
+    if [[ -x "$MARIADB_CLIENT" ]]; then
+        # Use command-line params to preserve existing my.cnf SSL/TLS settings
+        BINARY_CLIENT="$MARIADB_CLIENT $DB_CONN_PARAMETERS"
+        BINARY_CHECK="$MARIADB_CHECK"
+        BINARY_DUMP="$MARIADB_DUMP"
+        send_lines_to_api "Using MariaDB binaries." "main" "$LVL_DEBUG"
+    elif [[ -x "$MYSQL_CLIENT" ]]; then
+        # Use command-line params to preserve existing my.cnf SSL/TLS settings
+        BINARY_CLIENT="$MYSQL_CLIENT $DB_CONN_PARAMETERS"
+        BINARY_CHECK="$MYSQL_CHECK"
+        BINARY_DUMP="$MYSQL_DUMP"
+        send_lines_to_api "Using MySQL binaries." "main" "$LVL_DEBUG"
+    else
+        send_lines_to_api "Neither MariaDB nor MySQL binaries available. Exiting." "main" "$LVL_ERROR"
+        return 1
+    fi
+}
+########################
+# Utility Functions    #
+########################
+
+# Ensure required directories exist
+ensure_directories() {
+    local -a dirs=("$LOG_DIR" "$CHECKPOINT_DIR" "$LOCK_DIR")
+    for dir in "${dirs[@]}"; do
+        mkdir -p "$dir" || {
+            echo "ERROR: Failed to create directory: $dir" >&2
+            return 1
+        }
+    done
+}
+
+# Validate required environment variables
+validate_environment() {
+    local -a required_vars=(
+        "MYSQL_ROOT_PASSWORD"
+        "MYSQL_SERVER"
+        "MYSQL_PORT"
+        "CLUSTER_NAME"
+    )
+    
+    local missing=()
+    for var in "${required_vars[@]}"; do
+        if [[ -z "${!var:-}" ]]; then
+            missing+=("$var")
+        fi
+    done
+    
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        echo "ERROR: Missing required environment variables: ${missing[*]}" >&2
+        return 1
+    fi
+}
 
 ########################
 # Function Definitions #
@@ -102,286 +209,726 @@ encrypt_data() {
     echo "$encrypted"
 }
 
-# Function to send encrypted data via HTTP
-send_encrypted_data_http() {
-    local api_host="$1"
-    local api_port="$2"
-    local api_endpoint="$3"
-    local data="$4"
-    local json_data="{\"data\":\"$data\"}"
-    local api_host_port="$api_host:$api_port"
+########################
+# HTTP Helper Functions #
+########################
 
-    local request="POST $api_endpoint HTTP/1.1\r\nHost: $api_host\r\nContent-Type: application/json\r\nContent-Length: ${#json_data}\r\n\r\n$json_data"
-    local response=$(echo -en "$request" | socat - TCP:$api_host_port)
-    echo "$response"
+# Determine if port requires SSL/TLS
+is_ssl_port() {
+    local port="$1"
+    [[ "$port" == "443" || "$port" == "10005" ]]
 }
 
-# Function to send encrypted data via HTTPS
-send_encrypted_data_https() {
-    local api_host="$1"
-    local api_port="$2"
-    local api_endpoint="$3"
-    local data="$4"
-    local json_data="{\"data\":\"$data\"}"
-    local api_host_port="$api_host:$api_port"
-
-    local request="POST $api_endpoint HTTP/1.1\r\nHost: $api_host\r\nContent-Type: application/json\r\nContent-Length: ${#json_data}\r\n\r\n$json_data"
-    local response=$(echo -en "$request" | socat - OPENSSL:$api_host_port,verify=0)
-    echo "$response"
+# Extract HTTP status code from response
+extract_http_code() {
+    local response="$1"
+    echo "$response" | grep -i "^HTTP" | head -n1 | awk '{print $2}'
 }
 
-# Generic function to send encrypted data to any API endpoint
-# Usage: send_encrypted_api_request "host:port" "/api/path" "raw_data" ["password"]
+# Extract body from HTTP response
+extract_http_body() {
+    local response="$1"
+    echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r'
+}
+
+# Send HTTP/HTTPS request (consolidated)
+# Usage: send_http_request "METHOD" "host" "port" "endpoint" ["data"] ["accept_header"] ["auth_token"] ["timeout"]
+send_http_request() {
+    local method="$1"
+    local host="$2"
+    local port="$3"
+    local endpoint="$4"
+    local data="${5:-}"
+    local accept="${6:-application/json}"
+    local auth_token="${7:-}"
+    local timeout="${8:-60}"  # Default 60 seconds timeout
+    
+    # Default to port 10005 if not specified
+    if [[ -z "$port" || "$port" == "$host" ]]; then
+        port=10005
+    fi
+    
+    # Use HTTP/1.0 for binary downloads to avoid chunked transfer encoding corruption
+    # Use HTTP/1.1 for JSON/text responses to benefit from persistent connections
+    local http_version="HTTP/1.1"
+    if [[ "$accept" == "application/octet-stream" ]]; then
+        http_version="HTTP/1.0"
+    fi
+    
+    # Build request (use original host with brackets for HTTP Host header)
+    local request="$method $endpoint $http_version\r\nHost: $host\r\n"
+    request+="Accept: $accept\r\n"
+    
+    # Add Authorization header if token provided
+    if [[ -n "$auth_token" ]]; then
+        request+="Authorization: Bearer $auth_token\r\n"
+    fi
+    
+    if [[ -n "$data" ]]; then
+        request+="Content-Type: application/json\r\n"
+        request+="Content-Length: ${#data}\r\n"
+        request+="\r\n$data"
+    else
+        request+="\r\n"
+    fi
+    
+    # Choose protocol based on port (IPv6 brackets are REQUIRED for socat)
+    local socat_target
+    # Only use connect-timeout, do NOT use readbytes (it truncates large files)
+    local socat_opts="connect-timeout=$timeout"
+    
+    if is_ssl_port "$port"; then
+        socat_target="OPENSSL:$host:$port,verify=0,$socat_opts"
+    else
+        socat_target="TCP:$host:$port,$socat_opts"
+    fi
+    
+    echo -en "$request" | socat - "$socat_target" 2> >(grep -v "refusing to set empty SNI host name" >&2)
+}
+
+########################
+# API Functions        #
+########################
+
+# Send HTTP GET request (reuses send_http_request)
+send_http_get() {
+    local host="$1"
+    local port="$2"
+    local endpoint="$3"
+    send_http_request "GET" "$host" "$port" "$endpoint"
+}
+
+# Send authenticated HTTP GET request with Bearer token
+# Usage: send_http_get_authenticated "host" "port" "endpoint" "token"
+send_http_get_authenticated() {
+    local host="$1"
+    local port="$2"
+    local endpoint="$3"
+    local token="$4"
+    
+    send_http_request "GET" "$host" "$port" "$endpoint" "" "application/json" "$token"
+}
+
+# Generic function to send encrypted data to API endpoint
+# Usage: send_encrypted_api_request "host" "port" "/api/path" "raw_data" ["password"]
 send_encrypted_api_request() {
-    local host_port="$1"
-    local api_endpoint="$2"
-    local raw_data="$3"
-    local password="${4:-$MYSQL_ROOT_PASSWORD}"
+    local host="$1"
+    local port="$2"
+    local api_endpoint="$3"
+    local raw_data="$4"
+    local password="${5:-$MYSQL_ROOT_PASSWORD}"
     
-    local api_host=$(echo "$host_port" | cut -d":" -f1)
-    local api_port=$(echo "$host_port" | cut -d":" -f2)
-    
-    # Default to port 80 if not specified
-    if [ -z "$api_port" ] || [ "$api_port" = "$api_host" ]; then
-        api_port=80
+    # Default to port 10005 if not specified
+    if [[ -z "$port" || "$port" == "$host" ]]; then
+        port=10005
     fi
     
     # Encrypt the data if provided
-    local encrypted_data
-    if [[ -n $raw_data ]]; then
+    local encrypted_data=""
+    if [[ -n "$raw_data" ]]; then
         encrypted_data=$(encrypt_data "$raw_data" "$password")
     fi
     
+    local json_data="{\"data\":\"$encrypted_data\"}"
+    send_http_request "POST" "$host" "$port" "$api_endpoint" "$json_data"
+}
+
+# Rotate log file if it exceeds size limit
+rotate_log_file() {
+    local log_file="$1"
+    local max_size="${2:-1048576}"  # Default 1MB
     
-    # Choose protocol based on port (443 and 10005 use HTTPS, others use HTTP)
-    if [ "$api_port" = "443" ] || [ "$api_port" = "10005" ]; then
-        send_encrypted_data_https "$api_host" "$api_port" "$api_endpoint" "$encrypted_data"
-    else
-        send_encrypted_data_http "$api_host" "$api_port" "$api_endpoint" "$encrypted_data"
+    if [[ ! -f "$log_file" ]]; then
+        return 0
+    fi
+    
+    local filesize=$(stat -c%s "$log_file" 2>/dev/null || echo 0)
+    if ((filesize > max_size)); then
+        cp -f "$log_file" "${log_file}.bak"
+        : > "$log_file"
     fi
 }
 
-# Backward compatible wrapper for the original MySQL replication manager use case
-send_encrypted_data() {
-    local api_host=$(echo "$1" | cut -d":" -f1)
-    local port=10005
-    local task="$2"
-    local data="$3"
-    local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$task"
-
-    if [ "$port" = "10005" ]; then
-        local encrypted_data=$(encrypt_data "$data")
-        send_encrypted_data_https "$api_host" "$port" "$api_endpoint" "$encrypted_data"
-    else
-        local encrypted_data=$(encrypt_data "$data")
-        send_encrypted_data_http "$api_host" "$port" "$api_endpoint" "$encrypted_data"
-    fi
-}
-
-# Generic function to send data to API with retry logic
-# Usage: send_to_api_with_retry "host:port" "/api/path" "raw_data" ["max_retries"] ["password"]
+# Send data to API with retry logic
+# Usage: send_to_api_with_retry "host" "port" "/api/path" "raw_data" ["max_retries"] ["password"] ["log_file"]
 send_to_api_with_retry() {
-    local host_port="$1"
-    local api_endpoint="$2"
-    local raw_data="$3"
-    local max_retries="${4:-3}"
-    local password="${5:-$MYSQL_ROOT_PASSWORD}"
-    local log_file="${6:-$LOG_DIR/api_calls.log}"
+    local api_host="$1"
+    local api_port="$2"
+    local api_endpoint="$3"
+    local raw_data="$4"
+    local max_retries="${5:-3}"
+    local password="${6:-$MYSQL_ROOT_PASSWORD}"
+    local log_file="${7:-$LOG_DIR/api_calls.log}"
     
     local attempt=0
-    local success=false
-    local http_code
-    local response
-
+    
     while ((attempt < max_retries)); do
-        response=$(send_encrypted_api_request "$host_port" "$api_endpoint" "$raw_data" "$password")
-        # Handles HTTP/1.0, HTTP/1.1, HTTP/2, etc.
-        http_code=$(echo "$response" | grep HTTP | head -n1 | awk '{print $2}')
-
-        if [[ "$http_code" == "200" ]]; then
-            success=true
-            break
-        else
-            ((attempt++))
-            sleep 2
-        fi
-    done
-
-    if [ "$success" = false ]; then
-        # Create log directory if it doesn't exist
-        mkdir -p "$(dirname "$log_file")"
+        local response=$(send_encrypted_api_request "$api_host" "$api_port" "$api_endpoint" "$raw_data" "$password")
+        local http_code=$(extract_http_code "$response")
         
-        # Rotate log file if it exceeds 1MB
-        if [ -f "$log_file" ]; then
-            local filesize=$(stat -c%s "$log_file")
-            if ((filesize > 1048576)); then
-                cp -f "$log_file" "${log_file}.bak"
-                : > "$log_file"
+        if [[ "$http_code" == "200" ]]; then
+            return 0
+        fi
+        
+        ((attempt++))
+        [[ $attempt -lt $max_retries ]] && sleep 2
+    done
+    
+    # Log failure
+    mkdir -p "$(dirname "$log_file")"
+    rotate_log_file "$log_file"
+    
+    {
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] API call failed after $max_retries attempts"
+        echo "Destination: $api_host:$api_port Endpoint: $api_endpoint"
+        echo "Response: $response"
+        echo "---"
+    } >> "$log_file"
+    
+    return 1
+}
+
+# Check if a specific log level is enabled
+# Usage: check_log_level "cluster" "taskname" "log_level"
+check_log_level() {
+    local cluster="$1"
+    local taskname="$2"
+    local log_level="$3"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    
+    local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "")
+
+    local http_code=$(extract_http_code "$response")
+    local body=$(extract_http_body "$response" | tr -d '\n')
+    
+    if [[ "$http_code" == "200" && "$body" == "true" ]]; then
+        return 0
+    elif [[ "$http_code" == "500" && "$body" == "false" ]]; then
+        return 1
+    else
+        return 2
+    fi
+}
+
+# Send log lines to API (checks log level first)
+# Usage: send_lines_to_api "log_lines" "job_name" "log_level"
+send_lines_to_api() {
+    local lines="$1"
+    local job="${2:-main}"
+    local level="${3:-$LVL_DEBUG}"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+
+    check_log_level "$CLUSTER_NAME" "$job" "$level" || return 0
+
+    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
+    local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
+
+    send_to_api_with_retry "$api_host" "$api_port" "$api_endpoint" "$data" "$MAX_RETRIES"
+}
+
+# Check if a specific task is needed
+# Usage: check_task_needs "cluster" "server" "port" "taskname"
+# Returns: 0=needed, 1=not needed, 2=error
+check_task_needs() {
+    local cluster="$1"
+    local server="$2"
+    local port="$3"
+    local taskname="$4"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/needs/${taskname}"
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+
+    local http_code=$(extract_http_code "$response")
+    local body=$(extract_http_body "$response" | tr -d '\n')
+    
+    if [[ "$http_code" == "200" && "$body" == "true" ]]; then
+        return 0
+    elif [[ "$http_code" == "500" && "$body" == "false" ]]; then
+        return 1
+    else
+        return 2
+    fi
+}
+
+##################################
+# Print Defaults Functions       #
+##################################
+
+# Login using secret
+# Usage: secret_login "cluster" "server" "port" "encrypted_secret"
+# Returns: token on success, empty string on failure
+# Exit codes: 0=success, 1=wrong credentials, 2=API error
+secret_login() {
+    local cluster="$1"
+    local server="$2"
+    local port="$3"
+    local encrypted_secret="$(encrypt_data "{\"server\":\"$server:$port\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    
+    # Build endpoint
+    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/secret-login"
+    
+    # Prepare JSON payload
+    local json_data="{\"data\":\"$encrypted_secret\"}"
+    
+    # Send request
+    local response=$(send_http_request "POST" "$api_host" "$api_port" "$endpoint" "$json_data")
+    local http_code=$(extract_http_code "$response")
+    local body=$(extract_http_body "$response")
+    
+    # Handle response codes
+    if [[ "$http_code" == "200" ]]; then
+        # Extract token from JSON response
+        local token=$(echo "$body" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+        
+        if [[ -n "$token" ]]; then
+            echo "$token"
+            return 0
+        else
+            return 2  # Failed to parse token
+        fi
+    elif [[ "$http_code" == "403" || "$http_code" == "401" ]]; then
+        # Wrong credentials
+        return 1
+    else
+        # Other error
+        return 2
+    fi
+}
+
+# Fetch config receiver information
+fetch_config_receiver() {
+    local urlpost="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-receiver"
+    local response
+    
+    # Use authenticated request if TOKEN is available
+    if [[ -n "$TOKEN" ]]; then
+        response=$(send_http_get_authenticated "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost" "$TOKEN")
+    else
+        response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
+    fi
+    
+    local http_code=$(extract_http_code "$response")
+    
+    if [[ "$http_code" != "200" ]]; then
+        send_lines_to_api "ERROR: Failed to fetch config receiver, HTTP $http_code" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    extract_http_body "$response"
+}
+
+# Check if config refresh is needed
+need_refresh_config() {
+    local urlpost="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/need-config-refresh"
+    local response=$(send_http_get "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$urlpost")
+    local http_code=$(extract_http_code "$response")
+    
+    [[ "$http_code" == "200" ]]
+}
+
+# Fetch and extract configuration
+# Usage: fetch_and_extract_config "extract_dir" ["token"]
+# Uses cookie-based push mechanism for async config delivery via SST
+fetch_and_extract_config() {
+    local extract_dir="$1"
+    local token="${2:-}"
+    local config_sender_url="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/config-dummy-sender"
+    
+    send_lines_to_api "Requesting config send via cookie-based push mechanism..." "print-defaults" "$LVL_DEBUG"
+    
+    # Remove existing directory and create new one
+    rm -rf "$extract_dir"
+    mkdir -p "$extract_dir"
+    
+    # Step 1: POST to queue the config send and get SST port info
+    local request_timeout=10  # API should respond quickly (just queues request)
+    
+    send_lines_to_api "Connecting to: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_DEBUG"
+    
+    local response
+    if [[ -n "$token" ]]; then
+        send_lines_to_api "Using authenticated POST request with token" "print-defaults" "$LVL_DEBUG"
+        response=$(send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "$token" "$request_timeout" 2>"$LOG_DIR/config_request.err")
+    else
+        send_lines_to_api "Using non-authenticated POST request" "print-defaults" "$LVL_DEBUG"
+        response=$(send_http_request "POST" "$REPLICATION_MANAGER_HOST" "$REPLICATION_MANAGER_PORT" "$config_sender_url" "" "application/json" "" "$request_timeout" 2>"$LOG_DIR/config_request.err")
+    fi
+    
+    if [[ -z "$response" ]]; then
+        send_lines_to_api "ERROR: No response received from API" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "Connection: $REPLICATION_MANAGER_HOST:$REPLICATION_MANAGER_PORT" "print-defaults" "$LVL_ERROR"
+        
+        if [ -f "$LOG_DIR/config_request.err" ]; then
+            local err_content=$(cat "$LOG_DIR/config_request.err" 2>/dev/null)
+            if [[ -n "$err_content" ]]; then
+                send_lines_to_api "Error details: $err_content" "print-defaults" "$LVL_ERROR"
             fi
         fi
-
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] API call failed with code: $http_code after $max_retries attempts" >> "$log_file"
-        echo "Destination: $host_port Endpoint: $api_endpoint" >> "$log_file"
-        echo "Response: $response" >> "$log_file"
-        echo "---" >> "$log_file"
         return 1
+    fi
+    
+    # Extract HTTP status and body
+    local http_status=$(extract_http_code "$response")
+    local json_body=$(extract_http_body "$response")
+    
+    send_lines_to_api "HTTP Status: $http_status" "print-defaults" "$LVL_DEBUG"
+    
+    if [[ "$http_status" != "200" ]]; then
+        send_lines_to_api "ERROR: API returned status $http_status" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Parse SST port and host from JSON response
+    local sst_port=$(echo "$json_body" | grep -o '"sst_port":"[^"]*"' | cut -d'"' -f4)
+    local sst_host=$(echo "$json_body" | grep -o '"sst_host":"[^"]*"' | cut -d'"' -f4)
+    local status=$(echo "$json_body" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+    
+    if [[ -z "$sst_port" || -z "$sst_host" ]]; then
+        send_lines_to_api "ERROR: Failed to parse SST port/host from API response" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    send_lines_to_api "Config send queued (status: $status)" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Config will be sent to $sst_host:$sst_port" "print-defaults" "$LVL_DEBUG"
+    
+    # Step 2: Open TCP listener on the SST port to receive the config
+    local config_file="$extract_dir/config.tar.gz"
+    local listener_timeout=300  # 5 minutes timeout for config delivery
+    
+    send_lines_to_api "Opening TCP listener on port $sst_port..." "print-defaults" "$LVL_DEBUG"
+    
+    # Use socat to listen and save received data to file
+    # Format: socat -u TCP-LISTEN:port,reuseaddr,fork OPEN:file,creat,trunc
+    if ! command -v socat >/dev/null 2>&1; then
+        send_lines_to_api "ERROR: 'socat' command not found - required for receiving config" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Start listener in background and capture PID
+    timeout "$listener_timeout" socat -u "TCP-LISTEN:$sst_port,reuseaddr" "OPEN:$config_file,creat,trunc" > "$LOG_DIR/socat_listener.log" 2>&1 &
+    local socat_pid=$!
+    
+    send_lines_to_api "Listener started (PID: $socat_pid), waiting for config delivery (timeout: ${listener_timeout}s)..." "print-defaults" "$LVL_DEBUG"
+    
+    # Wait for socat to complete or timeout
+    wait $socat_pid
+    local socat_exit=$?
+    
+    if [[ $socat_exit -eq 124 ]]; then
+        send_lines_to_api "ERROR: Timeout waiting for config delivery after ${listener_timeout}s" "print-defaults" "$LVL_ERROR"
+        return 1
+    elif [[ $socat_exit -ne 0 ]]; then
+        send_lines_to_api "ERROR: Listener failed with exit code $socat_exit" "print-defaults" "$LVL_ERROR"
+        if [ -f "$LOG_DIR/socat_listener.log" ]; then
+            send_lines_to_api "Listener log: $(cat "$LOG_DIR/socat_listener.log")" "print-defaults" "$LVL_ERROR"
+        fi
+        return 1
+    fi
+    
+    # Verify config file was received
+    if [[ ! -s "$config_file" ]]; then
+        local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
+        send_lines_to_api "ERROR: Received config file is empty (size: $filesize bytes)" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    local filesize=$(stat -c%s "$config_file" 2>/dev/null || echo 0)
+    send_lines_to_api "Received config file: $filesize bytes" "print-defaults" "$LVL_DEBUG"
+    
+    # Check file type before extraction
+    local file_type=$(file -b "$config_file" 2>/dev/null || echo "unknown")
+    send_lines_to_api "File type: $file_type" "print-defaults" "$LVL_DEBUG"
+    
+    # Check first few bytes (magic numbers)
+    local first_bytes=$(head -c 20 "$config_file" | od -An -tx1 | tr -d ' \n')
+    send_lines_to_api "First bytes (hex): ${first_bytes:0:40}" "print-defaults" "$LVL_DEBUG"
+    
+    # Check if it looks like an HTTP error response
+    if head -c 100 "$config_file" | grep -q "^HTTP\|^<html\|^{"; then
+        send_lines_to_api "ERROR: Received file appears to be an HTTP error response, not a tarball" "print-defaults" "$LVL_ERROR"
+        send_lines_to_api "First 200 bytes: $(head -c 200 "$config_file")" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Try to extract tarball
+    local tar_output
+    send_lines_to_api "Attempting gzip extraction (tar xzf)..." "print-defaults" "$LVL_DEBUG"
+    
+    if tar_output=$(tar xzf "$config_file" -C "$extract_dir" 2>&1); then
+        send_lines_to_api "Successfully extracted as gzip compressed tar" "print-defaults" "$LVL_DEBUG"
+    else
+        send_lines_to_api "Gzip extraction failed: $tar_output" "print-defaults" "$LVL_WARN"
+        
+        # Try without gzip (maybe it's already uncompressed)
+        send_lines_to_api "Trying uncompressed extraction (tar xf)..." "print-defaults" "$LVL_DEBUG"
+        
+        if tar_output=$(tar xf "$config_file" -C "$extract_dir" 2>&1); then
+            send_lines_to_api "Successfully extracted as uncompressed tar" "print-defaults" "$LVL_DEBUG"
+        else
+            send_lines_to_api "ERROR: All extraction methods failed" "print-defaults" "$LVL_ERROR"
+            send_lines_to_api "Final tar error: $tar_output" "print-defaults" "$LVL_ERROR"
+            
+            # Show what we actually got
+            send_lines_to_api "First 200 chars of file: $(head -c 200 "$config_file" | cat -v)" "print-defaults" "$LVL_ERROR"
+            
+            # Try to identify the file type more specifically
+            if command -v file >/dev/null 2>&1; then
+                local detailed_type=$(file "$config_file" 2>/dev/null)
+                send_lines_to_api "Detailed file type: $detailed_type" "print-defaults" "$LVL_ERROR"
+            fi
+            
+            return 1
+        fi
+    fi
+    
+    # Set ownership if running as root
+    if [[ "$(id -u)" == "0" && -d "$extract_dir/etc/mysql" ]]; then
+        chown -R 999:999 "$extract_dir/etc/mysql" 2>/dev/null || true
     fi
     
     return 0
 }
 
-# Function to check if a specific task is needed for a server
-check_log_level() {
-    local host_port="$1"
-    local cluster="$2"
-    local taskname="$5"
-    local log_level="$6"
-
-    local endpoint="/api/clusters/${cluster}/jobs-log-level/${taskname}/${log_level}"
-
-    local response
-    response=$(send_encrypted_api_request "$host_port" "$endpoint")
-
-    # Extract HTTP status code
-    local http_code
-    http_code=$(echo "$response"  | grep HTTP | head -1 | sed -E 's/.*HTTP\/[0-9.]+ ([0-9]{3}).*/\1/')
-
-    # Extract body after blank line
-    local body
-    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
+# Create dummy config file
+create_dummy_config_file() {
+    local base_dir="$1"
+    local dummy_config_file="$base_dir/dummy.cnf"
     
-    # echo "$http_code: $body" >> "$LOG_DIR/$taskname.process.out"
-
-    # Determine output
-    if [ "$http_code" = "200" ] && [ "$body" = "true" ]; then
-        return 0
-    elif [ "$http_code" = "500" ] && [ "$body" = "false" ]; then
+    cat > "$dummy_config_file" <<EOF
+[mysqld]
+!includedir $base_dir/etc/mysql/conf.d
+!includedir $base_dir/etc/mysql/custom.d
+EOF
+    
+    if [[ $? -ne 0 ]]; then
+        send_lines_to_api "ERROR: Failed to create dummy.cnf" "print-defaults" "$LVL_ERROR"
         return 1
-    else
-        return 2
     fi
-}
-
-# Backward compatible function for MySQL replication manager logs
-send_lines_to_api() {
-    local lines="$1"
-    local job="${2:-main}"
-    local level="${3:-$LVL_DEBUG}"
-    local address="${REPLICATION_MANAGER_URL}"
-    local max_retries=3
-
-    check_log_level "$address" "$CLUSTER_NAME" "$job" "$level"
-    local log_level_status=$?
-
-    # Skip sending if log level is not enabled
-    if [ $log_level_status -eq 1 ]; then
-        return
-    fi
-
-    local data="{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\",\"log\":\"$lines\",\"level\":\"$level\"}"
-    local api_endpoint="/api/clusters/$CLUSTER_NAME/servers/$MYSQL_SERVER/$MYSQL_PORT/write-log/$job"
     
-    send_to_api_with_retry "$address" "$api_endpoint" "$data" "$max_retries"
+    # Set ownership if running as root
+    if [[ "$(id -u)" == "0" ]]; then
+        chown 999:999 "$dummy_config_file" 2>/dev/null || true
+    fi
+    
+    return 0
 }
 
-########################
-# Usage Examples       #
-########################
+# Send MariaDB defaults over TCP
+send_mariadb_defaults() {
+    local defaults_file="$1"
+    local receiver_addr="$2"
+    local log_file="$3"
+    
+    # Check if mariadbd exists, otherwise use mysqld
+    local command="mariadbd"
+    if ! command -v "$command" >/dev/null 2>&1; then
+        send_lines_to_api "'mariadbd' not found, falling back to 'mysqld'" "print-defaults" "$LVL_INFO"
+        command="mysqld"
+    fi
+    
+    if ! command -v "$command" >/dev/null 2>&1; then
+        send_lines_to_api "ERROR: Neither 'mariadbd' nor 'mysqld' found in PATH" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Run command and capture output
+    local output=$($command --defaults-file="$defaults_file" --print-defaults 2>&1)
+    
+    if [[ $? -ne 0 ]]; then
+        send_lines_to_api "ERROR: Failed to execute $command: $output" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Process output: replace ' --' with newline
+    local processed_output=$(echo "$output" | sed 's/ --/\n--/g')
+    
+    # Send over TCP using socat
+    local recv_host="${receiver_addr%%:*}"
+    local recv_port="${receiver_addr##*:}"
+    
+    if ! echo "$processed_output" | socat -u STDIN "TCP:$recv_host:$recv_port"; then
+        send_lines_to_api "ERROR: Failed to send data to $receiver_addr" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Log output
+    echo "$processed_output" > "$log_file"
+    
+    send_lines_to_api "Output sent to $receiver_addr and logged to $log_file" "print-defaults" "$LVL_DEBUG"
+    return 0
+}
 
-# Example 1: Send to custom API endpoint
-# send_encrypted_api_request "api.example.com:443" "/api/v1/data" '{"key":"value"}'
+# Read command line arguments from /proc
+read_cmdline_args() {
+    local pid="$1"
+    local cmdline_path="/proc/$pid/cmdline"
+    
+    if [[ ! -f "$cmdline_path" ]]; then
+        send_lines_to_api "ERROR: Cannot read cmdline for PID $pid" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    tr '\0' '\n' < "$cmdline_path"
+}
 
-# Example 2: Send with retry logic to custom endpoint
-# send_to_api_with_retry "api.example.com:8080" "/api/submit" '{"data":"test"}' 5
+# Print defaults from PID file
+print_defaults_from_pidfile() {
+    local monitor_addr="$1"
+    local current_port="$2"
+    local current_pid_file="$3"
+    local default_config_path="$4"
+    local log_file="$5"
+    
+    # If pid_file doesn't exist, use default config
+    if [[ -z "$current_pid_file" || ! -f "$current_pid_file" ]]; then
+        send_lines_to_api "PID file not found, using default config path" "print-defaults" "$LVL_INFO"
+        send_mariadb_defaults "$default_config_path" "$monitor_addr:$current_port" "$log_file"
+        return $?
+    fi
+    
+    # Read PID from file
+    local pid=$(cat "$current_pid_file" | tr -d '[:space:]')
+    
+    if [[ -z "$pid" ]]; then
+        send_lines_to_api "PID file is empty" "print-defaults" "$LVL_WARN"
+        return 1
+    fi
+    
+    # Check if process exists
+    if [[ ! -d "/proc/$pid" ]]; then
+        send_lines_to_api "Process with PID $pid not found" "print-defaults" "$LVL_WARN"
+        return 1
+    fi
+    
+    # Read command line arguments
+    local defaults_file=""
+    while IFS= read -r arg; do
+        if [[ "$arg" == --defaults-file=* ]]; then
+            defaults_file="${arg#--defaults-file=}"
+            break
+        fi
+    done < <(read_cmdline_args "$pid")
+    
+    # Use default if not found
+    if [[ -z "$defaults_file" ]]; then
+        defaults_file="$default_config_path"
+    fi
+    
+    # Send defaults
+    send_mariadb_defaults "$defaults_file" "$monitor_addr:$current_port" "$log_file"
+}
 
-# Example 3: Use original replication manager function
-# send_lines_to_api "Log message here" "backup" "INFO"
+# Print defaults for fetch (dummy config)
+print_defaults_for_fetch() {
+    local monitor_addr="$1"
+    local dummy_port="$2"
+    local default_config_path="$3"
+    local log_file="$4"
+    
+    local extract_dir="/bootstrap/dummy"
+    
+    # Fetch and extract configuration (use global TOKEN if available)
+    if ! fetch_and_extract_config "$extract_dir" "$TOKEN"; then
+        send_lines_to_api "ERROR: Failed to fetch and extract configuration" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Create dummy config file
+    if ! create_dummy_config_file "$extract_dir"; then
+        send_lines_to_api "ERROR: Failed to create dummy.cnf file" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+    
+    # Run mariadbd with dummy configuration
+    if send_mariadb_defaults "$extract_dir/dummy.cnf" "$monitor_addr:$dummy_port" "$log_file"; then
+        send_lines_to_api "Dry run (dummy) completed successfully" "print-defaults" "$LVL_DEBUG"
+        return 0
+    else
+        send_lines_to_api "ERROR: Dry run (dummy) failed" "print-defaults" "$LVL_ERROR"
+        return 1
+    fi
+}
 
-#########################
-# Check Binaries         #
-#########################
+# Parse JSON field (simple grep-based parser for portability)
+parse_json_field() {
+    local json="$1"
+    local field="$2"
+    echo "$json" | grep -o "\"$field\":\"[^\"]*\"" | cut -d'"' -f4
+}
 
-# Determine which binary to use (prefer MariaDB, fallback to MySQL)
-if [ -x "$MARIADB_CLIENT" ]; then
-    BINARY_CLIENT="$MARIADB_CLIENT $BINARY_CLIENT_PARAMETERS"
-    BINARY_CHECK=$MARIADB_CHECK
-    BINARY_DUMP=$MARIADB_DUMP
-    send_lines_to_api "Job start: Using MariaDB binaries."
-elif [ -x "$MYSQL_CLIENT" ]; then
-    BINARY_CLIENT="$MYSQL_CLIENT $BINARY_CLIENT_PARAMETERS"
-    BINARY_CHECK=$MYSQL_CHECK
-    BINARY_DUMP=$MYSQL_DUMP
-    send_lines_to_api "Job start: Using MySQL binaries."
-else
-    send_lines_to_api "Neither MariaDB nor MySQL binaries are available. Exiting job script." "main" "$LVL_ERROR"
-    exit 1
-fi
+# Main function to run config print jobs
+run_config_print_jobs() {
+    send_lines_to_api "Fetching config receiver information..." "print-defaults" "$LVL_DEBUG"
+    
+    # Fetch receiver info
+    local receiver_json=$(fetch_config_receiver) || return 1
+    
+    # Parse JSON response
+    local monitor_address=$(parse_json_field "$receiver_json" "monitor_address")
+    local dummy_config_port=$(parse_json_field "$receiver_json" "dummy_config_port")
+    local current_config_port=$(parse_json_field "$receiver_json" "current_config_port")
+    local current_pid_file=$(parse_json_field "$receiver_json" "current_pid_file")
+    local default_config_path=$(parse_json_field "$receiver_json" "default_config_dir")
+    
+    send_lines_to_api "Monitor Address: $monitor_address, Dummy Port: $dummy_config_port, Current Port: $current_config_port" "print-defaults" "$LVL_DEBUG"
+    
+    # Prepare log files
+    local dummy_log="$LOG_DIR/dummy.log"
+    local current_log="$LOG_DIR/current.log"
+    
+    # Run both jobs in parallel
+    print_defaults_for_fetch "$monitor_address" "$dummy_config_port" "$default_config_path" "$dummy_log" &
+    local pid_dummy=$!
+    
+    print_defaults_from_pidfile "$monitor_address" "$current_config_port" "$current_pid_file" "$default_config_path" "$current_log" &
+    local pid_current=$!
+    
+    # Wait for both to complete
+    wait $pid_dummy
+    local status_dummy=$?
+    
+    wait $pid_current
+    local status_current=$?
+    
+    # Log results
+    send_lines_to_api "Both configuration checks completed." "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Dummy result: $([ $status_dummy -eq 0 ] && echo 'Success' || echo 'Failed') - Output in $dummy_log" "print-defaults" "$LVL_INFO"
+    send_lines_to_api "Current result: $([ $status_current -eq 0 ] && echo 'Success' || echo 'Failed') - Output in $current_log" "print-defaults" "$LVL_INFO"
+    
+    return 0
+}
 
 #########################
 # Check Functions         #
 #########################
 
-# Function to check if a specific task is needed for a server
-check_task_needs() {
-    local host_port="$1"
-    local cluster="$2"
-    local server="$3"
-    local port="$4"
-    local taskname="$5"
-    
-    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/needs/${taskname}"
-    
-    local response
-    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    # Extract HTTP status code
-    local http_code
-    http_code=$(echo "$response"  | grep HTTP | head -1 | sed -E 's/.*HTTP\/[0-9.]+ ([0-9]{3}).*/\1/')
-
-    # Extract body after blank line
-    local body
-    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
-    
-    # echo "$http_code: $body" >> "$LOG_DIR/$taskname.process.out"
-
-    # Determine output
-    if [ "$http_code" = "200" ] && [ "$body" = "true" ]; then
-        return 0
-    elif [ "$http_code" = "500" ] && [ "$body" = "false" ]; then
-        return 1
-    else
-        return 2
-    fi
-}
-
-# Function to check the current script status and return the receiver port if successful
+# Check jobs receiver (returns receiver port if successful)
 check_jobs_receiver() {
-    local host_port="$1"
-    local cluster="$2"
-    local server="$3"
-    local port="$4"
-
+    local cluster="$1"
+    local server="$2"
+    local port="$3"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
+    
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/receive-jobs-check"
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
 
-    local response
-    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    # Extract HTTP status code
-    local http_code
-    http_code=$(echo "$response" | grep HTTP | head -n1 | awk '{print $2}')
-
-    # Extract body (after the first blank line)
-    local body
-    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r')
-
-    # echo "receiver $http_code: $body" >> "$LOG_DIR/jobs-check.process.out"
-
+    local http_code=$(extract_http_code "$response")
+    local body=$(extract_http_body "$response")
+    
     # Process successful response
-    if [ "$http_code" = "200" ] && [[ "$body" == RECEIVER_PORT=* ]]; then
+    if [[ "$http_code" == "200" && "$body" == RECEIVER_PORT=* ]]; then
         local recv_port="${body#RECEIVER_PORT=}"
-
+        
         # Validate the port is numeric and within range
-        if [[ "$recv_port" =~ ^[0-9]+$ ]] && [ "$recv_port" -ge 1 ] && [ "$recv_port" -le 65535 ]; then
+        if [[ "$recv_port" =~ ^[0-9]+$ && "$recv_port" -ge 1 && "$recv_port" -le 65535 ]]; then
             echo "$recv_port"
             return 0
         else
@@ -394,124 +941,18 @@ check_jobs_receiver() {
     fi
 }
 
-##########################
-# Upgrade Functions        #
-##########################
-
+# Request jobs upgrade
 request_jobs_upgrade() {
-    local host_port="$1"
-    local cluster="$2"
-    local server="$3"
-    local port="$4"
-
+    local cluster="$1"
+    local server="$2"
+    local port="$3"
+    local api_host="$REPLICATION_MANAGER_HOST"
+    local api_port="$REPLICATION_MANAGER_PORT"
     local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/send-jobs-upgrade"
-
-    local response
-    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    # Extract HTTP status code
-    local http_code
-    http_code=$(echo "$response" | head -n1 | awk '{print $2}')
-
-    # Extract body after blank line
-    local body
-    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
-
-    # Determine output
-    if [ "$http_code" = "200" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-
-# Function to check if a table exists in a given database
-table_exists() {
-    local query="SELECT CASE WHEN COUNT(*) = 9 THEN 1 ELSE 0 END AS valid
-FROM information_schema.columns
-WHERE table_schema = 'replication_manager_schema'
-  AND table_name = 'jobs'
-  AND (
-      (column_name='id'     AND column_type='int(11)'      AND is_nullable='NO' AND extra LIKE '%auto_increment%')
-   OR (column_name='task'   AND column_type='varchar(20)'  AND is_nullable='YES')
-   OR (column_name='port'   AND column_type='int(11)'      AND is_nullable='YES')
-   OR (column_name='server' AND column_type='varchar(255)' AND is_nullable='YES')
-   OR (column_name='done'   AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
-   OR (column_name='state'  AND column_type='tinyint(4)'   AND is_nullable='NO' AND column_default='0')
-   OR (column_name='result' AND column_type='mediumtext'   AND is_nullable='YES')
-   OR (column_name='start'  AND column_type='datetime'     AND is_nullable='YES')
-   OR (column_name='end'    AND column_type='datetime'     AND is_nullable='YES')
-  );
-"
-
-    local result
-    result=$($BINARY_CLIENT -N -e "$query" 2>&1)
-    local status=$?
-
-    if [ $status -ne 0 ]; then
-        send_lines_to_api "Database query failed: $result" "main" "$LVL_ERROR"
-        return 2  # indicate DB error
-    fi
-
-    # Defensive check in case of unexpected output
-    result=$(echo "$result" | tr -d '[:space:]')
-    case "$result" in
-        1) return 0 ;;  # table exists
-        0) return 1 ;;  # table does not exist
-        *) 
-           send_lines_to_api "Unexpected query result: '$result'" "main" "$LVL_ERROR"
-           return 2 ;;   # unknown error
-    esac
-}
-
-# Function to create the jobs table if it doesn't exist
-create_jobs_table() {
-    local host_port="$1"
-    local cluster="$2"
-    local server="$3"
-    local port="$4"
-
-    local endpoint="/api/clusters/${cluster}/servers/${server}/${port}/actions/jobs-create-table"
-
-    local response
-    response=$(send_encrypted_api_request "$host_port" "$endpoint" "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-
-    # Extract HTTP status code
-    local http_code
-    http_code=$(echo "$response" | head -n1 | awk '{print $2}')
-
-    # Extract body after blank line
-    local body
-    body=$(echo "$response" | awk 'BEGIN{body=0} /^(\r)?$/ {body=1; next} body {print}' | tr -d '\r' | tr -d '\n')
-
-    # Determine output
-    if [ "$http_code" = "200" ]; then
-        return 0
-    else
-        return 1
-    fi
-}
-
-check_jobs_table() {
-    local host_port="$1"
-    local cluster="$2"
-    local server="$3"
-    local port="$4"
-
-    table_exists
-    local exists_status=$?
-
-    if [ $exists_status -eq 2 ]; then
-        return 1
-    fi
-
-    if [ $exists_status -eq 1 ]; then
-        create_jobs_table "$host_port" "$cluster" "$server" "$port"
-        return 1
-    fi
-
-    return 0
+    local response=$(send_encrypted_api_request "$api_host" "$api_port" "$endpoint" "{\"server\":\"$server:$port\",\"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
+    
+    local http_code=$(extract_http_code "$response")
+    [[ "$http_code" == "200" ]]
 }
 
 ################################
@@ -611,11 +1052,15 @@ wait_for_log_file() {
 
 read_log_file() {
     local log_file="$1"
-    local checkpoint_file=$2
+    local checkpoint_file="$2"
     local job="$3"
+    local run_lockdir="$4"
+    local batch_var="$5"
+    
     local last_read=0
     local current_line=$((last_read + 1))
     local num_lines=$(wc -l < "$log_file")
+    local batch=""
 
     if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
@@ -700,27 +1145,26 @@ process_log_file() {
 
     send_lines_to_api "Last checkpoint on "$checkpoint_file" is: $last_line.\n" "$job" "$LVL_DEBUG"
 
-    local current_line=0
-    local batch=""
     local exec_once=1
 
     # processing until the end of the file and loop until run file deleted
     while [[ -d "$run_lockdir" ]] || [[ "$exec_once" -eq 1 ]]; do
         exec_once=0
-        read_log_file "$log_file" "$checkpoint_file" "$job"
+        read_log_file "$log_file" "$checkpoint_file" "$job" "$run_lockdir"
     done
+
+    # Final pass: process any remaining lines after run lockdir is deleted
+    local last_read=0
+    local current_line=1
+    local num_lines=$(wc -l < "$log_file")
+    local batch=""
 
     if [[ -s "$checkpoint_file" ]]; then
         last_read=$(cat "$checkpoint_file")
         current_line=$((last_read + 1))
     fi
 
-    if [ "$current_line" -gt "$num_lines" ]; then
-        return
-    fi
-
-    # If the run file was deleted, continue processing until the end of the file
-    if [ -f "$log_file" ]; then
+    if [ "$current_line" -le "$num_lines" ] && [ -f "$log_file" ]; then
         while IFS= read -r line; do
             escaped=$(printf '%s' "$line" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\n/\\n/g')
             
@@ -733,10 +1177,10 @@ process_log_file() {
             echo "$current_line" >"$checkpoint_file"
             ((current_line++))
         done < <(sed -n "${current_line},\$p" "$log_file")
-    fi
-
-    if [[ -n "$batch" ]]; then
-        send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
+        
+        if [[ -n "$batch" ]]; then
+            send_lines_to_api "$batch" "$job" "$LVL_DEBUG"
+        fi
     fi
 
     send_lines_to_api "Removing checkpoint file.\n" "$job" "$LVL_DEBUG"
@@ -892,7 +1336,7 @@ jobsCheck() {
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
     trap 'remove_run_lockdir "jobs-check"' EXIT
 
-    check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-check"
+    check_task_needs "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-check"
     checkresult=$?
     if [ "$checkresult" != "0" ]; then
         if [ "$checkresult" = "2" ]; then
@@ -914,7 +1358,7 @@ jobsCheck() {
     echo "Waiting for receiver port." >"$LOG_DIR/jobs-check.process.out"
 
     #Send this script to the monitoring server using socat (using different variables to avoid confusion)
-    RCV_PORT=$(check_jobs_receiver "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")
+    RCV_PORT=$(check_jobs_receiver "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")
     checkresult=$?
 
     if [ "$checkresult" != "0" ] || [ "$RCV_PORT" == "error" ]; then
@@ -956,7 +1400,7 @@ jobsUpgrade() {
     # Ensure run lockdir for current job is removed on script exit. Intended to replace the previous job trap which already removed at the end of loop entry.
     trap 'remove_run_lockdir "jobs-upgrade"' EXIT
 
-    check_task_needs "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-upgrade"
+    check_task_needs "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT" "jobs-upgrade"
 
     checkresult=$?
     if [ "$checkresult" != "0" ]; then
@@ -984,7 +1428,7 @@ jobsUpgrade() {
     SOCAT_PID=$!
 
     # Request the upgrade
-    request_jobs_upgrade "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
+    request_jobs_upgrade "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
 
     # Wait for socat to finish
     wait $SOCAT_PID
@@ -1022,11 +1466,22 @@ jobsUpgrade() {
 # JOB START HERE
 #######################
 
-mkdir -p "$CHECKPOINT_DIR"
-mkdir -p "$LOCK_DIR"
-echo "" > $LOG_DIR/curl_response.txt
-echo "" > $LOG_DIR/request.txt
-echo "" > $LOG_DIR/encrypt.txt
+validate_environment || exit 1
+
+ensure_directories || exit 1
+
+select_database_binaries || exit 1
+
+TOKEN="$(secret_login "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT")"
+if [ "$TOKEN" == "error" ]; then
+    echo "Failed to authenticate with the replication manager API."
+    exit 1
+fi
+
+# Clear previous temporary files
+echo "" > "$LOG_DIR/curl_response.txt"
+echo "" > "$LOG_DIR/request.txt"
+echo "" > "$LOG_DIR/encrypt.txt"
 
 jobsCheck
 checkresult=$?
@@ -1035,26 +1490,14 @@ if [ "$checkresult" != "2" ]; then
     jobsUpgrade "$@"
 fi
 
-check_jobs_table "${REPLICATION_MANAGER_URL}" "$CLUSTER_NAME" "$MYSQL_SERVER" "$MYSQL_PORT"
-checktable=$?
-if [ "$checktable" != "0" ]; then
-    sleep 60;
-    exit 1
-fi
-
 ####################
-# Check if the configuration file has changed using repman client
+# Check if the configuration file has changed
 ####################
-if [ ! -f "$REPMAN_CLIENT" ]; then 
-    NEW_CLIENT=$(which replication-manager-cli)
-    if [ $? -eq 0 ]; then
-        REPMAN_CLIENT="$NEW_CLIENT"
-    fi
-fi
-
-if [ -f "$REPMAN_CLIENT" ]; then
-    ENC_KEY=$(encrypt_data "{\"server\":\"$MYSQL_SERVER:$MYSQL_PORT\", \"secret\":\"$MYSQL_ROOT_PASSWORD\"}")
-    $REPMAN_CLIENT "print-defaults" --host="$REPLICATION_MANAGER_HOST" --port="$REPLICATION_MANAGER_PORT" --cluster="$CLUSTER_NAME" --srv-host="$MYSQL_SERVER" --srv-port="$MYSQL_PORT" --enc-secret="$ENC_KEY" --log-dir="$LOG_DIR" > $LOG_DIR/repman.out
+if need_refresh_config; then
+    send_lines_to_api "Config refresh needed, running print jobs..." "print-defaults" "$LVL_INFO"
+    run_config_print_jobs
+else
+    send_lines_to_api "No need to refresh configuration." "print-defaults" "$LVL_DEBUG"
 fi
 
 #####################
@@ -1156,7 +1599,7 @@ for job in "${JOBS[@]}"; do
             ;;
         mariabackup)
             cd /docker-entrypoint-initdb.d
-            $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --databases-exclude=.system --protocol=TCP $BINARY_CLIENT_PARAMETERS --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
+            $MARIADB_BACKUP --innobackupex --defaults-file=$MYSQL_CONF/my.cnf --databases-exclude=.system --protocol=TCP $DB_CONN_PARAMETERS --stream=xbstream 2>"$LOG_DIR/backup.out" | socat -u stdio TCP:$ADDRESS &>"$LOG_DIR/$job.out"
             ;;
         errorlog)
             dblogfile "$ERRORLOG" "$job"
@@ -1177,7 +1620,7 @@ for job in "${JOBS[@]}"; do
             %%ENV:SERVICES_SVCNAME%% start
             ;;
         optimize)
-            $BINARY_CHECK -o $BINARY_CLIENT_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
+            $BINARY_CHECK -o $DB_CONN_PARAMETERS --all-databases --skip-write-binlog &>"$LOG_DIR/$job.process.out"
             ;;
         restart)
             systemctl restart mysql

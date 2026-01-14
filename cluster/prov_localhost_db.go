@@ -48,7 +48,7 @@ func (cluster *Cluster) LocalhostProvisionGetVersionFromMysqld(server *ServerMon
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "%s", err)
 		return ""
 	}
-	return strings.ToLower(string(out.Bytes()))
+	return strings.ToLower(out.String())
 }
 
 func (cluster *Cluster) LocalhostProvisionDatabaseService(server *ServerMonitor) error {

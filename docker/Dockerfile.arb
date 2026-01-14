@@ -15,7 +15,12 @@ FROM alpine:3
 RUN mkdir -p \
         /etc/replication-manager \
         /etc/replication-manager/cluster.d \
-        /var/lib/replication-manager
+        /var/lib/replication-manager \
+        /var/lib/replication-manager/conf \
+        /var/lib/replication-manager/recover
+RUN addgroup -S repman \
+  && adduser -S -D -G repman -h /var/lib/replication-manager -s /sbin/nologin repman \
+  && chown -R repman:repman /etc/replication-manager /etc/replication-manager/cluster.d /var/lib/replication-manager
 
 RUN mkdir /lib64 && ln -s /lib/libc.musl-x86_64.so.1 /lib64/ld-linux-x86-64.so.2
 

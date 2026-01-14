@@ -258,6 +258,11 @@ type Cluster struct {
 	SessionManager      *tty.SessionManager `json:"-"`
 	SysBenchTpcMResults []SysBenchTpcResultPerMinute
 	OpenSVCStats        atomic.Value `json:"-"`
+	// Per-cluster preserved variables (replaces ProvDBConfigPreserveVars mechanism)
+	preservedVars               map[string]string          `json:"-"`
+	preservedVarsExcludeServers map[string]map[string]bool `json:"-"` // varName -> {serverID -> true}
+	preservedVarsLoaded         bool                       `json:"-"`
+	preservedVarsMutex          sync.RWMutex               `json:"-"`
 }
 
 type SlavesOldestMasterFile struct {
@@ -329,13 +334,6 @@ type VariableDiff struct {
 	DiffValues   []Diff `json:"diffValues"`
 }
 
-const (
-	stateClusterStart string = "Running starting"
-	stateClusterDown  string = "Running cluster down"
-	stateClusterErr   string = "Running with errors"
-	stateClusterWarn  string = "Running with warnings"
-	stateClusterRun   string = "Running"
-)
 const (
 	ConstJobCreateFile string = "JOB_O_CREATE_FILE"
 	ConstJobAppendFile string = "JOB_O_APPEND_FILE"
@@ -456,7 +454,7 @@ func (cluster *Cluster) InitFromConf() {
 
 	//working directory of the cluster is working directory of server and cluster name
 	if _, err := os.Stat(cluster.WorkingDir); os.IsNotExist(err) {
-		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Creating directory  %s", cluster.WorkingDir)
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "Creating directory  %s", cluster.WorkingDir)
 		os.MkdirAll(cluster.WorkingDir, os.ModePerm)
 	}
 
@@ -550,6 +548,17 @@ func (cluster *Cluster) InitFromConf() {
 	cluster.SqlGeneralLog.AddHook(hookgen)
 
 	cluster.LoadAppConfigs()
+
+	// Configurator generates base configuration from tags, which is overridden by:
+	// 1. Cluster-wide preserved variables
+	// 2. Server-specific preserved variables
+
+	// Initialize preserved variables before server initialization
+	// This replaces the old ProvDBConfigPreserveVars mechanism
+	if err := cluster.initPreservedVars(); err != nil {
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn,
+			"Failed to pre-initialize preserved variables: %v (will retry on demand)", err)
+	}
 
 	err = cluster.newServerList()
 	if err != nil {
@@ -673,7 +682,7 @@ func (cluster *Cluster) Run() {
 	cluster.Topology = config.TopoUnknown
 	cluster.Unlock()
 
-	for cluster.exit == false {
+	for !cluster.exit {
 		if !cluster.Conf.MonitorPause {
 			cluster.ServerIdList = cluster.GetDBServerIdList()
 			cluster.ProxyIdList = cluster.GetProxyServerIdList()
@@ -731,6 +740,9 @@ func (cluster *Cluster) Run() {
 					}
 					go cluster.initOrchetratorNodes()
 					go cluster.ResticFetchRepo()
+					cluster.SetRollingJobsUpgradeState()
+					// Clean up any lingering restart cookies from previous runs
+					cluster.CleanupRestartCookies()
 					cluster.runOnceAfterTopology = false
 				} else {
 
@@ -739,6 +751,9 @@ func (cluster *Cluster) Run() {
 						wg.Add(1)
 						go cluster.refreshProxies(wg)
 						go cluster.refreshApps(wg)
+						cluster.CheckWaitRunJobSSH()
+						cluster.CheckDummyConfigSendCookies()
+						// cluster.CheckRestartCookies()
 
 						// Monitor schema when shardproxy is used
 						if cluster.Conf.MdbsProxyOn && cluster.StateMachine.SchemaMonitorEndTime+60 < time.Now().Unix() {
@@ -871,23 +886,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing reseed for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0075" {
-				/*
-					This action is inactive due to direct function from Job
-				*/
-				// //Only mysqldump exists in the script
-				// task := "reseed" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending master logical backup to reseed %s", s.ServerUrl)
-				// if master != nil {
-				// 	if mybcksrv != nil {
-				// 		go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	} else {
-				// 		go cluster.SSTRunSender(master.GetMasterBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// 	}
-				// } else {
-				// 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "No master cancel backup reseeding %s", s.ServerUrl)
-				// }
-			}
+
 			if s.ErrKey == "WARN0076" && servertoreseed != nil {
 				task := "flashback" + cluster.Conf.BackupPhysicalType
 				err := servertoreseed.ProcessFlashbackPhysical(task)
@@ -899,31 +898,7 @@ func (cluster *Cluster) StateProcessing() {
 					cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Fail of processing flashback for %s: %s", servertoreseed.URL, err)
 				}
 			}
-			if s.ErrKey == "WARN0077" {
-				/*
-					This action is inactive due to direct function from rejoin
-				*/
-				// //Only mysqldump exists in the script
-				// task := "flashback" + cluster.Conf.BackupLogicalType
-				// cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Sending logical backup to flashback reseed %s", s.ServerUrl)
-				// if mybcksrv != nil {
-				// 	go cluster.SSTRunSender(mybcksrv.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// } else {
-				// 	go cluster.SSTRunSender(servertoreseed.GetMyBackupDirectory()+"mysqldump.sql.gz", servertoreseed, task)
-				// }
-			}
-			/*
-				// Unused, will be split to logical and physical backup. For rejoin will still use the same ReseedMasterSST
-					if s.ErrKey == "WARN0101" {
-						cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have backup")
-						for _, srv := range cluster.Servers {
-							if srv.HasWaitBackupCookie() {
-								cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Server %s was waiting for backup", srv.URL)
-								go srv.ReseedMasterSST()
-							}
-						}
-					}
-			*/
+
 			if s.ErrKey == "WARN0111" {
 				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Cluster have logical backup")
 				for _, srv := range cluster.Servers {
@@ -1223,7 +1198,7 @@ func (cluster *Cluster) SaveImmutableConfig() (bool, error) {
 
 	// Get Sorted Keys
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1286,7 +1261,7 @@ func (cluster *Cluster) SaveCacheConfig() error {
 	defer file.Close()
 
 	keys := make([]string, 0)
-	for key, _ := range cluster.Conf.ImmuableFlagMap {
+	for key := range cluster.Conf.ImmuableFlagMap {
 		keys = append(keys, key)
 	}
 
@@ -1675,7 +1650,7 @@ func (cluster *Cluster) MonitorVariablesDiff() {
 		myvalues = append(myvalues, mastervalue)
 		for _, s := range cluster.slaves {
 			slaveVariables := s.Variables.ToNewMap()
-			if slaveVariables[k] != v && exceptVariables[k] != true {
+			if slaveVariables[k] != v && !exceptVariables[k] {
 				var slavevalue Diff
 				slavevalue.Server = s.URL
 				slavevalue.VariableValue = slaveVariables[k]
@@ -1777,7 +1752,11 @@ func (cluster *Cluster) MonitorMasterTableSchema() error {
 			if haschanged {
 				for _, pri := range cluster.Proxies {
 					if prx, ok := pri.(*MariadbShardProxy); ok {
-						if !(t.TableSchema == "replication_manager_schema" || strings.Contains(t.TableName, "_copy") == true || strings.Contains(t.TableName, "_back") == true || strings.Contains(t.TableName, "_old") == true || strings.Contains(t.TableName, "_reshard") == true) {
+						if t.TableSchema != "replication_manager_schema" &&
+							!strings.Contains(t.TableName, "_copy") &&
+							!strings.Contains(t.TableName, "_back") &&
+							!strings.Contains(t.TableName, "_old") &&
+							!strings.Contains(t.TableName, "_reshard") {
 							cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlDbg, "blabla table %s %s %s", duplicates, t.TableSchema, t.TableName)
 							cluster.ShardProxyCreateVTable(prx, t.TableSchema, t.TableName, duplicates, false)
 						}
@@ -1858,7 +1837,7 @@ func (cluster *Cluster) CompareSchemaBetweenMasterAndSlave(sl *ServerMonitor) ([
 		}
 	}
 
-	for tblname, _ := range slTables {
+	for tblname := range slTables {
 		_, ok := masterTables[tblname]
 		if !ok {
 			if cluster.IsInSchemaIgnore(tblname) {
@@ -1937,16 +1916,27 @@ func (cluster *Cluster) MonitorQueryRules() {
 				var myRule config.QueryRule
 				if clrule, ok := cluster.QueryRules[rule.Id]; ok {
 					myRule = clrule
-					duplicates := strings.Split(clrule.Proxies, ",")
+
+					// Handle existing proxies list
+					var proxyIds []string
+					if clrule.Proxies != "" {
+						proxyIds = strings.Split(clrule.Proxies, ",")
+					}
+
+					// Check if current proxy already tracked
 					found := false
-					for _, prxid := range duplicates {
+					for _, prxid := range proxyIds {
 						if prx.Id == prxid {
 							found = true
+							break
 						}
 					}
+
 					if !found {
-						duplicates = append(duplicates, prx.Id)
+						proxyIds = append(proxyIds, prx.Id)
 					}
+
+					myRule.Proxies = strings.Join(proxyIds, ",")
 				} else {
 					myRule.Id = rule.Id
 					myRule.UserName = rule.UserName
@@ -2118,4 +2108,19 @@ func (cluster *Cluster) DecryptSecretsFromVault() {
 			cluster.Conf.Secrets[k] = secret
 		}
 	}
+}
+
+func (cluster *Cluster) RefreshDatabaseConfigs() error {
+	for _, srv := range cluster.Servers {
+		if srv == nil {
+			continue
+		}
+
+		err := srv.GetDatabaseConfig()
+		if err != nil {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlWarn, "Could not refresh database config for %s: %s", srv.URL, err)
+		}
+	}
+
+	return nil
 }

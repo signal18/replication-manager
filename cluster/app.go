@@ -24,7 +24,7 @@ import (
 type App struct {
 	Id                   string               `json:"id" groups:"apps"`
 	Name                 string               `json:"name" groups:"apps"`
-	Type                 string               `json:"type" groups:"apps""`
+	Type                 string               `json:"type" groups:"apps"`
 	Host                 string               `json:"host" groups:"apps"`
 	HostIPV6             string               `json:"hostIPV6"`
 	Port                 string               `json:"port" groups:"apps"`
@@ -122,19 +122,20 @@ func (app *App) Refresh() error {
 		app.AppClusterSubstitute = sub
 	}
 
-	if appState == stateMaintenance {
+	switch appState {
+	case stateMaintenance:
 		app.SetState(stateMaintenance)
-	} else if appState == stateAppRunning {
+	case stateAppRunning:
 		app.SetState(stateAppRunning)
 		app.FailCount = 0
-	} else if appState == stateFailed {
+	case stateFailed:
 		if app.FailCount >= cluster.Conf.MaxFail {
 			app.SetState(stateFailed)
 		} else {
 			app.SetState(stateSuspect)
 			app.FailCount++
 		}
-	} else if appState == stateAppWarning {
+	case stateAppWarning:
 		app.SetState(stateAppWarning)
 	}
 

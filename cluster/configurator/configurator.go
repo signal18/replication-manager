@@ -32,8 +32,8 @@ type Configurator struct {
 	DBModule              config.Compliance `json:"-"`
 	ProxyModule           config.Compliance `json:"-"`
 	Logger                *logrus.Logger    `json:"-"`
-	ConfigDBTags          []v3.Tag          `json:"configTags"`    //from module
-	ConfigPrxTags         []v3.Tag          `json:"configPrxTags"` //from module
+	ConfigDBTags          []*v3.Tag         `json:"configTags"`    //from module
+	ConfigPrxTags         []*v3.Tag         `json:"configPrxTags"` //from module
 	DBTags                []string          `json:"dbServersTags"` //from conf
 	ProxyTags             []string          `json:"proxyServersTags"`
 	DBTagsDiscover        []string          `json:"dbServersTagsDiscover"` //from conf
@@ -164,7 +164,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	s3mem := uint64(0)
 	if _, ok := Variables.CheckAndGet("S3_PAGECACHE_BUFFER_SIZE"); ok {
 		configurator.AddDBTag("s3")
-		tokumem, err = strconv.ParseUint(Variables.Get("S3_PAGECACHE_BUFFER_SIZE"), 10, 64)
+		s3mem, err = strconv.ParseUint(Variables.Get("S3_PAGECACHE_BUFFER_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -174,7 +174,7 @@ func (configurator *Configurator) ConfigDiscovery(Variables *config.StringsMap, 
 	rocksmem := uint64(0)
 	if _, ok := Variables.CheckAndGet("ROCKSDB_BLOCK_CACHE_SIZE"); ok {
 		configurator.AddDBTag("myrocks")
-		tokumem, err = strconv.ParseUint(Variables.Get("ROCKSDB_BLOCK_CACHE_SIZE"), 10, 64)
+		rocksmem, err = strconv.ParseUint(Variables.Get("ROCKSDB_BLOCK_CACHE_SIZE"), 10, 64)
 		if err != nil {
 			return err
 		}
@@ -475,7 +475,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 					if configurator.IsFilterInProxyTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.proxy.cnf" {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+						fpath := strings.ReplaceAll(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init")
 						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
 							configurator.Logger.Debugf("Config symlink %s", fpath)
 						}
@@ -517,7 +517,7 @@ func (configurator *Configurator) GenerateProxyConfig(Datadir string, ClusterDir
 	return nil
 }
 
-func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve, preservepath bool) error {
+func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, ClusterDir string, RemoteBasedir string, TemplateEnv map[string]string, RepMgrVersion string, preserve bool) error {
 
 	type File struct {
 		Path    string `json:"path"`
@@ -568,7 +568,7 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 					if configurator.IsFilterInDBTags(rule.Filter) || rule.Name == "mariadb.svc.mrm.db.cnf.generic" {
 						var f Link
 						json.Unmarshal([]byte(variable.Value), &f)
-						fpath := strings.Replace(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+						fpath := strings.ReplaceAll(f.Symlink, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init")
 						if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
 							configurator.Logger.Debugf("Config symlink %s", fpath)
 						}
@@ -602,27 +602,17 @@ func (configurator *Configurator) GenerateDatabaseConfig(Datadir string, Cluster
 		os.WriteFile(Datadir+"/init/root-checksum.txt", []byte(rootchk), 0644)
 	}
 
-	// Copy the default_path.cnf file
-	// If preservepath is true, we copy the backup file to the default path
-	var srcpath, destpath string
-	if preservepath {
-		srcpath = filepath.Join(Datadir, "default_path.cnf")
-		destpath = filepath.Join(Datadir, "init/etc/mysql/replication-manager.d/default_path.cnf")
-
-		// Check if the source file exists before copying
-		if _, err := os.Stat(srcpath); err == nil {
-			misc.CopyFile(srcpath, destpath)
-		}
-	}
-
-	// If you set the path as preserved variable with value, it will override the default_path.cnf
 	if preserve {
-		srcpath := filepath.Join(Datadir, "99_preserved.cnf")
-		destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/99_preserved.cnf")
+		difflist := []string{"01_preserved.cnf", "02_delta.cnf", "03_agreed.cnf"}
 
-		// Check if the source file exists before copying
-		if _, err := os.Stat(srcpath); err == nil {
-			misc.CopyFile(srcpath, destpath)
+		for _, fname := range difflist {
+			srcpath := filepath.Join(Datadir, fname)
+			destpath := filepath.Join(Datadir, "init/etc/mysql/custom.d/", fname)
+
+			// Check if the source file exists before copying
+			if _, err := os.Stat(srcpath); err == nil {
+				misc.CopyFile(srcpath, destpath)
+			}
 		}
 	}
 
@@ -737,7 +727,7 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 
 	var f File
 	json.Unmarshal([]byte(variable.Value), &f)
-	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+	fpath := strings.ReplaceAll(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init")
 	dir := filepath.Dir(fpath)
 	if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
 		configurator.Logger.Debugf("Config create %s", fpath)
@@ -757,22 +747,22 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 		if configurator.IsFilterInDBTags("docker") && configurator.ClusterConfig.ProvOrchestrator != config.ConstOrchestratorLocalhost {
 			if configurator.IsFilterInDBTags("wsrep") {
 				//if galera don't cusomized system files
-				if strings.Contains(content, "./.system") && !(strings.Contains(content, "exclude") || strings.Contains(content, "ignore")) {
+				if strings.Contains(content, "./.system") && !strings.Contains(content, "exclude") && !strings.Contains(content, "ignore") {
 					content = ""
 				}
 			} else {
-				content = strings.Replace(content, "./.system", "/var/lib/mysql/.system", -1)
+				content = strings.ReplaceAll(content, "./.system", "/var/lib/mysql/.system")
 			}
 		}
 
 		if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorLocalhost {
-			content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/init", -1)
-			content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/init/etc/mysql", -1)
+			content = strings.ReplaceAll(content, "includedir ..", "includedir "+RemoteBasedir+"/init")
+			content = strings.ReplaceAll(content, "../etc/mysql", RemoteBasedir+"/init/etc/mysql")
 
 		} else if configurator.ClusterConfig.ProvOrchestrator == config.ConstOrchestratorSlapOS {
-			content = strings.Replace(content, "includedir ..", "includedir "+RemoteBasedir+"/", -1)
-			content = strings.Replace(content, "../etc/mysql", RemoteBasedir+"/etc/mysql", -1)
-			content = strings.Replace(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system", -1)
+			content = strings.ReplaceAll(content, "includedir ..", "includedir "+RemoteBasedir+"/")
+			content = strings.ReplaceAll(content, "../etc/mysql", RemoteBasedir+"/etc/mysql")
+			content = strings.ReplaceAll(content, "./.system", RemoteBasedir+"/var/lib/mysql/.system")
 		}
 
 		outFile, err := os.Create(fpath)
@@ -780,7 +770,7 @@ func (configurator *Configurator) WriteDatabaseConfigFile(Datadir string, Remote
 			return fmt.Errorf("Compliance create file failed %q: %s", fpath, err)
 		} else {
 			if !strings.Contains(content, "# Generated by Signal18 replication-manager") {
-				_, err = outFile.WriteString(fmt.Sprintf("# %s", TemplateEnv["%%ENV:GENLINE%%"]))
+				_, err = fmt.Fprintf(outFile, "# %s", TemplateEnv["%%ENV:GENLINE%%"])
 				if err != nil {
 					outFile.Close()
 					return fmt.Errorf("Compliance writing header file failed %q: %s", fpath, err)
@@ -810,7 +800,7 @@ func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateE
 
 	var f File
 	json.Unmarshal([]byte(variable.Value), &f)
-	fpath := strings.Replace(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init", -1)
+	fpath := strings.ReplaceAll(f.Path, "%%ENV:SVC_CONF_ENV_BASE_DIR%%/%%ENV:POD%%", Datadir+"/init")
 	dir := filepath.Dir(fpath)
 	if configurator.ClusterConfig.IsEligibleForPrinting(config.ConstLogModConfigLoad, config.LvlDbg) || configurator.ClusterConfig.Verbose {
 		configurator.Logger.Debugf("Config create %s", fpath)
@@ -836,7 +826,7 @@ func (configurator *Configurator) WriteProxyConfigFile(Datadir string, TemplateE
 		} else {
 			// Check if we have # %%ENV:GENLINE%% in content to place the header on the next line
 			if !strings.Contains(content, "# Generated by Signal18 replication-manager") {
-				_, err = outFile.WriteString(fmt.Sprintf("# %s", TemplateEnv["%%ENV:GENLINE%%"]))
+				_, err = fmt.Fprintf(outFile, "# %s", TemplateEnv["%%ENV:GENLINE%%"])
 				if err != nil {
 					outFile.Close()
 					return fmt.Errorf("Compliance writing header file failed %q: %s", fpath, err)

@@ -388,11 +388,9 @@ func (cluster *Cluster) refreshProxies(wcg *sync.WaitGroup) {
 	// }
 	for _, pr := range cluster.Proxies {
 		if pr != nil {
-			var err error
 			//	pr.SetLock()
 
-			err = pr.Refresh()
-			if err == nil {
+			if err := pr.Refresh(); err == nil {
 				pr.SetFailCount(0)
 				pr.SetState(stateProxyRunning)
 				if pr.HasWaitStartCookie() {

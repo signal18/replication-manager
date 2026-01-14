@@ -1,8 +1,9 @@
-import { Flex, HStack, SimpleGrid, Spacer, useDisclosure, VStack } from '@chakra-ui/react'
+import { Flex, HStack, SimpleGrid, Spacer, useDisclosure, VStack, Tooltip } from '@chakra-ui/react'
 import React, { useEffect } from 'react'
 import { useSelector } from 'react-redux'
 import ServerMenu from '../ServerMenu'
 import { HiCheck, HiTable, HiX } from 'react-icons/hi'
+import { TbAlertCircle } from 'react-icons/tb'
 import { MdCompare } from 'react-icons/md'
 import TableType3 from '../../../../../components/TableType3'
 import CustomIcon from '../../../../../components/Icons/CustomIcon'
@@ -37,6 +38,7 @@ function DBServerGrid({
   clusterName,
   backupPhysicalType,
   backupLogicalType,
+  orchestrator,
   user,
   showTableView,
   showTerminal,
@@ -165,6 +167,7 @@ function DBServerGrid({
                   clusterName={clusterName}
                   backupLogicalType={backupLogicalType}
                   backupPhysicalType={backupPhysicalType}
+                  orchestrator={orchestrator}
                   isDesktop={isDesktop}
                   user={user}
                   openCompareModal={openCompareModal}
@@ -176,6 +179,13 @@ function DBServerGrid({
               <Flex direction='column' width='100%' mb={2} gap='0' className={`${styles.body} ${styles[gridColor]}`}>
                 <Flex gap='1' wrap='wrap' p='2'>
                   <ServerStatus state={rowData.state} isVirtualMaster={rowData.isVirtualMaster} isBlinking={true} />
+                  {rowData.hasConfigDiff && (
+                    <Tooltip label="Config differences detected between deployed and generated configuration. Click to view Variables tab." placement="top">
+                      <Link to={`/clusters/${clusterName}/${rowData?.id}`} state={{ openTab: 'Variables' }}>
+                        <TagPill colorScheme='orange' text={<HStack spacing={1}><TbAlertCircle /><span>Config Diff</span></HStack>} style={{ cursor: 'pointer' }} />
+                      </Link>
+                    </Tooltip>
+                  )}
                   {replicationTags
                     .filter((tag) => tag === 'READ_ONLY' || tag === 'NO_READ_ONLY')
                     .map((tag, index) => (

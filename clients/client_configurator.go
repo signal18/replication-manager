@@ -37,7 +37,7 @@ var dbResourceCategoryIndex int = 0
 var dbUsedTags []string
 var dbCategoryIndex int
 var dbTagIndex int
-var dbCurrentCategoryTags []v3.Tag
+var dbCurrentCategoryTags []*v3.Tag
 var dbUsedTagIndex int
 var PanIndex int
 var dbHost string
@@ -94,7 +94,7 @@ var configuratorCmd = &cobra.Command{
 		//configurator := cluster.Configurator
 
 		for _, server := range cluster.Servers {
-			err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true, true)
+			err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true)
 			if err != nil {
 				log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 			}
@@ -151,7 +151,7 @@ var configuratorCmd = &cobra.Command{
 					if event.Key == termbox.KeyCtrlS {
 						cluster.Save()
 						for _, server := range cluster.Servers {
-							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true, true)
+							err := cluster.Configurator.GenerateDatabaseConfig(server.Datadir, cluster.Conf.WorkingDir, server.GetVariablesCaseSensitive()["DATADIR"], server.GetEnv(), cluster.RepMgrVersion, true)
 							if err != nil {
 								log.WithError(err).Fatalf("Generate database config failed %s", server.URL)
 							}
@@ -493,7 +493,7 @@ func cliDisplayConfigurator(configurator *configurator.Configurator) {
 
 	curWitdh = 1
 
-	dbCurrentCategoryTags = make([]v3.Tag, 0, len(tags))
+	dbCurrentCategoryTags = make([]*v3.Tag, 0, len(tags))
 	dbUsedTags = configurator.GetDBTags()
 
 	for _, tag := range tags {

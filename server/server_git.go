@@ -89,7 +89,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		acces_tok, err := githelper.GetGitLabTokenBasicAuth(gituser, gitpassword, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if err != nil {
 			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+				repman.Logrus.Errorf("%s\n", err.Error()+conf.GetDecryptedValue("cloud18-gitlab-password"))
 			}
 			conf.Cloud18 = false
 			return err
@@ -126,7 +126,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		uid, err := githelper.GetGitLabUserId(acces_tok, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if err != nil {
 			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf(err.Error() + "\n")
+				repman.Logrus.Errorf("%s\n", err.Error())
 			}
 			conf.Cloud18 = false
 			return err
@@ -141,7 +141,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 		_, err = githelper.InitGroupAccessLevel(acces_tok, conf.Cloud18Domain, uid, conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlDbg))
 		if err != nil {
 			if conf.Verbose || conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlErr) {
-				repman.Logrus.Errorf(err.Error() + "\n")
+				repman.Logrus.Errorf("%s\n", err.Error())
 			}
 			conf.Cloud18 = false
 			return err
@@ -184,7 +184,7 @@ func (repman *ReplicationManager) InitGitConfig(conf *config.Config) error {
 
 		} else if conf.IsEligibleForPrinting(config.ConstLogModGit, config.LvlInfo) {
 			err := fmt.Errorf("Could not get personal access token from gitlab")
-			repman.Logrus.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof(err.Error())
+			repman.Logrus.WithField("group", repman.ClusterList[cfgGroupIndex]).Infof("%s", err.Error())
 			return err
 		}
 
@@ -292,7 +292,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 		for _, f := range files {
 			new_cluster_discover := true
 			if f.IsDir() && f.Name() != "graphite" && f.Name() != "backups" && f.Name() != ".git" && f.Name() != "cloud18.toml" && !strings.Contains(f.Name(), ".json") && !strings.Contains(f.Name(), ".csv") && f.Name() != ".pull" {
-				for name, _ := range repman.Clusters {
+				for name := range repman.Clusters {
 					if name == f.Name() {
 						new_cluster_discover = false
 					}
@@ -310,7 +310,7 @@ func (repman *ReplicationManager) PullCloud18Configs() {
 					repman.ViperConfig.SetConfigFile(repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml")
 					err := repman.ViperConfig.MergeInConfig()
 					if err != nil {
-						repman.Logrus.Errorf("Config error in " + repman.Conf.WorkingDir + "/" + f.Name() + "/" + f.Name() + ".toml" + ":" + err.Error())
+						repman.Logrus.Errorf("Config error in %s: %s", repman.Conf.WorkingDir+"/"+f.Name()+"/"+f.Name()+".toml", err.Error())
 					}
 					repman.Confs[f.Name()] = repman.GetClusterConfig(repman.ViperConfig, repman.Conf.ImmuableFlagMap, repman.Conf.DynamicFlagMap, f.Name(), *repman.Conf)
 					repman.StartCluster(f.Name())
@@ -874,7 +874,7 @@ func (repman *ReplicationManager) CountAllCommits() (int, error) {
 
 	commitCount := 0
 	// Count commits for this branch/tag
-	err = commitIter.ForEach(func(c *git_obj.Commit) error {
+	_ = commitIter.ForEach(func(c *git_obj.Commit) error {
 		commitCount++
 		return nil
 	})

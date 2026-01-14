@@ -160,12 +160,17 @@ func (collector *Collector) StartServiceV2(cluster string, srv string, node stri
 	return nil
 }
 
-func (collector *Collector) RestartServiceV2(cluster string, srv string, node string) error {
+func (collector *Collector) RestartServiceV2(cluster string, srv string, node string, rid string) error {
 
 	reqparams := ActionRequest{
 		Path:    srv,
 		Action:  "restart",
 		Options: map[string]interface{}{},
+	}
+
+	// Add rid to options if provided
+	if rid != "" {
+		reqparams.Options["rid"] = rid
 	}
 
 	jsondata, err := json.Marshal(reqparams)
@@ -175,6 +180,9 @@ func (collector *Collector) RestartServiceV2(cluster string, srv string, node st
 
 	b := bytes.NewBuffer(jsondata)
 	urlpost := "https://" + collector.Host + ":" + collector.Port + "/service_action"
+
+	collector.Print(log.DebugLevel, "API Request: %s Payload: %s", urlpost, jsondata)
+
 	req, err := http.NewRequest("POST", urlpost, b)
 	if err != nil {
 		return err

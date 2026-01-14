@@ -1031,7 +1031,7 @@ type MyDumperMetaData struct {
 	BinLogFileName string    `json:"log_filename" db:"log_filename"`
 	BinLogFilePos  uint64    `json:"log_pos" db:"log_pos"`
 	BinLogUuid     string    `json:"log_uuid" db:"log_uuid"`
-	EndTimestamp   time.Time `json:"start_timestamp" db:"start_timestamp"`
+	EndTimestamp   time.Time `json:"end_timestamp" db:"end_timestamp"`
 }
 
 type ConfVersion struct {
@@ -1656,8 +1656,7 @@ func (conf *Config) Reveal(clusterName string, tmpDir string) {
 
 		if field.Kind() == reflect.String && strings.HasPrefix(field.String(), "hash_") {
 			decryptedValue := conf.GetDecryptedPassword(key, field.String())
-			line := fmt.Sprintf("Key: %s, Decrypted Value: %s\n", key, decryptedValue)
-			fmt.Fprintf(file, line)
+			fmt.Fprintf(file, "Key: %s, Decrypted Value: %s\n", key, decryptedValue)
 		}
 	}
 
@@ -1693,7 +1692,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 	_, err := os.Stat(conf.MonitoringKeyPath)
 	// Check if the file does not exist
 	if err == nil {
-		Logger.Infof("Repman discovered that key is already generated. Using existing key.")
+		Logger.Debugf("Repman discovered that key is already generated. Using existing key.")
 		return nil
 	} else {
 		if !os.IsNotExist(err) {
@@ -1710,17 +1709,17 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 		fallbackPath := ""
 		if fallbackDir != "" {
 			fallbackPath = filepath.Join(fallbackDir, ".replication-manager.key")
-			Logger.Infof("Key not found. Checking in extra path : %s", fallbackPath)
+			Logger.Debugf("Key not found. Checking in extra path : %s", fallbackPath)
 
 			_, err = os.Stat(fallbackPath)
 			if err == nil {
-				Logger.Infof("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
+				Logger.Debugf("Repman discovered key in alternative path. Using existing key on %s", fallbackPath)
 				conf.MonitoringKeyPath = fallbackPath
 				return nil
 			}
 		}
 
-		Logger.Infof("Key not found. Generating : %s", conf.MonitoringKeyPath)
+		Logger.Debugf("Key not found. Generating : %s", conf.MonitoringKeyPath)
 
 		if err = misc.TryOpenFile(conf.MonitoringKeyPath, os.O_WRONLY|os.O_CREATE, 0600, true); err != nil && conf.WithEmbed == "OFF" {
 			if fallbackPath == "" {
@@ -1728,7 +1727,7 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 				return err
 			}
 
-			Logger.Infof("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
+			Logger.Debugf("File %s is not accessible. Try using alternative path: %s", conf.MonitoringKeyPath, fallbackPath)
 
 			_, err := os.Stat(fallbackPath)
 			if err == nil {
@@ -1757,8 +1756,8 @@ func (conf *Config) GenerateKey(Logger *logrus.Logger) error {
 
 			// New path is writable
 			conf.MonitoringKeyPath = fallbackPath
-			Logger.Infof("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
-			Logger.Infof("Generating key on: %s", conf.MonitoringKeyPath)
+			Logger.Debugf("Path writable. Flag 'monitoring-key-path' set to: %s.", fallbackPath)
+			Logger.Debugf("Generating key on: %s", conf.MonitoringKeyPath)
 
 		}
 
@@ -2379,8 +2378,6 @@ func GetGrantType() map[string]string {
 		GrantProvDBProvision:           GrantProvDBProvision,
 		GrantProvProxyProvision:        GrantProvProxyProvision,
 		GrantProvProxyUnprovision:      GrantProvProxyUnprovision,
-		GrantProvAppProvision:          GrantProvAppProvision,
-		GrantProvAppUnprovision:        GrantProvAppUnprovision,
 		GrantAppConfig:                 GrantAppConfig,
 		GrantAppDocker:                 GrantAppDocker,
 		GrantAppDeployment:             GrantAppDeployment,
@@ -3047,7 +3044,7 @@ func (conf Config) MergeConfig(path string, name string, ImmMap map[string]inter
 		dynRead.AddConfigPath(dirPath)
 		err := dynRead.ReadInConfig()
 		if err != nil {
-			fmt.Printf("Could not read in config : " + dirPath + "/overwrite.toml")
+			fmt.Printf("Could not read in config %s: %s", dirPath+"/overwrite.toml", err)
 		}
 
 		dynSub := dynRead.Sub("overwrite-" + name)
@@ -3701,7 +3698,7 @@ func (conf *Config) CreateGitlabProjects() {
 	acces_tok, err := githelper.GetGitLabTokenBasicAuth(conf.Cloud18GitUser, conf.GetDecryptedValue("cloud18-gitlab-password"), conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlErr) {
-			log.Errorf(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
+			log.Error(err.Error() + conf.GetDecryptedValue("cloud18-gitlab-password") + "\n")
 		}
 		return
 	}
@@ -3709,12 +3706,12 @@ func (conf *Config) CreateGitlabProjects() {
 	uid, err := githelper.GetGitLabUserId(acces_tok, conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg))
 	if err != nil {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf(err.Error() + "\n")
+			log.Error(err.Error() + "\n")
 		}
 		return
 	} else if uid == 0 {
 		if conf.Verbose || conf.IsEligibleForPrinting(ConstLogModGit, LvlDbg) {
-			log.Errorf("Invalid user Id \n")
+			log.Error("Invalid user Id \n")
 		}
 		return
 	}

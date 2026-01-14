@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	jwt "github.com/golang-jwt/jwt"
+	jwt "github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
@@ -876,8 +876,9 @@ func (s *ReplicationManager) GetTags(in *v3.Cluster, stream v3.ClusterService_Ge
 		return err
 	}
 
-	for _, tag := range mycluster.Configurator.GetDBModuleTags() {
-		if err := stream.Send(&tag); err != nil {
+	tags := mycluster.Configurator.GetDBModuleTags()
+	for i := range tags {
+		if err := stream.Send(tags[i]); err != nil {
 			return err
 		}
 	}

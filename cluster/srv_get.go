@@ -121,7 +121,7 @@ func (server *ServerMonitor) GetReplicationDelay() int64 {
 	if sserr != nil {
 		return 0
 	}
-	if ss.SecondsBehindMaster.Valid == false {
+	if !ss.SecondsBehindMaster.Valid {
 		return 0
 	}
 	return ss.SecondsBehindMaster.Int64
@@ -422,7 +422,7 @@ func (server *ServerMonitor) GetAuditLog() *s18log.HttpLog {
 }
 
 func (server *ServerMonitor) GetPFSQueries() {
-	if !(server.ClusterGroup.Conf.MonitorPFS && server.HavePFSSlowQueryLog && server.HavePFS) {
+	if !server.ClusterGroup.Conf.MonitorPFS || !server.HavePFSSlowQueryLog || !server.HavePFS {
 		return
 	}
 	if server.IsInPFSQueryCapture {
@@ -658,7 +658,7 @@ func (server *ServerMonitor) GetSlowLogTable(wg *sync.WaitGroup) error {
 			s.Rows_examined,
 			s.Rows_affected,
 			s.Start_time,
-			strings.Replace(strings.Replace(s.Sql_text.String, "\r\n", " ", -1), "\n", " ", -1),
+			strings.ReplaceAll(strings.ReplaceAll(s.Sql_text.String, "\r\n", " "), "\n", " "),
 		)
 		server.MaxSlowQueryTimestamp = s.Start_time
 	}

@@ -53,9 +53,7 @@ func (cluster *Cluster) WaitFailover(wg *sync.WaitGroup) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Failover end")
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Failover end timeout")
-		return
 	}
-	return
 }
 
 func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
@@ -77,9 +75,7 @@ func (cluster *Cluster) WaitSwitchover(wg *sync.WaitGroup) {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Switchover end")
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Switchover end timeout")
-		return
 	}
-	return
 }
 
 func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
@@ -107,9 +103,7 @@ func (cluster *Cluster) WaitRejoin(wg *sync.WaitGroup) {
 
 	} else {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "Rejoin timeout")
-		return
 	}
-	return
 }
 
 func (cluster *Cluster) WaitClusterStop() error {
@@ -117,18 +111,15 @@ func (cluster *Cluster) WaitClusterStop() error {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster shutdown")
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster shutdown")
-			exitloop++
-			// All cluster down
-			if cluster.StateMachine.IsInState("ERR00021") == true {
-				exitloop = 9999999
-			}
-			if cluster.HasAllDbDown() {
-				exitloop = 9999999
-			}
-
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster shutdown")
+		exitloop++
+		// All cluster down
+		if cluster.StateMachine.IsInState("ERR00021") {
+			exitloop = 9999999
+		}
+		if cluster.HasAllDbDown() {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -145,14 +136,12 @@ func (cluster *Cluster) WaitProxyEqualMaster() error {
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for proxy to join master")
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for proxy to join master %d", exitloop)
-			exitloop++
-			// All cluster down
-			if cluster.IsProxyEqualMaster() == true {
-				exitloop = 9999999
-			}
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for proxy to join master %d", exitloop)
+		exitloop++
+		// All cluster down
+		if cluster.IsProxyEqualMaster() {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -168,15 +157,12 @@ func (cluster *Cluster) WaitMariaDBStop(server *ServerMonitor) error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting MariaDB shutdown")
-			exitloop++
-			_, err := os.FindProcess(server.Process.Pid)
-			if err != nil {
-				exitloop = 9999999
-			}
-
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting MariaDB shutdown")
+		exitloop++
+		_, err := os.FindProcess(server.Process.Pid)
+		if err != nil {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -197,18 +183,16 @@ func (cluster *Cluster) WaitDatabaseSuspect(server *ServerMonitor) error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
+		<-ticker.C
 
-			exitloop++
+		exitloop++
 
-			err := server.Refresh()
-			if err != nil {
+		err := server.Refresh()
+		if err != nil {
 
-				exitloop = 9999999
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state suspect on %s failed with error %s ", server.URL, err)
-			}
+			exitloop = 9999999
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state suspect on %s failed with error %s ", server.URL, err)
 		}
 	}
 	if exitloop == 9999999 {
@@ -225,16 +209,14 @@ func (cluster *Cluster) WaitDatabaseFailed(server *ServerMonitor) error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
+		<-ticker.C
 
-			exitloop++
+		exitloop++
 
-			if server.IsInStateFailed() {
-				exitloop = 9999999
-			} else {
-				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed on %s %d current state:%s", server.URL, exitloop, server.State)
-			}
+		if server.IsInStateFailed() {
+			exitloop = 9999999
+		} else {
+			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting state failed on %s %d current state:%s", server.URL, exitloop, server.State)
 		}
 	}
 	if exitloop == 9999999 {
@@ -251,14 +233,11 @@ func (cluster *Cluster) WaitBootstrapDiscovery() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting Bootstrap and discovery")
-			exitloop++
-			if cluster.StateMachine.IsDiscovered() {
-				exitloop = 9999999
-			}
-
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting Bootstrap and discovery")
+		exitloop++
+		if cluster.StateMachine.IsDiscovered() {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -275,14 +254,11 @@ func (cluster *Cluster) waitMasterDiscovery() error {
 	exitloop := 0
 	ticker := time.NewTicker(time.Millisecond * time.Duration(cluster.Conf.MonitoringTicker*1000))
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting Master Found")
-			exitloop++
-			if cluster.GetMaster() != nil {
-				exitloop = 9999999
-			}
-
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting Master Found")
+		exitloop++
+		if cluster.GetMaster() != nil {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {
@@ -309,15 +285,12 @@ func (cluster *Cluster) WaitDatabaseCanConn() error {
 
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster to start")
 	for int64(exitloop) < cluster.Conf.MonitorWaitRetry {
-		select {
-		case <-ticker.C:
-			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster to start")
-			exitloop++
-			// if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() { // HasAllDbUp is topology dependent
-			if cluster.AllDatabaseCanConn() {
-				exitloop = 9999999
-			}
-
+		<-ticker.C
+		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Waiting for cluster to start")
+		exitloop++
+		// if cluster.AllDatabaseCanConn() && cluster.HasAllDbUp() { // HasAllDbUp is topology dependent
+		if cluster.AllDatabaseCanConn() {
+			exitloop = 9999999
 		}
 	}
 	if exitloop == 9999999 {

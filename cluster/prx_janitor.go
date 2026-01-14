@@ -68,9 +68,7 @@ func (proxy *ProxyJanitor) Connect() (proxysql.ProxySQL, error) {
 		WriterHG: "0",
 		Weight:   "1",
 	}
-	var err error
-	err = psql.Connect()
-	if err != nil {
+	if err := psql.Connect(); err != nil {
 		return psql, err
 	}
 	psql.GetHostgroupFromJanitorDomain(proxy.GetJanitorDomain())
@@ -251,7 +249,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 					} else {
 						//scenario restart with failed leader
 						psql.Weight = s.GetJanitorWeight()
-						err = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
+						_ = psql.AddServerAsWriter(misc.Unbracket(s.GetHost()), strconv.Itoa(s.GetWritePort()), proxy.UseSSL())
 					}
 					updated = true
 
@@ -273,7 +271,7 @@ func (proxy *ProxyJanitor) Refresh() error {
 		for _, u := range s.Users.ToNewMap() {
 
 			//		cluster.LogModulePrintf(cluster.Conf.Verbose,config.ConstLogModProxyJanitor,LvlInfo, " %s,  %s", u.User, cluster.Name+".")
-			if !(strings.Contains(u.User, cluster.Name+".") || strings.Contains(u.User, "mysql.") || strings.Contains(u.Host, "localhost")) {
+			if !strings.Contains(u.User, cluster.Name+".") && !strings.Contains(u.User, "mysql.") && !strings.Contains(u.Host, "localhost") {
 
 				user, ok := s.Users.CheckAndGet("'" + u.User + "@" + proxy.GetJanitorDomain() + "'@'" + u.Host + "'")
 				if !ok {
@@ -324,6 +322,9 @@ func (proxy *ProxyJanitor) Refresh() error {
 			cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not load servers to runtime (%s)", err)
 		} else {
 			err = psql.SaveServersToDisk()
+			if err != nil {
+				cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModProxyJanitor, config.LvlErr, "ProxyJanitor could not save servers to disk (%s)", err)
+			}
 		}
 	}
 	/*proxy.QueryRules, err = psql.GetQueryRulesRuntime()

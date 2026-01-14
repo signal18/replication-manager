@@ -10,9 +10,11 @@
 package cluster
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/signal18/replication-manager/config"
 	"github.com/signal18/replication-manager/utils/dbhelper"
@@ -189,6 +191,10 @@ func (server *ServerMonitor) HasProvisionDBUsersCookie() bool {
 	return server.hasCookie("cookie_provision_db_users")
 }
 
+func (server *ServerMonitor) HasWaitRunJobSSHCookie() bool {
+	return server.hasCookie("cookie_waitrunjobssh")
+}
+
 func (server *ServerMonitor) HasBackupTypeCookie(backtype string) bool {
 	switch backtype {
 	case config.ConstBackupLogicalTypeMysqldump:
@@ -339,7 +345,7 @@ func (server *ServerMonitor) HasLogMutex() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	//if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -355,7 +361,7 @@ func (server *ServerMonitor) HasLogLatch() bool {
 	if !server.HasLogPFS() {
 		return false
 	}
-	if !(server.IsMariaDB() || server.DBVersion.IsMySQLOrPercona()) {
+	if !server.IsMariaDB() && !server.DBVersion.IsMySQLOrPercona() {
 		return false
 	}
 	// if !server.GetCluster().Conf.MonitorPFSInstruments{
@@ -397,7 +403,7 @@ func (server *ServerMonitor) HasUserStats() bool {
 
 func (server *ServerMonitor) HasMySQLGTID() bool {
 
-	if !(server.DBVersion.IsMySQL() || server.DBVersion.IsPercona()) {
+	if !server.DBVersion.IsMySQL() && !server.DBVersion.IsPercona() {
 		return false
 	}
 	if server.GetClusterConfig().ForceSlaveNoGtid {
@@ -611,7 +617,7 @@ func (server *ServerMonitor) IsInStateFailed() bool {
 }
 
 func (server *ServerMonitor) IsReplicationBroken() bool {
-	if server.IsSQLThreadRunning() == false || server.IsIOThreadRunning() == false {
+	if !server.IsSQLThreadRunning() || !server.IsIOThreadRunning() {
 		return true
 	}
 	return false
@@ -621,7 +627,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 	if server.GetClusterConfig().ForceSlaveNoGtid {
 		return false
 	}
-	if server.DBVersion.IsMySQLOrPercona() && server.HaveMySQLGTID == false {
+	if server.DBVersion.IsMySQLOrPercona() && !server.HaveMySQLGTID {
 		return false
 	} else if server.DBVersion.IsMariaDB() && server.DBVersion.Major == 5 {
 		return false
@@ -631,7 +637,7 @@ func (server *ServerMonitor) HasGTIDReplication() bool {
 
 func (server *ServerMonitor) HasReplicationIssue() bool {
 	ret := server.CheckReplication()
-	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || server.IsIOThreadRunning() == false) && server.ClusterGroup.GetMaster() == nil) {
+	if ret == "Running OK" || ((ret == "NOT OK, IO Connecting" || !server.IsIOThreadRunning()) && server.ClusterGroup.GetMaster() == nil) {
 		return false
 	}
 	return true
@@ -831,6 +837,38 @@ func (server *ServerMonitor) HasWaitJobsCheckCookie() bool {
 
 func (server *ServerMonitor) HasWaitJobsUpgradeCookie() bool {
 	return server.hasCookie("cookie_wait_jobs_upgrade")
+}
+
+func (server *ServerMonitor) HasWaitDummyConfigSendCookie() bool {
+	return server.hasCookie("cookie_wait_dummy_send")
+}
+
+func (server *ServerMonitor) GetWaitDummyConfigSendCookieModTime() (time.Time, error) {
+	cookiePath := server.Datadir + "/@cookie_wait_dummy_send"
+
+	fileInfo, err := os.Stat(cookiePath)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return fileInfo.ModTime(), nil
+}
+
+func (server *ServerMonitor) GetWaitDummyConfigSendAddress() (string, string, error) {
+	cookiePath := server.Datadir + "/@cookie_wait_dummy_send"
+
+	content, err := os.ReadFile(cookiePath)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Parse host:port
+	parts := strings.Split(string(content), ":")
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid cookie content: %s", string(content))
+	}
+
+	return parts[0], parts[1], nil
 }
 
 func (server *ServerMonitor) HasRollingJobsUpgradeCookie() bool {

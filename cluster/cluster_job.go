@@ -102,7 +102,7 @@ func (cluster *Cluster) JobAnalyzeSchema(schema, tablename string, persistent bo
 
 func (cluster *Cluster) JobsGetEntries() (config.JobEntries, error) {
 	var t config.Task
-	var entries config.JobEntries = config.JobEntries{
+	var entries = config.JobEntries{
 		Header:  config.GetLabelsAsMap(t),
 		Servers: make(map[string]config.ServerTaskList),
 	}
@@ -242,29 +242,28 @@ func (cluster *Cluster) JobParseMyDumperMetaOld(dir string) (config.MyDumperMeta
 		if len(line) > 2 {
 			newline := bytes.TrimLeft(line, "")
 			buf.Write(bytes.Trim(newline, "\n"))
-			line = []byte{}
 		}
-		if strings.Contains(string(buf.Bytes()), "Started") == true {
-			splitbuf := strings.Split(string(buf.Bytes()), ":")
+		if strings.Contains(buf.String(), "Started") {
+			splitbuf := strings.Split(buf.String(), ":")
 			m.StartTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
 		}
-		if strings.Contains(string(buf.Bytes()), "Log") == true {
-			splitbuf := strings.Split(string(buf.Bytes()), ":")
+		if strings.Contains(buf.String(), "Log") {
+			splitbuf := strings.Split(buf.String(), ":")
 			m.BinLogFileName = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
 		}
-		if strings.Contains(string(buf.Bytes()), "Pos") == true {
-			splitbuf := strings.Split(string(buf.Bytes()), ":")
+		if strings.Contains(buf.String(), "Pos") {
+			splitbuf := strings.Split(buf.String(), ":")
 			pos, _ := strconv.Atoi(strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "))
 
 			m.BinLogFilePos = uint64(pos)
 		}
 
-		if strings.Contains(string(buf.Bytes()), "GTID") == true {
-			splitbuf := strings.Split(string(buf.Bytes()), ":")
+		if strings.Contains(buf.String(), "GTID") {
+			splitbuf := strings.Split(buf.String(), ":")
 			m.BinLogUuid = strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " ")
 		}
-		if strings.Contains(string(buf.Bytes()), "Finished") == true {
-			splitbuf := strings.Split(string(buf.Bytes()), ":")
+		if strings.Contains(buf.String(), "Finished") {
+			splitbuf := strings.Split(buf.String(), ":")
 			m.EndTimestamp, _ = time.ParseInLocation("2006-01-02 15:04:05", strings.TrimLeft(strings.Join(splitbuf[1:], ":"), " "), time.Local)
 		}
 		buf.Reset()
@@ -276,4 +275,17 @@ func (cluster *Cluster) JobParseMyDumperMetaOld(dir string) (config.MyDumperMeta
 
 func (cluster *Cluster) SetJobsUpgradeSender(server *ServerMonitor) {
 	cluster.SetState("WARN0148", state.State{ErrDesc: fmt.Sprintf(config.ClusterError["WARN0148"], server.URL), ErrType: config.LvlWarn, ErrFrom: "JOBS", ServerUrl: server.URL})
+}
+
+func (cluster *Cluster) CheckWaitRunJobSSH() {
+	for _, s := range cluster.Servers {
+		if s == nil {
+			continue
+		}
+
+		if s.HasWaitRunJobSSHCookie() {
+			s.DelWaitRunJobSSHCookie()
+			go s.JobRunViaSSH()
+		}
+	}
 }

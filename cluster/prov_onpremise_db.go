@@ -49,13 +49,13 @@ func (cluster *Cluster) OnPremiseConnect(server *ServerMonitor) (*sshclient.Clie
 	if password != "" {
 		client, err := sshcli.DialWithPasswd(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, password)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+			return nil, fmt.Errorf("OnPremise Provisioning via SSH %s %s", err.Error(), key)
 		}
 		return client, nil
 	} else {
 		client, err := sshcli.DialWithKey(misc.Unbracket(server.Host)+":"+strconv.Itoa(cluster.Conf.OnPremiseSSHPort), user, key)
 		if err != nil {
-			return nil, errors.New(fmt.Sprintf("OnPremise Provisioning via SSH %s %s", err.Error(), key))
+			return nil, fmt.Errorf("OnPremise Provisioning via SSH %s %s", err.Error(), key)
 		}
 		return client, nil
 	}
@@ -175,7 +175,6 @@ func (cluster *Cluster) OnPremiseGetNodes() ([]Agent, error) {
 }
 
 func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *ServerMonitor) error {
-
 	buf := strings.NewReader(server.GetSshEnv())
 	/*
 		  REPLICATION_MANAGER_USER
@@ -186,19 +185,16 @@ func (cluster *Cluster) OnPremiseSetEnv(client *sshclient.Client, server *Server
 			REPLICATION_MANAGER_HOST_USER
 			REPLICATION_MANAGER_HOST_PASSWORD
 			REPLICATION_MANAGER_HOST_PORT
-
 	*/
 	var (
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
-	var err error
-	if client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
+	if err := client.Shell().SetStdio(buf, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise start ssh setup env %s", stderr.String())
 		return err
 	}
 	cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlInfo, "OnPremise start database install secret env: %s", stdout.String())
-
 	return nil
 }
 
@@ -232,7 +228,7 @@ func (cluster *Cluster) OnPremiseStartDatabaseService(server *ServerMonitor) err
 		stdout bytes.Buffer
 		stderr bytes.Buffer
 	)
-	if client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
+	if err := client.Shell().SetStdio(r, &stdout, &stderr).Start(); err != nil {
 		cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlWarn, "OnPremise start database via ssh script %s", stderr.String())
 	}
 	out := stdout.String()

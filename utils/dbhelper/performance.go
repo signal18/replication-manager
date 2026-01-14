@@ -181,10 +181,9 @@ func GetSampleQueryFromPFS(db *sqlx.DB, Query PFSQuery) (string, error) {
 		return "", err
 	}
 	defer rows.Close()
-	for rows.Next() {
+	if rows.Next() {
 		var res string
-		err := rows.Scan(&res)
-		if err != nil {
+		if err := rows.Scan(&res); err != nil {
 			return "", err
 		}
 		return res, nil

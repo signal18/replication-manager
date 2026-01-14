@@ -84,7 +84,7 @@ func (repman *ReplicationManager) PeerResponseHandler(resp *http.Response) (int,
 			return http.StatusInternalServerError, []byte("Failed to create zstd decoder: " + err.Error())
 		}
 		defer decoder.Close()
-		body, err = io.ReadAll(decoder)
+		body, _ = io.ReadAll(decoder)
 
 	case "gzip":
 		// Handle gzip encoding

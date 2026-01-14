@@ -103,10 +103,10 @@ func (cl *Cluster) ArbitratorElection() error {
 	cl.IsFailedArbitrator = false
 	if r.Arbitration == "winner" {
 		cl.SetActiveStatus(ConstMonitorActif)
-		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0083"]), ErrFrom: "ARB"})
+		cl.SetState("WARN0083", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0083"], ErrFrom: "ARB"})
 	} else {
 		cl.SetActiveStatus(ConstMonitorStandby)
-		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: fmt.Sprintf(clusterError["ERR00068"]), ErrFrom: "ARB"})
+		cl.SetState("ERR00068", state.State{ErrType: "ERROR", ErrDesc: clusterError["ERR00068"], ErrFrom: "ARB"})
 		if cl.GetMaster() != nil {
 			mst = cl.GetMaster().URL
 			if r.Master != mst {

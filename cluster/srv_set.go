@@ -407,6 +407,10 @@ func (server *ServerMonitor) SetBackupLogicalCookie(tool string) error {
 	}
 }
 
+func (server *ServerMonitor) SetWaitRunJobSSHCookie() error {
+	return server.createCookie("cookie_waitrunjobssh")
+}
+
 func (server *ServerMonitor) SetLoadingJobList(val bool) {
 	server.IsLoadingJobList = val
 }
@@ -463,6 +467,14 @@ func (server *ServerMonitor) SetInReseedBackup(value string) {
 
 func (server *ServerMonitor) SetNeedRefreshJobs(value bool) {
 	server.NeedRefreshJobs = value
+}
+
+func (server *ServerMonitor) SetRestartNode(value string) {
+	server.RestartNode = value
+}
+
+func (server *ServerMonitor) SetRestartRid(value string) {
+	server.RestartRid = value
 }
 
 func (server *ServerMonitor) SetPointInTimeMeta(value backupmgr.PointInTimeMeta) {
@@ -523,7 +535,7 @@ func (server *ServerMonitor) SetDBCredentials(user, password string) error {
 		if u.User == user {
 			found = true
 			logs, err := dbhelper.SetUserPassword(conn, server.DBVersion, u.Host, u.User, password)
-			cluster.LogSQL(strings.Replace(logs, password, "*.*", -1), err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
+			cluster.LogSQL(strings.ReplaceAll(logs, password, "*.*"), err, server.URL, "Security", config.LvlErr, "Alter user : %s", err)
 			if err != nil {
 				return err
 			}
@@ -728,6 +740,10 @@ func (server *ServerMonitor) SetWaitJobsUpgradeCookie() error {
 	return server.createCookie("cookie_wait_jobs_upgrade")
 }
 
+func (server *ServerMonitor) SetWaitDummyConfigSendCookie() error {
+	return server.createCookie("cookie_wait_dummy_send")
+}
+
 func (server *ServerMonitor) SetRollingJobsUpgradeCookie() error {
 	return server.createCookie("cookie_rolling_jobs_upgrade")
 }
@@ -740,4 +756,31 @@ func (server *ServerMonitor) SetErrState(key, errtype, from, desc string, args .
 		ErrFrom:   from,
 		ServerUrl: server.URL,
 	})
+}
+
+func (server *ServerMonitor) SetRunningJobs(running bool) {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
+	server.IsRunningJobs = running
+}
+
+// TryAcquireJobLock atomically checks if a job is running and sets the flag if not
+// Returns true if the lock was acquired, false if a job is already running
+func (server *ServerMonitor) TryAcquireJobLock() bool {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
+
+	if server.IsRunningJobs {
+		return false
+	}
+
+	server.IsRunningJobs = true
+	return true
+}
+
+// ReleaseJobLock releases the job lock
+func (server *ServerMonitor) ReleaseJobLock() {
+	server.jobMutex.Lock()
+	defer server.jobMutex.Unlock()
+	server.IsRunningJobs = false
 }

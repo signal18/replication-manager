@@ -50,7 +50,7 @@ func (cluster *Cluster) loadDBCertificates(path string) error {
 		return errors.New("Can not load database TLS Authority CA")
 	}
 	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
-		return errors.New("Failed to append PEM.")
+		return errors.New("Failed to append PEM")
 	}
 	clientCert := make([]tls.Certificate, 0, 1)
 	certs, err := tls.LoadX509KeyPair(clicertfile, clikeyfile)
@@ -96,7 +96,7 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 		return errors.New("Can not load database TLS Authority CA")
 	}
 	if ok := rootCertPool.AppendCertsFromPEM(pem); !ok {
-		return errors.New("Failed to append PEM.")
+		return errors.New("Failed to append PEM")
 	}
 	clientCert := make([]tls.Certificate, 0, 1)
 	certs, err := tls.LoadX509KeyPair(clicertfile, clikeyfile)
@@ -116,8 +116,7 @@ func (cluster *Cluster) loadDBOldCertificates(path string) error {
 func (cluster *Cluster) createKeys() error {
 
 	// start generate key
-	var notBefore time.Time
-	notBefore = time.Now()
+	notBefore := time.Now()
 	notAfter := notBefore.Add(365 * 24 * time.Hour * 100)
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)

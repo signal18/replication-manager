@@ -165,7 +165,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
 		if _, ok := mycluster.APIUsers[uname]; !ok {
-			http.Error(w, "No Valid ACL", 500)
+			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
 
@@ -176,7 +176,7 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 			err := json.Unmarshal(data, &app)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 			e := json.NewEncoder(w)
@@ -184,15 +184,15 @@ func (repman *ReplicationManager) handlerMuxApp(w http.ResponseWriter, r *http.R
 			err = e.Encode(app)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -217,12 +217,12 @@ func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *h
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", 500)
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
 			return
 		}
 
@@ -230,11 +230,11 @@ func (repman *ReplicationManager) handlerMuxAppStart(w http.ResponseWriter, r *h
 		if app != nil {
 			mycluster.OpenSVCStartAppService(app, vars["node"])
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -259,12 +259,12 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", 500)
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
 			return
 		}
 
@@ -272,11 +272,11 @@ func (repman *ReplicationManager) handlerMuxAppStop(w http.ResponseWriter, r *ht
 		if app != nil {
 			mycluster.OpenSVCStopAppService(app, vars["node"])
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -301,24 +301,25 @@ func (repman *ReplicationManager) handlerMuxAppRestart(w http.ResponseWriter, r 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", 500)
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
 			return
 		}
 
 		app := mycluster.GetAppFromName(vars["appName"])
 		if app != nil {
-			mycluster.OpenSVCRestartAppService(app, vars["node"])
+			rid := r.URL.Query().Get("rid")
+			mycluster.OpenSVCRestartAppService(app, vars["node"], rid)
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -341,12 +342,12 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", 500)
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
 			return
 		}
 
@@ -354,15 +355,15 @@ func (repman *ReplicationManager) handlerMuxAppProvision(w http.ResponseWriter, 
 		if node != nil {
 			err := mycluster.InitAppService(node)
 			if err != nil {
-				http.Error(w, "Failed to provision app service: "+err.Error(), 500)
+				http.Error(w, "Failed to provision app service: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -385,12 +386,12 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if mycluster.GetOrchestrator() != "opensvc" {
-			http.Error(w, "Orchestrator not supported", 500)
+			http.Error(w, "Orchestrator not supported", http.StatusInternalServerError)
 			return
 		}
 
@@ -398,11 +399,11 @@ func (repman *ReplicationManager) handlerMuxAppUnprovision(w http.ResponseWriter
 		if node != nil {
 			mycluster.OpenSVCUnprovisionAppService(node)
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 }
@@ -426,24 +427,24 @@ func (repman *ReplicationManager) handlerMuxAppNeedRestart(w http.ResponseWriter
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasRestartCookie() {
 				w.Write([]byte("200 -Need restart!"))
 				return
 			}
 			w.Write([]byte("503 -No restart needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -467,24 +468,24 @@ func (repman *ReplicationManager) handlerMuxAppNeedReprov(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		node := mycluster.GetAppFromName(vars["appName"])
-		if node != nil && node.IsDown() == false {
+		if node != nil && !node.IsDown() {
 			if node.HasReprovCookie() {
 				w.Write([]byte("200 -Need reprov!"))
 				return
 			}
 			w.Write([]byte("503 -No reprov needed!"))
-			http.Error(w, "Encoding error", 503)
+			http.Error(w, "Encoding error", http.StatusServiceUnavailable)
 
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte("503 -Not a Valid Server!"))
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -506,7 +507,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 	if mycluster != nil {
 		uname := repman.GetUserFromRequest(r)
 		if _, ok := mycluster.APIUsers[uname]; !ok {
-			http.Error(w, "No Valid ACL", 500)
+			http.Error(w, "No Valid ACL", http.StatusInternalServerError)
 			return
 		}
 
@@ -515,7 +516,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			dep, err := json.MarshalIndent(node.AppConfig.Deployment, "", "\t")
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error encoding JSON: ", err)
-				http.Error(w, "Encoding error", 500)
+				http.Error(w, "Encoding error", http.StatusInternalServerError)
 				return
 			}
 
@@ -524,7 +525,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 					dep, err = sjson.SetBytes(dep, fmt.Sprintf("variables.%d.value", vidx), "*****")
 					if err != nil {
 						mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
-						http.Error(w, "Encoding error", 500)
+						http.Error(w, "Encoding error", http.StatusInternalServerError)
 						return
 					}
 				}
@@ -534,7 +535,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.gitClones.%d.pass", gidx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
-					http.Error(w, "Encoding error", 500)
+					http.Error(w, "Encoding error", http.StatusInternalServerError)
 					return
 				}
 			}
@@ -543,7 +544,7 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 				dep, err = sjson.SetBytes(dep, fmt.Sprintf("storages.s3Mounts.%d.secretkey", midx), "*****")
 				if err != nil {
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error maskin secrets JSON: ", err)
-					http.Error(w, "Encoding error", 500)
+					http.Error(w, "Encoding error", http.StatusInternalServerError)
 					return
 				}
 			}
@@ -551,11 +552,11 @@ func (repman *ReplicationManager) handlerMuxAppDeployments(w http.ResponseWriter
 			w.Write(dep)
 			return
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -582,7 +583,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -597,7 +598,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				var body ConditionalValue
 				err := json.NewDecoder(r.Body).Decode(&body)
 				if err != nil {
-					http.Error(w, "Error decoding JSON: "+err.Error(), 500)
+					http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 					return
 				}
 
@@ -610,7 +611,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				var body FieldValue
 				err := json.NewDecoder(r.Body).Decode(&body)
 				if err != nil {
-					http.Error(w, "Error decoding JSON: "+err.Error(), 500)
+					http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 					return
 				}
 
@@ -618,24 +619,24 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			}
 
 			if vars["index"] == "" || vars["index"] == "undefined" {
-				http.Error(w, "Index not provided", 500)
+				http.Error(w, "Index not provided", http.StatusInternalServerError)
 				return
 			}
 
 			index, err := strconv.Atoi(vars["index"])
 			if err != nil {
-				http.Error(w, "Error parsing index: "+err.Error(), 500)
+				http.Error(w, "Error parsing index: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", 500)
+				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", 500)
+				http.Error(w, "Key not provided", http.StatusInternalServerError)
 				return
 			}
 
@@ -643,7 +644,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			// fields which are arrays of objects
 			case "routes":
 				if index >= len(node.AppConfig.Deployment.Routes) {
-					http.Error(w, "Index out of range for routes", 500)
+					http.Error(w, "Index out of range for routes", http.StatusInternalServerError)
 					return
 				}
 
@@ -651,7 +652,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				switch vars["key"] {
 				case "cname":
 					if node.AppConfig.Deployment.Routes[index].CName == newValue {
-						http.Error(w, "CNAME unchanged", 500)
+						http.Error(w, "CNAME unchanged", http.StatusInternalServerError)
 						return
 					}
 					for _, existing := range node.AppConfig.Deployment.Routes {
@@ -663,53 +664,53 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					node.AppConfig.Deployment.Routes[index].CName = newValue
 				case "port":
 					if node.AppConfig.Deployment.Routes[index].Port == newValue {
-						http.Error(w, "Port unchanged", 500)
+						http.Error(w, "Port unchanged", http.StatusInternalServerError)
 						return
 					}
 					node.AppConfig.Deployment.Routes[index].Port = newValue
 				case "protocol":
 					if node.AppConfig.Deployment.Routes[index].Protocol == newValue {
-						http.Error(w, "Protocol unchanged", 500)
+						http.Error(w, "Protocol unchanged", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue != "tcp" && newValue != "https" {
-						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", 500)
+						http.Error(w, "Invalid protocol. Must be 'tcp' or 'https'", http.StatusInternalServerError)
 						return
 					}
 					node.AppConfig.Deployment.Routes[index].Protocol = newValue
 				default:
-					http.Error(w, "Invalid key for routes", 500)
+					http.Error(w, "Invalid key for routes", http.StatusInternalServerError)
 					return
 				}
 			case "variables":
 				if index >= len(node.AppConfig.Deployment.Variables) {
-					http.Error(w, "Index out of range for variables", 500)
+					http.Error(w, "Index out of range for variables", http.StatusInternalServerError)
 					return
 				}
 
 				row := node.AppConfig.Deployment.Variables[index]
 				if row.Locked {
-					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", 500)
+					http.Error(w, "Unable to change name of locked variable. Please change the source of the variable instead.", http.StatusInternalServerError)
 					return
 				}
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
 					if row.Name == newValue {
-						http.Error(w, "Variable name unchanged", 500)
+						http.Error(w, "Variable name unchanged", http.StatusInternalServerError)
 						return
 					}
 					row.Name = newValue
 				case "value":
 					if row.Value == newValue {
-						http.Error(w, "Variable value unchanged", 500)
+						http.Error(w, "Variable value unchanged", http.StatusInternalServerError)
 						return
 					}
 					row.Value = newValue
 				case "type":
 					if row.Type == newValue {
-						http.Error(w, "Variable type unchanged", 500)
+						http.Error(w, "Variable type unchanged", http.StatusInternalServerError)
 						return
 					}
 					row.Type = newValue
@@ -733,7 +734,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 					row.Conditional = old.Merge(condValue, nil, nil)
 				default:
-					http.Error(w, "Invalid key for variables", 500)
+					http.Error(w, "Invalid key for variables", http.StatusInternalServerError)
 					return
 				}
 				if row.Type == config.VariableTypeSecret {
@@ -742,13 +743,13 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				node.AppConfig.Deployment.Variables[index] = row
 			case "paths":
 				if index >= len(node.AppConfig.Deployment.Paths) {
-					http.Error(w, "Index out of range for paths", 500)
+					http.Error(w, "Index out of range for paths", http.StatusInternalServerError)
 					return
 				}
 
 				deployment := node.AppConfig.Deployment
 				if index >= len(deployment.Paths) {
-					http.Error(w, "Index out of range for paths", 500)
+					http.Error(w, "Index out of range for paths", http.StatusInternalServerError)
 					return
 				}
 
@@ -757,11 +758,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				// Modify field based on key
 				switch vars["key"] {
 				case "name":
-					http.Error(w, "Cannot change name of path. Please drop the path and recreate it with the new name.", 500)
+					http.Error(w, "Cannot change name of path. Please drop the path and recreate it with the new name.", http.StatusInternalServerError)
 					return
 				case "parent":
 					if pm.ParentName == newValue {
-						http.Error(w, "Parent unchanged", 500)
+						http.Error(w, "Parent unchanged", http.StatusInternalServerError)
 						return
 					}
 
@@ -771,7 +772,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					} else {
 						parent, err := deployment.GetPathMapping(newValue)
 						if err != nil {
-							http.Error(w, "Parent path not found: "+err.Error(), 500)
+							http.Error(w, "Parent path not found: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
 
@@ -781,7 +782,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 				case "dockerpath":
 					if pm.DockerPath == newValue {
-						http.Error(w, "Docker path unchanged", 500)
+						http.Error(w, "Docker path unchanged", http.StatusInternalServerError)
 						return
 					}
 
@@ -789,12 +790,12 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 				case "srctype":
 					newSourceType := config.SourceType(newValue)
 					if pm.SourceType == newSourceType {
-						http.Error(w, "Source type unchanged", 500)
+						http.Error(w, "Source type unchanged", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "Source type cannot be empty", 500)
+						http.Error(w, "Source type cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
@@ -807,17 +808,17 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							node.SetReprovCookie()
 						}
 					default:
-						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
 						return
 					}
 				case "srcname":
 					if pm.SourceName == newValue {
-						http.Error(w, "Source name unchanged", 500)
+						http.Error(w, "Source name unchanged", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" && pm.SourceType != "" {
-						http.Error(w, "Source name cannot be empty when source type is set", 500)
+						http.Error(w, "Source name cannot be empty when source type is set", http.StatusInternalServerError)
 						return
 					}
 
@@ -838,7 +839,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 							pm.SourcePath = source.GetSourcePath()
 						}
 					default:
-						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+						http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
 						return
 					}
 
@@ -846,7 +847,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 
 				case "srcpath":
 					if pm.SourcePath == newValue {
-						http.Error(w, "Source path unchanged", 500)
+						http.Error(w, "Source path unchanged", http.StatusInternalServerError)
 						return
 					}
 
@@ -870,16 +871,16 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 								pm.SourcePath = source.GetSourcePath()
 							}
 						default:
-							http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", 500)
+							http.Error(w, "Invalid source type. Must be 'git', 's3', or 'volume'", http.StatusInternalServerError)
 							return
 						}
 					} else {
-						http.Error(w, "Source path cannot be empty", 500)
+						http.Error(w, "Source path cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
 				default:
-					http.Error(w, "Invalid key for path", 500)
+					http.Error(w, "Invalid key for path", http.StatusInternalServerError)
 					return
 				}
 
@@ -888,7 +889,7 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 					mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlErr, "API Error resolving path after modification: ", err)
 				}
 			default:
-				http.Error(w, "Invalid field", 500)
+				http.Error(w, "Invalid field", http.StatusInternalServerError)
 				return
 			}
 
@@ -897,11 +898,11 @@ func (repman *ReplicationManager) handlerMuxModifyDeploymentField(w http.Respons
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Deployment field modified"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -992,7 +993,7 @@ func (repman *ReplicationManager) handlerMuxAddDeploymentFieldRow(w http.Respons
 		for _, row := range body {
 			old := node.AppConfig.GetDeploymentVariables(row.Name)
 			if old != nil {
-				http.Error(w, "Cannot duplicate variable with same name", 400)
+				http.Error(w, "Cannot duplicate variable with same name", http.StatusBadRequest)
 				return
 			}
 			// row.Value, _ = mycluster.ParseAppTemplate(row.Value, node.AppClusterSubstitute)
@@ -1312,7 +1313,6 @@ func (repman *ReplicationManager) handlerMuxAddStorage(w http.ResponseWriter, r 
 
 	mycluster.ConfigManager.SaveConfig(mycluster, false)
 	w.Write([]byte("Storage added successfully"))
-	return
 }
 
 // @Summary Modify Storage Field
@@ -1338,7 +1338,7 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -1353,31 +1353,31 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 			var body FieldValue
 			err := json.NewDecoder(r.Body).Decode(&body)
 			if err != nil {
-				http.Error(w, "Error decoding JSON: "+err.Error(), 500)
+				http.Error(w, "Error decoding JSON: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			newValue = body.Value
 
 			if vars["index"] == "" || vars["index"] == "undefined" {
-				http.Error(w, "Index not provided", 500)
+				http.Error(w, "Index not provided", http.StatusInternalServerError)
 				return
 			}
 
 			index, err := strconv.Atoi(vars["index"])
 			if err != nil {
-				http.Error(w, "Error parsing index: "+err.Error(), 500)
+				http.Error(w, "Error parsing index: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			if index < 0 {
-				http.Error(w, "Index cannot be negative", 500)
+				http.Error(w, "Index cannot be negative", http.StatusInternalServerError)
 				return
 			}
 
 			if vars["key"] == "" || vars["key"] == "undefined" {
 				// For gitClones, variables, and path, key is required
-				http.Error(w, "Key not provided", 500)
+				http.Error(w, "Key not provided", http.StatusInternalServerError)
 				return
 			}
 
@@ -1387,14 +1387,14 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 			// fields which are arrays of objects
 			case "gitClones":
 				if index >= len(deployment.Storages.GitClones) {
-					http.Error(w, "Index out of range for gitClones", 500)
+					http.Error(w, "Index out of range for gitClones", http.StatusInternalServerError)
 					return
 				}
 
 				// Get the git clone at the specified index
 				gc := deployment.Storages.GitClones[index]
 				if gc == nil {
-					http.Error(w, "Git clone not found at index "+vars["index"], 500)
+					http.Error(w, "Git clone not found at index "+vars["index"], http.StatusInternalServerError)
 					return
 				}
 
@@ -1402,11 +1402,11 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				switch vars["key"] {
 				case "name":
 					if gc.Name == newValue {
-						http.Error(w, "Name is the same as the current name", 500)
+						http.Error(w, "Name is the same as the current name", http.StatusInternalServerError)
 						return
 					}
 					if newValue == "" {
-						http.Error(w, "Name cannot be empty", 500)
+						http.Error(w, "Name cannot be empty", http.StatusInternalServerError)
 						return
 					}
 					old, _ := node.GetGitClone(newValue)
@@ -1425,23 +1425,23 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				case "repo":
 					newValue = strings.TrimSuffix(newValue, ".git")
 					if gc.GitRepo == newValue {
-						http.Error(w, "Repo is the same as the current repo", 500)
+						http.Error(w, "Repo is the same as the current repo", http.StatusInternalServerError)
 						return
 					}
 					if newValue == "" {
-						http.Error(w, "Repo cannot be empty", 500)
+						http.Error(w, "Repo cannot be empty", http.StatusInternalServerError)
 						return
 					}
 					gc.GitRepo = newValue
 
 				case "branch":
 					if gc.GitBranch == newValue {
-						http.Error(w, "Branch is the same as the current branch", 500)
+						http.Error(w, "Branch is the same as the current branch", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "Branch cannot be empty", 500)
+						http.Error(w, "Branch cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
@@ -1449,18 +1449,18 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				case "volumename":
 					if gc.VolumeName == newValue {
-						http.Error(w, "VolumeName is the same as the current volume name", 500)
+						http.Error(w, "VolumeName is the same as the current volume name", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "VolumeName cannot be empty", 500)
+						http.Error(w, "VolumeName cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
 					newvol, err := deployment.GetVolumeByName(newValue)
 					if err != nil {
-						http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+						http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 						return
 					}
 					// Check for duplicate git volume path
@@ -1476,19 +1476,19 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					if newValue == "" {
 						curvol, err := deployment.GetVolumeByName(gc.VolumeName)
 						if err != nil {
-							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
 						newValue = filepath.Join(curvol.VolumeDir, gc.Name)
 					}
 
 					if gc.VolumeDir == newValue {
-						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)
 						return
 					}
 
 					if deployment.HasDuplicateGitVolumePath(gc.Name, gc.VolumeName, newValue) {
-						http.Error(w, "Duplicate value for git volume path", 500)
+						http.Error(w, "Duplicate value for git volume path", http.StatusInternalServerError)
 						return
 					}
 					gc.VolumeDir = newValue
@@ -1496,31 +1496,31 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					deployment.ResolveGitPaths(gc.Name)
 				case "user":
 					if gc.GitUser == newValue {
-						http.Error(w, "User is the same as the current user", 500)
+						http.Error(w, "User is the same as the current user", http.StatusInternalServerError)
 						return
 					}
 					gc.GitUser = newValue
 				case "pass":
 					if mycluster.Conf.GetDecryptedPassword(gc.Name, gc.GitPass) == newValue {
-						http.Error(w, "Password is the same as the current password", 500)
+						http.Error(w, "Password is the same as the current password", http.StatusInternalServerError)
 						return
 					}
 
 					gc.GitPass = mycluster.Conf.GetEncryptedString(newValue)
 				default:
-					http.Error(w, "Invalid key for gitClones", 500)
+					http.Error(w, "Invalid key for gitClones", http.StatusInternalServerError)
 					return
 				}
 			case "volumes":
 				if index >= len(deployment.Storages.Volumes) {
-					http.Error(w, "Index out of range for volumes", 500)
+					http.Error(w, "Index out of range for volumes", http.StatusInternalServerError)
 					return
 				}
 
 				// Get the volume at the specified index
 				vol := deployment.Storages.Volumes[index]
 				if vol == nil {
-					http.Error(w, "Volume not found at index "+vars["index"], 500)
+					http.Error(w, "Volume not found at index "+vars["index"], http.StatusInternalServerError)
 					return
 				}
 
@@ -1528,13 +1528,13 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 				switch vars["key"] {
 				case "name":
 					if vol.Name == newValue {
-						http.Error(w, "Name is the same as the current name", 500)
+						http.Error(w, "Name is the same as the current name", http.StatusInternalServerError)
 						return
 					}
 
 					old, _ := deployment.GetVolumeByName(newValue)
 					if old != nil {
-						http.Error(w, "Cannot duplicate volume with same name", 500)
+						http.Error(w, "Cannot duplicate volume with same name", http.StatusInternalServerError)
 						return
 					}
 
@@ -1547,59 +1547,59 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				case "poolname":
 					if vol.PoolName == newValue {
-						http.Error(w, "PoolName is the same as the current pool name", 500)
+						http.Error(w, "PoolName is the same as the current pool name", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "PoolName cannot be empty", 500)
+						http.Error(w, "PoolName cannot be empty", http.StatusInternalServerError)
 						return
 					}
 					vol.PoolName = newValue
 
 				case "volumedir":
 					if vol.VolumeDir == newValue {
-						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)
 						return
 					}
 					if newValue == "" {
-						http.Error(w, "VolumeDir cannot be empty", 500)
+						http.Error(w, "VolumeDir cannot be empty", http.StatusInternalServerError)
 						return
 					}
 					vol.VolumeDir = newValue
 					deployment.ResolveVolumePaths(vol.Name)
 
 				default:
-					http.Error(w, "Invalid key for volumes", 500)
+					http.Error(w, "Invalid key for volumes", http.StatusInternalServerError)
 					return
 				}
 			case "s3Mounts":
 				if index >= len(deployment.Storages.S3Mounts) {
-					http.Error(w, "Index out of range for s3Mounts", 500)
+					http.Error(w, "Index out of range for s3Mounts", http.StatusInternalServerError)
 					return
 				}
 
 				s3Mount := deployment.Storages.S3Mounts[index]
 				if s3Mount == nil {
-					http.Error(w, "S3 mount not found at index "+vars["index"], 500)
+					http.Error(w, "S3 mount not found at index "+vars["index"], http.StatusInternalServerError)
 					return
 				}
 
 				switch vars["key"] {
 				case "name":
 					if s3Mount.Name == newValue {
-						http.Error(w, "Name is the same as the current name", 500)
+						http.Error(w, "Name is the same as the current name", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "Name cannot be empty", 500)
+						http.Error(w, "Name cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
 					old, _ := deployment.GetS3Mount(newValue)
 					if old != nil {
-						http.Error(w, "Cannot duplicate volume with same name", 500)
+						http.Error(w, "Cannot duplicate volume with same name", http.StatusInternalServerError)
 						return
 					}
 
@@ -1612,12 +1612,12 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				case "endpoint":
 					if s3Mount.Endpoint == newValue {
-						http.Error(w, "Endpoint is the same as the current endpoint", 500)
+						http.Error(w, "Endpoint is the same as the current endpoint", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "Endpoint cannot be empty", 500)
+						http.Error(w, "Endpoint cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
@@ -1653,28 +1653,28 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 
 				case "bucket":
 					if s3Mount.Bucket == newValue {
-						http.Error(w, "Bucket is the same as the current bucket", 500)
+						http.Error(w, "Bucket is the same as the current bucket", http.StatusInternalServerError)
 						return
 					}
 					if newValue == "" {
-						http.Error(w, "Bucket cannot be empty", 500)
+						http.Error(w, "Bucket cannot be empty", http.StatusInternalServerError)
 						return
 					}
 					s3Mount.Bucket = newValue
 				case "volumename":
 					if s3Mount.VolumeName == newValue {
-						http.Error(w, "VolumeName is the same as the current volume name", 500)
+						http.Error(w, "VolumeName is the same as the current volume name", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
-						http.Error(w, "VolumeName cannot be empty", 500)
+						http.Error(w, "VolumeName cannot be empty", http.StatusInternalServerError)
 						return
 					}
 
 					newvol, err := deployment.GetVolumeByName(newValue)
 					if err != nil {
-						http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+						http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 						return
 					}
 
@@ -1686,32 +1686,32 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 					deployment.ResolveS3MountPaths(s3Mount.Name)
 				case "volumedir":
 					if s3Mount.VolumeDir == newValue {
-						http.Error(w, "VolumeDir is the same as the current volume dir", 500)
+						http.Error(w, "VolumeDir is the same as the current volume dir", http.StatusInternalServerError)
 						return
 					}
 
 					if newValue == "" {
 						curvol, err := deployment.GetVolumeByName(s3Mount.VolumeName)
 						if err != nil {
-							http.Error(w, "Error getting volume by name: "+err.Error(), 500)
+							http.Error(w, "Error getting volume by name: "+err.Error(), http.StatusInternalServerError)
 							return
 						}
 						newValue = filepath.Join(curvol.VolumeDir, s3Mount.Name)
 					}
 
 					if deployment.HasDuplicateS3VolumePath(s3Mount.VolumeName, newValue) {
-						http.Error(w, "Duplicate value for S3 volume path", 500)
+						http.Error(w, "Duplicate value for S3 volume path", http.StatusInternalServerError)
 						return
 					}
 					s3Mount.VolumeDir = newValue
 
 					deployment.ResolveS3MountPaths(s3Mount.Name)
 				default:
-					http.Error(w, "Invalid key for s3Mounts", 500)
+					http.Error(w, "Invalid key for s3Mounts", http.StatusInternalServerError)
 					return
 				}
 			default:
-				http.Error(w, "Invalid field", 500)
+				http.Error(w, "Invalid field", http.StatusInternalServerError)
 				return
 			}
 
@@ -1720,11 +1720,11 @@ func (repman *ReplicationManager) handlerMuxModifyStorageField(w http.ResponseWr
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Storage field modified"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1843,7 +1843,7 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -1851,7 +1851,7 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 		if node != nil {
 			// Validate setting and value
 			if vars["setting"] == "" || vars["value"] == "" {
-				http.Error(w, "Setting and value must be provided", 400)
+				http.Error(w, "Setting and value must be provided", http.StatusBadRequest)
 				return
 			}
 
@@ -1859,18 +1859,18 @@ func (repman *ReplicationManager) handlerMuxAppSetSetting(w http.ResponseWriter,
 			value := vars["value"]
 			err := node.SetSetting(setting, value)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error setting %s: %s", setting, err.Error()), 500)
+				http.Error(w, fmt.Sprintf("Error setting %s: %s", setting, err.Error()), http.StatusInternalServerError)
 				return
 			}
 
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting updated successfully"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1894,7 +1894,7 @@ func (repman *ReplicationManager) handlerMuxAppSwitchSetting(w http.ResponseWrit
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -1902,24 +1902,24 @@ func (repman *ReplicationManager) handlerMuxAppSwitchSetting(w http.ResponseWrit
 		if node != nil {
 			// Validate setting and value
 			if vars["setting"] == "" {
-				http.Error(w, "Setting must be provided", 400)
+				http.Error(w, "Setting must be provided", http.StatusBadRequest)
 				return
 			}
 
 			setting := vars["setting"]
 			err := node.SwitchSetting(setting)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error switch setting %s: %s", setting, err.Error()), 500)
+				http.Error(w, fmt.Sprintf("Error switch setting %s: %s", setting, err.Error()), http.StatusInternalServerError)
 				return
 			}
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting switched successfully"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1943,7 +1943,7 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -1951,24 +1951,24 @@ func (repman *ReplicationManager) handlerMuxAppClearSetting(w http.ResponseWrite
 		if node != nil {
 			// Validate setting
 			if vars["setting"] == "" {
-				http.Error(w, "Setting must be provided", 400)
+				http.Error(w, "Setting must be provided", http.StatusBadRequest)
 				return
 			}
 
 			setting := vars["setting"]
 			err := node.SetSetting(setting, "")
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error clearing setting %s: %s", setting, err.Error()), 500)
+				http.Error(w, fmt.Sprintf("Error clearing setting %s: %s", setting, err.Error()), http.StatusInternalServerError)
 				return
 			}
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("Setting cleared successfully"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -1996,7 +1996,7 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2004,13 +2004,13 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 
 		app := mycluster.GetAppFromName(vars["appId"])
 		if app == nil {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 
 		gc, _ := app.GetGitClone(vars["gitName"])
 		if gc == nil {
-			http.Error(w, "Git Clone Not Found", 500)
+			http.Error(w, "Git Clone Not Found", http.StatusInternalServerError)
 			return
 		}
 
@@ -2021,20 +2021,20 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		if strings.Contains(gc.GitRepo, "github") {
 			_, projectID, err = githelper.ParseGitHubURL(gc.GitRepo)
 			if err != nil {
-				http.Error(w, "Invalid GitHub repository URL: "+err.Error(), 400)
+				http.Error(w, "Invalid GitHub repository URL: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			gClient, err = githelper.NewGithubClient(gitpass)
 		} else {
 			baseURL, projectID, err = githelper.ParseGitLabURL(gc.GitRepo)
 			if err != nil {
-				http.Error(w, "Invalid GitLab repository URL: "+err.Error(), 400)
+				http.Error(w, "Invalid GitLab repository URL: "+err.Error(), http.StatusBadRequest)
 				return
 			}
 			gClient, err = githelper.NewGitlabClient(baseURL, gitpass)
 		}
 		if err != nil {
-			http.Error(w, "Error creating Git client: "+err.Error(), 500)
+			http.Error(w, "Error creating Git client: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -2046,14 +2046,14 @@ func (repman *ReplicationManager) handlerMuxGitRepoTree(w http.ResponseWriter, r
 		}
 		tree, err := gClient.GetRepositoryTree(cacheDir, projectID, gc.GitBranch, timeout, force)
 		if err != nil {
-			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
+			http.Error(w, "Error getting repository tree: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(tree)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2076,7 +2076,7 @@ func (repman *ReplicationManager) handlerMuxGetAppServiceConfig(w http.ResponseW
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		app := mycluster.GetAppFromName(vars["appName"])
@@ -2084,15 +2084,15 @@ func (repman *ReplicationManager) handlerMuxGetAppServiceConfig(w http.ResponseW
 			res, err := mycluster.OpenSVCGetAppTemplateV2(app)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModOrchestrator, config.LvlErr, "Can't create OpenSVC config template  %s", err)
-				http.Error(w, "Error creating OpenSVC config template: "+err.Error(), 500)
+				http.Error(w, "Error creating OpenSVC config template: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			w.Write(res)
 		} else {
-			http.Error(w, "Not a valid app", 500)
+			http.Error(w, "Not a valid app", http.StatusInternalServerError)
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2115,13 +2115,13 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 		app := mycluster.GetAppFromName(vars["appName"])
 		if app != nil {
 			if app.AppClusterSubstitute == "" {
-				http.Error(w, "No substitution variables defined for this app", 500)
+				http.Error(w, "No substitution variables defined for this app", http.StatusInternalServerError)
 				return
 			}
 
@@ -2131,10 +2131,10 @@ func (repman *ReplicationManager) handlerMuxAppSubstitutionVariables(w http.Resp
 			w.WriteHeader(http.StatusOK)
 			w.Write(jsondata)
 		} else {
-			http.Error(w, "Not a valid app", 500)
+			http.Error(w, "Not a valid app", http.StatusInternalServerError)
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2159,7 +2159,7 @@ func (repman *ReplicationManager) handlerMuxAppSaveAsTemplate(w http.ResponseWri
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2172,16 +2172,16 @@ func (repman *ReplicationManager) handlerMuxAppSaveAsTemplate(w http.ResponseWri
 			templatePath := filepath.Join(mycluster.Conf.WorkingDir, ".templates", "apps", mycluster.Name, template+".toml")
 			_, err := mycluster.SaveApp(node, templatePath)
 			if err != nil {
-				http.Error(w, "Error saving app template: "+err.Error(), 500)
+				http.Error(w, "Error saving app template: "+err.Error(), http.StatusInternalServerError)
 				return
 			}
 			w.Write([]byte("App template saved successfully"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2204,7 +2204,7 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2216,11 +2216,11 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			}
 			err := json.NewDecoder(r.Body).Decode(&body)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), 400)
+				http.Error(w, fmt.Sprintf("Error decoding request body: %v", err), http.StatusBadRequest)
 				return
 			}
 			if body.Template == "" {
-				http.Error(w, "Template name must be provided", 400)
+				http.Error(w, "Template name must be provided", http.StatusBadRequest)
 				return
 			}
 
@@ -2228,7 +2228,7 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			// Get the template content
 			content, err := mycluster.GetTemplateContent(node.AppConfig.ProvAppTemplate)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error getting template content: %v", err), 500)
+				http.Error(w, fmt.Sprintf("Error getting template content: %v", err), http.StatusInternalServerError)
 				return
 			}
 
@@ -2237,7 +2237,7 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			// Load the new template into the Viper instance
 			newViper, err := mycluster.LoadTemplateToViper(parsedContent)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error loading template: %v", err), 500)
+				http.Error(w, fmt.Sprintf("Error loading template: %v", err), http.StatusInternalServerError)
 				return
 			}
 
@@ -2246,7 +2246,7 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			err = newViper.Unmarshal(node.AppConfig)
 			if err != nil {
 				mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModApp, config.LvlWarn, "Error unmarshalling parsed template file %s: %s", body.Template, err)
-				http.Error(w, fmt.Sprintf("Error unmarshalling template: %v", err), 500)
+				http.Error(w, fmt.Sprintf("Error unmarshalling template: %v", err), http.StatusInternalServerError)
 				return
 			}
 
@@ -2255,11 +2255,11 @@ func (repman *ReplicationManager) handlerMuxAppResetFromTemplate(w http.Response
 			mycluster.ConfigManager.SaveConfig(mycluster, false)
 			w.Write([]byte("App template reloaded successfully"))
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2284,7 +2284,7 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2306,22 +2306,22 @@ func (repman *ReplicationManager) handlerMuxAppResolveTemplate(w http.ResponseWr
 		if node != nil {
 			newData, err := mycluster.ParseAppTemplate(decodedData.Data, node.AppClusterSubstitute)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error parsing template: %s", err), 500)
+				http.Error(w, fmt.Sprintf("Error parsing template: %s", err), http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			err = json.NewEncoder(w).Encode(newData)
 			if err != nil {
-				http.Error(w, fmt.Sprintf("Error encoding response: %s", err.Error()), 500)
+				http.Error(w, fmt.Sprintf("Error encoding response: %s", err.Error()), http.StatusInternalServerError)
 				return
 			}
 		} else {
-			http.Error(w, "Server Not Found", 500)
+			http.Error(w, "Server Not Found", http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2344,7 +2344,7 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
@@ -2352,7 +2352,7 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 
 		jsondata, err := json.Marshal(repman.ServiceTemplates)
 		if err != nil {
-			http.Error(w, "Error getting repository tree: "+err.Error(), 500)
+			http.Error(w, "Error getting repository tree: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 
@@ -2360,7 +2360,7 @@ func (repman *ReplicationManager) handlerMuxAppRefreshTemplateFromRepo(w http.Re
 		w.WriteHeader(http.StatusOK)
 		w.Write(jsondata)
 	} else {
-		http.Error(w, "No cluster", 500)
+		http.Error(w, "No cluster", http.StatusInternalServerError)
 		return
 	}
 }
@@ -2383,23 +2383,23 @@ func (repman *ReplicationManager) handlerMuxAppDropByName(w http.ResponseWriter,
 	mycluster := repman.getClusterByName(vars["clusterName"])
 	if mycluster != nil {
 		if valid, _ := repman.IsValidClusterACL(r, mycluster); !valid {
-			http.Error(w, "No valid ACL", 403)
+			http.Error(w, "No valid ACL", http.StatusForbidden)
 			return
 		}
 
 		if vars["appHost"] == "" || vars["appPort"] == "" {
-			http.Error(w, "No app host or port provided", 400)
+			http.Error(w, "No app host or port provided", http.StatusBadRequest)
 			return
 		}
 
 		mycluster.LogModulePrintf(mycluster.Conf.Verbose, config.ConstLogModGeneral, config.LvlInfo, "Rest API receive drop app monitor for %s:%s", vars["appHost"], vars["appPort"])
 		err := mycluster.RemoveAppMonitor(vars["appHost"], vars["appPort"])
 		if err != nil {
-			http.Error(w, "Error dropping app monitor: "+err.Error(), 500)
+			http.Error(w, "Error dropping app monitor: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 	} else {
-		http.Error(w, "Cluster Not Found", 500)
+		http.Error(w, "Cluster Not Found", http.StatusInternalServerError)
 		return
 	}
 

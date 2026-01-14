@@ -9,7 +9,6 @@ package cluster
 import (
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"time"
 
@@ -170,10 +169,10 @@ func (cluster *Cluster) OpenSVCWaitDequeue(svc opensvc.Collector, idaction int) 
 		time.Sleep(2 * time.Second)
 		status := svc.GetActionStatus(strconv.Itoa(idaction))
 		if status == "Q" {
-			cluster.SetState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0045"]), ErrFrom: "TOPO"})
+			cluster.SetState("WARN0045", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0045"], ErrFrom: "TOPO"})
 		}
 		if status == "W" {
-			cluster.SetState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: fmt.Sprintf(clusterError["WARN0046"]), ErrFrom: "TOPO"})
+			cluster.SetState("WARN0046", state.State{ErrType: "WARNING", ErrDesc: clusterError["WARN0046"], ErrFrom: "TOPO"})
 		}
 		if status == "T" {
 			return nil
@@ -263,6 +262,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 	var fs string
 	fs = ""
 	disk = ""
+	podpool := pod
+	if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
+		podpool = "10" + pod
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSMode)
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", collector.ProvFSPool)
 	if collector.ProvFSMode == "loopback" {
@@ -283,9 +286,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "pvs = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
-		}
-		if collector.ProvFSPool == "zpool" {
+		} else if collector.ProvFSPool == "zpool" {
 			disk = disk + "\n"
 			disk = disk + "[disk#1001]\n"
 			disk = disk + "name = zp{namespace}-{svcname}\n"
@@ -293,7 +294,6 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 			disk = disk + "vdev  = {disk#01.file}\n"
 			disk = disk + "standby = true\n"
 			disk = disk + "\n"
-
 		}
 	}
 
@@ -306,18 +306,10 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		fs = fs + "\n"
 		fs = fs + "\n"
 	} else {
-		podpool := pod
-		if collector.ProvFSPool == "lvm" || collector.ProvFSPool == "zpool" {
-			podpool = "10" + pod
-		}
 		fs = fs + "\n"
 		fs = fs + "[fs#01]\n"
 		fs = fs + "type = " + collector.ProvFSType + "\n"
 		if collector.ProvFSPool == "lvm" {
-			re := regexp.MustCompile("[0-9]+")
-			strlvsize := re.FindAllString(collector.ProvDisk, 1)
-			lvsize, _ := strconv.Atoi(strlvsize[0])
-			lvsize--
 			fs = fs + "dev = /dev/{namespace}-{svcname}\n"
 			fs = fs + "vg = {namespace}-{svcname}\n"
 			fs = fs + "size = 100%FREE\n"
@@ -335,7 +327,7 @@ func (cluster *Cluster) GetPodDiskTemplate(collector opensvc.Collector, pod stri
 		}
 		fs = fs + "mnt = {env.base_dir}\n"
 		fs = fs + "standby = true\n"
-	} // not a directory
+	}
 	//cluster.LogModulePrintf(cluster.Conf.Verbose, config.ConstLogModOrchestrator,config.LvlErr, "%s", disk+fs)
 	return disk + fs
 }

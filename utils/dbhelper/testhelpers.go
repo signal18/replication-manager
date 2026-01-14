@@ -10,7 +10,6 @@ package dbhelper
 
 import (
 	"os"
-	"strings"
 	"testing"
 
 	_ "github.com/go-sql-driver/mysql" // MySQL driver
@@ -73,25 +72,15 @@ func setupTestPostgreSQL(t *testing.T) *sqlx.DB {
 	return db
 }
 
-// getTestDBVersion gets the database version from a connection.
+// getTestDBVersion gets the database version from a connection using GetDBVersion.
 func getTestDBVersion(t *testing.T, db *sqlx.DB) *version.Version {
 	t.Helper()
 
-	var versionStr string
-	err := db.QueryRow("SELECT VERSION()").Scan(&versionStr)
+	v, _, err := GetDBVersion(db)
 	if err != nil {
-		t.Fatalf("Failed to get version: %v", err)
+		t.Fatalf("Failed to get database version: %v", err)
 	}
 
-	// Determine flavor based on version string
-	flavor := "mysql"
-	if strings.Contains(strings.ToLower(versionStr), "mariadb") {
-		flavor = "mariadb"
-	} else if strings.Contains(strings.ToLower(versionStr), "percona") {
-		flavor = "percona"
-	}
-
-	v, _ := version.NewVersionFromString(flavor, versionStr)
 	return v
 }
 

@@ -35,7 +35,7 @@ var tests = []string{
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXXMSM",
 	"testFailoverSemisyncAutoRejoinUnsafeMSXMSM",
 	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXMXMS",
-	"testFailoverSemisyncAutoRejoinUnsafeMSXMXXXMSM",
+	"testFailoverSemisyncAutoRejoinUnsafeMSMXMXXXMSM",
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRMXMS",
 	"testFailoverSemisyncAutoRejoinUnsafeMSMXXXRXMSM",
 	"testFailoverAssyncAutoRejoinRelay",
@@ -58,6 +58,19 @@ var tests = []string{
 	"testMasterSuspect",
 	"testMasterNil",
 	"testRunSysbenchTPCPerMinuteIncreaseThreads",
+	"testConfigCookiePushBasic",
+	"testConfigCookiePushLifecycle",
+	"testConfigCookiePushMultipleServers",
+	"testConfigCookiePushTiming",
+	"testConfigCookiePushCookieDir",
+	"testConfigCookiePushNoConfigFetchCookie",
+	"testRestartCookieBasic",
+	"testRestartCookieLifecycle",
+	"testRestartCookieMultipleServers",
+	"testRestartCookieParameters",
+	"testRestartCookieCleanup",
+	"testRestartCookieTiming",
+	"testRestartCookieConcurrent",
 }
 
 const recoverTime = 8

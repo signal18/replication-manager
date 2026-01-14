@@ -1,8 +1,9 @@
 [Default]
-verbose = true
 http-server = true
 http-bind-address = "0.0.0.0"
 monitoring-save-config = true
+monitoring-datadir = "/var/lib/replication-manager"
+monitoring-confdir = "/etc/replication-manager"
 
 prov-db-binary-basedir= "/usr/sbin"
 prov-db-client-basedir= "/usr/bin"

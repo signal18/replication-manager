@@ -420,7 +420,7 @@ func (repman *ReplicationManager) CancelExternalOps(userform CloudUserForm, cl *
 }
 
 func (repman *ReplicationManager) EndExternalOps(userform CloudUserForm, cl *cluster.Cluster) error {
-	var extops cluster.UserForm = cluster.UserForm{
+	var extops = cluster.UserForm{
 		Username: userform.Username,
 	}
 
