@@ -308,12 +308,12 @@ func TestAppendAndQueueHelpers(t *testing.T) {
 		t.Fatalf("expected fetch task queued")
 	}
 
-	err := repo.AddPurgeTask(ResticPurgeOption{SnapshotID: "snap1"}, true)
+	err := repo.AddPurgeTask(ResticPurgeOption{SnapshotID: "snap1", Prune: true}, true)
 	if err != nil || !repo.NeedPurgeNow {
 		t.Fatalf("expected purge now")
 	}
 
-	repo.appendPurgeTask(ResticPurgeOption{SnapshotID: "snap2"})
+	repo.appendPurgeTask(ResticPurgeOption{SnapshotID: "snap2", Prune: true})
 	if repo.TaskQueue[len(repo.TaskQueue)-1].Type != PurgeTask {
 		t.Fatalf("expected purge task")
 	}
@@ -459,11 +459,11 @@ func TestPurgeAndBackupCommands(t *testing.T) {
 		t.Fatalf("backup: %v", err)
 	}
 
-	if err := repo.purgeWithPolicy(ResticPurgeOption{KeepLast: 1}); err != nil {
+	if err := repo.purgeWithPolicy(ResticPurgeOption{KeepLast: 1, Prune: true}); err != nil {
 		t.Fatalf("purge policy: %v", err)
 	}
 
-	if err := repo.PurgeRepo(ResticPurgeOption{SnapshotID: snapshotID}); err != nil {
+	if err := repo.PurgeRepo(ResticPurgeOption{SnapshotID: snapshotID, Prune: true}); err != nil {
 		t.Fatalf("purge repo: %v", err)
 	}
 }

@@ -141,6 +141,7 @@ func (cluster *Cluster) AddPurgeTask(snapshotID string) error {
 
 	cluster.ResticManager.AddPurgeTask(backupmgr.ResticPurgeOption{
 		SnapshotID: snapshotID,
+		Prune:      true,
 	}, true)
 	return nil
 }
@@ -177,6 +178,7 @@ func (cluster *Cluster) ResticPurgeRepo(now bool) error {
 			KeepWithinMonthly: cluster.Conf.BackupKeepWithinMonthly,
 			KeepWithinYearly:  cluster.Conf.BackupKeepWithinYearly,
 			GroupBy:           groupBy,
+			Prune:             true,
 		}, now)
 	}
 	return nil

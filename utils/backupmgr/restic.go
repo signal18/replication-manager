@@ -162,8 +162,16 @@ type ResticPurgeOption struct {
 	Host              []string `json:"host,omitempty"`
 	Tag               []string `json:"tag,omitempty"`
 	Path              []string `json:"path,omitempty"`
-	Prune             *bool    `json:"prune,omitempty"` // If nil, defaults to true for backward compatibility
+	Prune             bool     `json:"prune"` // When true, runs prune after forget to reclaim space (defaults to true via NewResticPurgeOption)
 	DryRun            bool     `json:"dry_run,omitempty"`
+}
+
+// NewResticPurgeOption creates a new ResticPurgeOption with sensible defaults.
+// By default, Prune is set to true since purging should reclaim space.
+func NewResticPurgeOption() ResticPurgeOption {
+	return ResticPurgeOption{
+		Prune: true,
+	}
 }
 
 // ResticRestoreOption holds the configuration for restore
@@ -1554,8 +1562,8 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 func buildForgetArgs(opt ResticPurgeOption) []string {
 	args := []string{"forget"}
 
-	// Add --prune flag: defaults to true if not explicitly set
-	if opt.Prune == nil || *opt.Prune {
+	// Add --prune flag to reclaim disk space after forgetting snapshots
+	if opt.Prune {
 		args = append(args, "--prune")
 	}
 
