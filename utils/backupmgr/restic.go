@@ -63,13 +63,13 @@ func GetTaskName(taskType TaskType) string {
 
 // Task represents a queue task
 type ResticTask struct {
-	ID          int               `json:"task_id"`
-	Type        TaskType          `json:"task_type"`
-	DirPath     string            `json:"dir_path"`
-	Tags        []string          `json:"tags"`
-	Opt         ResticPurgeOption `json:"opt,omitempty"`
+	ID          int                 `json:"task_id"`
+	Type        TaskType            `json:"task_type"`
+	DirPath     string              `json:"dir_path"`
+	Tags        []string            `json:"tags"`
+	Opt         ResticPurgeOption   `json:"opt,omitempty"`
 	Restore     ResticRestoreOption `json:"restore,omitempty"`
-	NewPassFile string            `json:"-"`
+	NewPassFile string              `json:"-"`
 	resultCh    chan ResticResult
 }
 
@@ -403,9 +403,9 @@ func (repo *ResticManager) worker() {
 			err := repo.UnlockRepo()
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
-	case RestoreTask:
-		err := repo.restoreSnapshot(task.Restore.SnapshotID, task.DirPath, task.Tags, task.Restore.Overwrite)
-		result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+		case RestoreTask:
+			err := repo.restoreSnapshot(task.Restore.SnapshotID, task.DirPath, task.Tags, task.Restore.Overwrite)
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		default:
 			repo.Printf(logrus.WarnLevel, "Unknown task type: %d", task.Type)
 			continue
@@ -1033,26 +1033,25 @@ func (repo *ResticManager) HasFetchQueue() bool {
 	return false
 }
 
+// CancelTask removes a task from the queue by its task ID.
+// This function is safe against out-of-bounds access by using the array index
+// rather than the task ID for slice operations.
 func (repo *ResticManager) CancelTask(taskId int) {
 	repo.Mutex.Lock()
 	defer repo.Mutex.Unlock()
 
 	repo.Printf(logrus.InfoLevel, "Cancelling restic task ID: %d", taskId)
 
-	var taskToCancel *ResticTask
-	for _, task := range repo.TaskQueue {
+	// Find the task and track its index in the queue (not the task ID)
+	for i, task := range repo.TaskQueue {
 		if task.ID == taskId {
-			taskToCancel = task
-			break
+			repo.TaskQueue = append(repo.TaskQueue[:i], repo.TaskQueue[i+1:]...)
+			repo.Printf(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
+			return
 		}
 	}
 
-	if taskToCancel != nil {
-		repo.TaskQueue = append(repo.TaskQueue[:taskToCancel.ID], repo.TaskQueue[taskToCancel.ID+1:]...)
-		repo.Printf(logrus.InfoLevel, "Cancelled restic task ID: %d", taskId)
-	} else {
-		repo.Printf(logrus.WarnLevel, "Restic task ID not found: %d", taskId)
-	}
+	repo.Printf(logrus.WarnLevel, "Restic task ID not found: %d", taskId)
 }
 
 func (repo *ResticManager) ClearQueue() {

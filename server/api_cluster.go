@@ -7015,6 +7015,12 @@ func (repman *ReplicationManager) handlerMuxResticLs(w http.ResponseWriter, r *h
 			for _, part := range strings.Split(raw, ",") {
 				part = strings.TrimSpace(part)
 				if part != "" {
+					// Security: Validate path to prevent path traversal
+					// Note: These are paths within the snapshot, but still validate for safety
+					if strings.Contains(part, "..") {
+						http.Error(w, "Path contains invalid path traversal sequences", http.StatusBadRequest)
+						return
+					}
 					paths = append(paths, part)
 				}
 			}
@@ -7074,10 +7080,53 @@ func (repman *ReplicationManager) handlerMuxResticRestoreSnapshot(w http.Respons
 			return
 		}
 
+		// Security: Validate target directory path to prevent path traversal
+		// Convert to absolute path and ensure it doesn't escape intended boundaries
+		targetDir := filepath.Clean(payload.TargetDir)
+		if !filepath.IsAbs(targetDir) {
+			http.Error(w, "Target directory must be an absolute path", http.StatusBadRequest)
+			return
+		}
+		// Check for path traversal patterns
+		if strings.Contains(targetDir, "..") {
+			http.Error(w, "Target directory contains invalid path traversal sequences", http.StatusBadRequest)
+			return
+		}
+		payload.TargetDir = targetDir
+
 		snapshotRef := snapshotID
 		includePaths := payload.Paths
 		sourcePath := strings.TrimSpace(payload.SourcePath)
 		sourceType := strings.ToLower(strings.TrimSpace(payload.SourcePathType))
+
+		// Security: Validate source path to prevent path traversal
+		if sourcePath != "" {
+			// Clean the path and check for traversal patterns
+			cleanedSource := filepath.Clean(sourcePath)
+			if strings.Contains(cleanedSource, "..") {
+				http.Error(w, "Source path contains invalid path traversal sequences", http.StatusBadRequest)
+				return
+			}
+			sourcePath = cleanedSource
+		}
+
+		// Security: Validate include paths to prevent path traversal
+		if len(includePaths) > 0 {
+			validatedPaths := make([]string, 0, len(includePaths))
+			for _, path := range includePaths {
+				trimmed := strings.TrimSpace(path)
+				if trimmed == "" {
+					continue
+				}
+				// Check for path traversal patterns
+				if strings.Contains(trimmed, "..") {
+					http.Error(w, "Include path contains invalid path traversal sequences", http.StatusBadRequest)
+					return
+				}
+				validatedPaths = append(validatedPaths, trimmed)
+			}
+			includePaths = validatedPaths
+		}
 
 		if sourcePath != "" && sourceType == "dir" {
 			trimmedBase := strings.TrimRight(sourcePath, "/")

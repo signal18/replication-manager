@@ -606,12 +606,6 @@ var resticTagCategorySet = map[string]struct{}{
 	"backup-tool": {},
 }
 
-var resticPurgeGroupByAllowed = map[string]struct{}{
-	"host":  {},
-	"paths": {},
-	"tags":  {},
-}
-
 func normalizeResticTagCategory(value string) string {
 	normalized := strings.ToLower(strings.TrimSpace(value))
 	normalized = strings.ReplaceAll(normalized, "_", "-")
@@ -674,6 +668,12 @@ func normalizeResticTagCategories(value string) (string, error) {
 	return strings.Join(categories, ","), nil
 }
 
+// normalizeResticPurgeGroupBy validates and normalizes the restic --group-by parameter.
+// This parameter controls how snapshots are grouped during forget operations (by host, paths, or tags).
+// Security note: Although this validates against path traversal patterns, the parameter is NOT used
+// for filesystem operations - it's a restic metadata grouping criterion. The validation uses:
+// 1. Whitelist: only allows "host", "paths", "tags" (restic-specific grouping criteria)
+// 2. Blacklist: rejects path traversal sequences (/, \, ..) as defense-in-depth
 func normalizeResticPurgeGroupBy(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -687,14 +687,20 @@ func normalizeResticPurgeGroupBy(value string) (string, error) {
 	for _, part := range parts {
 		normalized := strings.ToLower(strings.TrimSpace(part))
 		normalized = strings.ReplaceAll(normalized, "_", "")
-		switch normalized {
-		case "path":
-			normalized = "paths"
-		}
 		if normalized == "" {
 			continue
 		}
-		if _, ok := resticPurgeGroupByAllowed[normalized]; !ok {
+		// Defense-in-depth: reject path traversal patterns even though this isn't used for filesystem access
+		if strings.ContainsAny(normalized, "/\\") || strings.Contains(normalized, "..") {
+			invalid = append(invalid, strings.TrimSpace(part))
+			continue
+		}
+		// Whitelist validation: only allow restic-specific grouping criteria
+		switch normalized {
+		case "path":
+			normalized = "paths"
+		case "paths", "host", "tags":
+		default:
 			invalid = append(invalid, strings.TrimSpace(part))
 			continue
 		}
