@@ -30,6 +30,7 @@ const (
 	UnlockTask
 	ChangePassTask
 	RestoreTask
+	CheckTask
 )
 
 type MoveType string
@@ -56,21 +57,76 @@ func GetTaskName(taskType TaskType) string {
 		return "changepass"
 	case RestoreTask:
 		return "restore"
+	case CheckTask:
+		return "check"
 	default:
 		return "Unknown"
 	}
 }
 
+// ResticBackupOption holds the configuration for backup
+type ResticBackupOption struct {
+	DirPath           string   `json:"dir_path"`
+	Tags              []string `json:"tags"`
+	Exclude           []string `json:"exclude,omitempty"`             // Exclude patterns
+	ExcludeFile       []string `json:"exclude_file,omitempty"`        // Files containing exclude patterns
+	ExcludeCaches     bool     `json:"exclude_caches,omitempty"`      // Exclude cache directories
+	ExcludeIfPresent  []string `json:"exclude_if_present,omitempty"`  // Exclude dirs containing these files
+	ExcludeLargerThan string   `json:"exclude_larger_than,omitempty"` // Max file size (e.g., "100M")
+	FilesFrom         []string `json:"files_from,omitempty"`          // Read files to backup from file
+	Host              string   `json:"host,omitempty"`                // Override hostname
+	Parent            string   `json:"parent,omitempty"`              // Parent snapshot for incremental
+	OneFileSystem     bool     `json:"one_file_system,omitempty"`     // Don't cross filesystem boundaries
+	IgnoreCtime       bool     `json:"ignore_ctime,omitempty"`        // Ignore ctime changes
+	IgnoreInode       bool     `json:"ignore_inode,omitempty"`        // Ignore inode changes
+	Time              string   `json:"time,omitempty"`                // Backup timestamp (e.g., '2012-11-01 22:08:41')
+	DryRun            bool     `json:"dry_run,omitempty"`             // Don't upload, just show what would be done
+}
+
+// ResticUnlockOption holds the configuration for unlock
+type ResticUnlockOption struct {
+	RemoveAll bool `json:"remove_all,omitempty"` // Remove all locks, including from other hosts
+}
+
+// ResticChangePassOption holds the configuration for password change
+type ResticChangePassOption struct {
+	NewPassFile string `json:"-"`
+}
+
+// ResticInitOption holds the configuration for init
+type ResticInitOption struct {
+	Force             bool   `json:"force,omitempty"`
+	RepositoryVersion string `json:"repository_version,omitempty"` // e.g., "stable", "latest", "1", "2"
+	CopyChunkerParams bool   `json:"copy_chunker_params,omitempty"`
+	FromRepo          string `json:"from_repo,omitempty"`
+}
+
+// ResticFetchOption holds the configuration for fetch
+type ResticFetchOption struct {
+	SkipStats bool `json:"skip_stats,omitempty"`
+}
+
+// ResticCheckOption holds the configuration for repository integrity check
+type ResticCheckOption struct {
+	ReadData       bool   `json:"read_data,omitempty"`        // Read all data blobs (slow, comprehensive)
+	ReadDataSubset string `json:"read_data_subset,omitempty"` // Read subset of data (e.g., "10%", "5G", "1/5")
+	WithCache      bool   `json:"with_cache,omitempty"`       // Use cache (default: false for check)
+	CheckUnused    bool   `json:"check_unused,omitempty"`     // Check for unused blobs (removed in newer versions)
+}
+
 // Task represents a queue task
 type ResticTask struct {
-	ID          int                 `json:"task_id"`
-	Type        TaskType            `json:"task_type"`
-	DirPath     string              `json:"dir_path"`
-	Tags        []string            `json:"tags"`
-	Opt         ResticPurgeOption   `json:"opt,omitempty"`
-	Restore     ResticRestoreOption `json:"restore,omitempty"`
-	NewPassFile string              `json:"-"`
-	resultCh    chan ResticResult
+	ID            int                     `json:"task_id"`
+	Type          TaskType                `json:"task_type"`
+	BackupOpt     *ResticBackupOption     `json:"backup_opt,omitempty"`     // Options for BackupTask
+	PurgeOpt      *ResticPurgeOption      `json:"purge_opt,omitempty"`      // Options for PurgeTask
+	RestoreOpt    *ResticRestoreOption    `json:"restore_opt,omitempty"`    // Options for RestoreTask
+	UnlockOpt     *ResticUnlockOption     `json:"unlock_opt,omitempty"`     // Options for UnlockTask
+	ChangePassOpt *ResticChangePassOption `json:"changepass_opt,omitempty"` // Options for ChangePassTask
+	InitOpt       *ResticInitOption       `json:"init_opt,omitempty"`       // Options for InitTask
+	FetchOpt      *ResticFetchOption      `json:"fetch_opt,omitempty"`      // Options for FetchTask
+	CheckOpt      *ResticCheckOption      `json:"check_opt,omitempty"`      // Options for CheckTask
+	resultCh      chan ResticResult
 }
 
 type ResticLsEntry struct {
@@ -88,26 +144,39 @@ type ResticResult struct {
 
 // ResticPurgeOption holds the configuration for purge
 type ResticPurgeOption struct {
-	SnapshotID        string `json:"snapshot_id,omitempty"`
-	GroupBy           string `json:"group_by,omitempty"`
-	KeepLast          int    `json:"keep_last,omitempty"`
-	KeepHourly        int    `json:"keep_hourly,omitempty"`
-	KeepDaily         int    `json:"keep_daily,omitempty"`
-	KeepWeekly        int    `json:"keep_weekly,omitempty"`
-	KeepMonthly       int    `json:"keep_monthly,omitempty"`
-	KeepYearly        int    `json:"keep_yearly,omitempty"`
-	KeepWithin        string `json:"keep_within,omitempty"`
-	KeepWithinHourly  string `json:"keep_within_hourly,omitempty"`
-	KeepWithinDaily   string `json:"keep_within_daily,omitempty"`
-	KeepWithinWeekly  string `json:"keep_within_weekly,omitempty"`
-	KeepWithinMonthly string `json:"keep_within_monthly,omitempty"`
-	KeepWithinYearly  string `json:"keep_within_yearly,omitempty"`
+	SnapshotID        string   `json:"snapshot_id,omitempty"`
+	GroupBy           string   `json:"group_by,omitempty"`
+	KeepLast          int      `json:"keep_last,omitempty"`
+	KeepHourly        int      `json:"keep_hourly,omitempty"`
+	KeepDaily         int      `json:"keep_daily,omitempty"`
+	KeepWeekly        int      `json:"keep_weekly,omitempty"`
+	KeepMonthly       int      `json:"keep_monthly,omitempty"`
+	KeepYearly        int      `json:"keep_yearly,omitempty"`
+	KeepWithin        string   `json:"keep_within,omitempty"`
+	KeepWithinHourly  string   `json:"keep_within_hourly,omitempty"`
+	KeepWithinDaily   string   `json:"keep_within_daily,omitempty"`
+	KeepWithinWeekly  string   `json:"keep_within_weekly,omitempty"`
+	KeepWithinMonthly string   `json:"keep_within_monthly,omitempty"`
+	KeepWithinYearly  string   `json:"keep_within_yearly,omitempty"`
+	KeepTag           []string `json:"keep_tag,omitempty"`
+	Host              []string `json:"host,omitempty"`
+	Tag               []string `json:"tag,omitempty"`
+	Path              []string `json:"path,omitempty"`
+	Prune             *bool    `json:"prune,omitempty"` // If nil, defaults to true for backward compatibility
+	DryRun            bool     `json:"dry_run,omitempty"`
 }
 
 // ResticRestoreOption holds the configuration for restore
 type ResticRestoreOption struct {
-	SnapshotID string `json:"snapshot_id,omitempty"`
-	Overwrite  string `json:"overwrite,omitempty"`
+	SnapshotID string   `json:"snapshot_id,omitempty"`
+	TargetDir  string   `json:"target_dir,omitempty"` // Target directory for restore
+	Include    []string `json:"include,omitempty"`    // Include patterns
+	Exclude    []string `json:"exclude,omitempty"`    // Exclude patterns
+	Overwrite  string   `json:"overwrite,omitempty"`  // Overwrite policy (non-standard, custom implementation)
+	Verify     bool     `json:"verify,omitempty"`     // Verify restored files content
+	Host       []string `json:"host,omitempty"`       // Filter by host for "latest" snapshot
+	Path       []string `json:"path,omitempty"`       // Filter by path for "latest" snapshot
+	Tag        []string `json:"tag,omitempty"`        // Filter by tag for "latest" snapshot
 }
 
 // TaskStatus represents the task state information stored in the JSON flag file
@@ -120,33 +189,36 @@ type TaskStatus struct {
 
 // ResticManager manages the queue and execution
 type ResticManager struct {
-	BinaryPath     string
-	Env            []string
-	Backups        []BackupSnapshot
-	BackupStat     BackupStat
-	TaskQueue      []*ResticTask
-	TaskErrors     map[TaskType]error
-	errorMutex     *sync.Mutex
-	ResultChan     chan ResticResult
-	LogModule      int
-	MessageChan    chan sharedlog.Message
-	Shutdown       bool
-	Mutex          *sync.Mutex
-	cond           *sync.Cond    // Condition variable for waiting and notifying tasks
-	stopCh         chan struct{} // Stop channel to signal the goroutine to stop
-	CanFetch       bool
-	CanInitRepo    bool
-	NeedPurgeNow   bool
-	PurgeNowOption ResticPurgeOption
-	isPaused       bool
-	isPausedByDisk bool
-	HasLocks       bool
-	taskID         int
-	CurrentID      int
-	mountMutex     *sync.Mutex
-	mountCmd       *exec.Cmd
-	mountPath      string
-	mountDone      chan error
+	BinaryPath        string
+	Env               []string
+	Backups           []BackupSnapshot
+	BackupStat        BackupStat
+	TaskQueue         []*ResticTask
+	TaskErrors        map[TaskType]error
+	errorMutex        *sync.Mutex
+	ResultChan        chan ResticResult
+	LogModule         int
+	MessageChan       chan sharedlog.Message
+	Shutdown          bool
+	Mutex             *sync.Mutex
+	cond              *sync.Cond    // Condition variable for waiting and notifying tasks
+	stopCh            chan struct{} // Stop channel to signal the goroutine to stop
+	CanFetch          bool
+	CanInitRepo       bool
+	NeedPurgeNow      bool
+	PurgeNowOption    ResticPurgeOption
+	isPaused          bool
+	isPausedByDisk    bool
+	HasLocks          bool
+	taskID            int
+	CurrentID         int
+	mountMutex        *sync.Mutex
+	mountCmd          *exec.Cmd
+	mountPath         string
+	mountDone         chan error
+	BackupCount       int       // Number of backups since last check
+	LastCheckTime     time.Time // Last time repository check was run
+	LastFullCheckTime time.Time // Last time full data check was run
 }
 
 // NewResticRepo initializes the repository manager
@@ -312,6 +384,9 @@ func (repo *ResticManager) GetCacheDirPath() string {
 
 // GenerateTaskID ensures unique task IDs
 func (repo *ResticManager) GenerateTaskID() int {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
 	repo.taskID++
 	return repo.taskID
 }
@@ -392,11 +467,21 @@ func (repo *ResticManager) worker() {
 			err := repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case PurgeTask:
-			err := repo.PurgeRepo(task.Opt)
+			var err error
+			if task.PurgeOpt != nil {
+				err = repo.PurgeRepo(*task.PurgeOpt)
+			} else {
+				err = errors.New("PurgeTask requires PurgeOpt to be set")
+			}
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case BackupTask:
-			err := repo.Backup(task.DirPath, task.Tags)
+			var err error
+			if task.BackupOpt != nil {
+				err = repo.BackupWithOptions(*task.BackupOpt)
+			} else {
+				err = errors.New("BackupTask requires BackupOpt to be set")
+			}
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case UnlockTask:
@@ -404,7 +489,29 @@ func (repo *ResticManager) worker() {
 			_ = repo.FetchRepo()
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		case RestoreTask:
-			err := repo.restoreSnapshot(task.Restore.SnapshotID, task.DirPath, task.Tags, task.Restore.Overwrite)
+			var err error
+			if task.RestoreOpt != nil {
+				snapshotID := task.RestoreOpt.SnapshotID
+				targetDir := task.RestoreOpt.TargetDir
+				overwrite := task.RestoreOpt.Overwrite
+				paths := task.RestoreOpt.Include
+				err = repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
+			} else {
+				err = errors.New("RestoreTask requires RestoreOpt to be set")
+			}
+			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
+		case CheckTask:
+			// Use CheckOpt if available, otherwise use default (structure check only)
+			var opt ResticCheckOption
+			if task.CheckOpt != nil {
+				opt = *task.CheckOpt
+			}
+			err := repo.CheckRepo(opt)
+			if err == nil {
+				// Update check timestamps on success
+				isFullCheck := opt.ReadData
+				repo.UpdateLastCheckTime(isFullCheck)
+			}
 			result = ResticResult{TaskID: task.ID, TaskType: task.Type, Error: err}
 		default:
 			repo.Printf(logrus.WarnLevel, "Unknown task type: %d", task.Type)
@@ -504,9 +611,9 @@ func (repo *ResticManager) RestoreSnapshot(snapshotID, targetDir string, paths [
 		return repo.restoreSnapshot(snapshotID, targetDir, paths, overwrite)
 	}
 
-	resultCh := repo.AddRestoreTask(snapshotID, targetDir, paths, overwrite)
-	result := <-resultCh
-	return result.Error
+	repo.AddRestoreTask(snapshotID, targetDir, paths, overwrite)
+
+	return nil
 }
 
 var resticRestoreOverwriteModes = map[string]struct{}{
@@ -532,7 +639,7 @@ func (repo *ResticManager) restoreSnapshot(snapshotID, targetDir string, paths [
 		return fmt.Errorf("snapshot ID is empty")
 	}
 	if targetDir == "" {
-		return fmt.Errorf("target dir is empty")
+		return fmt.Errorf("target directory is empty")
 	}
 
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -892,9 +999,9 @@ func (repo *ResticManager) streamMountOutput(pipe io.ReadCloser, prefix string, 
 
 func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 	task := ResticTask{
-		ID:   repo.GenerateTaskID(),
-		Type: PurgeTask,
-		Opt:  opt,
+		ID:       repo.GenerateTaskID(),
+		Type:     PurgeTask,
+		PurgeOpt: &opt,
 	}
 
 	// Add task to slice
@@ -903,10 +1010,12 @@ func (repo *ResticManager) appendPurgeTask(opt ResticPurgeOption) {
 
 func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
 	task := ResticTask{
-		ID:      repo.GenerateTaskID(),
-		Type:    BackupTask,
-		DirPath: dirpath,
-		Tags:    tags,
+		ID:   repo.GenerateTaskID(),
+		Type: BackupTask,
+		BackupOpt: &ResticBackupOption{
+			DirPath: dirpath,
+			Tags:    tags,
+		},
 	}
 
 	// Add task to slice
@@ -915,24 +1024,36 @@ func (repo *ResticManager) AddBackupTask(dirpath string, tags []string) {
 
 func (repo *ResticManager) AddUnlockTask() {
 	task := ResticTask{
-		ID:   repo.GenerateTaskID(),
-		Type: UnlockTask,
+		ID:        repo.GenerateTaskID(),
+		Type:      UnlockTask,
+		UnlockOpt: &ResticUnlockOption{},
 	}
 	repo.appendTask(&task)
 }
 
-func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string, overwrite string) <-chan ResticResult {
+func (repo *ResticManager) AddRestoreTask(snapshotID, targetDir string, paths []string, overwrite string) {
 	task := &ResticTask{
-		ID:       repo.GenerateTaskID(),
-		Type:     RestoreTask,
-		DirPath:  targetDir,
-		Tags:     append([]string(nil), paths...),
-		Restore:  ResticRestoreOption{SnapshotID: snapshotID, Overwrite: overwrite},
+		ID:   repo.GenerateTaskID(),
+		Type: RestoreTask,
+		RestoreOpt: &ResticRestoreOption{
+			SnapshotID: snapshotID,
+			TargetDir:  targetDir,
+			Include:    paths,
+			Overwrite:  overwrite,
+		},
 		resultCh: make(chan ResticResult, 1),
 	}
 
 	repo.prependTask(task)
-	return task.resultCh
+}
+
+func (repo *ResticManager) AddCheckTask(opt ResticCheckOption) {
+	task := &ResticTask{
+		ID:       repo.GenerateTaskID(),
+		Type:     CheckTask,
+		CheckOpt: &opt,
+	}
+	repo.appendTask(task)
 }
 
 func (repo *ResticManager) MoveTask(mvType string, taskID, afterTaskID int) error {
@@ -1192,9 +1313,16 @@ func (repo *ResticManager) RunCommand(args []string, loglevel logrus.Level, capt
 	return nil, stderrBuf.Bytes(), nil
 }
 
+// InitRepo initializes the repository with backward-compatible signature
+// For backward compatibility, accepts bool. New code should use InitRepoWithOptions
 func (repo *ResticManager) InitRepo(force bool) error {
+	return repo.InitRepoWithOptions(ResticInitOption{Force: force})
+}
+
+// InitRepoWithOptions initializes the repository with full options
+func (repo *ResticManager) InitRepoWithOptions(opt ResticInitOption) error {
 	repopath := repo.GetRepoPath()
-	if force {
+	if opt.Force {
 		err := os.RemoveAll(repopath)
 		if err != nil {
 			return fmt.Errorf("failed to remove repo: %w", err)
@@ -1204,10 +1332,20 @@ func (repo *ResticManager) InitRepo(force bool) error {
 	}
 
 	defer repo.AddFetchTask()
-	// Prepare the arguments for the "forget" command
+
+	// Prepare the arguments for the "init" command
 	args := []string{"init"}
 
-	// Execute the Restic "forget" command using RunCommand
+	if opt.RepositoryVersion != "" {
+		args = append(args, "--repository-version", opt.RepositoryVersion)
+	}
+
+	if opt.CopyChunkerParams && opt.FromRepo != "" {
+		args = append(args, "--copy-chunker-params")
+		args = append(args, "--from-repo", opt.FromRepo)
+	}
+
+	// Execute the Restic "init" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false) // Don't capture output
 	if err != nil {
 		// Update the repo flag to prevent further fetch attempts
@@ -1414,10 +1552,43 @@ func (repo *ResticManager) purgeWithPolicy(opt ResticPurgeOption) error {
 }
 
 func buildForgetArgs(opt ResticPurgeOption) []string {
-	args := []string{"forget", "--prune"}
+	args := []string{"forget"}
+
+	// Add --prune flag: defaults to true if not explicitly set
+	if opt.Prune == nil || *opt.Prune {
+		args = append(args, "--prune")
+	}
 
 	if strings.TrimSpace(opt.GroupBy) != "" {
 		args = append(args, "--group-by", strings.TrimSpace(opt.GroupBy))
+	}
+
+	// Add keep-tag filters
+	for _, tag := range opt.KeepTag {
+		if strings.TrimSpace(tag) != "" {
+			args = append(args, "--keep-tag", strings.TrimSpace(tag))
+		}
+	}
+
+	// Add host filters
+	for _, host := range opt.Host {
+		if strings.TrimSpace(host) != "" {
+			args = append(args, "--host", strings.TrimSpace(host))
+		}
+	}
+
+	// Add tag filters
+	for _, tag := range opt.Tag {
+		if strings.TrimSpace(tag) != "" {
+			args = append(args, "--tag", strings.TrimSpace(tag))
+		}
+	}
+
+	// Add path filters
+	for _, path := range opt.Path {
+		if strings.TrimSpace(path) != "" {
+			args = append(args, "--path", strings.TrimSpace(path))
+		}
 	}
 
 	keepWithin, useWithin := GetKeepWithinTime(
@@ -1435,6 +1606,10 @@ func buildForgetArgs(opt ResticPurgeOption) []string {
 	keep, useKeep := GetKeepN(opt.KeepLast, opt.KeepHourly, opt.KeepDaily, opt.KeepWeekly, opt.KeepMonthly, opt.KeepYearly)
 	if useKeep {
 		args = append(args, keep...)
+	}
+
+	if opt.DryRun {
+		args = append(args, "--dry-run")
 	}
 
 	return args
@@ -1478,10 +1653,19 @@ func (repo *ResticManager) PurgeRepo(opt ResticPurgeOption) error {
 	return nil
 }
 
+// Backup is a backward-compatible wrapper. New code should use BackupWithOptions
 func (repo *ResticManager) Backup(dirpath string, tags []string) error {
+	return repo.BackupWithOptions(ResticBackupOption{
+		DirPath: dirpath,
+		Tags:    tags,
+	})
+}
+
+// BackupWithOptions performs backup with full options support
+func (repo *ResticManager) BackupWithOptions(opt ResticBackupOption) error {
 	if !repo.GetCanFetch() {
 		time.Sleep(time.Second)
-		return repo.Backup(dirpath, tags)
+		return repo.BackupWithOptions(opt)
 	}
 
 	repo.SetCanFetch(false)
@@ -1490,16 +1674,90 @@ func (repo *ResticManager) Backup(dirpath string, tags []string) error {
 	// Prepare the arguments for the "backup" command
 	args := []string{"backup"}
 
-	for _, tag := range tags {
+	// Add tags
+	for _, tag := range opt.Tags {
 		if tag != "" {
-			args = append(args, "--tag")
-			args = append(args, tag)
+			args = append(args, "--tag", tag)
 		}
 	}
 
-	args = append(args, dirpath)
+	// Add exclude patterns
+	for _, pattern := range opt.Exclude {
+		if strings.TrimSpace(pattern) != "" {
+			args = append(args, "--exclude", strings.TrimSpace(pattern))
+		}
+	}
 
-	// Execute the Restic "forget" command using RunCommand
+	// Add exclude files
+	for _, file := range opt.ExcludeFile {
+		if strings.TrimSpace(file) != "" {
+			args = append(args, "--exclude-file", strings.TrimSpace(file))
+		}
+	}
+
+	// Add exclude-caches
+	if opt.ExcludeCaches {
+		args = append(args, "--exclude-caches")
+	}
+
+	// Add exclude-if-present
+	for _, file := range opt.ExcludeIfPresent {
+		if strings.TrimSpace(file) != "" {
+			args = append(args, "--exclude-if-present", strings.TrimSpace(file))
+		}
+	}
+
+	// Add exclude-larger-than
+	if opt.ExcludeLargerThan != "" {
+		args = append(args, "--exclude-larger-than", opt.ExcludeLargerThan)
+	}
+
+	// Add files-from
+	for _, file := range opt.FilesFrom {
+		if strings.TrimSpace(file) != "" {
+			args = append(args, "--files-from", strings.TrimSpace(file))
+		}
+	}
+
+	// Add host override
+	if opt.Host != "" {
+		args = append(args, "--host", opt.Host)
+	}
+
+	// Add parent snapshot
+	if opt.Parent != "" {
+		args = append(args, "--parent", opt.Parent)
+	}
+
+	// Add one-file-system
+	if opt.OneFileSystem {
+		args = append(args, "--one-file-system")
+	}
+
+	// Add ignore-ctime
+	if opt.IgnoreCtime {
+		args = append(args, "--ignore-ctime")
+	}
+
+	// Add ignore-inode
+	if opt.IgnoreInode {
+		args = append(args, "--ignore-inode")
+	}
+
+	// Add time
+	if opt.Time != "" {
+		args = append(args, "--time", opt.Time)
+	}
+
+	// Add dry-run
+	if opt.DryRun {
+		args = append(args, "--dry-run")
+	}
+
+	// Add the directory path
+	args = append(args, opt.DirPath)
+
+	// Execute the Restic "backup" command using RunCommand
 	_, stderr, err := repo.RunCommand(args, logrus.InfoLevel, false)
 	if err != nil {
 		// Handle error (including stderr)
@@ -1570,6 +1828,52 @@ func (repo *ResticManager) UnlockRepo() error {
 	}
 
 	repo.HasLocks = false
+	return nil
+}
+
+// CheckRepo verifies repository integrity with various check options
+func (repo *ResticManager) CheckRepo(opt ResticCheckOption) error {
+	if !repo.GetCanFetch() {
+		time.Sleep(time.Second)
+		return repo.CheckRepo(opt)
+	}
+
+	repo.SetCanFetch(false)
+	defer repo.SetCanFetch(true)
+
+	// Check if the repo is initialized
+	if err := repo.CheckRepoFiles(); err != nil {
+		return err
+	}
+
+	// Prepare the arguments for the "check" command
+	args := []string{"check"}
+
+	// Add --read-data flag for full data verification (slow)
+	if opt.ReadData {
+		args = append(args, "--read-data")
+	}
+
+	// Add --read-data-subset for partial data verification
+	if opt.ReadDataSubset != "" {
+		args = append(args, "--read-data-subset", opt.ReadDataSubset)
+	}
+
+	// Add --with-cache if explicitly requested (default is without cache)
+	if opt.WithCache {
+		args = append(args, "--with-cache")
+	}
+
+	// Execute the Restic "check" command using RunCommand
+	stdout, stderr, err := repo.RunCommand(args, logrus.InfoLevel, true)
+	if err != nil {
+		// Handle error (including stderr)
+		return fmt.Errorf("repository check failed: %v, stderr: %s", err, stderr)
+	}
+
+	// Log success message
+	repo.Printf(logrus.InfoLevel, "Repository check completed successfully: %s", strings.TrimSpace(string(stdout)))
+
 	return nil
 }
 
@@ -1703,4 +2007,86 @@ func (repo *ResticManager) PurgeOldestBackup() error {
 	}, true)
 
 	return nil
+}
+
+// ShouldRunStructureCheck returns true if a structure check should be run based on backup count
+// Best practice: Run structure check after every N backups (default: 7)
+func (repo *ResticManager) ShouldRunStructureCheck(backupInterval int) bool {
+	if backupInterval <= 0 {
+		backupInterval = 7 // Default: weekly check
+	}
+	return repo.BackupCount >= backupInterval
+}
+
+// ShouldRunFullCheck returns true if a full data check should be run based on time
+// Best practice: Run full check monthly (default: 30 days)
+func (repo *ResticManager) ShouldRunFullCheck(checkIntervalDays int) bool {
+	if checkIntervalDays <= 0 {
+		checkIntervalDays = 30 // Default: monthly check
+	}
+
+	if repo.LastFullCheckTime.IsZero() {
+		return true // Never checked
+	}
+
+	duration := time.Since(repo.LastFullCheckTime)
+	return duration >= time.Duration(checkIntervalDays)*24*time.Hour
+}
+
+// ScheduleCheckAfterBackup should be called after successful backups
+// This implements best practice: structure check after N backups
+func (repo *ResticManager) ScheduleCheckAfterBackup(checkEveryNBackups int) {
+	repo.Mutex.Lock()
+	repo.BackupCount++
+	backupCount := repo.BackupCount
+	repo.Mutex.Unlock()
+
+	if checkEveryNBackups <= 0 {
+		checkEveryNBackups = 7 // Default
+	}
+
+	if backupCount >= checkEveryNBackups {
+		repo.Printf(logrus.InfoLevel, "Scheduling structure check after %d backups", backupCount)
+		repo.AddCheckTask(ResticCheckOption{
+			ReadData: false, // Quick structure check only
+		})
+		repo.Mutex.Lock()
+		repo.BackupCount = 0 // Reset counter
+		repo.Mutex.Unlock()
+	}
+}
+
+// ScheduleFullCheck schedules a comprehensive data check
+// Best practice: Run monthly or during maintenance windows
+func (repo *ResticManager) ScheduleFullCheck() {
+	repo.Printf(logrus.InfoLevel, "Scheduling full data check")
+	repo.AddCheckTask(ResticCheckOption{
+		ReadData: true, // Full data verification
+	})
+	repo.Mutex.Lock()
+	repo.LastFullCheckTime = time.Now()
+	repo.Mutex.Unlock()
+}
+
+// ScheduleSubsetCheck schedules a partial data check
+// Best practice: Weekly verification of a subset (e.g., 10%)
+func (repo *ResticManager) ScheduleSubsetCheck(subset string) {
+	if subset == "" {
+		subset = "10%" // Default: check 10% of data
+	}
+	repo.Printf(logrus.InfoLevel, "Scheduling subset check: %s", subset)
+	repo.AddCheckTask(ResticCheckOption{
+		ReadDataSubset: subset,
+	})
+}
+
+// UpdateLastCheckTime should be called after successful check completion
+func (repo *ResticManager) UpdateLastCheckTime(isFullCheck bool) {
+	repo.Mutex.Lock()
+	defer repo.Mutex.Unlock()
+
+	repo.LastCheckTime = time.Now()
+	if isFullCheck {
+		repo.LastFullCheckTime = time.Now()
+	}
 }
