@@ -395,20 +395,6 @@ export const getQueryRules = createGuardedAsyncThunk('cluster/getQueryRules', as
   }
 })
 
-export const executeQuery = createGuardedAsyncThunk('cluster/executeQuery', async ({ clusterName, query }, thunkAPI) => {
-  try {
-    const baseURL = thunkAPI.getState()?.auth?.baseURL || ''
-    const { data, status } = await clusterService.executeQuery(clusterName, query, baseURL)
-    if (status === 200) {
-      showSuccessBanner('Query executed successfully!', status, thunkAPI)
-    }
-    return { data, status }
-  } catch (error) {
-    showErrorBanner('Query execution failed!', error, thunkAPI)
-    return handleError(error, thunkAPI)
-  }
-})
-
 export const switchOverCluster = createGuardedAsyncThunk('cluster/switchOverCluster', async ({ clusterName }, thunkAPI) => {
   try {
     const baseURL = thunkAPI.getState()?.auth?.baseURL || ''

@@ -16,7 +16,6 @@ export const clusterService = {
   getJobs,
   getShardSchema,
   getQueryRules,
-  executeQuery,
   
   // Restic management APIs
   getResticSnapshot,
@@ -232,9 +231,6 @@ function getQueryRules(clusterName, baseURL) {
   return getApi(baseURL).get(`clusters/${clusterName}/queryrules`)
 }
 
-function executeQuery(clusterName, query, baseURL) {
-  return getApi(baseURL).post(`clusters/${clusterName}/actions/query`, { query })
-}
 //#endregion Cluster data APIs
 
 //#region Cluster management APIs
